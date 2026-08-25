@@ -143,7 +143,12 @@ export async function assembleClientApi(
     apiBase: bootApiBase,
     frontendUrl: bootFrontendUrl,
     frontendUrlConfigured,
-  } = await bootIntegrationReader(db, config.ENCRYPTION_KEY, logger);
+  } = await bootIntegrationReader({
+    db,
+    encryptionKey: config.ENCRYPTION_KEY,
+    logger,
+    oauthBase: { apiBase: config.OAUTH_API_BASE, frontendUrl: config.OAUTH_FRONTEND_URL },
+  });
 
   // ---- identity（凭据/挑战/会话/OAuth/吊销——动态装配在 adapters/identity-stack.ts） ----
   const {

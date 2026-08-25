@@ -3,9 +3,8 @@
  * DB CHECK（migrations/0086）、admin 契约与 UI 卡片词表与本表逐项相等——契约测试锁定。
  */
 
-/** 集成键（封闭词表；无行 = 未配置） */
+/** 集成键（封闭词表；无行 = 未配置。oauth.base 已退回 env——ADR-0012） */
 export const INTEGRATION_KEYS = [
-  'oauth.base',
   'oauth.github',
   'oauth.google',
   'smtp',

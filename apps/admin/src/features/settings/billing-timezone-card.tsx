@@ -96,7 +96,7 @@ export function BillingTimezoneCard() {
   const groups = timezoneOptions(timezone);
 
   return (
-    <Card className="max-w-xl">
+    <Card className="h-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <GlobeIcon className="size-4" /> {t('billingTimezone')}

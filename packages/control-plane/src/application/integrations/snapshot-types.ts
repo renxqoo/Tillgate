@@ -1,13 +1,8 @@
 /**
  * 运行时快照类型（DESIGN §5 D4）：消费面（client-api/admin-api/worker）拿到的
  * 已解密、已归一形状。config 仅在 configured（必填齐全）时非 null；
- * effective = enabled && configured（OAuth provider 额外要求 oauth.base 生效）。
+ * effective = enabled && configured（oauth.base 已退回 env——ADR-0012，base 有效性由装配期保证）。
  */
-
-export interface OauthBaseConfig {
-  readonly frontendUrl: string;
-  readonly apiBase: string;
-}
 
 export interface OauthProviderConfig {
   readonly clientId: string;
@@ -59,7 +54,6 @@ export interface ResolvedIntegration<T> {
 
 export interface IntegrationSnapshot {
   readonly oauth: {
-    readonly base: ResolvedIntegration<OauthBaseConfig>;
     readonly github: ResolvedIntegration<OauthProviderConfig>;
     readonly google: ResolvedIntegration<OauthProviderConfig>;
   };

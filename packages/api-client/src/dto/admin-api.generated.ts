@@ -47,7 +47,7 @@ export interface AdminRow {
 
 /** 第三方集成设置项（GET/PUT /v1/settings/integrations；密文/明文永不回显） */
 export interface IntegrationSettingItem {
-  /** 集成键（封闭词表：oauth.base/oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe） */
+  /** 集成键（封闭词表：oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe——oauth.base 已退回 env，ADR-0012） */
   key: string;
   enabled: boolean;
   /** 必填字段齐全（enabled=true 的前置不变量） */

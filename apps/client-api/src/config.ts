@@ -59,6 +59,13 @@ function createSchema(production: boolean) {
     TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
     /** CORS 白名单（逗号分隔；空 = 不放行跨域）与预检缓存秒数 */
     CORS_ORIGINS: z.string().default(''),
+    /**
+     * OAuth 基地址（ADR-0012 退回 env——部署拓扑，装配期生效变更需重启）：
+     * API 根地址生产必填（回调白名单由它构建）；前端根地址可选，
+     * 未配回落本地缺省、且找回密码链接 fail-closed（不外发错误域名链接）。
+     */
+    OAUTH_API_BASE: z.string().url().optional(),
+    OAUTH_FRONTEND_URL: z.string().url().optional(),
     CLIENT_CORS_MAX_AGE_SECONDS: z.coerce.number().int().min(1).default(600),
     /** 请求体上限（字节） */
     CLIENT_BODY_LIMIT_BYTES: z.coerce
@@ -169,6 +176,9 @@ export function loadClientApiConfig(env: NodeJS.ProcessEnv = process.env): Clien
   }
   if (production && !parsed.SECURE_COOKIE) {
     throw new Error('SECURE_COOKIE must be enabled in production');
+  }
+  if (production && parsed.OAUTH_API_BASE == null) {
+    throw new Error('OAUTH_API_BASE is required in production (OAuth redirect allowlist)');
   }
   parseEndpoints(parsed.OAUTH_GITHUB_ENDPOINTS_JSON, 'github');
   parseEndpoints(parsed.OAUTH_GOOGLE_ENDPOINTS_JSON, 'google');

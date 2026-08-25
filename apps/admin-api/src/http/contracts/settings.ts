@@ -10,6 +10,8 @@ export const settingsContracts = {
   billingTimezoneUpdate: z.object({ timezone: z.string().min(1).max(64) }),
   /** 集成更新：config 字段三态（缺席=保持 / null=清除 / 值=设置）；键名与形状校验在用例 */
   integrationsUpdate: z.object({
+    /** step-up 验证码（ADR-0011：敏感写操作强制 TOTP，每次输入） */
+    totpCode: z.string().regex(/^\d{6}$/, 'totpCode must be 6 digits'),
     enabled: z.boolean().optional(),
     config: z.record(z.string().min(1).max(64), z.string().min(1).max(1024).nullable()).optional(),
   }),

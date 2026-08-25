@@ -87,6 +87,7 @@ function mfa(over: { confirmed: boolean; verifyError?: Error; disableResult?: bo
           throw over.verifyError;
         })
       : vi.fn(async () => ({ method: 'totp' as const })),
+    verifyTotpOnly: vi.fn(async () => {}),
     disableTotp: vi.fn(async () => ({ disabled: over.disableResult ?? true })),
   };
 }
@@ -223,6 +224,16 @@ describe('TOTP 登录第二因子', () => {
 describe('TOTP 绑定三动词(me 会话组)', () => {
   function meHarness(mfaImpl: ReturnType<typeof mfa>): Hono<SessionEnv> {
     const deps: MeRoutesDeps = {
+      stepup: {
+        guards: {
+          ip: {
+            isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+            recordFailure: async () => ({ locked: false, retryAfterSec: 0 }),
+          },
+        },
+        audit: async () => {},
+        trustedProxyHops: 0,
+      },
       rbac: {
         roles: {
           find: async () => ({

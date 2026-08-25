@@ -1,7 +1,8 @@
 'use client';
 
 // 集成单卡（哑件）：标题左、配置按钮右上与标题对齐（用户裁决）；内容面
-// 状态徽章 + 启停按钮 + 字段掩码摘要 + Turnstile 停用联动警告（DESIGN §5 D11）。
+// 状态徽章 + 启停按钮 + Turnstile 停用联动警告（DESIGN §5 D11）。
+// 卡面不显示配置字段值（2026-08-25 用户裁决：与 2FA/TOTP 卡同形态，配置收进弹窗）。
 
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tillgate/ui';
 import {
@@ -23,6 +24,7 @@ import type { IntegrationSettingItem } from '@/server/settings-actions';
 import { updateIntegrationAction } from '@/server/settings-actions';
 import { IntegrationFormDialog } from './integration-form-dialog';
 import { INTEGRATION_ICON, i18nKey } from './integration-format';
+import { TotpStepupDialog } from '../totp-stepup-dialog';
 
 const ICONS: Record<string, LucideIcon> = {
   globe: GlobeIcon,
@@ -37,24 +39,29 @@ const ICONS: Record<string, LucideIcon> = {
 export function IntegrationCard({
   item,
   signupGiftOn,
+  totpEnabled,
 }: {
   item: IntegrationSettingItem;
   /** 注册送礼开启（Turnstile 停用联动警告的数据源） */
   signupGiftOn: boolean;
+  /** 当前管理员已绑定验证器（ADR-0011——未绑定者敏感按钮置灰引导绑定） */
+  totpEnabled: boolean;
 }) {
   const t = useTranslations('settings.integrations');
+  const ts = useTranslations('settings');
   const tc = useTranslations('common');
   const [pending, setPending] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [stepupOpen, setStepupOpen] = useState(false);
   const [current, setCurrent] = useState(item);
   const Icon = ICONS[INTEGRATION_ICON[current.key] ?? 'globe'] ?? GlobeIcon;
 
-  const toggleEnabled = (): void => {
+  const toggleEnabled = (totpCode: string): void => {
     const next = !current.enabled;
     setPending(true);
     void (async () => {
       try {
-        const saved = await updateIntegrationAction(current.key, { enabled: next });
+        const saved = await updateIntegrationAction(current.key, { totpCode, enabled: next });
         setCurrent(saved);
         if (current.key === 'captcha.turnstile' && !next && signupGiftOn) {
           // Turnstile 加固（DESIGN §5 D11）：警告不阻断——停用已生效，风险显式留痕
@@ -69,46 +76,34 @@ export function IntegrationCard({
   };
 
   return (
-    <Card className="flex w-full max-w-xl flex-col">
+    <Card className="flex h-full w-full flex-col">
       <CardHeader>
         {/* 用户裁决：设置按钮放卡片右上方、与标题垂直对齐 */}
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <Icon className="size-4" /> {t(`cards.${i18nKey(current.key)}`)}
           </CardTitle>
-          <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!totpEnabled}
+            title={totpEnabled ? undefined : ts('stepupRequired')}
+            onClick={() => setDialogOpen(true)}
+          >
             {t('configure')}
           </Button>
         </div>
         <CardDescription>{t(`descriptions.${i18nKey(current.key)}`)}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-3">
-        <div className="flex items-center gap-3">
-          <Button
-            variant={current.enabled ? 'destructive' : 'default'}
-            size="sm"
-            disabled={pending || (!current.enabled && !current.configured)}
-            onClick={toggleEnabled}
-          >
-            {pending && <Loader2Icon className="animate-spin" />}
-            {current.enabled ? t('disable') : t('enable')}
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            <span className={current.enabled ? 'text-green-600' : ''}>
-              {current.enabled ? t('enabledState') : t('disabledState')}
-            </span>
-            <span className="mx-1">·</span>
-            <span>{current.configured ? t('configuredState') : t('unconfiguredState')}</span>
-          </span>
-        </div>
-        <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          {Object.entries(current.config).map(([field, value]) => (
-            <div key={field} className="col-span-2 flex gap-3">
-              <dt className="w-32 shrink-0 truncate">{t(`fields.${field}`)}</dt>
-              <dd className="truncate font-mono">{value ?? '—'}</dd>
-            </div>
-          ))}
-        </dl>
+        <ToggleRow
+          enabled={current.enabled}
+          configured={current.configured}
+          pending={pending}
+          totpEnabled={totpEnabled}
+          stepupTitle={totpEnabled ? undefined : ts('stepupRequired')}
+          onRequestToggle={() => setStepupOpen(true)}
+        />
         {current.key === 'captcha.turnstile' && current.enabled && signupGiftOn ? (
           <p className="text-xs text-amber-600">{t('captchaWarning')}</p>
         ) : null}
@@ -124,6 +119,45 @@ export function IntegrationCard({
         onOpenChange={setDialogOpen}
         onSaved={(saved) => setCurrent(saved)}
       />
+      <TotpStepupDialog
+        open={stepupOpen}
+        onOpenChange={setStepupOpen}
+        title={`${current.enabled ? t('disable') : t('enable')} — ${t(`cards.${i18nKey(current.key)}`)}`}
+        onConfirm={(code) => toggleEnabled(code)}
+      />
     </Card>
+  );
+}
+
+/** 启停按钮 + 状态行（哑件拆分——主组件复杂度收口，铁律 22 ②） */
+function ToggleRow(input: {
+  enabled: boolean;
+  configured: boolean;
+  pending: boolean;
+  totpEnabled: boolean;
+  stepupTitle: string | undefined;
+  onRequestToggle: () => void;
+}) {
+  const t = useTranslations('settings.integrations');
+  return (
+    <div className="flex items-center gap-3">
+      <Button
+        variant={input.enabled ? 'destructive' : 'default'}
+        size="sm"
+        disabled={input.pending || !input.totpEnabled || (!input.enabled && !input.configured)}
+        title={input.stepupTitle}
+        onClick={input.onRequestToggle}
+      >
+        {input.pending && <Loader2Icon className="animate-spin" />}
+        {input.enabled ? t('disable') : t('enable')}
+      </Button>
+      <span className="text-sm text-muted-foreground">
+        <span className={input.enabled ? 'text-green-600' : ''}>
+          {input.enabled ? t('enabledState') : t('disabledState')}
+        </span>
+        <span className="mx-1">·</span>
+        <span>{input.configured ? t('configuredState') : t('unconfiguredState')}</span>
+      </span>
+    </div>
   );
 }

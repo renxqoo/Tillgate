@@ -132,6 +132,7 @@ describe('admin-api 架构门禁', () => {
       'http/routes/users-funds.ts',
       'http/routes/users.ts',
       'http/routes/vouchers.ts',
+      'http/stepup-verify.ts',
       'index.ts',
       'shutdown.ts',
     ]);

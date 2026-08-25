@@ -69,6 +69,12 @@ export const AdminErrors = defineErrorCatalog('admin', {
     message: 'Email verification code required but SMTP is not configured',
     zh: '需要邮箱验证码但 SMTP 未配置',
   },
+  /** 敏感设置操作要求 TOTP step-up 但管理员未绑定验证器（ADR-0011——引导先绑定） */
+  totp_stepup_required: {
+    category: 'forbidden',
+    message: 'TOTP verification required: bind your authenticator first',
+    zh: '需先绑定验证器(TOTP)才能执行此操作',
+  },
   /** 开启 2FA 前置 SMTP 未配置（与 two_factor_unavailable 分列:前置校验 400） */
   smtp_not_configured: {
     category: 'invalid_input',

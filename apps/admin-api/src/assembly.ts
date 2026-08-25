@@ -12,6 +12,7 @@ import {
 } from '@tillgate/runtime';
 import { SUPPORTED_PROTOCOLS, vendorProfileNames, assertSafeUrl } from '@tillgate/ai';
 import { createIdentity, type Identity } from '@tillgate/identity';
+import type { AdminAppDeps } from './app';
 import {
   createBilling,
   createOperationsUseCase,
@@ -110,6 +111,8 @@ export interface AdminApiAssembly {
     email?: string;
     twoFactor?: boolean;
   }) => Promise<void>;
+  /** step-up 失败审计（ADR-0011——action 自由词面：settings.stepup.failed） */
+  readonly stepupAudit: AdminAppDeps['stepupAudit'];
   /** P4:生成任务管理读侧（generation_tasks postgres 适配器根出口装配件） */
   readonly generationTasks: ReturnType<typeof createPostgresGenerationTaskStore>;
   /** P4:支付订单管理面（列表 + 手动关单;billing payments 组,无渠道凭证依赖） */
@@ -354,6 +357,15 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     redis,
     authGuards: { emailIp: loginGuard, ip: ipGuard },
     mailerConfigured: () => integrationReader.latest().smtp.effective,
+    stepupAudit: (entry) =>
+      writeAudit(db, {
+        actor: 'system',
+        adminId: entry.adminId,
+        action: entry.action,
+        targetType: 'admin',
+        targetId: entry.adminId,
+        detail: entry.ip != null ? { ip: entry.ip } : {},
+      }).catch(() => {}),
     loginAudit: (entry) =>
       writeAudit(db, {
         actor: 'system',

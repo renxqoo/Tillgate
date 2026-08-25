@@ -90,6 +90,19 @@ adapters` 分层；应用（gateway / client-api / admin-api / worker / trace-re
   响应曾被误分类为 `invalid_response`。
 - **网关免费闸口径**：候选免费判定改 Decimal 比较——脏价格（如空串）不再被
   `Number('') === 0` 归零误盖 `explicitlyFree`。
+- **敏感设置操作 TOTP step-up（ADR-0011）**：集成配置/启停（`PUT /v1/settings/
+  integrations/:key`）与邮箱验证码二次登录开关（`POST /v1/me/two-factor`）强制
+  每次操作输入 6 位验证器码——未绑定者 403 引导绑定；同 30 秒窗码不可重放；
+  step-up 不收恢复码；错码计 IP 守卫错次并写审计。管理台配置弹窗内嵌验证器
+  码框、启停与 2FA 开关先弹 TOTP 小窗、未绑定者按钮置灰引导绑定。
+  解绑 TOTP 维持自助现状；全员解绑/手机与恢复码双丢失的数据库救援预案见
+  deployment-checklist。
+- **OAuth 基地址退回 env（ADR-0012，取代 D9 初版入库裁决）**：`oauth.base`
+  集成键移除（词表 7→6，migration 0088 收窄 CHECK 并清存量行）；两地址改为
+  `OAUTH_API_BASE`（生产必填 fail-fast，回调白名单装配期由它构建）与
+  `OAUTH_FRONTEND_URL`（缺省回落本地、未配时找回链接 fail-closed）。理由：
+  装配期读取的值不占 DB 集成设置任何卖点（即时生效/审计/step-up），且部署
+  拓扑在部署层已有真相；管理台「OAuth 基地址」卡随之移除。
 
 ## [0.1.0] - 2026-08-21
 

@@ -193,3 +193,60 @@ src/features/settings/integration-cards/
 - [x] 权限拆分：迁移 0087 新增 `settings:integrations` 码，PUT 端点改挂——
       出网点写入与 settings:update 分离（H1/H2 爆炸半径收窄）；
 - [x] docs：deployment-checklist 动态配置口径 / openapi 403 / DESIGN D4/D6/D9 修订回写。
+
+---
+
+## 增量：设置页 UI 收敛（2026-08-25 用户裁决）
+
+1. **SMTP 归位 2FA 卡**：删除独立「邮件服务 (SMTP)」集成卡——邮件通道是
+   「邮箱验证码二次登录」的实现细节，不另立邮件服务配置面。SMTP 的配置/
+   启停入口移至 2FA 卡：右上「配置」按钮（位置同其余集成卡的用户裁决）→
+   复用 `IntegrationFormDialog`（新增 `includeEnabled` 开关，提交
+   `{ enabled, config }` 同传——后端契约本就支持）。
+2. **卡面不显示配置字段值**：`IntegrationCard` 删除 `<dl>` 字段平铺——所有
+   集成卡与「邮箱验证码二次登录」「验证器 (TOTP)」卡同形态（标题 + 描述 +
+   启停 + 状态行），配置值只存在于弹窗表单（secret 掩码回显在 placeholder）。
+   `rotatedAt` 与 Turnstile 联动警告保留（状态面，非配置值）。
+3. **数据加载上提**：integrations 列表 + 注册送礼联动源由 `SettingsContent`
+   统一加载（单次请求），`IntegrationCards` 改受控组件；无
+   `settings_integrations` 权限时集成区维持 loadFailed 卡、2FA 卡隐藏配置
+   按钮（2FA 启停不受影响）。
+4. 2FA 卡拆出 `email-two-factor-card.tsx`，原 `smtpHint` 静态文案改为按 SMTP
+   实际状态的三态提示（就绪 / 已配置未启用 / 未配置）。
+5. **目录收口**（rule/component-split §2 目录化标准形态）：设置页 feature
+   每张卡独立组件一文件（email-two-factor-card / totp-card /
+   billing-timezone-card / integration-cards/），组装器 `settings-content.tsx`
+   改名 `index.tsx` 只做编排与数据加载；TOTP 卡壳从组装器内聚进
+   `totp-card.tsx`（视觉不变）；页面改从 `@/features/settings` 目录根导入。
+
+
+---
+
+## 增量：TOTP step-up（2026-08-25，ADR-0011）
+
+1. **identity**：新增 `mfa.verifyTotpOnly` 窄用例——仅 TOTP 步进单调 CAS
+   （复用 lastUsedStep 防重放），不落恢复码分支（恢复码仅紧急登录）。
+2. **admin-api**：`PUT /v1/settings/integrations/:key` 与
+   `POST /v1/me/two-factor` 契约增加必填 `totpCode`（6 位数字）；
+   路由先验 TOTP——未绑定 403（`totp_stepup_required`，引导绑定）、
+   错码 401（identity `invalid_totp_code` 透传）并按登录面同口径计
+   IP 守卫错次；失败与放行均写审计。
+3. **管理台 UI**：配置弹窗内嵌 TOTP 输入框；启/停与 2FA 开关先弹
+   TOTP 小窗（`totp-stepup-dialog.tsx`）；未绑定者按钮置灰并引导绑定。
+4. **运维预案**：全员解绑 TOTP / 手机与恢复码双丢失 → 数据库救援
+   （deployment-checklist §密钥管理）。
+
+
+---
+
+## 增量：OAuth 基地址退回 env（2026-08-25，ADR-0012 取代 D9 初版）
+
+1. **词表收口**：`INTEGRATION_KEYS`/specs/DB CHECK（migration 0088）删
+   `oauth.base` 并清存量行；快照 `oauth.base` 段删除，provider `effective`
+   不再联动 base（base 有效性由装配期 env 保证）。
+2. **client-api**：`OAUTH_FRONTEND_URL`（可选，缺省 localhost:3000；未显式
+   配置时找回链接 fail-closed 语义保持）+ `OAUTH_API_BASE`（生产必填，
+   本地缺省 localhost:8081）；boot reader 不再读集成表解析 base（fail-loud
+   语义随之消失——base 不再来自 DB，reader 无 boot 冻结面）。
+3. **管理台**：OAuth 基地址卡随词表消失（独立卡 5 张）；`docs/configuration.md`
+   与 `.env.example` 增补两键。

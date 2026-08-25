@@ -17,7 +17,10 @@ export const authContracts = {
     oldPassword: z.string().min(1).max(256),
     newPassword: z.string().min(1).max(256),
   }),
-  twoFactor: z.object({ enabled: z.boolean() }),
+  twoFactor: z.object({
+    totpCode: z.string().regex(/^\d{6}$/, 'totpCode must be 6 digits'),
+    enabled: z.boolean(),
+  }),
   /** TOTP 确认/解绑验证码:6 位数字(TOTP)或 10 位恢复码(去易混字母表) */
   totpCode: z.object({
     code: z.string().regex(/^([0-9]{6}|[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10})$/),

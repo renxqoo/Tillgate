@@ -404,6 +404,16 @@ describe('me（P2 管理员自身）', () => {
           logout: async () => ({ ok: true as const }),
         },
       },
+      stepup: {
+        guards: {
+          ip: {
+            isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+            recordFailure: async () => ({ locked: false, retryAfterSec: 0 }),
+          },
+        },
+        audit: async () => {},
+        trustedProxyHops: 0,
+      },
       admins: {
         find: async () => adminRecord,
         setTwoFactorEnabled: async () => {},
@@ -461,7 +471,7 @@ describe('me（P2 管理员自身）', () => {
     const enable = await app.request('/v1/me/two-factor', {
       method: 'POST',
       headers: { ...json, authorization: `Bearer ${VALID_TOKEN}` },
-      body: JSON.stringify({ enabled: true }),
+      body: JSON.stringify({ totpCode: '123456', enabled: true }),
     });
     expect(enable.status).toBe(400);
     expect(await enable.json()).toMatchObject({ error: { code: 'admin.smtp_not_configured' } });

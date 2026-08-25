@@ -184,6 +184,16 @@ describe('auth/me 未走分支', () => {
 
   it('me:资料行缺失 401 admin_not_found;2FA 开启成功路径(SMTP 已配)回显开关', async () => {
     const meDeps: MeRoutesDeps = {
+      stepup: {
+        guards: {
+          ip: {
+            isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+            recordFailure: async () => ({ locked: false, retryAfterSec: 0 }),
+          },
+        },
+        audit: async () => {},
+        trustedProxyHops: 0,
+      },
       rbac: {
         roles: {
           find: async () => ({
@@ -238,14 +248,14 @@ describe('auth/me 未走分支', () => {
     const enable = await app.request('/v1/me/two-factor', {
       method: 'POST',
       headers: { ...json, authorization: `Bearer ${TOKEN}` },
-      body: JSON.stringify({ enabled: true }),
+      body: JSON.stringify({ totpCode: '123456', enabled: true }),
     });
     expect(enable.status).toBe(200);
     expect(await enable.json()).toEqual({ twoFactorEnabled: true });
     const disable = await app.request('/v1/me/two-factor', {
       method: 'POST',
       headers: { ...json, authorization: `Bearer ${TOKEN}` },
-      body: JSON.stringify({ enabled: false }),
+      body: JSON.stringify({ totpCode: '123456', enabled: false }),
     });
     expect(await disable.json()).toEqual({ twoFactorEnabled: false });
   });

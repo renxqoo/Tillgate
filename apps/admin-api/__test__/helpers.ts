@@ -222,6 +222,7 @@ export function fakeDeps(overrides: {
     trustedProxyHops: 0,
     mailerConfigured: () => false,
     loginAudit: async () => {},
+    stepupAudit: async () => {},
     sessionTtlSec: 3600,
     corsOrigins: [],
     bodyLimitBytes: 1024 * 1024,
@@ -367,7 +368,9 @@ function fakeObservability(
 }
 
 /** TOTP/MFA 替身:默认「未绑定」(登录不触发第二因子);绑定态用例传 {confirmed:true} */
-export function mfaStub(over: { confirmed?: boolean; verifyError?: Error } = {}) {
+export function mfaStub(
+  over: { confirmed?: boolean; verifyError?: Error; stepupError?: Error } = {},
+) {
   return {
     status: async () => ({ enrolled: over.confirmed === true, confirmed: over.confirmed === true }),
     enrollTotp: async () => ({
@@ -381,6 +384,12 @@ export function mfaStub(over: { confirmed?: boolean; verifyError?: Error } = {})
             throw over.verifyError;
           }
         : async () => ({ method: 'totp' as const }),
+    verifyTotpOnly:
+      over.stepupError != null
+        ? async () => {
+            throw over.stepupError;
+          }
+        : async () => {},
     disableTotp: async () => ({ disabled: true }),
   };
 }

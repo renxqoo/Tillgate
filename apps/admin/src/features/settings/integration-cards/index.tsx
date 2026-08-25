@@ -1,53 +1,41 @@
 'use client';
 
-// 集成卡编排（数据加载：列表 + 注册送礼联动警告源；词表次序渲染 7 张卡）
+// 集成卡编排（受控哑件：数据由组装器 ../index.tsx 统一加载注入；词表次序渲染）。
+// SMTP 不渲染独立卡（挂「邮箱验证卡二次登录」卡），见 integration-format.ts。
 
 import { Card, CardContent } from '@tillgate/ui';
-import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
-import {
-  getIntegrationSettingsAction,
-  getMarketingSignupGiftAction,
-  type IntegrationSettingItem,
-} from '@/server/settings-actions';
+import type { IntegrationSettingItem } from '@/server/settings-actions';
 import { IntegrationCard } from './integration-card';
 import { INTEGRATION_CARD_ORDER } from './integration-format';
 
-export function IntegrationCards() {
+export function IntegrationCards({
+  items,
+  error,
+  signupGiftOn,
+  totpEnabled,
+}: {
+  /** null = 加载中（父级一次性加载列表 + 注册送礼联动源） */
+  items: readonly IntegrationSettingItem[] | null;
+  error: boolean;
+  /** 注册送礼开启（Turnstile 停用联动警告的数据源） */
+  signupGiftOn: boolean;
+  /** 当前管理员已绑定验证器（ADR-0011——未绑定者敏感按钮置灰） */
+  totpEnabled: boolean;
+}) {
   const t = useTranslations('settings.integrations');
-  const [items, setItems] = useState<IntegrationSettingItem[] | null>(null);
-  const [error, setError] = useState(false);
-  const [signupGiftOn, setSignupGiftOn] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      const [list, gift] = await Promise.all([
-        getIntegrationSettingsAction(),
-        getMarketingSignupGiftAction(),
-      ]);
-      if (!alive) return;
-      setError(list.error != null);
-      setItems(list.integrations);
-      const amount = Number(gift.signupGiftAmount ?? '0');
-      setSignupGiftOn(Number.isFinite(amount) && amount > 0);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   if (error) {
     return (
-      <Card className="max-w-xl">
+      <Card className="col-span-full">
         <CardContent className="p-6 text-sm text-muted-foreground">{t('loadFailed')}</CardContent>
       </Card>
     );
   }
   if (items == null) {
     return (
-      <Card className="max-w-xl">
+      <Card className="col-span-full">
         <CardContent className="p-6 text-sm text-muted-foreground">{t('loading')}</CardContent>
       </Card>
     );
@@ -59,7 +47,14 @@ export function IntegrationCards() {
         const item = byKey.get(key);
         return item == null
           ? []
-          : [<IntegrationCard key={key} item={item} signupGiftOn={signupGiftOn} />];
+          : [
+              <IntegrationCard
+                key={key}
+                item={item}
+                signupGiftOn={signupGiftOn}
+                totpEnabled={totpEnabled}
+              />,
+            ];
       })}
     </>
   );

@@ -49,12 +49,12 @@ function makeDeps(overrides: Partial<Parameters<typeof updateIntegration>[0]> = 
 }
 
 describe('词表封闭', () => {
-  it('INTEGRATION_KEYS 与迁移 0086 的 DB CHECK 逐项相等', () => {
+  it('INTEGRATION_KEYS 与迁移 0088（现行 CHECK，ADR-0012）逐项相等', () => {
     const sql = readFileSync(
-      join(import.meta.dirname, '../../db/migrations/0086_integration_settings.sql'),
+      join(import.meta.dirname, '../../db/migrations/0088_oauth_base_to_env.sql'),
       'utf8',
     );
-    const check = /CHECK \(key IN \(([^)]+)\)/.exec(sql);
+    const check = /CHECK \("key" IN \(([^)]+)\)/.exec(sql);
     expect(check).not.toBeNull();
     const sqlKeys = (check?.[1] ?? '')
       .split(',')
@@ -223,8 +223,8 @@ describe('updateIntegration（字段三态 + 不变量 + 轮换 + 审计）', ()
     await expect(
       updateIntegration(deps, {
         ctx: adminCtx(),
-        key: 'oauth.base',
-        config: { frontendUrl: 'not-a-url' },
+        key: 'oauth.github',
+        config: { clientId: '' },
       }),
     ).rejects.toMatchObject({ code: 'control_plane.integration_field_invalid' });
     await expect(

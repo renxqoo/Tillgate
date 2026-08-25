@@ -48,7 +48,7 @@ function snapshotOf(overrides: {
 }): IntegrationSnapshot {
   const off = { configured: false, enabled: false, effective: false, config: null } as const;
   return {
-    oauth: { base: { ...off }, github: { ...off }, google: { ...off } },
+    oauth: { github: { ...off }, google: { ...off } },
     smtp: { ...off },
     captcha: overrides.captcha ?? { ...off },
     payments: {

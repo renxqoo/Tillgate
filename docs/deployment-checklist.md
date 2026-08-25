@@ -109,3 +109,24 @@ curl -sI http://<域名>/                          # → 301 https
 
 > v2 变化：v1 自检第 4 条的「审计脚本抽检」（scripts/01…19 编号脚本）未随仓移植，
 > v2 `scripts/` 仅存 `check-package-boundaries.ts` 与 `fetch-models-dev.ts`，此条暂缺位。
+
+
+## TOTP step-up 救援预案（ADR-0011）
+
+集成配置与 2FA 开关的写操作强制 TOTP 验证。两种情况会锁死敏感操作面，
+需数据库级救援（访问控制：仅持有 DB 账号权限的运维执行，操作全程留痕）：
+
+1. **全员解绑 TOTP**（解绑为自助操作，无「最后守护者」限制）；
+2. **管理员手机丢失且恢复码丢失**。
+
+救援 = 为目标管理员重建绑定入口（清挂起/已确认的 TOTP 行，管理员重新走
+绑定向导）：
+
+```sql
+-- 确认现状（1 = 仍有绑定者，无需救援）
+SELECT count(*) FROM identity_totp WHERE confirmed_at IS NOT NULL;
+-- 救援：清除目标管理员的 TOTP 绑定（其恢复码同时失效）
+DELETE FROM identity_totp WHERE user_id = <admin_id>;
+```
+
+执行后目标管理员需立即重新绑定 TOTP（未绑定期间其集成配置操作被拒）。

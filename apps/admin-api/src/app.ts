@@ -117,6 +117,8 @@ export interface AdminAppDeps {
   mailerConfigured: () => boolean;
   /** P2:登录三审计（后置旁路——v1 recordAudit 语义） */
   loginAudit: AuthRoutesDeps['loginAudit'];
+  /** step-up 失败审计（ADR-0011——action 自由词面：settings.stepup.failed 等） */
+  stepupAudit: (entry: { action: string; adminId: number; ip: string | null }) => Promise<void>;
   /** P2:会话 TTL（签发面） */
   sessionTtlSec: number;
   corsOrigins: readonly string[];
@@ -238,7 +240,16 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
   app.route('/', modelsRoutes({ controlPlane: deps.controlPlane }));
   app.route('/', rateCardsRoutes({ controlPlane: deps.controlPlane }));
   app.route('/', fxRoutes({ controlPlane: deps.controlPlane }));
-  app.route('/', settingsRoutes({ controlPlane: deps.controlPlane }));
+  app.route(
+    '/',
+    settingsRoutes({
+      controlPlane: deps.controlPlane,
+      identity: deps.identity,
+      guards: deps.authGuards,
+      audit: deps.stepupAudit,
+      trustedProxyHops: deps.trustedProxyHops,
+    }),
+  );
   app.route(
     '/',
     catalogRoutes({ controlPlane: deps.controlPlane, vendorCatalog: deps.vendorCatalog }),
@@ -288,6 +299,11 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
     '/',
     meRoutes({
       identity: deps.identity,
+      stepup: {
+        guards: deps.authGuards,
+        audit: deps.stepupAudit,
+        trustedProxyHops: deps.trustedProxyHops,
+      },
       admins: deps.controlPlane.admins,
       rbac: deps.controlPlane.rbac,
       mailerConfigured: deps.mailerConfigured,

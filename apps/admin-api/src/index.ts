@@ -46,6 +46,7 @@ const app = createAdminApp({
   trustedProxyHops: config.trustedProxyHops,
   mailerConfigured: assembly.mailerConfigured,
   loginAudit: assembly.loginAudit,
+  stepupAudit: assembly.stepupAudit,
   sessionTtlSec: config.sessionTtlSec,
   corsOrigins: config.corsOrigins,
   bodyLimitBytes: config.bodyLimitBytes,

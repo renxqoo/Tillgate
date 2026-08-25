@@ -52,6 +52,7 @@ import { abortChallenge } from './application/abort-challenge';
 import { enrollTotp, type EnrollTotpResult } from './application/enroll-totp';
 import { confirmTotp } from './application/confirm-totp';
 import { verifyMfa } from './application/verify-mfa';
+import { verifyTotpOnly } from './application/verify-totp-only';
 import { disableTotp } from './application/disable-totp';
 import { findOAuthUser } from './application/find-oauth-user';
 import { linkOAuth, type LinkOAuthResult } from './application/link-oauth';
@@ -115,6 +116,8 @@ export interface Identity {
     enrollTotp(input: { userId: number; label?: string }): Promise<EnrollTotpResult>;
     confirmTotp(input: { userId: number; code: string }): Promise<{ recoveryCodes: string[] }>;
     verify(input: { userId: number; code: string }): Promise<{ method: 'totp' | 'recovery' }>;
+    /** 仅 TOTP 的 step-up 验证（ADR-0011）——不消费恢复码，重放口径同 verify */
+    verifyTotpOnly(input: { userId: number; code: string }): Promise<void>;
     disableTotp(input: { userId: number; code?: string }): Promise<{ disabled: boolean }>;
     /** 读面:注册状态(pending=已发起未确认,不参与登录验证;confirmed=生效) */
     status(input: { userId: number }): Promise<{ enrolled: boolean; confirmed: boolean }>;
@@ -214,6 +217,7 @@ export function createIdentity(params: CreateIdentityParams): Identity {
       enrollTotp: (input) => enrollTotp(ctx, input),
       confirmTotp: (input) => confirmTotp(ctx, input),
       verify: (input) => verifyMfa(ctx, input),
+      verifyTotpOnly: (input) => verifyTotpOnly(ctx, input),
       disableTotp: (input) => disableTotp(ctx, input),
       status: async (input) => {
         const row = await ctx.mfaStore.loadTotp(ctx.db, input.userId);

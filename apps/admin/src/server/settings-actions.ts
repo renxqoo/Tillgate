@@ -49,10 +49,11 @@ export async function getIntegrationSettingsAction(): Promise<{
   }
 }
 
-/** 集成更新（字段三态：缺席=保持 / null=清除 / 值=设置）；失败抛错由调用方呈现 */
+/** 集成更新（字段三态：缺席=保持 / null=清除 / 值=设置）；
+ * totpCode = step-up 强制（ADR-0011——服务端验证当前管理员验证器，未绑定者拒绝） */
 export async function updateIntegrationAction(
   key: string,
-  body: { enabled?: boolean; config?: Record<string, string | null> },
+  body: { totpCode: string; enabled?: boolean; config?: Record<string, string | null> },
 ): Promise<IntegrationSettingItem> {
   return adminApi().put<IntegrationSettingItem>(`/v1/settings/integrations/${key}`, body);
 }

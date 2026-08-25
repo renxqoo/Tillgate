@@ -55,10 +55,6 @@ const port = (name: string): IntegrationFieldSpec => field(name, 'port', { requi
 const payType = (name: string): IntegrationFieldSpec => field(name, 'payType', { required: false });
 
 export const INTEGRATION_SPECS: Readonly<Record<IntegrationKey, IntegrationSpec>> = {
-  'oauth.base': spec('oauth.base', [
-    url('frontendUrl', { required: true }),
-    url('apiBase', { required: true }),
-  ]),
   'oauth.github': spec('oauth.github', [
     text('clientId', { required: true }),
     text('clientSecret', { required: true, secret: true }),

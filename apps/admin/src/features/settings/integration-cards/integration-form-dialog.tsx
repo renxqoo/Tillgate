@@ -17,17 +17,24 @@ export function IntegrationFormDialog({
   open,
   onOpenChange,
   onSaved,
+  includeEnabled = false,
 }: {
   item: IntegrationSettingItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: (item: IntegrationSettingItem) => void;
+  /**
+   * 弹窗内含启停开关（提交 { enabled, config } 同传）。独立集成卡的启停在
+   * 卡面按钮；无独立卡的集成（SMTP 挂 2FA 卡）经此开关触达。
+   */
+  includeEnabled?: boolean;
 }) {
   const t = useTranslations('settings.integrations');
   const tc = useTranslations('common');
   const formId = `integration-form-${item.key}`;
   const fields = Object.keys(item.config);
   const [cleared, setCleared] = useState<ReadonlySet<string>>(new Set());
+  const [enabledNext, setEnabledNext] = useState(item.enabled);
 
   const isSecret = (field: string): boolean =>
     item.secretsSet.includes(field) || SECRET_FIELD_NAMES.has(field);
@@ -36,7 +43,11 @@ export function IntegrationFormDialog({
     <FormDialog
       formId={formId}
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(next) => {
+        // 每次打开回填当前启停态（上一次未保存的拨动不跨会话残留）
+        if (next) setEnabledNext(item.enabled);
+        onOpenChange(next);
+      }}
       title={t(`cards.${i18nKey(item.key)}`)}
       description={t('dialogDescription')}
       submitLabel={tc('save')}
@@ -52,17 +63,26 @@ export function IntegrationFormDialog({
               const values: Record<string, string> = {};
               for (const field of fields) values[field] = String(data.get(field) ?? '');
               const config = buildConfigPayload(fields, values, cleared);
-              if (payloadIsEmpty(config)) {
+              if (payloadIsEmpty(config) && enabledNext === item.enabled) {
                 toast.info(t('nothingToSave'));
                 return false;
               }
-              const saved = await updateIntegrationAction(item.key, { config });
+              const totpCode = String(data.get('totpCode') ?? '');
+              const saved = await updateIntegrationAction(item.key, {
+                totpCode,
+                ...(includeEnabled ? { enabled: enabledNext } : {}),
+                ...(!payloadIsEmpty(config) ? { config } : {}),
+              });
               onSaved(saved);
               setCleared(new Set());
               return true;
             });
           }}
         >
+          <StepupField itemId={item.key} />
+          {includeEnabled ? (
+            <EnabledToggle checked={enabledNext} onChange={setEnabledNext} />
+          ) : null}
           {fields.map((field) => {
             const secret = isSecret(field);
             const masked = item.config[field];
@@ -120,3 +140,49 @@ export function IntegrationFormDialog({
 
 /** secret 字段名集合（掩码回显只标已设置项；未设置的 secret 字段按规格名单标记） */
 const SECRET_FIELD_NAMES = new Set(['clientSecret', 'pass', 'secretKey', 'key', 'webhookSecret']);
+
+/** step-up 码框（ADR-0011：敏感写操作强制 TOTP——原生校验 6 位，模块级哑件拆分） */
+function StepupField({ itemId }: { itemId: string }) {
+  const t = useTranslations('settings.integrations');
+  return (
+    <FormItem>
+      <FieldLabel htmlFor={`integration-stepup-${itemId}`}>{t('stepupCodeLabel')}</FieldLabel>
+      <Input
+        id={`integration-stepup-${itemId}`}
+        name="totpCode"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={6}
+        placeholder="000000"
+        required
+        pattern="\d{6}"
+      />
+      <FieldDescription>{t('stepupCodeHint')}</FieldDescription>
+    </FormItem>
+  );
+}
+
+/** 启停开关（无独立卡集成的启停入口——SMTP 挂 2FA 卡经此触达） */
+function EnabledToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  const t = useTranslations('settings.integrations');
+  return (
+    <div className="space-y-1">
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="size-4"
+        />
+        {t('enableToggleLabel')}
+      </label>
+      <FieldDescription>{t('enableToggleHint')}</FieldDescription>
+    </div>
+  );
+}
