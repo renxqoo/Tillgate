@@ -178,6 +178,7 @@ async function seedIntegrationSettings(
   env: NodeJS.ProcessEnv,
   appUrl: string,
   withGithub: boolean,
+  epayRotation?: { previousKey: string; rotatedAgoMs: number },
 ): Promise<() => Promise<void>> {
   const db = createDb({
     url: env.DATABASE_URL as string,
@@ -197,8 +198,8 @@ async function seedIntegrationSettings(
     'payment.stripe',
   ];
   const seededKeys = withGithub
-    ? new Set(['oauth.base', 'oauth.github', 'payment.epay'])
-    : new Set(['payment.epay']);
+    ? new Set(['oauth.base', 'oauth.github', 'payment.epay', 'smtp'])
+    : new Set(['payment.epay', 'smtp']);
   const previous = await snapshotRows(db, allKeys);
   try {
     const cipher = createCipher(env.ENCRYPTION_KEY as string);
@@ -233,6 +234,23 @@ async function seedIntegrationSettings(
         notifyUrl: `${appUrl}/v1/payments/notify/epay`,
         returnUrl: `${appUrl}/v1/payments/return`,
         payType: EPAY.payType,
+      },
+      // 轮换双读窗装置（DESIGN §5 D6）：旧密钥入 previous_secrets，rotatedAt 按注入偏移
+      previousSecrets:
+        epayRotation != null ? { key: cipher.encrypt(epayRotation.previousKey) } : null,
+      rotatedAt: epayRotation != null ? new Date(Date.now() - epayRotation.rotatedAgoMs) : null,
+      adminId: null,
+    });
+    // SMTP 集成行（假凭据）：动态化后两级登录可用性 = smtp.effective；
+    // 实际投递被 bootHarness 的 captureMailer 覆盖缝截获，不触网
+    await postgresIntegrationSettingsStore.upsert(db, {
+      key: 'smtp',
+      enabled: true,
+      config: {
+        host: 'smtp.e2e.invalid',
+        port: '465',
+        user: 'e2e@tillgate.invalid',
+        pass: cipher.encrypt('e2e-smtp-pass'),
       },
       previousSecrets: null,
       rotatedAt: null,
@@ -303,6 +321,8 @@ async function restoreRows(
 export async function bootHarness(options: {
   appPort: number;
   github?: MockGithub;
+  /** epay 验签密钥轮换装置（双读窗 e2e 用；缺省无轮换） */
+  epayRotation?: { previousKey: string; rotatedAgoMs: number };
 }): Promise<E2eHarness> {
   const appUrl = `http://127.0.0.1:${options.appPort}`;
   const githubEndpoints: GithubEndpoints | undefined = options.github
@@ -314,7 +334,12 @@ export async function bootHarness(options: {
       }
     : undefined;
   const env = buildHarnessEnv(appUrl, githubEndpoints);
-  const restoreIntegrations = await seedIntegrationSettings(env, appUrl, githubEndpoints != null);
+  const restoreIntegrations = await seedIntegrationSettings(
+    env,
+    appUrl,
+    githubEndpoints != null,
+    options.epayRotation,
+  );
   const config = loadClientApiConfig(env);
   const mailer = createCaptureMailer();
   const assembly = await assembleClientApi(config, { mailer });
@@ -380,9 +405,12 @@ export async function seedRedeemCode(
   code: string,
   amount: string,
 ): Promise<void> {
+  // admins.role_id 自 RBAC v2（迁移 0082）起 NOT NULL——播种行挂 super_admin
+  // （存量缺陷修复：原 INSERT 缺 role_id 触发 23502，user/org 旅程自 RBAC 合入即断）
   await db.execute(
-    sql`insert into admins (email, password_hash, status)
-        values ('e2e-admin@tillgate.invalid', 'e2e:unused:1:1:1', 0)
+    sql`insert into admins (email, password_hash, status, role_id)
+        values ('e2e-admin@tillgate.invalid', 'e2e:unused:1:1:1', 0,
+          (select id from roles where code = 'super_admin' limit 1))
         on conflict (email) do nothing`,
   );
   // admins 必填 email/password_hash——播种专用行（cleanupSeeds 按 email 回收）

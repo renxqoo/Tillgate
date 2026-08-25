@@ -428,12 +428,16 @@ token 端点——**保持 env 专属**，DB 凭据与 env 端点覆盖在 clien
 - [x] 行为对照：§2.2 存量不变量基线逐项核销（identity 全量测试平移通过：
       providers 语义、fail-closed 族、resolveProvider 语义、审计同事务）。
 
-## 已知遗留（不阻塞收口，登记挂账）
+## 收口后补记（2026-08-25 遗留项核销）
 
-- `e2e/client-journey` 的 user-journey/org-team 旅程在 **main 存量已断**
-  （harness `seedRedeemCode` 向 admins 插行缺 RBAC 后的 NOT NULL 列）——
-  与本分支无关，建议独立 issue 修复；
-- 支付「停用不停验签 + 双读窗」的全链 e2e 旅程待 billing-recovery 装置扩展
-  （单测已覆盖协议面）；
-- e2e 与开发库共库的集成状态隔离已按「全量快照 + 拆时还原」处理；
+- `e2e/client-journey` user-journey/org-team 旅程修复（harness admins 种子补
+  RBAC 后必填的 role_id；旅程装置补种 smtp 集成行——动态化后两级登录可用性
+  来自集成行而非 mailer 注入）。client-journey 全部 5 条旅程（user/org/oauth/
+  轮换×2）全绿；
+- 支付双读窗全链 e2e 落地（`payment-rotation.e2e.ts`：窗口内旧 key 归账 /
+  窗口外旧 key 拒收、新 key 恒通）。**该旅程抓获一个真 bug**：窗口常量误写为
+  `96 * 24 * 60 * 60 * 1000`（96 天而非 96 小时），且单测用同一错误表达式
+  断言自洽通过——已修正为 96h 并把绝对值断言钉死。这正是 §8 要求全链旅程的
+  价值所在（铁律 16：边界测试的价值在于抓 bug）；
+- e2e 与开发库共库的集成状态隔离按「全量快照 + 拆时还原」处理；
   若未来 e2e 并行化，需评估每旅程独立 schema。
