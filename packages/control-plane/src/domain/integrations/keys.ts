@@ -20,7 +20,7 @@ export type IntegrationKey = (typeof INTEGRATION_KEYS)[number];
 export const INTEGRATION_CACHE_TTL_MS = 60_000;
 
 /** 支付验签密钥轮换双读窗（ms）：96h = Stripe 官方重试期 3 天 + 余量，到期自愈（DESIGN §5 D6） */
-export const PAYMENT_SECRET_ROTATION_WINDOW_MS = 96 * 24 * 60 * 60 * 1000;
+export const PAYMENT_SECRET_ROTATION_WINDOW_MS = 96 * 60 * 60 * 1000;
 
 /** 值长度上限（字节级防滥用；URL/密钥常规远小于此） */
 export const INTEGRATION_FIELD_MAX_LENGTH = 1024;

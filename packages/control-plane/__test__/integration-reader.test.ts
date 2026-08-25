@@ -160,7 +160,7 @@ describe('双读窗密钥序列（DESIGN §5 D6）', () => {
   });
 
   it('窗口常量 = 96h（Stripe 重试期 3 天 + 余量）', () => {
-    expect(PAYMENT_SECRET_ROTATION_WINDOW_MS).toBe(96 * 24 * 60 * 60 * 1000);
+    expect(PAYMENT_SECRET_ROTATION_WINDOW_MS).toBe(96 * 60 * 60 * 1000);
     expect(INTEGRATION_CACHE_TTL_MS).toBe(60_000);
   });
 });
