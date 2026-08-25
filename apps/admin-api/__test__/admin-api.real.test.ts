@@ -70,6 +70,7 @@ describe('admin-api 真实 PG 冒烟', () => {
         mailerConfigured: assembly.mailerConfigured,
         loginAudit: assembly.loginAudit,
         stepupAudit: assembly.stepupAudit,
+        twoFactorAudit: assembly.twoFactorAudit,
         sessionTtlSec: config.sessionTtlSec,
         corsOrigins: [],
         bodyLimitBytes: 1024 * 1024,

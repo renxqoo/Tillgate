@@ -113,6 +113,8 @@ export interface AdminApiAssembly {
   }) => Promise<void>;
   /** step-up 失败审计（ADR-0011——action 自由词面：settings.stepup.failed） */
   readonly stepupAudit: AdminAppDeps['stepupAudit'];
+  /** 2FA 开关成功审计（admin-email-2fa——settings.two_factor,后置旁路） */
+  readonly twoFactorAudit: AdminAppDeps['twoFactorAudit'];
   /** P4:生成任务管理读侧（generation_tasks postgres 适配器根出口装配件） */
   readonly generationTasks: ReturnType<typeof createPostgresGenerationTaskStore>;
   /** P4:支付订单管理面（列表 + 手动关单;billing payments 组,无渠道凭证依赖） */
@@ -196,7 +198,7 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     config: {
       identifiers: ['email'],
       providers: ['github'],
-      challengeKinds: ['admin_login_code'],
+      challengeKinds: ['admin_login_code', 'admin_two_factor_code'],
       // user realm 在词表内 = set-password 推进 user 失效线（D6 全网下线）;
       // 本 app 绝不签发 user 会话（无任何 sign('user') 调用路径）
       realms: ['user', 'admin'],
@@ -365,6 +367,15 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
         targetType: 'admin',
         targetId: entry.adminId,
         detail: entry.ip != null ? { ip: entry.ip } : {},
+      }).catch(() => {}),
+    twoFactorAudit: (entry) =>
+      writeAudit(db, {
+        actor: 'admin',
+        adminId: entry.adminId,
+        action: 'settings.two_factor',
+        targetType: 'admin',
+        targetId: entry.adminId,
+        detail: { enabledFrom: entry.enabledFrom, enabledTo: entry.enabledTo },
       }).catch(() => {}),
     loginAudit: (entry) =>
       writeAudit(db, {

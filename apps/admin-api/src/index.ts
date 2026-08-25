@@ -47,6 +47,7 @@ const app = createAdminApp({
   mailerConfigured: assembly.mailerConfigured,
   loginAudit: assembly.loginAudit,
   stepupAudit: assembly.stepupAudit,
+  twoFactorAudit: assembly.twoFactorAudit,
   sessionTtlSec: config.sessionTtlSec,
   corsOrigins: config.corsOrigins,
   bodyLimitBytes: config.bodyLimitBytes,

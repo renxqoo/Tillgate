@@ -2,27 +2,34 @@
  * 管理员自身路由（P2;v1 routes/me.ts 平移,会话组）：资料/改密/2FA 开关/TOTP。
  * v2（ADR-0008）：/v1/me 增 role 对象与 DB 授权码集合;新增 /v1/me/menus——
  * 按本人授权过滤的 group+page 两级树（sidebar 数据源,前端完全后端驱动）。
+ * 2FA 开关改邮箱码自证（admin-email-2fa,2026-08-25 D2=A）：发码 → 验码开关,
+ * 取消 TOTP 前置与 step-up;SMTP 可用性由发送路径 fail-closed。
  */
 import { Hono } from 'hono';
-import { jsonBody } from '@tillgate/http';
+import type { MiddlewareHandler } from 'hono';
+import { jsonBody, socketAddressFromContext, trustedClientIp, parseAcceptLanguage } from '@tillgate/http';
 import type { ControlPlane, PermissionNode } from '@tillgate/control-plane';
 import { ENFORCED_CODES, granted } from '@tillgate/control-plane';
 import type { Identity } from '@tillgate/identity';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { authContracts } from '../contracts/auth';
-import { requireTotpStepup, type StepupVerifyDeps } from '../stepup-verify';
 
 export interface MeRoutesDeps {
-  readonly identity: Pick<Identity, 'passwords' | 'sessions' | 'mfa'>;
-  /** step-up 强制面（ADR-0011——2FA 开关为登录形态变更，与集成写入同口径） */
-  readonly stepup: Pick<StepupVerifyDeps, 'guards' | 'audit' | 'trustedProxyHops'>;
+  readonly identity: Pick<Identity, 'passwords' | 'sessions' | 'mfa' | 'challenges'>;
+  /** 2FA 开关成功审计（后置旁路——失败不阻断开关;现状缺失随本需求补齐） */
+  readonly twoFactorAudit: (entry: {
+    adminId: number;
+    enabledFrom: boolean;
+    enabledTo: boolean;
+  }) => Promise<void>;
   readonly admins: Pick<ControlPlane['admins'], 'find' | 'setTwoFactorEnabled'>;
   /** 动态 RBAC：角色资料（me 的 role 对象）+ 权限树（menus 过滤） */
   readonly rbac: Pick<ControlPlane['rbac'], 'permissions'> & {
     roles: Pick<ControlPlane['rbac']['roles'], 'find'>;
   };
-  readonly mailerConfigured: () => boolean;
+  /** 发码投递的来源 IP 解析（与 auth 路由同口径） */
+  readonly trustedProxyHops: number;
   readonly sessionTtlSec: number;
 }
 
@@ -59,6 +66,13 @@ function menuTreeOf(
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
 export function meRoutes(deps: MeRoutesDeps) {
   const app = new Hono<SessionEnv>();
+
+  const clientIpOf = (c: Parameters<MiddlewareHandler<SessionEnv>>[0]) =>
+    trustedClientIp({
+      headers: c.req.raw.headers,
+      trustedProxyHops: deps.trustedProxyHops,
+      socketAddress: socketAddressFromContext(c),
+    });
 
   app.get('/v1/me', async (c) => {
     const adminId = c.get('adminId');
@@ -112,13 +126,46 @@ export function meRoutes(deps: MeRoutesDeps) {
     });
   });
 
+  // 发码（admin-email-2fa DESIGN §2.1）：向本人邮箱发确认码;60s 冷却/TTL/错次
+  // 上限复用挑战层内建;SMTP 未生效在发送路径 fail-closed（undeliverable,503）。
+  app.post('/v1/me/two-factor/code', async (c) => {
+    const adminId = c.get('adminId');
+    const ip = clientIpOf(c);
+    const { challengeId } = await deps.identity.challenges.begin({
+      kind: 'admin_two_factor_code',
+      target: { userId: adminId },
+      payload: { adminId },
+      delivery: {
+        ip: ip ?? 'unknown',
+        locale:
+          parseAcceptLanguage(c.req.header('accept-language')) === 'zh'
+            ? ('zh' as const)
+            : ('en' as const),
+        purpose: 'two_factor_toggle',
+      },
+    });
+    return c.json({ challengeId });
+  });
+
+  // 开关确认（DESIGN §2.2）：邮箱码自证——expect 主体绑定（跨主体 challengeId
+  // 按挑战无效拒）;验过即落库,成功审计恰好一次（后置旁路）。
   app.post('/v1/me/two-factor', jsonBody(authContracts.twoFactor), async (c) => {
     const body = c.req.valid('json');
-    await requireTotpStepup({ identity: deps.identity, ...deps.stepup }, c, body.totpCode);
-    if (body.enabled && !deps.mailerConfigured()) {
-      throw AdminErrors.business('smtp_not_configured', {});
-    }
-    await deps.admins.setTwoFactorEnabled({ adminId: c.get('adminId'), enabled: body.enabled });
+    const adminId = c.get('adminId');
+    const before = await deps.admins.find(adminId);
+    await deps.identity.challenges.verify({
+      challengeId: body.challengeId,
+      code: body.code,
+      expect: { userId: adminId },
+    });
+    await deps.admins.setTwoFactorEnabled({ adminId, enabled: body.enabled });
+    await deps
+      .twoFactorAudit({
+        adminId,
+        enabledFrom: before?.twoFactorEnabled ?? false,
+        enabledTo: body.enabled,
+      })
+      .catch(() => {});
     return c.json({ twoFactorEnabled: body.enabled });
   });
 

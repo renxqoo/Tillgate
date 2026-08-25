@@ -5527,12 +5527,191 @@
         }
       }
     },
+    "/v1/me/two-factor/code": {
+      "post": {
+        "tags": [
+          "me"
+        ],
+        "summary": "2FA 开关确认码发送（本人邮箱;60s 冷却,SMTP 未生效 fail-closed 503）",
+        "responses": {
+          "200": {
+            "description": "2FA 开关确认码发送（本人邮箱;60s 冷却,SMTP 未生效 fail-closed 503） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "challengeId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "description": "确认挑战 id"
+                    }
+                  },
+                  "required": [
+                    "challengeId"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/me/two-factor": {
       "post": {
         "tags": [
           "me"
         ],
-        "summary": "2FA 开关（开启前置 SMTP,fail-closed）",
+        "summary": "2FA 开关（邮箱码自证——先发码,验码确认;主体绑定防跨主体重放）",
         "requestBody": {
           "required": true,
           "content": {
@@ -5540,17 +5719,23 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "totpCode": {
-                    "type": "string",
-                    "pattern": "^\\d{6}$"
-                  },
                   "enabled": {
                     "type": "boolean"
+                  },
+                  "challengeId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^\\d{6}$"
                   }
                 },
                 "required": [
-                  "totpCode",
-                  "enabled"
+                  "enabled",
+                  "challengeId",
+                  "code"
                 ]
               }
             }
@@ -5558,7 +5743,7 @@
         },
         "responses": {
           "200": {
-            "description": "2FA 开关（开启前置 SMTP,fail-closed） 成功响应",
+            "description": "2FA 开关（邮箱码自证——先发码,验码确认;主体绑定防跨主体重放） 成功响应",
             "content": {
               "application/json": {
                 "schema": {
@@ -5651,43 +5836,6 @@
             }
           },
           "403": {
-            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        },
-                        "context": {
-                          "type": "object",
-                          "propertyNames": {
-                            "type": "string"
-                          },
-                          "additionalProperties": {}
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ]
-                }
-              }
-            }
-          },
-          "503": {
             "description": "错误响应（统一信封 { error: { code, message, context? } }）",
             "content": {
               "application/json": {

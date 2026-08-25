@@ -169,13 +169,23 @@ export const authEndpoints: readonly OpenApiEndpoint[] = [
   },
   {
     method: 'post',
+    path: '/v1/me/two-factor/code',
+    tag: 'me',
+    summary: '2FA 开关确认码发送（本人邮箱;60s 冷却,SMTP 未生效 fail-closed 503）',
+    response: {
+      schema: z.object({ challengeId: z.string().uuid().describe('确认挑战 id') }),
+    },
+    errors: [401, 429, 503],
+  },
+  {
+    method: 'post',
     path: '/v1/me/two-factor',
     tag: 'me',
-    summary: '2FA 开关（开启前置 SMTP,fail-closed）',
+    summary: '2FA 开关（邮箱码自证——先发码,验码确认;主体绑定防跨主体重放）',
     body: authContracts.twoFactor,
     response: {
       schema: z.object({ twoFactorEnabled: z.boolean().describe('开关后的生效状态') }),
     },
-    errors: [400, 401, 503],
+    errors: [400, 401],
   },
 ];
