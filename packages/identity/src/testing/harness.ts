@@ -34,10 +34,10 @@ export const TEST_CONFIG: IdentityConfigInput = {
     user: { issuer: 'tillgate-console', secret: 'test-user-secret-0123456789', ttlSec: 86_400 },
     admin: { issuer: 'tillgate-admin', secret: 'test-admin-secret-0123456789', ttlSec: 86_400 },
   },
-  oauth: {
+  oauth: () => ({
     github: { clientId: 'gh-client', clientSecret: 'gh-secret' },
     google: { clientId: 'gg-client', clientSecret: 'gg-secret' },
-  },
+  }),
   oauthStateTtlSec: 600,
   oauthRedirectAllowlist: [
     'https://api.example.com/v1/oauth/github/callback',

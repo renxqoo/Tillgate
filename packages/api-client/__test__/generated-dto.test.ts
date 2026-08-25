@@ -54,6 +54,7 @@ const EXPORTED_NAMES: readonly string[] = [
   'ChannelUpdateBody',
   'DeadCaseDecisionBody',
   'DeadCaseRow',
+  'IntegrationSettingItem',
   'LogRow',
   'ModelCreateBody',
   'ModelUpdateBody',

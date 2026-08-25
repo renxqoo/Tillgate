@@ -43,6 +43,25 @@ export interface AdminRow {
   createdAt: string;
 }
 
+// ── settings ─────────────────────────────────────
+
+/** 第三方集成设置项（GET/PUT /v1/settings/integrations；密文/明文永不回显） */
+export interface IntegrationSettingItem {
+  /** 集成键（封闭词表：oauth.base/oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe） */
+  key: string;
+  enabled: boolean;
+  /** 必填字段齐全（enabled=true 的前置不变量） */
+  configured: boolean;
+  /** 字段值；secret 字段为掩码回显 */
+  config: Record<string, string | null>;
+  /** 已设置的 secret 字段名（write-only 提示） */
+  secretsSet: string[];
+  /** 最近一次验签密钥轮换时刻（支付双读窗锚） */
+  rotatedAt: string | null;
+  updatedAt: string | null;
+  updatedByAdminId: number | null;
+}
+
 // ── roles ─────────────────────────────────────
 
 /** 角色资料行（/v1/roles） */

@@ -212,7 +212,7 @@ describe('oauth.authorize / callback(state 半程)', () => {
       config: {
         ...TEST_CONFIG,
         providers: ['github', 'gitlab'],
-        oauth: { github: defined(TEST_CONFIG.oauth.github, 'TEST_CONFIG.oauth.github') },
+        oauth: () => ({ github: defined(TEST_CONFIG.oauth().github, 'TEST_CONFIG.oauth.github') }),
       },
       store: h.store,
       oauthStateStore: h.oauthState,
@@ -222,6 +222,41 @@ describe('oauth.authorize / callback(state 半程)', () => {
     ).rejects.toMatchObject({
       code: 'identity.oauth_provider_unconfigured',
     });
+  });
+
+  it('词表外 provider 被 guard 拦截（unknown_provider）；空凭据在动词调用时 fail-loud', async () => {
+    const h = harness();
+    const { createIdentity } = await import('../src/identity.js');
+    const { TEST_CONFIG } = await import('../src/testing/harness.js');
+    const base = {
+      db: h.ctx.db,
+      txRetry: h.ctx.txRetry,
+      clock: h.ctx.clock,
+      logger: { warn: () => {} },
+      store: h.store,
+      oauthStateStore: h.oauthState,
+    };
+    const undeclared = createIdentity({
+      ...base,
+      config: {
+        ...TEST_CONFIG,
+        providers: ['github'],
+        oauth: () => ({ gitlab: { clientId: 'a', clientSecret: 'b' } }),
+      },
+    });
+    await expect(
+      undeclared.oauth.authorize({ provider: 'gitlab', redirectUri: 'https://cb' }),
+    ).rejects.toThrow();
+    const empty = createIdentity({
+      ...base,
+      config: { ...TEST_CONFIG, oauth: () => ({ github: { clientId: '', clientSecret: 'b' } }) },
+    });
+    await expect(
+      empty.oauth.authorize({
+        provider: 'github',
+        redirectUri: 'https://api.example.com/v1/oauth/github/callback',
+      }),
+    ).rejects.toThrow();
   });
 
   it('redirect_uri 白名单 fail-closed:authorize/callback 两半程都拒绝词表外地址', async () => {
@@ -284,5 +319,122 @@ describe('oauth.authorize / callback(state 半程)', () => {
       code: 'identity.oauth_profile_failed',
       context: { detail: 'token exchange failed: 502' },
     });
+  });
+});
+
+describe('review 移植：oauth getter 契约回归锁定', () => {
+  it('词表内但无内置适配器的 provider（gitlab）→ oauth_provider_unconfigured', async () => {
+    const h = harness();
+    const { createIdentity } = await import('../src/identity.js');
+    const { TEST_CONFIG } = await import('../src/testing/harness.js');
+    const api = createIdentity({
+      db: h.ctx.db,
+      txRetry: h.ctx.txRetry,
+      clock: h.ctx.clock,
+      logger: { warn: () => {} },
+      config: { ...TEST_CONFIG, providers: ['github', 'gitlab'], oauth: () => ({}) },
+      store: h.store,
+      oauthStateStore: h.oauthState,
+    });
+    await expect(
+      api.oauth.authorize({ provider: 'gitlab', redirectUri: 'https://cb' }),
+    ).rejects.toMatchObject({ code: 'identity.oauth_provider_unconfigured' });
+  });
+
+  it('空 getter + 词表含 github → oauth_provider_unconfigured（admin-api 路径等价锁定）', async () => {
+    const h = harness();
+    const { createIdentity } = await import('../src/identity.js');
+    const { TEST_CONFIG } = await import('../src/testing/harness.js');
+    const api = createIdentity({
+      db: h.ctx.db,
+      txRetry: h.ctx.txRetry,
+      clock: h.ctx.clock,
+      logger: { warn: () => {} },
+      config: { ...TEST_CONFIG, oauth: () => ({}) },
+      store: h.store,
+      oauthStateStore: h.oauthState,
+    });
+    await expect(
+      api.oauth.authorize({
+        provider: 'github',
+        redirectUri: 'https://api.example.com/v1/oauth/github/callback',
+      }),
+    ).rejects.toMatchObject({ code: 'identity.oauth_provider_unconfigured' });
+  });
+
+  it('getter 每次动词调用解析（≥2 次）；快照运行期变化下次动词生效', async () => {
+    const h = harness();
+    const { createIdentity } = await import('../src/identity.js');
+    const { TEST_CONFIG } = await import('../src/testing/harness.js');
+    let calls = 0;
+    let snapshot: Record<string, { clientId: string; clientSecret: string }> = {
+      github: { clientId: 'gh', clientSecret: 'gh-secret' },
+    };
+    const api = createIdentity({
+      db: h.ctx.db,
+      txRetry: h.ctx.txRetry,
+      clock: h.ctx.clock,
+      logger: { warn: () => {} },
+      config: {
+        ...TEST_CONFIG,
+        oauth: () => {
+          calls += 1;
+          return snapshot;
+        },
+      },
+      store: h.store,
+      oauthStateStore: h.oauthState,
+    });
+    await expect(
+      api.oauth.authorize({
+        provider: 'github',
+        redirectUri: 'https://api.example.com/v1/oauth/github/callback',
+      }),
+    ).resolves.toBeTruthy();
+    snapshot = {};
+    await expect(
+      api.oauth.authorize({
+        provider: 'github',
+        redirectUri: 'https://api.example.com/v1/oauth/github/callback',
+      }),
+    ).rejects.toMatchObject({ code: 'identity.oauth_provider_unconfigured' });
+    expect(calls).toBeGreaterThanOrEqual(2);
+  });
+
+  it('override 优先且短路 getter：oauthProviders 覆盖键存在时 getter 不被调用', async () => {
+    const h = harness();
+    const { createIdentity } = await import('../src/identity.js');
+    const { createGithubProvider } = await import('../src/adapters/oauth/github.js');
+    const { TEST_CONFIG } = await import('../src/testing/harness.js');
+    let calls = 0;
+    const api = createIdentity({
+      db: h.ctx.db,
+      txRetry: h.ctx.txRetry,
+      clock: h.ctx.clock,
+      logger: { warn: () => {} },
+      config: {
+        ...TEST_CONFIG,
+        oauth: () => {
+          calls += 1;
+          return {};
+        },
+      },
+      oauthProviders: {
+        github: createGithubProvider({
+          clientId: 'x',
+          clientSecret: 'y',
+          logger: { warn: () => {} },
+        }),
+      },
+      store: h.store,
+      oauthStateStore: h.oauthState,
+    });
+    await expect(
+      api.oauth.authorize({
+        provider: 'github',
+        redirectUri: 'https://api.example.com/v1/oauth/github/callback',
+      }),
+    ).resolves.toBeTruthy();
+    expect(calls).toBe(0);
   });
 });

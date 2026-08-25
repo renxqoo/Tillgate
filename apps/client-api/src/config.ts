@@ -6,7 +6,7 @@
  */
 import { z } from 'zod';
 import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
-import { Decimal, EPAY_PAY_TYPES } from '@tillgate/billing';
+import { Decimal } from '@tillgate/billing';
 
 const nonNegativeDecimal = z.string().regex(/^\d{1,20}(?:\.\d{1,18})?$/);
 const positiveDecimal = nonNegativeDecimal.refine((value) => !/^0+(?:\.0+)?$/.test(value));
@@ -73,45 +73,11 @@ function createSchema(production: boolean) {
     /** 未支付订单超时关单（ms） */
     PAYMENT_ORDER_TTL_MS: z.coerce.number().int().positive().default(1_800_000),
     /** 易支付五件套全配才启用该渠道；PAY_TYPE 从词表校验（不写死 alipay） */
-    EPAY_PID: z.string().optional(),
-    EPAY_KEY: z.string().optional(),
-    EPAY_GATEWAY_URL: z.string().url().optional(),
-    EPAY_NOTIFY_URL: z.string().url().optional(),
-    EPAY_RETURN_URL: z.string().url().optional(),
-    EPAY_PAY_TYPE: z
-      .string()
-      .refine((v) => (EPAY_PAY_TYPES as readonly string[]).includes(v), 'unsupported epay pay type')
-      .default('alipay'),
-    /** Stripe（国际卡）四件套全配才启用该渠道（Checkout Session + webhook 验签） */
-    STRIPE_SECRET_KEY: z.string().optional(),
-    STRIPE_WEBHOOK_SECRET: z.string().optional(),
-    STRIPE_SUCCESS_URL: z.string().url().optional(),
-    STRIPE_CANCEL_URL: z.string().url().optional(),
-    /** API 基地址覆盖（默认官方 api.stripe.com；私有化网关/测试 mock 上游用） */
-    STRIPE_API_BASE: z.string().url().optional(),
-    /** 邮箱验证码两级登录：auto = SMTP 已配置即强制 / on 强制 / off 关闭（单密码） */
+    // 支付渠道凭据（EPAY/STRIPE）已迁 integration_settings（动态配置——DESIGN §7.3）
+    /** 邮箱验证码两级登录：auto = smtp 集成行生效即强制 / on 强制 / off 关闭（单密码） */
     EMAIL_CODE_REQUIRED: z.enum(['auto', 'on', 'off']).default('auto'),
-    /** SMTP 三要素（host/user/pass）齐全才启用发信；未配置 = 验证码模式不可用（fail-closed） */
-    SMTP_HOST: z.string().optional(),
-    SMTP_PORT: z.coerce.number().int().positive().default(465),
-    SMTP_USER: z.string().optional(),
-    SMTP_PASS: z.string().optional(),
-    SMTP_FROM: z.string().optional(),
-    /** 人机验证（Turnstile）：siteKey/secretKey 成对配置才启用；只配一半 = 启动失败 */
-    CAPTCHA_SITE_KEY: z.string().optional(),
-    CAPTCHA_SECRET_KEY: z.string().optional(),
-    /** siteverify 端点（默认官方；私有化代理/测试 mock 覆盖） */
-    CAPTCHA_VERIFY_URL: z
-      .string()
-      .url()
-      .default('https://challenges.cloudflare.com/turnstile/v0/siteverify'),
-    /** OAuth 社交登录（GitHub/Google）：前后端基地址 + 各 provider 凭证（未配 = 404/按钮隐藏） */
-    OAUTH_FRONTEND_URL: z.string().url().optional(),
-    OAUTH_API_BASE: z.string().url().optional(),
-    OAUTH_GITHUB_CLIENT_ID: z.string().optional(),
-    OAUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
-    OAUTH_GOOGLE_CLIENT_ID: z.string().optional(),
-    OAUTH_GOOGLE_CLIENT_SECRET: z.string().optional(),
+    // SMTP/CAPTCHA/OAuth 凭据与基地址已迁入 integration_settings（动态配置——
+    // docs/integration-settings/DESIGN.md §7.3；本 schema 只留端点覆盖与 TTL）
     /** 端点覆盖（JSON：authorizeUrl/tokenUrl/profileUrl/emailsUrl——私有化/测试 mock 用） */
     OAUTH_GITHUB_ENDPOINTS_JSON: z.string().optional(),
     OAUTH_GOOGLE_ENDPOINTS_JSON: z.string().optional(),
@@ -179,15 +145,6 @@ function createSchema(production: boolean) {
 
 export type ClientApiConfig = z.infer<ReturnType<typeof createSchema>>;
 
-/** 全配返回 true；全空返回 false；半配抛错（fail-closed——半配 = 静默坏流） */
-function assertGroup(name: string, values: Array<unknown>): boolean {
-  if (values.every((v) => !v)) return false;
-  if (values.some((v) => !v)) {
-    throw new Error(`${name} options must be configured as a group`);
-  }
-  return true;
-}
-
 /** 端点覆盖解析（JSON：私有化/E2E mock 上游用；非法 JSON fail-loud） */
 function parseEndpoints(json: string | undefined, provider: string) {
   if (!json) return;
@@ -213,37 +170,10 @@ export function loadClientApiConfig(env: NodeJS.ProcessEnv = process.env): Clien
   if (production && !parsed.SECURE_COOKIE) {
     throw new Error('SECURE_COOKIE must be enabled in production');
   }
-  // 支付渠道组配置全-or-无（半配 = 配置错误，直接抛）
-  assertGroup('EPAY_*', [
-    parsed.EPAY_PID,
-    parsed.EPAY_KEY,
-    parsed.EPAY_GATEWAY_URL,
-    parsed.EPAY_NOTIFY_URL,
-    parsed.EPAY_RETURN_URL,
-  ]);
-  assertGroup('STRIPE_*', [
-    parsed.STRIPE_SECRET_KEY,
-    parsed.STRIPE_WEBHOOK_SECRET,
-    parsed.STRIPE_SUCCESS_URL,
-    parsed.STRIPE_CANCEL_URL,
-  ]);
-  // OAuth：凭证与前后端基地址成组（有凭证必须有跳转面；全无 = 关闭社交登录）
-  const oauthCredentialed = Boolean(parsed.OAUTH_GITHUB_CLIENT_ID || parsed.OAUTH_GOOGLE_CLIENT_ID);
-  if (oauthCredentialed && !(parsed.OAUTH_FRONTEND_URL && parsed.OAUTH_API_BASE)) {
-    throw new Error(
-      'OAUTH_FRONTEND_URL and OAUTH_API_BASE must be configured together with OAuth credentials',
-    );
-  }
-  if (parsed.OAUTH_FRONTEND_URL && !parsed.OAUTH_API_BASE) {
-    throw new Error('OAUTH_API_BASE must be configured together with OAUTH_FRONTEND_URL');
-  }
-  // 预解析端点覆盖（非法 JSON fail-loud 在启动期而非首跳期）
   parseEndpoints(parsed.OAUTH_GITHUB_ENDPOINTS_JSON, 'github');
   parseEndpoints(parsed.OAUTH_GOOGLE_ENDPOINTS_JSON, 'google');
   // captcha 成对校验
-  assertGroup('CAPTCHA_*', [parsed.CAPTCHA_SITE_KEY, parsed.CAPTCHA_SECRET_KEY]);
   // smtp 三要素成组
-  assertGroup('SMTP_*', [parsed.SMTP_HOST, parsed.SMTP_USER, parsed.SMTP_PASS]);
   // sentinel 拓扑：配置了节点列表必须带主名（runtime RedisClientOptions 判别联合）
   if (parsed.REDIS_SENTINELS != null && !parsed.REDIS_SENTINEL_NAME) {
     throw new Error('REDIS_SENTINEL_NAME is required when REDIS_SENTINELS is configured');

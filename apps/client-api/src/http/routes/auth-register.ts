@@ -26,7 +26,7 @@ export function registerRoutes(deps: AuthDeps) {
   app.post('/v1/auth/register', jsonBody(registerSchema), async (c) => {
     const body = c.req.valid('json');
     const ip = clientIpOf(deps, c);
-    if (!deps.capabilities.registerEnabled) {
+    if (!deps.capabilities().registerEnabled) {
       throw clientErrors.business('register_disabled');
     }
     let hits: number;
@@ -40,7 +40,7 @@ export function registerRoutes(deps: AuthDeps) {
         retryAfterMs: deps.registerWindowSeconds * 1_000,
       });
     }
-    if (deps.captcha != null && deps.capabilities.captchaSiteKey != null) {
+    if (deps.capabilities().captchaSiteKey != null && deps.captcha != null) {
       if (body.captchaToken == null) {
         throw clientErrors.business('captcha_required');
       }
@@ -68,7 +68,7 @@ export function registerRoutes(deps: AuthDeps) {
 
   app.post('/v1/auth/register/verify', jsonBody(verifySchema), async (c) => {
     const body = c.req.valid('json');
-    if (!deps.capabilities.registerEnabled) {
+    if (!deps.capabilities().registerEnabled) {
       throw clientErrors.business('register_disabled');
     }
     const verified = await deps.challenges.verify({

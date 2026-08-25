@@ -8,6 +8,12 @@ import type { WalletConn } from './wallet-store.js';
 /** 支付渠道端口（协议适配；epay/stripe 按同口接入） */
 export interface PaymentProviderPort {
   readonly name: 'epay' | 'stripe';
+  /**
+   * 下单可用面（resolveProvider/channels 过滤；handleNotify 不过滤——
+   * 「停用不停验签」：渠道停用后已下单回调仍验签归账，
+   * docs/integration-settings/DESIGN.md §5 D6）。
+   */
+  accepting(): boolean;
   /** 创建渠道支付（返回支付跳转 URL；providerOrderId 商户侧单号） */
   createOrder(input: {
     orderId: string;

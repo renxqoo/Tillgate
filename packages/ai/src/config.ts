@@ -92,9 +92,8 @@ export interface AiDeps {
   };
   /**
    * URL 守卫（SSRF 策略注入点）：缺省执行机械基线（https-only + 禁私网/回环 +
-   * DNS 逐地址判定防 rebinding）；注入则整体替换。受信名单是业务数据——生产由
-   * 装配方从渠道目录派生（组合 `assertSafeUrl(u, { allowedHosts })`），
-   * 测试/本地调试注入 `allowAllUrls`。
+   * DNS 逐地址判定防 rebinding）；注入则整体替换。出口信任锚在运营面
+   * （渠道/provider 写入是 admin 域——ADR-0010）；测试/本地调试注入 `allowAllUrls`。
    */
   guardUrl?: UrlGuard;
 }

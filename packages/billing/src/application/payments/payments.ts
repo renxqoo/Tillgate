@@ -75,17 +75,19 @@ export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
   const { clock } = deps;
   const byName = new Map(deps.providers.map((p) => [p.name, p]));
 
-  /** 渠道解析：显式指定须命中；未指定时唯一渠道直通，多渠道须显式选择 */
+  /** 渠道解析：显式指定须命中且在接单；未指定时唯一在接渠道直通，多渠道须显式选择。
+   *  停用渠道（accepting=false）不进下单面——但 byName 仍注册（handleNotify 验签面不拆）。 */
   const resolveProvider = (requested?: 'epay' | 'stripe'): PaymentProviderPort => {
     if (requested) {
       const found = byName.get(requested);
-      if (!found) {
+      if (found == null || !found.accepting()) {
         throw BillingErrors.business('payment_unavailable', { provider: requested });
       }
       return found;
     }
-    const [only] = deps.providers;
-    if (deps.providers.length === 1 && only !== undefined) return only;
+    const accepting = deps.providers.filter((p) => p.accepting());
+    const [only] = accepting;
+    if (accepting.length === 1 && only !== undefined) return only;
     throw BillingErrors.business('payment_unavailable', {});
   };
 
@@ -266,7 +268,9 @@ export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
     },
 
     channels() {
-      return deps.providers.map((p) => ({ id: p.name, label: PROVIDER_LABELS[p.name] }));
+      return deps.providers
+        .filter((p) => p.accepting())
+        .map((p) => ({ id: p.name, label: PROVIDER_LABELS[p.name] }));
     },
   };
 }

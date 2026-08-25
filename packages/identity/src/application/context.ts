@@ -39,7 +39,8 @@ export interface IdentityUseCaseContext {
   readonly oauthStore: OAuthStore;
   readonly anchorStore: AnchorStore;
   readonly tokens: SessionTokens;
-  readonly oauthProviders: Readonly<Record<string, OAuthProvider>>;
+  /** OAuth provider 适配器解析(每次动词调用解析当前快照;装配覆盖件优先,未配置 = null) */
+  readonly oauthProvider: (name: string) => OAuthProvider | null;
   readonly mailer?: Mailer;
   readonly captcha?: Captcha;
   readonly sessionRevocation?: SessionRevocationStore;

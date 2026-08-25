@@ -178,12 +178,13 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
       timeout: { connectMs: config.upstreamConnectTimeoutMs, totalMs: config.upstreamDeadlineMs },
     },
     // SSRF 双门：逃生门仅非生产可用——生产误配 env 也恒关（与 v1 同口径）。
-    // 生产主防线 = 受信 provider host 白名单（生产必填，config fail-fast）+ DNS 逐地址判定
+    // 防线 = 机械基线（https-only + 私网/IPv6 解包拒绝 + DNS 逐地址判定）+
+    // 运营面信任（渠道/provider 写入是 admin 域——ADR-0010）
     config.aiAllowLocalUrl && config.nodeEnv !== 'production'
       ? { guardUrl: async () => {} }
       : {
           guardUrl: async (url: string) => {
-            await assertSafeUrl(url, { allowedHosts: config.upstreamAllowedHosts });
+            await assertSafeUrl(url);
           },
         },
   );

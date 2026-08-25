@@ -38,7 +38,6 @@ describe('client-api config', () => {
     expect(c.CLIENT_PASSWORD_MIN_LENGTH).toBe(10);
     expect(c.CLIENT_USAGE_TZ).toBe('Asia/Shanghai');
     expect(c.PRICING_CACHE_TTL_MS).toBe(30_000);
-    expect(c.EPAY_PAY_TYPE).toBe('alipay');
     expect(c.KEY_PREFIX).toBe('sk_');
     expect(c.OTEL_TRACES_MODE).toBe('off');
   });
@@ -49,14 +48,12 @@ describe('client-api config', () => {
       CLIENT_CURRENCY: 'USD',
       REGISTER_ENABLED: 'false',
       CLIENT_USAGE_TZ: 'UTC',
-      EPAY_PAY_TYPE: 'wxpay',
       TRACE_RECEIVER_TOKEN: 'tok-1',
     });
     expect(c.CLIENT_API_PORT).toBe(9090);
     expect(c.CLIENT_CURRENCY).toBe('USD');
     expect(c.REGISTER_ENABLED).toBe(false);
     expect(c.CLIENT_USAGE_TZ).toBe('UTC');
-    expect(c.EPAY_PAY_TYPE).toBe('wxpay');
     expect(c.TRACE_RECEIVER_TOKEN).toBe('tok-1');
   });
 
@@ -77,30 +74,8 @@ describe('client-api config', () => {
   });
 
   describe('组配置全-or-无', () => {
-    it.each([
-      ['EPAY', { EPAY_PID: '1' }],
-      ['STRIPE', { STRIPE_SECRET_KEY: 'sk' }],
-      ['CAPTCHA', { CAPTCHA_SITE_KEY: 'k' }],
-      ['SMTP', { SMTP_HOST: 'h' }],
-    ])('%s 半配拒绝', (_name, patch) => {
-      rejectLoad(patch, /as a group/);
-    });
-
-    it('EPAY 全配通过', () => {
-      const c = load({
-        EPAY_PID: '1',
-        EPAY_KEY: 'k',
-        EPAY_GATEWAY_URL: 'https://epay.example',
-        EPAY_NOTIFY_URL: 'https://api.example/notify',
-        EPAY_RETURN_URL: 'https://app.example/return',
-      });
-      expect(c.EPAY_PID).toBe('1');
-    });
-
-    it('OAuth 凭证无基地址拒绝', () => {
-      rejectLoad({ OAUTH_GITHUB_CLIENT_ID: 'id' }, /OAUTH_FRONTEND_URL and OAUTH_API_BASE/);
-    });
-
+    // CAPTCHA/SMTP/OAuth/EPAY/STRIPE 凭据组校验已随 env 迁移迁入 integration_settings
+    // 写入侧（control-plane update/import 用例——docs/integration-settings/DESIGN.md §5 D5）
     it('sentinel 无主名拒绝', () => {
       rejectLoad({ REDIS_SENTINELS: 'h1:26379' }, /REDIS_SENTINEL_NAME/);
     });

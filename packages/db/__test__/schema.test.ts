@@ -62,6 +62,7 @@ const EXPECTED_TABLES = new Set([
   'identity_totp',
   'identity_recovery_codes',
   'identity_session_anchors',
+  'integration_settings',
 ]);
 
 function tableNames(namespace: object): Set<string> {
@@ -73,7 +74,7 @@ function tableNames(namespace: object): Set<string> {
 }
 
 describe('schema 表清单', () => {
-  it('物理表集合与基线一致(49 张,封闭词表;identity 七表 = 迁移 0076;permissions/roles/role_permissions = 0082 动态 RBAC)', () => {
+  it('物理表集合与基线一致(50 张,封闭词表;identity 七表 = 迁移 0076;permissions/roles/role_permissions = 0082 动态 RBAC)', () => {
     expect(tableNames(schema)).toEqual(EXPECTED_TABLES);
   });
 

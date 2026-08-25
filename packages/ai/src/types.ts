@@ -209,7 +209,8 @@ export type GenerationFileProbeResult =
 
 /**
  * URL 守卫（SSRF 策略注入点）：抛错 = 拒绝。机制固定在包内（卡在网络出口），
- * 策略（受信名单是业务数据）由装配方注入——组合 `assertSafeUrl(u, { allowedHosts })`。
+ * 缺省策略 = 机械基线（`assertSafeUrl`）；测试/本地调试注入 `allowAllUrls`。
+ * 出口信任锚在运营面（ADR-0010），不再有 hostname 白名单形态。
  */
 export type UrlGuard = (url: string) => Promise<void>;
 

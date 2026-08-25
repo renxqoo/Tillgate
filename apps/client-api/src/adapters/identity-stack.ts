@@ -1,14 +1,17 @@
 /**
  * identity 装配栈（从 assembly.ts 拆出——铁律 5 max-lines 收口；装配面桥接件，
- * 仅 assembly.ts 引用）：OAuth 凭证映射 + SMTP 登录邮件（缺省按环境构造，测试缝
- * 显式注入/置空）+ Redis 吊销/OAuth state + createIdentity 全量配置。
- * emailCodeRequired 的 auto 口径：SMTP 已配置即强制两级登录（v1 语义）。
+ * 仅 assembly.ts 引用）：OAuth 凭证/SMTP 邮件/人机验证全部由集成设置 reader
+ * 动态驱动（docs/integration-settings/DESIGN.md §5 D7）——快照 getter 喂 identity、
+ * 动态 mailer/captcha 包装，emailCodeRequired 的 auto 口径每请求求值。
+ * apiBase/frontendUrl 为装配期 boot 解析（DESIGN D9 收窄：回调白名单是装配期契约）。
  */
 import type { Db, TxRetryPolicy } from '@tillgate/db';
+import type { IntegrationSettingsReader } from '@tillgate/control-plane';
 import type { Logger } from '@tillgate/runtime';
 import type { Redis } from 'ioredis';
 import {
   createIdentity,
+  type Captcha,
   type Identity,
   type Mailer,
   type OAuthEndpointsOverride,
@@ -17,30 +20,32 @@ import {
 import type { ClientApiConfig } from '../config.js';
 import { createRedisSessionRevocation } from './redis-session-revocation.js';
 import { createRedisOAuthStateStore } from './redis-oauth-state.js';
-import { createSmtpLoginMailer } from './smtp-login-mailer.js';
+import { createDynamicCaptcha } from './dynamic-captcha.js';
+import { createDynamicLoginMailer } from './dynamic-login-mailer.js';
 import {
   createRedisResetTokenStore,
   RESET_TOKEN_TTL_MINUTES,
   type ResetTokenStore,
 } from './redis-reset-token.js';
-import { createTurnstileCaptcha } from './turnstile-captcha.js';
+
+/** OAuth provider 词表（identity 认识的键；凭据来源在集成设置快照） */
+const OAUTH_PROVIDER_NAMES = ['github', 'google'] as const;
 
 export interface IdentityStack {
   readonly identity: Identity;
-  readonly oauthProviders: Record<string, OAuthProviderCredentials>;
+  /** 动态 mailer（缺省恒存在；e2e 覆盖缝可注入/置空） */
   readonly mailer: Mailer | null;
+  readonly captcha: Captcha;
   readonly resetTokens: ResetTokenStore;
-  readonly emailCodeRequired: boolean;
+  /** auto 口径每请求求值：on→true / off→false / auto→SMTP 生效（v1 语义动态化） */
+  readonly emailCodeRequired: () => boolean;
+  /** 最新快照 effective 的 provider 键集（providers 端点/路由词表共用） */
+  readonly oauthProviderNames: () => readonly string[];
   readonly apiBase: string;
+  readonly frontendUrl: string;
 }
 
-/** 端点覆盖解析（JSON 已在 config 预校验；此处仅反序列化） */
-function parseEndpoints(json: string | undefined): OAuthEndpointsOverride | undefined {
-  if (!json) return undefined;
-  return JSON.parse(json) as OAuthEndpointsOverride;
-}
-
-// eslint-disable-next-line max-lines-per-function, complexity -- identity 装配根:oauth 凭证/mailer/挑战参数线性组装,分支即 provider 与开关判空(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- identity 装配根:oauth/mailer/captcha 动态化线性组装,分支即词表与开关判空(存量棘轮)
 export function createIdentityStack(args: {
   config: ClientApiConfig;
   db: Db;
@@ -48,46 +53,43 @@ export function createIdentityStack(args: {
   txRetry: TxRetryPolicy;
   logger: Logger;
   clock: () => Date;
+  reader: IntegrationSettingsReader;
+  /** 装配期 boot 解析的 OAuth 基地址（DESIGN D9：变更需重启） */
+  apiBase: string;
+  frontendUrl: string;
   mailerOverride?: Mailer | null;
 }): IdentityStack {
-  const { config, db, redis, txRetry, logger, clock, mailerOverride } = args;
+  const { config, db, redis, txRetry, logger, clock, reader, apiBase } = args;
 
-  const oauthProviders: Record<string, OAuthProviderCredentials> = {};
-  if (config.OAUTH_GITHUB_CLIENT_ID != null && config.OAUTH_GITHUB_CLIENT_SECRET != null) {
-    const endpoints = parseEndpoints(config.OAUTH_GITHUB_ENDPOINTS_JSON);
-    oauthProviders.github = {
-      clientId: config.OAUTH_GITHUB_CLIENT_ID,
-      clientSecret: config.OAUTH_GITHUB_CLIENT_SECRET,
-      ...(endpoints != null ? { endpoints } : {}),
-    };
-  }
-  if (config.OAUTH_GOOGLE_CLIENT_ID != null && config.OAUTH_GOOGLE_CLIENT_SECRET != null) {
-    const endpoints = parseEndpoints(config.OAUTH_GOOGLE_ENDPOINTS_JSON);
-    oauthProviders.google = {
-      clientId: config.OAUTH_GOOGLE_CLIENT_ID,
-      clientSecret: config.OAUTH_GOOGLE_CLIENT_SECRET,
-      ...(endpoints != null ? { endpoints } : {}),
-    };
-  }
-  const smtpReady =
-    config.SMTP_HOST != null && config.SMTP_USER != null && config.SMTP_PASS != null;
+  // OAuth 凭证快照 getter（identity 同步契约→latest 面，stale-OK + 后台刷新）：
+  // DB 凭据 + env 端点覆盖合并（ENDPOINTS_JSON 保持 env 专属——DESIGN §5 D10）
+  const oauthProviders = (): Record<string, OAuthProviderCredentials> => {
+    const snapshot = reader.latest();
+    const map: Record<string, OAuthProviderCredentials> = {};
+    for (const name of OAUTH_PROVIDER_NAMES) {
+      const resolved = snapshot.oauth[name];
+      if (!resolved.effective || resolved.config == null) continue;
+      const endpoints = parseEndpoints(config, name);
+      map[name] = {
+        clientId: resolved.config.clientId,
+        clientSecret: resolved.config.clientSecret,
+        ...(endpoints != null ? { endpoints } : {}),
+      };
+    }
+    return map;
+  };
+
   // 用户面邮件品牌（展示常量——非部署可变值）
   const mailBrand = {
     brand: 'Tillgate 控制台',
     brandEn: 'Tillgate Console',
     brandSub: 'TILLGATE · CONSOLE',
   };
-  let mailer: Mailer | null;
-  if (mailerOverride === undefined) {
-    mailer = smtpReady
-      ? createSmtpLoginMailer({
-          config: {
-            host: config.SMTP_HOST as string,
-            port: config.SMTP_PORT,
-            user: config.SMTP_USER as string,
-            pass: config.SMTP_PASS as string,
-            from: config.SMTP_FROM ?? (config.SMTP_USER as string),
-          },
+  const mailer: Mailer | null =
+    args.mailerOverride !== undefined
+      ? args.mailerOverride
+      : createDynamicLoginMailer({
+          reader,
           brand: mailBrand,
           emailParams: {
             ttlMinutes: Math.ceil(config.CLIENT_CHALLENGE_TTL_MS / 60_000),
@@ -95,16 +97,19 @@ export function createIdentityStack(args: {
           },
           resetParams: { ttlMinutes: RESET_TOKEN_TTL_MINUTES },
           now: clock,
-        })
-      : null;
-  } else {
-    mailer = mailerOverride;
-  }
-  let emailCodeRequired = mailer != null; // auto：SMTP 已配置即强制两级登录（v1 口径）
-  if (config.EMAIL_CODE_REQUIRED === 'on') emailCodeRequired = true;
-  else if (config.EMAIL_CODE_REQUIRED === 'off') emailCodeRequired = false;
+        });
 
-  const apiBase = config.OAUTH_API_BASE ?? 'http://localhost:8081';
+  const emailCodeRequired = (): boolean => {
+    if (config.EMAIL_CODE_REQUIRED === 'on') return true;
+    if (config.EMAIL_CODE_REQUIRED === 'off') return false;
+    // auto（v1 口径逐字对应——review 修复 B-3）：覆盖缝注入时以 mailer 在场为准
+    // （main 基线 emailCodeRequired = mailer != null），缺省读快照 SMTP 生效
+    if (args.mailerOverride !== undefined) return args.mailerOverride != null;
+    return reader.latest().smtp.effective;
+  };
+
+  const captcha = createDynamicCaptcha({ reader });
+
   const identity = createIdentity({
     db,
     txRetry,
@@ -112,9 +117,9 @@ export function createIdentityStack(args: {
     logger: { warn: (obj, msg) => logger.warn(obj as object, msg) },
     config: {
       identifiers: ['email'],
-      // providers 是 identity 认识的词表（须非空）；凭证映射在 oauth——
-      // 未配凭证的 provider 运行时 oauth_provider_unconfigured → 路由 404
-      providers: ['github', 'google'],
+      // providers 是 identity 认识的词表（须非空）；凭据在 oauth getter 快照——
+      // 未配凭据的 provider 运行时 oauth_provider_unconfigured → 路由 404
+      providers: [...OAUTH_PROVIDER_NAMES],
       challengeKinds: ['email_code'],
       realms: ['user'],
       passwordPolicy: { minLength: config.CLIENT_PASSWORD_MIN_LENGTH, maxLength: 128 },
@@ -137,30 +142,38 @@ export function createIdentityStack(args: {
       oauth: oauthProviders,
       oauthStateTtlSec: config.OAUTH_STATE_TTL_SECONDS,
       // 回调地址精确白名单（identity assertRedirectAllowed 消费；两 provider 常驻）
-      oauthRedirectAllowlist: [
-        `${apiBase}/v1/oauth/github/callback`,
-        `${apiBase}/v1/oauth/google/callback`,
-      ],
+      oauthRedirectAllowlist: OAUTH_PROVIDER_NAMES.map(
+        (name) => `${apiBase}/v1/oauth/${name}/callback`,
+      ),
     },
     ...(mailer != null ? { mailer } : {}),
-    ...(config.CAPTCHA_SECRET_KEY != null
-      ? {
-          captcha: createTurnstileCaptcha({
-            secretKey: config.CAPTCHA_SECRET_KEY,
-            verifyUrl: config.CAPTCHA_VERIFY_URL,
-          }),
-        }
-      : {}),
+    captcha,
     sessionRevocation: createRedisSessionRevocation(redis),
     oauthStateStore: createRedisOAuthStateStore(redis),
   });
 
   return {
     identity,
-    oauthProviders,
     mailer,
+    captcha,
     resetTokens: createRedisResetTokenStore(redis),
     emailCodeRequired,
+    oauthProviderNames: () => {
+      const snapshot = reader.latest();
+      return OAUTH_PROVIDER_NAMES.filter((name) => snapshot.oauth[name].effective);
+    },
     apiBase,
+    frontendUrl: args.frontendUrl,
   };
+}
+
+/** 端点覆盖解析（env JSON：私有化/E2E mock 上游用；非法 JSON 启动期已 fail-loud） */
+function parseEndpoints(
+  config: ClientApiConfig,
+  provider: string,
+): OAuthEndpointsOverride | undefined {
+  const json =
+    provider === 'github' ? config.OAUTH_GITHUB_ENDPOINTS_JSON : config.OAUTH_GOOGLE_ENDPOINTS_JSON;
+  if (!json) return undefined;
+  return JSON.parse(json) as OAuthEndpointsOverride;
 }

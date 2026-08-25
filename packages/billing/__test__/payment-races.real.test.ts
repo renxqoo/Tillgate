@@ -40,6 +40,7 @@ import { defined } from './defined.js';
 /** 受控假渠道：单号映射确定（cs_{orderId}），回调载荷按订单面额构造（同签名面） */
 const stubProvider: PaymentProviderPort = {
   name: 'stripe',
+  accepting: () => true,
   async createOrder(input) {
     const providerOrderId = `cs_${input.orderId}`;
     return { providerOrderId, payUrl: `https://pay/${providerOrderId}` };

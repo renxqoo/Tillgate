@@ -13,7 +13,8 @@ import type { Identity } from '@tillgate/identity';
 import { OAUTH_STATE_COOKIE, safeNext } from '../contracts/oauth.js';
 
 export interface OAuthDeps {
-  readonly providers: readonly string[];
+  /** 已配置登录方式（快照求值——前端按钮显隐与路由词表共用） */
+  readonly providers: () => readonly string[];
   readonly authorize: Identity['oauth']['authorize'];
   readonly callback: Identity['oauth']['callback'];
   readonly findUser: Identity['oauth']['findUser'];
@@ -34,11 +35,11 @@ export interface OAuthDeps {
 export function oauthRoutes(deps: OAuthDeps) {
   const app = new Hono();
 
-  app.get('/v1/oauth/providers', (c) => c.json({ providers: deps.providers }));
+  app.get('/v1/oauth/providers', (c) => c.json({ providers: deps.providers() }));
 
   app.get('/v1/oauth/:provider/authorize', async (c) => {
     const provider = c.req.param('provider');
-    if (!deps.providers.includes(provider)) {
+    if (!deps.providers().includes(provider)) {
       return c.json(
         { error: { code: 'client.oauth_unknown', message: 'Unknown login method' } },
         404,
@@ -61,7 +62,7 @@ export function oauthRoutes(deps: OAuthDeps) {
 
   app.get('/v1/oauth/:provider/callback', async (c) => {
     const provider = c.req.param('provider');
-    if (!deps.providers.includes(provider)) {
+    if (!deps.providers().includes(provider)) {
       return c.json(
         { error: { code: 'client.oauth_unknown', message: 'Unknown login method' } },
         404,

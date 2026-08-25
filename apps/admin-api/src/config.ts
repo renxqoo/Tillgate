@@ -59,12 +59,6 @@ const envSchema = z
     /** 用户面会话密钥（identity realms 含 'user'——set-password 推进 user 失效线需要;
      * 本 app 绝不签发 user 会话（无任何 sign 调用路径）,仅满足词表一致性） */
     JWT_SECRET: secretSchema('JWT_SECRET', 32),
-    /** SMTP 三要素（host/user/pass）齐全才启用发信；未配置 = 2FA fail-closed（client-api 同口径） */
-    SMTP_HOST: z.string().optional(),
-    SMTP_PORT: z.coerce.number().int().positive().default(465),
-    SMTP_USER: z.string().optional(),
-    SMTP_PASS: z.string().optional(),
-    SMTP_FROM: z.string().optional(),
     /** 批量导入单次上限（渠道条目数） */
     CHANNEL_IMPORT_MAX: z.coerce.number().int().min(1).default(1000),
     /** 目录导入：免费渠道限流预填（公开免费档限额量级） */
@@ -172,14 +166,6 @@ export interface AdminApiConfig {
   readonly ipGuard: { readonly limit: number; readonly windowS: number };
   /** 用户面会话密钥（identity realms 词表一致性;本 app 无 user 会话签发路径） */
   readonly userJwtSecret: string;
-  /** SMTP 配置（三要素齐全才非 null;null = 2FA/验证码 fail-closed） */
-  readonly smtp: {
-    host: string;
-    port: number;
-    user: string;
-    pass: string;
-    from: string;
-  } | null;
 }
 
 // eslint-disable-next-line max-lines-per-function -- env→config 逐字段搬运(zod schema 映射平铺,分支即字段)
@@ -237,16 +223,6 @@ export function loadAdminApiConfig(env: NodeJS.ProcessEnv = process.env): AdminA
       windowS: parsed.ADMIN_LOGIN_IP_FAILURE_WINDOW_S,
     },
     userJwtSecret: parsed.JWT_SECRET,
-    smtp:
-      parsed.SMTP_HOST != null && parsed.SMTP_USER != null && parsed.SMTP_PASS != null
-        ? {
-            host: parsed.SMTP_HOST,
-            port: parsed.SMTP_PORT,
-            user: parsed.SMTP_USER,
-            pass: parsed.SMTP_PASS,
-            from: parsed.SMTP_FROM ?? parsed.SMTP_USER,
-          }
-        : null,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT,
     otelAuthToken: parsed.TRACE_RECEIVER_TOKEN,
     serviceVersion: parsed.OTEL_SERVICE_VERSION,

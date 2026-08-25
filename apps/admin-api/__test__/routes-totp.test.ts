@@ -128,7 +128,7 @@ function authHarness(identity: AuthRoutesDeps['identity']) {
     guards: { emailIp, ip },
     loginAudit: async () => {},
     trustedProxyHops: 0,
-    mailerConfigured: false,
+    mailerConfigured: () => false,
     sessionTtlSec: 3600,
   };
   return { app: withErrorFace(authRoutes(deps)), emailIp, ip };
@@ -259,7 +259,7 @@ describe('TOTP 绑定三动词(me 会话组)', () => {
         find: async () => adminRecord,
         setTwoFactorEnabled: async () => {},
       },
-      mailerConfigured: false,
+      mailerConfigured: () => false,
       sessionTtlSec: 3600,
     };
     return withErrorFace(meRoutes(deps));

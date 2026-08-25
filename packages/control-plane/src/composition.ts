@@ -11,3 +11,30 @@ export { modelsDevSource } from './adapters/model-sources/models-dev-source';
 export { postgresModelStore } from './adapters/postgres/model-store';
 export { postgresChannelStore } from './adapters/postgres/channel-store';
 export { postgresRateCardStore } from './adapters/postgres/rate-card-store';
+
+// ---- 集成动态配置 reader（docs/integration-settings/DESIGN.md §5 D4：消费进程装配取件） ----
+import type { Db } from '@tillgate/db';
+
+import type { SecretCipher } from './ports/secret-cipher';
+import type { IntegrationSettingsReader } from './application/integrations/create-reader';
+import { createIntegrationSettingsReader } from './application/integrations/create-reader';
+import { postgresIntegrationSettingsStore } from './adapters/postgres/integration-settings-store';
+
+/** postgres 版 reader：app 装配层只注入 db/cipher（可选 TTL/时钟） */
+export function createPostgresIntegrationSettingsReader(args: {
+  readonly db: Db;
+  readonly cipher: SecretCipher;
+  readonly ttlMs?: number;
+  readonly now?: () => number;
+  /** 后台刷新失败钩子（latest 同步面错误出口） */
+  readonly onError?: (error: unknown) => void;
+}): IntegrationSettingsReader {
+  return createIntegrationSettingsReader({
+    db: args.db,
+    cipher: args.cipher,
+    ttlMs: args.ttlMs,
+    now: args.now,
+    onError: args.onError,
+    stores: { integrationSettings: postgresIntegrationSettingsStore },
+  });
+}

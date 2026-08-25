@@ -11,6 +11,8 @@ import { createOrderSchema, orderIdPattern, ordersListQuerySchema } from '../con
 import type { SessionEnv } from '../middleware/session.js';
 
 export interface PaymentsDeps {
+  /** 回调资金面快照预刷（强制重读——消除 latest 盲窗；review 修复 B-2） */
+  refreshIntegrationSnapshot: () => Promise<void>;
   readonly payments: PaymentsApi;
 }
 
@@ -48,6 +50,10 @@ export function paymentsRoutes(deps: PaymentsDeps, session: MiddlewareHandler<Se
 
   app.post('/v1/payments/notify/:provider', async (c) => {
     const provider = c.req.param('provider');
+    // 资金面预刷缓存（review 修复 B-2 / DESIGN D9 修订）：验签端口是同步签名（latest 面），
+    // 路由先强制重读快照，密钥轮换后新签回调零盲窗；读失败 fail-loud（DB 故障时回调 5xx，
+    // 渠道按重试语义回放——与旧「验签失败 fail」同向）
+    await deps.refreshIntegrationSnapshot();
     if (provider === 'epay') {
       // 表单体 + query 合并（各 epay 实现放置位置不一；重复键以表单优先）
       const form = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);

@@ -17,6 +17,7 @@ import type {
 } from './ports/rate-card-store';
 import type { FxStore } from './ports/fx-store';
 import type { SettingsStore } from './ports/settings-store';
+import type { IntegrationSettingsStore } from './ports/integration-settings-store';
 import type { AuditStore } from './ports/audit-store';
 import type { OperationsStore } from './ports/operations-store';
 import type { AdminStore } from './ports/admin-store';
@@ -66,6 +67,8 @@ import type { RateCardListItem } from './application/rates/list-rate-cards';
 import type { ListRateCardUsersInput } from './application/rates/list-rate-card-users';
 import type { RateCardHealth } from './application/rates/check-rate-card-health';
 import type { UpdateBillingTimezoneInput } from './application/settings/update-billing-timezone';
+import type { UpdateIntegrationInput } from './application/integrations/update-integration';
+import type { IntegrationListItem } from './application/integrations/list-integrations';
 import type { CatalogComparisonPayload } from './application/catalog/compare-catalog';
 import type { CatalogPriceHistoryEntry } from './application/catalog/catalog-price-history';
 import type { ImportCatalogInput, ImportCatalogResult } from './application/catalog/import-catalog';
@@ -79,6 +82,7 @@ import {
 import { postgresChannelStore } from './adapters/postgres/channel-store';
 import { postgresFxStore } from './adapters/postgres/fx-store';
 import { postgresSettingsStore } from './adapters/postgres/settings-store';
+import { postgresIntegrationSettingsStore } from './adapters/postgres/integration-settings-store';
 import { postgresModelStore } from './adapters/postgres/model-store';
 import { postgresOperationsStore } from './adapters/postgres/operations-store';
 import { postgresAdminStore } from './adapters/postgres/admin-store';
@@ -142,6 +146,7 @@ export interface ControlPlaneEnv {
     readonly rateCard?: RateCardStore;
     readonly fx?: FxStore;
     readonly settings?: SettingsStore;
+    readonly integrationSettings?: IntegrationSettingsStore;
     readonly audit?: AuditStore;
     readonly operations?: OperationsStore;
     readonly admin?: AdminStore;
@@ -260,6 +265,11 @@ export interface ControlPlane {
       read(): Promise<{ timezone: string | null }>;
       update(input: UpdateBillingTimezoneInput): Promise<{ timezone: string }>;
     };
+    /** 第三方集成动态配置（integration_settings——DESIGN docs/integration-settings） */
+    integrations: {
+      list(): Promise<{ integrations: readonly IntegrationListItem[] }>;
+      update(input: UpdateIntegrationInput): Promise<IntegrationListItem>;
+    };
   };
   readonly catalog: {
     listSources(): ReturnType<typeof listCatalogSources>;
@@ -273,10 +283,13 @@ export interface ControlPlane {
   readonly admins: AdminsSurface;
 }
 
-/** 管理面 store 覆盖缝回退（实体 CRUD + 定价/汇率/系统配置） */
+/** 管理面 store 覆盖缝回退（实体 CRUD + 定价/汇率/系统配置/集成配置） */
 function resolveManagementStores(
   env: ControlPlaneEnv,
-): Pick<ResolvedStores, 'provider' | 'channel' | 'model' | 'rateCard' | 'fx' | 'settings'> {
+): Pick<
+  ResolvedStores,
+  'provider' | 'channel' | 'model' | 'rateCard' | 'fx' | 'settings' | 'integrationSettings'
+> {
   return {
     provider: env.stores?.provider ?? postgresProviderStore,
     channel: env.stores?.channel ?? postgresChannelStore,
@@ -284,6 +297,7 @@ function resolveManagementStores(
     rateCard: env.stores?.rateCard ?? postgresRateCardStore,
     fx: env.stores?.fx ?? postgresFxStore,
     settings: env.stores?.settings ?? postgresSettingsStore,
+    integrationSettings: env.stores?.integrationSettings ?? postgresIntegrationSettingsStore,
   };
 }
 
@@ -317,6 +331,14 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
   const stores = resolveStores(env);
   const fxDeps: FxDeps = { db: env.db, stores: { fx: stores.fx }, audit, env: env.fx };
   const settingsDeps = { db: env.db, stores: { settings: stores.settings }, audit };
+  const integrationDeps = {
+    db: env.db,
+    stores: { integrationSettings: stores.integrationSettings },
+    cipher: env.cipher,
+    audit,
+    auditTx,
+    now: () => new Date(),
+  };
   const sourceDeps = { sources: env.sources, cache, cacheTtlMs: env.catalogTtlMs };
   const deps: SectionDeps = {
     env,
@@ -326,6 +348,7 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
     voucherStorage,
     fxDeps,
     settingsDeps,
+    integrationDeps,
     sourceDeps,
   };
   return {

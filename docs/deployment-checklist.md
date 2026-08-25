@@ -19,8 +19,8 @@
 | `TRACE_RECEIVER_TOKEN` | ≥16 字符随机串（openssl rand -hex 24） | 生产无此值 trace-receiver 拒绝启动（fail-fast，属预期）。另注意 compose.yml 各服务 `OTEL_TRACES_MODE` 固定 `'off'`（覆盖 env_file）——启用链路要同步改 compose 或去掉覆盖，否则配了 token 也不推流 |
 | `WORKER_HEALTH_TOKEN` | ≥16 字符随机串 | 不配 = `/health` 深度报告一律 403（`/livez` `/readyz` 不受影响） |
 | `SECURE_COOKIE=true` | 生产必设（默认即生产 true） | 显式配 `false` = client-api 拒绝启动；缺 Secure 位 cookie 明文链路可被截获 |
-| `SMTP_HOST/PORT/USER/PASS` | 个人邮箱（QQ/163 开 SMTP 拿授权码）或企业邮箱；三要素半配 = 启动失败 | 不配 = 管理员 2FA 与用户验证码功能 fail-closed（503，不降级单密码，属预期防线）；worker 告警邮件渠道不装配 |
-| `CAPTCHA_SITE_KEY` + `CAPTCHA_SECRET_KEY` | Cloudflare Turnstile 成对配置（Dashboard → Turnstile → Add site）；只配一半拒绝启动 | 不配 = 注册面人机验证关闭：分布式刷号可薅首登赠额（单 IP 限流 5 次/时挡不住僵尸网络）。开发可用官方测试键（恒过） |
+| SMTP（`smtp` 集成行） | **动态配置**：admin 端 `/dashboard/settings` 卡片配置（或 `bun run integrations:import` 从存量 env 导入）；个人邮箱（QQ/163 开 SMTP 拿授权码）或企业邮箱 | 不配 = 管理员 2FA 与用户验证码功能 fail-closed（503，不降级单密码，属预期防线）；worker 告警邮件渠道不投递。**安全**：写入需 `settings:integrations` 权限（host 属出网点，变更留 `outboundEndpointChanged` 审计高亮） |
+| Turnstile（`captcha.turnstile` 集成行） | **动态配置**：admin 端设置卡配置 siteKey/secretKey（Cloudflare Dashboard → Turnstile → Add site） | 不配 = 注册面人机验证关闭：分布式刷号可薅首登赠额（单 IP 限流 5 次/时挡不住僵尸网络）。开发可用官方测试键（恒过）。停用且注册送礼开启时 UI 出风险警告并留审计高亮 |
 | `REGISTER_ENABLED` | 默认 `true`。设 `false` = 关闭邮箱自助注册，只留 GitHub/Google OAuth 建号（防多账号薅赠额的运营闸门；存量账号登录不受影响） | 不动即开启；关闭后 `POST /api/auth/register*` 一律 403，前端注册页显示关闭态 |
 | `GRAFANA_ADMIN_PASSWORD` | 强随机（启用 `--profile obs` 观测栈时必配） | obs profile 未设此值 compose 直接拒绝启动（匿名访问已关闭，弱密码默认已移除） |
 | `REQUEST_LOG_RETENTION_DAYS` / `TRACE_RETENTION_DAYS` | 默认 90 / 7（worker 分区滚动窗口） | v2 变化：v1 清单写 30，以 `apps/worker/src/config.ts` schema 默认 90 为准；调整保留期改此值 |

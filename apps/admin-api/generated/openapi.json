@@ -246,6 +246,89 @@
         ],
         "description": "管理员资料行（GET/POST /v1/admins,PATCH /v1/admins/:id）"
       },
+      "IntegrationSettingItem": {
+        "x-domain": "settings",
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "集成键（封闭词表：oauth.base/oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe）"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "configured": {
+            "type": "boolean",
+            "description": "必填字段齐全（enabled=true 的前置不变量）"
+          },
+          "config": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "字段值；secret 字段为掩码回显"
+          },
+          "secretsSet": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "已设置的 secret 字段名（write-only 提示）"
+          },
+          "rotatedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近一次验签密钥轮换时刻（支付双读窗锚）"
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updatedByAdminId": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "enabled",
+          "configured",
+          "config",
+          "secretsSet",
+          "rotatedAt",
+          "updatedAt",
+          "updatedByAdminId"
+        ],
+        "description": "第三方集成设置项（GET/PUT /v1/settings/integrations；密文/明文永不回显）"
+      },
       "RoleRow": {
         "x-domain": "roles",
         "type": "object",
@@ -28993,6 +29076,327 @@
             }
           },
           "403": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/settings/integrations": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "第三方集成设置列表（词表全量补齐；secret 字段掩码回显）",
+        "responses": {
+          "200": {
+            "description": "第三方集成设置列表（词表全量补齐；secret 字段掩码回显） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "integrations": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/IntegrationSettingItem"
+                      }
+                    }
+                  },
+                  "required": [
+                    "integrations"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/settings/integrations/:key": {
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "集成设置写（settings:integrations 权限——0087 拆分；字段三态：缺席=保持 / null=清除 / 值=设置；enabled=true 需必填齐全；支付验签密钥轮换自动入双读窗）",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "description": "集成键（封闭词表成员）",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "config": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1024
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "集成设置写（settings:integrations 权限——0087 拆分；字段三态：缺席=保持 / null=清除 / 值=设置；enabled=true 需必填齐全；支付验签密钥轮换自动入双读窗） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationSettingItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
             "description": "错误响应（统一信封 { error: { code, message, context? } }）",
             "content": {
               "application/json": {

@@ -52,7 +52,7 @@ export async function oauthCallback(
   input: OAuthCallbackInput,
 ): Promise<OAuthCallbackResult> {
   const provider = guardProvider(input.provider, ctx.guards);
-  const providerAdapter = ctx.oauthProviders[provider];
+  const providerAdapter = ctx.oauthProvider(provider);
   if (providerAdapter == null) {
     throw identityErrors.business('oauth_provider_unconfigured', { provider });
   }

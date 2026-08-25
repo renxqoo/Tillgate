@@ -137,8 +137,8 @@ describe('配置解析 fail-fast(v1 security「坏配置 createIdentity 同步�
       { sessions: { user: { issuer: 'i', secret: 's'.repeat(20), ttlSec: 10 } } },
     ],
     ['realm 无 session 配置', { realms: ['user', 'admin', 'service'] }],
-    ['oauth provider 未声明', { oauth: { gitlab: { clientId: 'a', clientSecret: 'b' } } }],
-    ['oauth 凭据空', { oauth: { github: { clientId: '', clientSecret: 'b' } } }],
+    // oauth 快照内容校验已迁至解析期(动词调用)——见 application-oauth.test.ts
+    ['oauth 非 getter', { oauth: { github: { clientId: 'a', clientSecret: 'b' } } as never }],
     ['state ttl 越界', { oauthStateTtlSec: 10 }],
     ['redirect 白名单空', { oauthRedirectAllowlist: [] }],
     ['redirect 非绝对 URL', { oauthRedirectAllowlist: ['/relative/cb'] }],

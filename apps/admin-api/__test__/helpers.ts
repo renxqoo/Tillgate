@@ -220,7 +220,7 @@ export function fakeDeps(overrides: {
       },
     },
     trustedProxyHops: 0,
-    mailerConfigured: false,
+    mailerConfigured: () => false,
     loginAudit: async () => {},
     sessionTtlSec: 3600,
     corsOrigins: [],
@@ -276,10 +276,14 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
       clearOverride: notWired,
       setBuffer: notWired,
     },
-    // 运营系统配置面（settings 波次进行中;默认 notWired——settings 域测试覆写）
+    // 运营系统配置面（默认 notWired——settings 域测试覆写）
     settings: {
       billingTimezone: {
         read: notWired,
+        update: notWired,
+      },
+      integrations: {
+        list: notWired,
         update: notWired,
       },
     },

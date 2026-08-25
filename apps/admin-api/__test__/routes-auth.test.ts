@@ -121,7 +121,7 @@ function authHarness(overrides?: Partial<AuthRoutesDeps>) {
     guards: { emailIp, ip },
     loginAudit: audit,
     trustedProxyHops: 0,
-    mailerConfigured: false,
+    mailerConfigured: () => false,
     sessionTtlSec: 3600,
     ...overrides,
   };
@@ -260,7 +260,7 @@ describe('auth（P2 登录面）', () => {
     expect(await res.json()).toMatchObject({ error: { code: 'admin.two_factor_unavailable' } });
 
     const { app: app2, audit } = authHarness({
-      mailerConfigured: true,
+      mailerConfigured: () => true,
       identity: {
         mfa: mfaStub(),
         passwords: {
@@ -408,7 +408,7 @@ describe('me（P2 管理员自身）', () => {
         find: async () => adminRecord,
         setTwoFactorEnabled: async () => {},
       },
-      mailerConfigured: false,
+      mailerConfigured: () => false,
       sessionTtlSec: 3600,
       ...overrides,
     };

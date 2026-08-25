@@ -16,6 +16,9 @@ import type { ClientApiAssembly } from '../../apps/client-api/src/assembly.js';
 import { assembleClientApi } from '../../apps/client-api/src/assembly.js';
 import { loadClientApiConfig } from '../../apps/client-api/src/config.js';
 import { createClientApiApp } from '../../apps/client-api/src/app.js';
+import { closeDb, createDb } from '../../packages/db/src/index.js';
+import { createCipher } from '../../packages/runtime/src/index.js';
+import { postgresIntegrationSettingsStore } from '../../packages/control-plane/src/adapters/postgres/integration-settings-store.js';
 
 // 测试内替代非空断言的统一收窄手段：值缺失时抛出带定位信息的错误而非静默断言
 export function defined<T>(value: T | null | undefined, label = 'value'): T {
@@ -148,29 +151,178 @@ function buildHarnessEnv(appUrl: string, githubEndpoints?: GithubEndpoints): Nod
     TOPUP_MIN: '1',
     TOPUP_MAX: '100000',
     TOPUP_EXCHANGE_RATE: '1',
-    // 易支付渠道（下单纯本地计算；回调由装置伪造签名）
-    EPAY_PID: 'e2e-pid',
-    EPAY_KEY: 'e2e-key',
-    EPAY_GATEWAY_URL: 'https://epay-mock.invalid/submit.php',
-    EPAY_NOTIFY_URL: `${appUrl}/v1/payments/notify/epay`,
-    EPAY_RETURN_URL: `${appUrl}/v1/payments/return`,
-    EPAY_PAY_TYPE: 'alipay',
-    // GitHub 社交登录（mock 上游端点覆盖）
+    // GitHub 社交登录：凭据/基地址经 DB 种子（seedIntegrationSettings——动态配置真路径）；
+    // mock 上游端点覆盖保持 env（ENDPOINTS_JSON 是 env 专属逃生门——DESIGN §5 D10）
     ...(githubEndpoints != null
-      ? {
-          OAUTH_FRONTEND_URL: `${appUrl}/app`,
-          OAUTH_API_BASE: appUrl,
-          OAUTH_GITHUB_CLIENT_ID: 'e2e-client-id',
-          OAUTH_GITHUB_CLIENT_SECRET: 'e2e-client-secret',
-          OAUTH_GITHUB_ENDPOINTS_JSON: JSON.stringify(githubEndpoints),
-        }
+      ? { OAUTH_GITHUB_ENDPOINTS_JSON: JSON.stringify(githubEndpoints) }
       : {}),
   };
+}
+
+/** 易支付旅程凭据（下单纯本地计算；回调由装置伪造签名——seed 进集成设置） */
+const EPAY = {
+  pid: 'e2e-pid',
+  key: 'e2e-key',
+  gatewayUrl: 'https://epay-mock.invalid/submit.php',
+  payType: 'alipay',
+} as const;
+
+/**
+ * 集成种子（动态配置真路径——测试侧的导入脚本口径）：upsert 覆盖旧行
+ * （端口随机，每次旅程重写回调基地址）；secret 以 enc:v1 密文落库（与生产存储同形）。
+ * OAuth 两行仅 GitHub 旅程种入；易支付行恒种（充值旅程回调按其伪造签名）。
+ * 共库纪律：种前快照旧行，返回还原函数——旅程结束原样写回（无行删行），
+ * 开发库的导入值不被随机端口污染。
+ */
+async function seedIntegrationSettings(
+  env: NodeJS.ProcessEnv,
+  appUrl: string,
+  withGithub: boolean,
+  epayRotation?: { previousKey: string; rotatedAgoMs: number },
+): Promise<() => Promise<void>> {
+  const db = createDb({
+    url: env.DATABASE_URL as string,
+    poolMax: 2,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 5_000,
+    maxUses: 5_000,
+  });
+  // 全量快照 + 未种子键清空：旅程期间集成状态完全受控（共享开发库的其他行不泄入断言）
+  const allKeys = [
+    'oauth.base',
+    'oauth.github',
+    'oauth.google',
+    'smtp',
+    'captcha.turnstile',
+    'payment.epay',
+    'payment.stripe',
+  ];
+  const seededKeys = withGithub
+    ? new Set(['oauth.base', 'oauth.github', 'payment.epay', 'smtp'])
+    : new Set(['payment.epay', 'smtp']);
+  const previous = await snapshotRows(db, allKeys);
+  try {
+    const cipher = createCipher(env.ENCRYPTION_KEY as string);
+    if (withGithub) {
+      await postgresIntegrationSettingsStore.upsert(db, {
+        key: 'oauth.base',
+        enabled: true,
+        config: { frontendUrl: `${appUrl}/app`, apiBase: appUrl },
+        previousSecrets: null,
+        rotatedAt: null,
+        adminId: null,
+      });
+      await postgresIntegrationSettingsStore.upsert(db, {
+        key: 'oauth.github',
+        enabled: true,
+        config: {
+          clientId: 'e2e-client-id',
+          clientSecret: cipher.encrypt('e2e-client-secret'),
+        },
+        previousSecrets: null,
+        rotatedAt: null,
+        adminId: null,
+      });
+    }
+    await postgresIntegrationSettingsStore.upsert(db, {
+      key: 'payment.epay',
+      enabled: true,
+      config: {
+        pid: EPAY.pid,
+        key: cipher.encrypt(EPAY.key),
+        gatewayUrl: EPAY.gatewayUrl,
+        notifyUrl: `${appUrl}/v1/payments/notify/epay`,
+        returnUrl: `${appUrl}/v1/payments/return`,
+        payType: EPAY.payType,
+      },
+      // 轮换双读窗装置（DESIGN §5 D6）：旧密钥入 previous_secrets，rotatedAt 按注入偏移
+      previousSecrets:
+        epayRotation != null ? { key: cipher.encrypt(epayRotation.previousKey) } : null,
+      rotatedAt: epayRotation != null ? new Date(Date.now() - epayRotation.rotatedAgoMs) : null,
+      adminId: null,
+    });
+    // SMTP 集成行（假凭据）：动态化后两级登录可用性 = smtp.effective；
+    // 实际投递被 bootHarness 的 captureMailer 覆盖缝截获，不触网
+    await postgresIntegrationSettingsStore.upsert(db, {
+      key: 'smtp',
+      enabled: true,
+      config: {
+        host: 'smtp.e2e.invalid',
+        port: '465',
+        user: 'e2e@tillgate.invalid',
+        pass: cipher.encrypt('e2e-smtp-pass'),
+      },
+      previousSecrets: null,
+      rotatedAt: null,
+      adminId: null,
+    });
+    for (const key of allKeys) {
+      if (!seededKeys.has(key)) {
+        await db.execute(sql`delete from integration_settings where key = ${key}`);
+      }
+    }
+  } finally {
+    await closeDb(db).catch(() => {});
+  }
+  return async () => {
+    await restoreRows(env, previous);
+  };
+}
+
+/** 种前快照（行原样或无行哨兵 null） */
+async function snapshotRows(
+  db: ReturnType<typeof createDb>,
+  keys: readonly string[],
+): Promise<
+  Array<{
+    key: string;
+    row: Awaited<ReturnType<typeof postgresIntegrationSettingsStore.readAll>>[number] | null;
+  }>
+> {
+  const rows = await postgresIntegrationSettingsStore.readAll(db);
+  return keys.map((key) => ({ key, row: rows.find((r) => r.key === key) ?? null }));
+}
+
+/** 拆时还原（原样写回；原无行删行） */
+async function restoreRows(
+  env: NodeJS.ProcessEnv,
+  previous: Array<{
+    key: string;
+    row: Awaited<ReturnType<typeof postgresIntegrationSettingsStore.readAll>>[number] | null;
+  }>,
+): Promise<void> {
+  const db = createDb({
+    url: env.DATABASE_URL as string,
+    poolMax: 2,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 5_000,
+    maxUses: 5_000,
+  });
+  try {
+    for (const entry of previous) {
+      if (entry.row != null) {
+        await postgresIntegrationSettingsStore.upsert(db, {
+          key: entry.row.key,
+          enabled: entry.row.enabled,
+          config: entry.row.config as Record<string, unknown>,
+          previousSecrets: entry.row.previousSecrets as Record<string, string> | null,
+          rotatedAt: entry.row.rotatedAt,
+          adminId: entry.row.updatedByAdminId,
+        });
+      } else {
+        await db.execute(sql`delete from integration_settings where key = ${entry.key}`);
+      }
+    }
+  } finally {
+    await closeDb(db).catch(() => {});
+  }
 }
 
 export async function bootHarness(options: {
   appPort: number;
   github?: MockGithub;
+  /** epay 验签密钥轮换装置（双读窗 e2e 用；缺省无轮换） */
+  epayRotation?: { previousKey: string; rotatedAgoMs: number };
 }): Promise<E2eHarness> {
   const appUrl = `http://127.0.0.1:${options.appPort}`;
   const githubEndpoints: GithubEndpoints | undefined = options.github
@@ -182,6 +334,12 @@ export async function bootHarness(options: {
       }
     : undefined;
   const env = buildHarnessEnv(appUrl, githubEndpoints);
+  const restoreIntegrations = await seedIntegrationSettings(
+    env,
+    appUrl,
+    githubEndpoints != null,
+    options.epayRotation,
+  );
   const config = loadClientApiConfig(env);
   const mailer = createCaptureMailer();
   const assembly = await assembleClientApi(config, { mailer });
@@ -194,13 +352,16 @@ export async function bootHarness(options: {
     assembly,
     baseUrl: appUrl,
     mailer,
-    epay: { pid: env.EPAY_PID as string, key: env.EPAY_KEY as string },
+    epay: { pid: EPAY.pid, key: EPAY.key },
     github: options.github ?? null,
     teardown: async () => {
       await assembly.redis.quit().catch(() => {});
       await assembly.otel.shutdown().catch(() => {});
       const { closeDb } = await import('@tillgate/db');
-      await closeDb(assembly.db);
+      // 装置缺陷修复（review E）：closeDb 失败不跳过集成行还原
+      await closeDb(assembly.db).catch(() => {});
+      // 共库纪律：还原种前快照（开发库导入值不被随机端口污染）
+      await restoreIntegrations();
     },
   };
 }
@@ -245,9 +406,12 @@ export async function seedRedeemCode(
   code: string,
   amount: string,
 ): Promise<void> {
+  // admins.role_id 自 RBAC v2（迁移 0082）起 NOT NULL——播种行挂 super_admin
+  // （存量缺陷修复：原 INSERT 缺 role_id 触发 23502，user/org 旅程自 RBAC 合入即断）
   await db.execute(
-    sql`insert into admins (email, password_hash, status)
-        values ('e2e-admin@tillgate.invalid', 'e2e:unused:1:1:1', 0)
+    sql`insert into admins (email, password_hash, status, role_id)
+        values ('e2e-admin@tillgate.invalid', 'e2e:unused:1:1:1', 0,
+          (select id from roles where code = 'super_admin' limit 1))
         on conflict (email) do nothing`,
   );
   // admins 必填 email/password_hash——播种专用行（cleanupSeeds 按 email 回收）

@@ -89,10 +89,9 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
     validateSession: (token) =>
       Promise.resolve(token === 'tok-good' ? { userId: 42, jti: 'j1', exp: 9_999_999 } : null),
     auth: {
-      // getter 代理到可变状态——用例旋钮无需突变 readonly deps
-      get capabilities() {
-        return state.capabilities;
-      },
+      // 函数求值代理到可变状态——用例旋钮无需突变 readonly deps（capabilities 每请求求值）
+      capabilities: () => state.capabilities,
+      smtpReady: () => true,
       passwordPolicy: { minLength: 10, maxLength: 128 },
       sealer: {
         seal: (p) => `sealed:${p}`,
@@ -207,7 +206,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       logout: () => Promise.resolve(),
     },
     oauth: {
-      providers: ['github'],
+      providers: () => ['github'] as const,
       authorize: () =>
         Promise.resolve({
           url: 'https://github.com/login/oauth/authorize?x=1',
@@ -567,6 +566,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
         Promise.resolve([{ codeId: 1, batchName: 'b', amount: '5', usedAt: new Date() }]),
     },
     payments: {
+      refreshIntegrationSnapshot: async () => {},
       payments: {
         createTopupOrder: () =>
           Promise.resolve({

@@ -33,3 +33,4 @@ export * from './wallet.js';
 export * from './ledger-operations.js';
 export * from './fx.js';
 export * from './identity.js';
+export * from './integration-settings.js';

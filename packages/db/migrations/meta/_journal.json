@@ -596,6 +596,20 @@
       "when": 1788139200000,
       "tag": "0085_endpoints_page",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1788225600000,
+      "tag": "0086_integration_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1788312000000,
+      "tag": "0087_settings_integrations_permission",
+      "breakpoints": true
     }
   ]
 }

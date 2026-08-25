@@ -48,7 +48,7 @@ export interface AuthRoutesDeps {
   }) => Promise<void>;
   readonly trustedProxyHops: number;
   /** SMTP 是否已配置（2FA 开启前置——fail-closed,不静默降级） */
-  readonly mailerConfigured: boolean;
+  readonly mailerConfigured: () => boolean;
   readonly sessionTtlSec: number;
 }
 
@@ -70,7 +70,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
     });
 
   const requireMailer = (): void => {
-    if (!deps.mailerConfigured) {
+    if (!deps.mailerConfigured()) {
       throw AdminErrors.business('two_factor_unavailable', {});
     }
   };

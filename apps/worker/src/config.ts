@@ -84,17 +84,8 @@ const envSchema = z
     ENCRYPTION_KEY: z.string().optional(),
     WORKER_AI_ALLOW_LOCAL_URL: strictBooleanSchema(false),
     WORKER_WEBHOOK_ALLOW_LOCAL_URL: strictBooleanSchema(false),
-    /**
-     * 生成任务轮询的上游受信主机名白名单（逗号分隔）——生产 SSRF 主防线
-     * （生产必填，superRefine fail-fast）；语义同 gateway GATEWAY_UPSTREAM_ALLOWED_HOSTS。
-     */
-    WORKER_UPSTREAM_ALLOWED_HOSTS: z.string().default(''),
 
     // ---- 邮件渠道（三要素缺一 = 不装配，email 渠道 fail-closed——v1 mailerFromEnv）----
-    SMTP_HOST: z.string().optional(),
-    SMTP_PORT: z.coerce.number().int().min(1).default(465),
-    SMTP_USER: z.string().optional(),
-    SMTP_PASS: z.string().optional(),
 
     // ---- 观测 ----
     OTEL_TRACES_MODE: z.enum(['off', 'memory', 'console', 'otlp']).optional(),
@@ -108,14 +99,6 @@ const envSchema = z
         code: 'custom',
         path: ['OTEL_EXPORTER_OTLP_ENDPOINT'],
         message: 'required when OTEL_TRACES_MODE=otlp',
-      });
-    }
-    // 生产 SSRF 主防线必填：缺白名单 = 任务轮询上游寻址只剩机械基线
-    if (v.NODE_ENV === 'production' && v.WORKER_UPSTREAM_ALLOWED_HOSTS.trim() === '') {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['WORKER_UPSTREAM_ALLOWED_HOSTS'],
-        message: 'required in production (upstream SSRF allowlist)',
       });
     }
   });
@@ -172,16 +155,8 @@ export interface WorkerConfig {
   readonly shutdownGraceMs: number;
 
   readonly channelApiKeyEncryption: string;
-  /** 上游受信主机名白名单（生产 SSRF 主防线；空数组 = 仅机械基线——仅非生产） */
-  readonly upstreamAllowedHosts: string[];
   readonly aiAllowLocalUrl: boolean;
   readonly webhookAllowLocalUrl: boolean;
-  readonly smtp: {
-    readonly host: string;
-    readonly port: number;
-    readonly user: string;
-    readonly pass: string;
-  } | null;
 
   readonly otelMode: OtelMode;
   readonly otelEndpoint: string | undefined;
@@ -202,10 +177,6 @@ const DB_POOL: Omit<DbPoolConfig, 'url'> = {
 // eslint-disable-next-line max-lines-per-function -- env→config 逐字段搬运(zod schema 映射平铺,分支即字段)
 export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
   const parsed = envSchema.parse(env);
-  const smtpHost = parsed.SMTP_HOST;
-  const smtpUser = parsed.SMTP_USER;
-  const smtpPass = parsed.SMTP_PASS;
-  const smtpComplete = smtpHost != null && smtpUser != null && smtpPass != null;
   const otelMode: OtelMode =
     parsed.OTEL_TRACES_MODE ?? (parsed.NODE_ENV === 'production' ? 'off' : 'off');
   return {
@@ -264,16 +235,8 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     health: { port: parsed.WORKER_HEALTH_PORT, token: parsed.WORKER_HEALTH_TOKEN },
     shutdownGraceMs: parsed.WORKER_SHUTDOWN_GRACE_MS,
     channelApiKeyEncryption: parsed.CHANNEL_API_KEY_ENCRYPTION,
-    upstreamAllowedHosts: parsed.WORKER_UPSTREAM_ALLOWED_HOSTS.split(',')
-      .map((h) => h.trim().toLowerCase())
-      .filter((h) => h !== ''),
     aiAllowLocalUrl: parsed.WORKER_AI_ALLOW_LOCAL_URL,
     webhookAllowLocalUrl: parsed.WORKER_WEBHOOK_ALLOW_LOCAL_URL,
-    // 三要素齐才非 null(判空收窄在函数头,局部捕获避免对象字面量内回头断言)
-    smtp:
-      smtpComplete && smtpHost != null && smtpUser != null && smtpPass != null
-        ? { host: smtpHost, port: parsed.SMTP_PORT, user: smtpUser, pass: smtpPass }
-        : null,
     otelMode,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT,
     serviceVersion: parsed.OTEL_SERVICE_VERSION,

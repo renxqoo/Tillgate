@@ -72,7 +72,6 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `ADMISSION_MAX_PENDING` / `ADMISSION_MAX_OLDEST_MS` | `10000` / `300000` | 结算积压背压（保护资金域） |
 | `GATEWAY_UPSTREAM_DEADLINE_MS` | `120000` | 上游调用总预算（重试/熔断共享 deadline） |
 | `GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS` | `10000` | 连接 + 首字节（TTFB）；慢上游长生成需放宽 |
-| `GATEWAY_UPSTREAM_ALLOWED_HOSTS` | 空 | 上游受信 provider 主机名白名单（逗号分隔）；**生产必填——缺失启动即拒**。命中白名单后仍逐地址拒绝 DNS 私网解析（防 rebinding）；渠道新增 provider 域名需同步扩充 |
 | `GATEWAY_BODY_LIMIT_BYTES` | `10MB` | 请求体上限（v2 变化：字节量串 `10MB`/`512kb` 形，不再是不带单位的数字；按实际流量计数防 chunked 谎报，413） |
 | `GATEWAY_UPLOAD_MAX_FILE_BYTES` | `16MB` | multipart 单文件上限（同上字节量串；与 bodyLimit 取小生效） |
 | `GATEWAY_UPLOAD_IMAGE_MIME` | `image/png,image/jpeg,image/webp` | multipart 图片类型白名单（逗号分隔） |
@@ -160,7 +159,6 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `WORKER_BALANCE_LOW_THRESHOLD` | `5` | balance_low 预警阈值（元） |
 | `WORKER_SHUTDOWN_GRACE_MS` | `15000` | 优雅停机 |
 | SSRF | `false` | `WORKER_AI_ALLOW_LOCAL_URL` / `WORKER_WEBHOOK_ALLOW_LOCAL_URL`（生产恒 false） |
-| `WORKER_UPSTREAM_ALLOWED_HOSTS` | 空 | 生成任务轮询的上游受信主机名白名单（逗号分隔）；**生产必填——缺失启动即拒**（与 gateway `GATEWAY_UPSTREAM_ALLOWED_HOSTS` 同语义） |
 | `CHANNEL_API_KEY_ENCRYPTION` | 必填 | ≥32；渠道 Key 解密专用键，**无 ENCRYPTION_KEY 回退** |
 
 > v2 变化：worker 的 `REDIS_URL` 配置项已删除（Redis 全退出——唤醒走 PG NOTIFY、熔断存储用内存实现）。
@@ -198,11 +196,7 @@ compose 部署由 `environment` 段注入：
 
 | 组 | 键 | 说明 |
 |---|---|---|
-| 邮箱验证码 / 2FA / 告警邮件 | `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS`（可选 `SMTP_PORT`=465、`SMTP_FROM`） | 三要素成组配置即启用；**半配 = 启动失败（fail-closed）**。同一组键被 client-api（用户验证码）、admin-api（管理员 2FA）、worker（告警邮件）共用；未配置时验证码/2FA 走 503，不降级为单密码 |
-| EPAY 充值 | `EPAY_PID` / `EPAY_KEY` / `EPAY_GATEWAY_URL` / `EPAY_NOTIFY_URL` / `EPAY_RETURN_URL` | 五键成组；部分配置 = 启动失败。v2 新增 `EPAY_PAY_TYPE`（默认 `alipay`，从词表校验） |
-| Stripe 充值 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` | 四键成组；v2 新增 `STRIPE_API_BASE`（私有化网关/mock 覆盖） |
-| 第三方登录 | `OAUTH_FRONTEND_URL` / `OAUTH_API_BASE` / `OAUTH_GITHUB_*` / `OAUTH_GOOGLE_*` | 有凭证必须同时配两个基地址；全无 = 关闭社交登录（按钮隐藏）。v2 新增 `OAUTH_GITHUB_ENDPOINTS_JSON` / `OAUTH_GOOGLE_ENDPOINTS_JSON`（端点覆盖，非法 JSON 启动期 fail-loud）、`OAUTH_STATE_TTL_SECONDS`（默认 600） |
-| 人机验证 | `CAPTCHA_SITE_KEY` + `CAPTCHA_SECRET_KEY` | Cloudflare Turnstile 成对配置才启用；只配一半拒绝启动。v2 新增 `CAPTCHA_VERIFY_URL`（默认官方 siteverify） |
+| **第三方集成（动态配置）** | `integration_settings` 表 | OAuth（GitHub/Google 含回调基地址）/ SMTP / Turnstile / 易支付 / Stripe 凭据全部迁入 DB 动态配置（设计：[integration-settings/DESIGN.md](integration-settings/DESIGN.md)）：admin 端 `/dashboard/settings` 可视化管理，secret 以 `enc:v1` 密文落库（根密钥与渠道 Key 同一部署契约），写入留同事务审计，改后最迟 60s 全进程生效、无需重启。**例外**：`oauth.base` 为装配期读取（回调白名单契约），变更需重启。存量部署迁移：`bun run integrations:import`（幂等；半配组跳过并警告——对齐原启动期成组校验）。原 env 键已删除，仅保留 `OAUTH_{GITHUB,GOOGLE}_ENDPOINTS_JSON`（e2e/私有化端点覆盖逃生门）与 `OAUTH_STATE_TTL_SECONDS`（默认 600）。支付验签密钥轮换自带 96h 双读窗（旧密钥回调不丢）；渠道停用不停验签（在途订单归账不中断） |
 | 链路鉴权 | `TRACE_RECEIVER_TOKEN` | 接收端与推流端（gateway/client-api/admin-api 的 OTLP Bearer）共用同一 `.env` 键自动对齐：生产接收端无此值拒绝启动；有 token 时缺它 = 推送全部 401。注意 compose.yml 各服务 `OTEL_TRACES_MODE` 缺省 `'off'`（覆盖 env_file）——启用链路需同步改 compose。生成：`openssl rand -hex 24` |
 | Redis HA | `REDIS_SENTINELS` / `REDIS_SENTINEL_NAME` / `REDIS_SENTINEL_PASSWORD` | Sentinel 拓扑（见 [ha-deployment.md](ha-deployment.md)）。配置节点列表必须带主名（缺 `REDIS_SENTINEL_NAME` 拒绝启动）；`REDIS_URL` 继续作凭证载体。**v2 现状：仅 client-api 消费该组键**——gateway/admin-api 仍直连（详见 ha 手册「已知边界」） |
 

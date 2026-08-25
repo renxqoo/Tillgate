@@ -114,7 +114,7 @@ export interface AdminAppDeps {
   /** P2:信任代理跳数（守卫键的 IP 提取） */
   trustedProxyHops: number;
   /** P2:SMTP 是否已配置（2FA fail-closed 前置） */
-  mailerConfigured: boolean;
+  mailerConfigured: () => boolean;
   /** P2:登录三审计（后置旁路——v1 recordAudit 语义） */
   loginAudit: AuthRoutesDeps['loginAudit'];
   /** P2:会话 TTL（签发面） */

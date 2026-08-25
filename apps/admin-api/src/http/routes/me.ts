@@ -19,7 +19,7 @@ export interface MeRoutesDeps {
   readonly rbac: Pick<ControlPlane['rbac'], 'permissions'> & {
     roles: Pick<ControlPlane['rbac']['roles'], 'find'>;
   };
-  readonly mailerConfigured: boolean;
+  readonly mailerConfigured: () => boolean;
   readonly sessionTtlSec: number;
 }
 
@@ -111,7 +111,7 @@ export function meRoutes(deps: MeRoutesDeps) {
 
   app.post('/v1/me/two-factor', async (c) => {
     const body = authContracts.twoFactor.parse(await c.req.json());
-    if (body.enabled && !deps.mailerConfigured) {
+    if (body.enabled && !deps.mailerConfigured()) {
       throw AdminErrors.business('smtp_not_configured', {});
     }
     await deps.admins.setTwoFactorEnabled({ adminId: c.get('adminId'), enabled: body.enabled });

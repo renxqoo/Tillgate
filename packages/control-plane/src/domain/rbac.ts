@@ -73,6 +73,8 @@ export const ENFORCED_CODES = [
   // settings
   'settings:read',
   'settings:update',
+  // 第三方集成凭据写入（独立码——出网点收窄，DESIGN §6 修订）
+  'settings:integrations',
   // admins（admins/roles/permissions 管理面共用）
   'admins:read',
   'admins:create',
