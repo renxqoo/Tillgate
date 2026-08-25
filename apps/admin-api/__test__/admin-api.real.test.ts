@@ -69,7 +69,7 @@ describe('admin-api 真实 PG 冒烟', () => {
         trustedProxyHops: config.trustedProxyHops,
         mailerConfigured: assembly.mailerConfigured,
         loginAudit: assembly.loginAudit,
-    stepupAudit: assembly.stepupAudit,
+        stepupAudit: assembly.stepupAudit,
         sessionTtlSec: config.sessionTtlSec,
         corsOrigins: [],
         bodyLimitBytes: 1024 * 1024,

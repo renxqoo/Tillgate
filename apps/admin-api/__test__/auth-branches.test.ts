@@ -184,16 +184,16 @@ describe('auth/me 未走分支', () => {
 
   it('me:资料行缺失 401 admin_not_found;2FA 开启成功路径(SMTP 已配)回显开关', async () => {
     const meDeps: MeRoutesDeps = {
-    stepup: {
-      guards: {
-        ip: {
-          isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-          recordFailure: async () => ({ locked: false, retryAfterSec: 0 }),
+      stepup: {
+        guards: {
+          ip: {
+            isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+            recordFailure: async () => ({ locked: false, retryAfterSec: 0 }),
+          },
         },
+        audit: async () => {},
+        trustedProxyHops: 0,
       },
-      audit: async () => {},
-      trustedProxyHops: 0,
-    },
       rbac: {
         roles: {
           find: async () => ({

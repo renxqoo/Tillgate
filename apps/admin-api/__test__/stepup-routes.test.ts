@@ -17,7 +17,14 @@ import { sessionMiddleware } from '../src/http/middleware/session';
 
 const ADMIN_ID = 1;
 const VALID_TOKEN = 'tok-stepup';
-const sessionPayload = { sub: '1', realm: 'admin', jti: 'j1', iss: 'i', iat: 1, exp: 9_999_999_999 };
+const sessionPayload = {
+  sub: '1',
+  realm: 'admin',
+  jti: 'j1',
+  iss: 'i',
+  iat: 1,
+  exp: 9_999_999_999,
+};
 
 /** 守卫替身：可编程锁定 + 失败计数断言面 */
 function guardProbe() {
@@ -68,30 +75,30 @@ function appHarness(opts?: {
   app.route(
     '/',
     settingsRoutes({
-        controlPlane: { settings: { billingTimezone: {} as never, integrations } } as never,
-        identity: { mfa: mfaStub({ stepupError: opts?.stepupError }) } as never,
-        guards: { ip: guard.deps },
-        audit: auditProbe as never,
-        trustedProxyHops: 0,
-      }),
+      controlPlane: { settings: { billingTimezone: {} as never, integrations } } as never,
+      identity: { mfa: mfaStub({ stepupError: opts?.stepupError }) } as never,
+      guards: { ip: guard.deps },
+      audit: auditProbe as never,
+      trustedProxyHops: 0,
+    }),
   );
   app.route(
     '/',
     meRoutes({
-        identity: {
-          mfa: mfaStub({ stepupError: opts?.stepupError }),
-          passwords: {} as never,
-          sessions: {} as never,
-        } as never,
-        stepup: { guards: { ip: guard.deps }, audit: auditProbe as never, trustedProxyHops: 0 },
-        admins: {
-          find: async () => ({ status: 0 }) as never,
-          setTwoFactorEnabled: opts?.setTwoFactorImpl ?? (async () => {}),
-        } as never,
-        rbac: {} as never,
-        mailerConfigured: () => true,
-        sessionTtlSec: 3_600,
-      }),
+      identity: {
+        mfa: mfaStub({ stepupError: opts?.stepupError }),
+        passwords: {} as never,
+        sessions: {} as never,
+      } as never,
+      stepup: { guards: { ip: guard.deps }, audit: auditProbe as never, trustedProxyHops: 0 },
+      admins: {
+        find: async () => ({ status: 0 }) as never,
+        setTwoFactorEnabled: opts?.setTwoFactorImpl ?? (async () => {}),
+      } as never,
+      rbac: {} as never,
+      mailerConfigured: () => true,
+      sessionTtlSec: 3_600,
+    }),
   );
   app.onError((error, c) =>
     errorHandler({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES })(error, c),

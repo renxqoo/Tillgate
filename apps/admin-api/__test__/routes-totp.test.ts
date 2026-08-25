@@ -224,16 +224,16 @@ describe('TOTP 登录第二因子', () => {
 describe('TOTP 绑定三动词(me 会话组)', () => {
   function meHarness(mfaImpl: ReturnType<typeof mfa>): Hono<SessionEnv> {
     const deps: MeRoutesDeps = {
-    stepup: {
-      guards: {
-        ip: {
-          isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-          recordFailure: async () => ({ locked: false, retryAfterSec: 0 }),
+      stepup: {
+        guards: {
+          ip: {
+            isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+            recordFailure: async () => ({ locked: false, retryAfterSec: 0 }),
+          },
         },
+        audit: async () => {},
+        trustedProxyHops: 0,
       },
-      audit: async () => {},
-      trustedProxyHops: 0,
-    },
       rbac: {
         roles: {
           find: async () => ({

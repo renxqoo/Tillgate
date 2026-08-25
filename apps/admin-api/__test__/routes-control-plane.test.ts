@@ -454,7 +454,11 @@ describe('models + rate-cards + fx + catalog', () => {
     const put = await app.request('/v1/settings/integrations/smtp', {
       method: 'PUT',
       headers: { ...authHeader(), 'content-type': 'application/json' },
-      body: JSON.stringify({ totpCode: '123456', enabled: false, config: { host: 'smtp2.example.com' } }),
+      body: JSON.stringify({
+        totpCode: '123456',
+        enabled: false,
+        config: { host: 'smtp2.example.com' },
+      }),
     });
     expect(put.status).toBe(200);
     expect(integrations.update).toHaveBeenCalledWith(
