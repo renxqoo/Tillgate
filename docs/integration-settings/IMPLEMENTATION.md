@@ -175,3 +175,21 @@ src/features/settings/integration-cards/
 - 实现中发现 DESIGN 有误：先改 DESIGN 再改代码（同提交），禁止口头漂移；
 - worker/admin-api/client-api 三处 SMTP 改造若出现行为分歧，以 DESIGN §5 D7
   语义表为准裁决。
+
+## Phase 10 —— code review 修复（2026-08-25 第二轮，5 代理审查 + 红测驱动）
+
+- [x] control-plane：双读窗非轮换写入保留（A-1）/ invalidate 代次竞态 + admin-api
+      写路径接线（A-2/D-M4）/ 不可解密密文原样回写不二次加密 + 回显全遮（A-3/R5）/
+      导入逐行原子 insertIfAbsent + 逐键审计（A-4/E-1）/ 空白串与 enc: 变体拒收
+      （R3/R4）/ URL 内网字面量拒绝 + smtp host 形状校验（H1/H3 收窄）/
+      解密失败 onError 观测（M3）/ secretsSet 口径（M8）/ 出网点变更审计高亮
+      `outboundEndpointChanged`（H1/H2）；
+- [x] billing：验签空序列构造期拒绝（C-1）；
+- [x] identity：validateOauthCreds 收窄为凭据形状校验（词表拦截归 guard——C 死代码）；
+- [x] client-api：captchaSiteKey 按 effective（B-1，真源 helper `captchaSiteKeyOf`）/
+      回调路由 refresh 预刷消盲窗（B-2）/ stripe apiBase 透传（B-4/H3）/
+      mailerOverride 的 auto 口径恢复 main 基线（B-3）/ boot 读失败 fail-loud（B-suspect2）/
+      resetLinkBase 用 configured 位（B-风险2）；
+- [x] 权限拆分：迁移 0087 新增 `settings:integrations` 码，PUT 端点改挂——
+      出网点写入与 settings:update 分离（H1/H2 爆炸半径收窄）；
+- [x] docs：deployment-checklist 动态配置口径 / openapi 403 / DESIGN D4/D6/D9 修订回写。

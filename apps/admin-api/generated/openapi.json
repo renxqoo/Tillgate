@@ -29225,7 +29225,7 @@
         "tags": [
           "settings"
         ],
-        "summary": "集成设置写（字段三态：缺席=保持 / null=清除 / 值=设置；enabled=true 需必填齐全；支付验签密钥轮换自动入双读窗）",
+        "summary": "集成设置写（settings:integrations 权限——0087 拆分；字段三态：缺席=保持 / null=清除 / 值=设置；enabled=true 需必填齐全；支付验签密钥轮换自动入双读窗）",
         "parameters": [
           {
             "name": "key",
@@ -29276,7 +29276,7 @@
         },
         "responses": {
           "200": {
-            "description": "集成设置写（字段三态：缺席=保持 / null=清除 / 值=设置；enabled=true 需必填齐全；支付验签密钥轮换自动入双读窗） 成功响应",
+            "description": "集成设置写（settings:integrations 权限——0087 拆分；字段三态：缺席=保持 / null=清除 / 值=设置；enabled=true 需必填齐全；支付验签密钥轮换自动入双读窗） 成功响应",
             "content": {
               "application/json": {
                 "schema": {

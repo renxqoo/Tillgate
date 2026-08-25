@@ -30,8 +30,8 @@ import type { PermissionNode, RoleRecord } from '../src/ports/rbac-store';
 
 describe('enforced 注册表封闭性（DESIGN §2 = 41 码）', () => {
   it('全量清单逐一列出,无重复,域前缀合法', () => {
-    expect([...ENFORCED_CODES]).toHaveLength(41);
-    expect(new Set(ENFORCED_CODES).size).toBe(41);
+    expect([...ENFORCED_CODES]).toHaveLength(42);
+    expect(new Set(ENFORCED_CODES).size).toBe(42);
     for (const code of ENFORCED_CODES) {
       const domain = defined(code.split(':')[0]);
       expect(PERMISSION_DOMAINS).toContain(domain);
@@ -56,8 +56,20 @@ describe('enforced 注册表封闭性（DESIGN §2 = 41 码）', () => {
       ),
       'utf8',
     );
+    // 0087 追加种子（集成写权限拆分）并入对账面——双源 = 注册表 ↔ 全部权限种子迁移
+    const sql87 = readFileSync(
+      join(
+        import.meta.dirname,
+        '..',
+        '..',
+        'db',
+        'migrations',
+        '0087_settings_integrations_permission.sql',
+      ),
+      'utf8',
+    );
     const seeded = new Set(
-      [...sql.matchAll(/'([a-z]+:[a-z-]+)'/g)].map((match) => defined(match[1])),
+      [...(sql + sql87).matchAll(/'([a-z]+:[a-z-]+)'/g)].map((match) => defined(match[1])),
     );
     for (const code of ENFORCED_CODES) {
       expect(seeded.has(code), `seed missing: ${code}`).toBe(true);

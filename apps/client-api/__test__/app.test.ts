@@ -566,6 +566,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
         Promise.resolve([{ codeId: 1, batchName: 'b', amount: '5', usedAt: new Date() }]),
     },
     payments: {
+      refreshIntegrationSnapshot: async () => {},
       payments: {
         createTopupOrder: () =>
           Promise.resolve({

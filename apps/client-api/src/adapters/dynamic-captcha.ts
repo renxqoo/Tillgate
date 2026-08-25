@@ -4,12 +4,18 @@
  * 到达本适配器的「已关闭」只可能是闸门后的竞态，fail-closed 方向安全）。
  */
 import type { IntegrationSettingsReader } from '@tillgate/control-plane';
+import type { CaptchaConfig, ResolvedIntegration } from '@tillgate/control-plane';
 import type { Captcha } from '@tillgate/identity';
 
 import { createTurnstileCaptcha } from './turnstile-captcha.js';
 
 /** siteverify 官方端点（原 env CAPTCHA_VERIFY_URL 缺省迁此——单一真相） */
 const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+
+/** capabilities 的 captchaSiteKey 真源（DESIGN §4.2：effective 才下发——review 修复 B-1） */
+export function captchaSiteKeyOf(captcha: ResolvedIntegration<CaptchaConfig>): string | null {
+  return captcha.effective ? (captcha.config?.siteKey ?? null) : null;
+}
 
 export function createDynamicCaptcha(args: {
   readonly reader: IntegrationSettingsReader;

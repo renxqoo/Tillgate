@@ -33,4 +33,6 @@ export interface IntegrationSettingsStore {
   readAll(db: DbLike): Promise<IntegrationSettingsRow[]>;
   /** 整行 upsert（主键 key） */
   upsert(db: DbLike, row: IntegrationSettingsUpsert): Promise<void>;
+  /** 仅插入（行已存在 = 无操作；返回是否真正插入——导入 insert-if-absent 的原子形态） */
+  insertIfAbsent(db: DbLike, row: IntegrationSettingsUpsert): Promise<boolean>;
 }

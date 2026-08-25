@@ -7,7 +7,7 @@
  *   forgot/reset {token, password} → GETDEL 原子消费令牌(单次,重放即失效)→
  *   密码策略 → passwords.reset(免旧密,推进 user realm 吊销线 = 全网旧会话即刻
  *   下线)→ 不自动登录(用户持链接来自邮箱,设完走登录页)。
- * 配置前置:SMTP 与控制台基地址(OAUTH_FRONTEND_URL)缺一即 503 fail-closed
+ * 配置前置:SMTP(smtp 集成行)与控制台基地址(oauth.base.frontendUrl)缺一即 503 fail-closed
  * ——发不出链接的功能绝不静默降级。
  */
 import { Hono } from 'hono';

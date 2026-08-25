@@ -120,20 +120,14 @@ export interface IntegrationImportReport {
   readonly skippedExisting: readonly IntegrationKey[];
 }
 
-/** 应用：insert-if-absent（幂等），secret 加密落库，导入留 best-effort 审计 */
+/** 应用：insert-if-absent（逐行原子——review 修复 A-4），secret 加密落库，逐键审计 */
 export async function applyIntegrationImport(
   deps: ApplyIntegrationImportDeps,
   plan: IntegrationImportPlan,
 ): Promise<IntegrationImportReport> {
-  const rows = await deps.stores.integrationSettings.readAll(deps.db);
-  const existing = new Set(rows.map((row) => row.key));
   const imported: IntegrationKey[] = [];
   const skippedExisting: IntegrationKey[] = [];
   for (const row of plan.imports) {
-    if (existing.has(row.key)) {
-      skippedExisting.push(row.key);
-      continue;
-    }
     const spec = specOf(row.key);
     const config: Record<string, string> = {};
     for (const field of spec.fields) {
@@ -141,7 +135,8 @@ export async function applyIntegrationImport(
       if (value == null) continue;
       config[field.name] = field.secret ? deps.cipher.encrypt(value) : value;
     }
-    await deps.stores.integrationSettings.upsert(deps.db, {
+    // 逐行原子判存插入（readAll 快照只作报告，不再作唯一判据——间隙并发写不被覆盖）
+    const inserted = await deps.stores.integrationSettings.insertIfAbsent(deps.db, {
       key: row.key,
       enabled: true,
       config,
@@ -149,15 +144,20 @@ export async function applyIntegrationImport(
       rotatedAt: null,
       adminId: null,
     });
-    imported.push(row.key);
+    if (inserted) {
+      imported.push(row.key);
+    } else {
+      skippedExisting.push(row.key);
+    }
   }
-  if (imported.length > 0) {
+  // 逐键一条审计事件（review 修复 E-1：targetId ≤ audit_logs.target_id varchar(64)）
+  for (const key of imported) {
     await emitAudit(deps.audit ?? neverAudit, {
       actor: 'system',
       action: 'settings.integrations.import',
       targetType: 'integration_setting',
-      targetId: imported.join(','),
-      detail: { imported },
+      targetId: key,
+      detail: { imported: [key] },
     });
   }
   return { imported, skippedExisting };

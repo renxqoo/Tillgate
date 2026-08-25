@@ -679,3 +679,59 @@ describe('多渠道装配', () => {
     expect(order.payUrl).toContain('https://pay/');
   });
 });
+
+describe('review 修复规格：验签密钥序列防御（C-1）', () => {
+  it('verifyKeys: []（显式空序列）构造期拒绝——不得静默关死回调面', async () => {
+    const { createEpayProvider } = await import('../src/adapters/payments/providers.js');
+    expect(() =>
+      createEpayProvider({
+        pid: '1001',
+        key: 'key',
+        gatewayUrl: 'https://epay.example/submit.php',
+        notifyUrl: 'https://app.example/notify',
+        returnUrl: 'https://app.example/return',
+        payType: 'alipay',
+        verifyKeys: [],
+      }),
+    ).toThrow(/verifyKeys must not be empty/);
+  });
+
+  it('webhookSecrets: []（显式空序列）构造期拒绝', async () => {
+    const { createStripeProvider } = await import('../src/adapters/payments/providers.js');
+    expect(() =>
+      createStripeProvider({
+        secretKey: 'sk',
+        webhookSecret: 'whsec',
+        webhookSecrets: [],
+        successUrl: 'https://app.example/ok',
+        cancelUrl: 'https://app.example/no',
+        currency: 'CNY',
+      }),
+    ).toThrow(/webhookSecrets must not be empty/);
+  });
+
+  it('旧 key 验签通过后 pid 闸仍在（跨商户回调拒绝）', async () => {
+    const { createEpayProvider } = await import('../src/adapters/payments/providers.js');
+    const { epaySign: signWith } = await import('../src/domain/payment/epay.js');
+    const notify: Record<string, string> = {
+      pid: 'OTHER-PID',
+      trade_no: 'tn',
+      out_trade_no: 'o-x',
+      type: 'alipay',
+      money: '10.00',
+      trade_status: 'TRADE_SUCCESS',
+    };
+    notify.sign = signWith(notify, 'shared-secret');
+    notify.sign_type = 'MD5';
+    const provider = createEpayProvider({
+      pid: '1001',
+      key: 'new-secret',
+      gatewayUrl: 'https://epay.example/submit.php',
+      notifyUrl: 'https://app.example/notify',
+      returnUrl: 'https://app.example/return',
+      payType: 'alipay',
+      verifyKeys: ['new-secret', 'shared-secret'],
+    });
+    expect(provider.parseNotify(notify)).toBeNull(); // 验签过但 pid 不符 → 拒收
+  });
+});

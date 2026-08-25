@@ -43,7 +43,7 @@ export const settingsEndpoints = [
     tag: 'settings',
     summary: '计费时区读（null = 未配置，消费方回落缺省 Asia/Shanghai）',
     response: { schema: billingTimezoneReadSchema },
-    errors: [401],
+    errors: [401, 403],
   },
   {
     method: 'put',
@@ -52,7 +52,7 @@ export const settingsEndpoints = [
     summary: '计费时区写（IANA 名；生效节奏 = 网关缓存 TTL，历史账单自带时段标签不受影响）',
     body: settingsContracts.billingTimezoneUpdate,
     response: { schema: billingTimezoneSchema },
-    errors: [400, 401],
+    errors: [400, 401, 403],
   },
   {
     method: 'get',
@@ -62,17 +62,17 @@ export const settingsEndpoints = [
     response: {
       schema: z.object({ integrations: z.array(integrationItemSchema) }),
     },
-    errors: [401],
+    errors: [401, 403],
   },
   {
     method: 'put',
     path: '/v1/settings/integrations/:key',
     tag: 'settings',
     summary:
-      '集成设置写（字段三态：缺席=保持 / null=清除 / 值=设置；enabled=true 需必填齐全；支付验签密钥轮换自动入双读窗）',
+      '集成设置写（settings:integrations 权限——0087 拆分；字段三态：缺席=保持 / null=清除 / 值=设置；enabled=true 需必填齐全；支付验签密钥轮换自动入双读窗）',
     params: [keyPathParam],
     body: settingsContracts.integrationsUpdate,
     response: { schema: integrationItemSchema },
-    errors: [400, 401, 404],
+    errors: [400, 401, 403, 404],
   },
 ] as const;

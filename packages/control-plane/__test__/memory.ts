@@ -1322,6 +1322,11 @@ export function createMemoryIntegrationSettingsStore(
         updatedAt: new Date(),
       });
     },
+    async insertIfAbsent(_db, input) {
+      if (rows.has(input.key)) return false;
+      await this.upsert(_db, input);
+      return true;
+    },
   };
   const snapshot = (): (() => void) => {
     const copy = new Map(

@@ -358,7 +358,8 @@ export async function bootHarness(options: {
       await assembly.redis.quit().catch(() => {});
       await assembly.otel.shutdown().catch(() => {});
       const { closeDb } = await import('@tillgate/db');
-      await closeDb(assembly.db);
+      // 装置缺陷修复（review E）：closeDb 失败不跳过集成行还原
+      await closeDb(assembly.db).catch(() => {});
       // 共库纪律：还原种前快照（开发库导入值不被随机端口污染）
       await restoreIntegrations();
     },

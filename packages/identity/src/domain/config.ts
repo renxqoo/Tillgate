@@ -194,22 +194,17 @@ function validateRedirectAllowlist(uris: readonly string[]): void {
   }
 }
 
-/** OAuth 凭据快照校验(解析期调用:词表外的 provider 键拒绝,凭据非空) */
-export function validateOauthCreds(
-  oauth: Readonly<Record<string, OAuthProviderCredentials>>,
-  providers: readonly string[],
-): void {
-  const providerSet = new Set(providers);
-  for (const [provider, creds] of Object.entries(oauth)) {
-    if (!providerSet.has(provider)) {
-      badConfig('oauth', `provider '${provider}' is not declared in providers`);
-    }
-    if (typeof creds?.clientId !== 'string' || creds.clientId.length === 0) {
-      badConfig(`oauth.${provider}.clientId`, 'must be a non-empty string');
-    }
-    if (typeof creds.clientSecret !== 'string' || creds.clientSecret.length === 0) {
-      badConfig(`oauth.${provider}.clientSecret`, 'must be a non-empty string');
-    }
+/**
+ * OAuth 凭据形状校验（解析期按被请求的键调用）。词表拦截在上游 guardProvider
+ * （词表外 provider 抛 unknown_provider）——本函数只回答「凭据本身可用吗」，
+ * 不再持有词表分支（review 修复 C：消除结构性不可达的死代码）。
+ */
+export function validateOauthCreds(creds: OAuthProviderCredentials, provider: string): void {
+  if (typeof creds?.clientId !== 'string' || creds.clientId.length === 0) {
+    badConfig(`oauth.${provider}.clientId`, 'must be a non-empty string');
+  }
+  if (typeof creds.clientSecret !== 'string' || creds.clientSecret.length === 0) {
+    badConfig(`oauth.${provider}.clientSecret`, 'must be a non-empty string');
   }
 }
 

@@ -64,7 +64,7 @@ function itemOf(
     configured: isConfigComplete(spec, config),
     config: masked,
     secretsSet: spec.fields
-      .filter((f) => f.secret && typeof config[f.name] === 'string')
+      .filter((f) => f.secret && typeof config[f.name] === 'string' && config[f.name] !== '')
       .map((f) => f.name),
     rotatedAt: row?.rotatedAt != null ? row.rotatedAt.toISOString() : null,
     updatedAt: row != null && row.updatedAt.getTime() > 0 ? row.updatedAt.toISOString() : null,

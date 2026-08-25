@@ -102,7 +102,10 @@ export function createIdentityStack(args: {
   const emailCodeRequired = (): boolean => {
     if (config.EMAIL_CODE_REQUIRED === 'on') return true;
     if (config.EMAIL_CODE_REQUIRED === 'off') return false;
-    return reader.latest().smtp.effective; // auto：SMTP 生效即强制两级登录（v1 口径）
+    // auto（v1 口径逐字对应——review 修复 B-3）：覆盖缝注入时以 mailer 在场为准
+    // （main 基线 emailCodeRequired = mailer != null），缺省读快照 SMTP 生效
+    if (args.mailerOverride !== undefined) return args.mailerOverride != null;
+    return reader.latest().smtp.effective;
   };
 
   const captcha = createDynamicCaptcha({ reader });

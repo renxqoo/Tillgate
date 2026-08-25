@@ -113,6 +113,7 @@ function dynamicStripeProvider(
         successUrl: cfg.successUrl,
         cancelUrl: cfg.cancelUrl,
         currency,
+        ...(cfg.apiBase != null ? { apiBase: cfg.apiBase } : {}),
       }).createOrder(input);
     },
     parseNotify(raw) {
@@ -125,6 +126,7 @@ function dynamicStripeProvider(
         successUrl: cfg.successUrl,
         cancelUrl: cfg.cancelUrl,
         currency,
+        ...(cfg.apiBase != null ? { apiBase: cfg.apiBase } : {}),
       }).parseNotify(raw);
     },
   };

@@ -122,7 +122,7 @@ describe('applyIntegrationImport（幂等 + 密文 + 审计）', () => {
     expect(smtp?.config['pass']).toBe('CIPHER<<mail-pass>>');
     expect(smtp?.config['host']).toBe('smtp.example.com');
     const events = audit.entries.filter((e) => e.action === 'settings.integrations.import');
-    expect(events).toHaveLength(1);
+    expect(events.length).toBe(report.imported.length); // 逐键一条（review 修复 E-1）
     expect(events[0]?.actor).toBe('system');
   });
 
@@ -142,5 +142,86 @@ describe('applyIntegrationImport（幂等 + 密文 + 审计）', () => {
     expect(report.skippedExisting).toContain('smtp');
     expect(memory.rows.get('smtp')?.config['host']).toBe('admin-changed.example.com');
     expect(memory.rows.get('smtp')?.enabled).toBe(false);
+  });
+});
+
+describe('review 修复规格：导入原子性与审计', () => {
+  it('readAll 之后、写入之前出现的 admin 行不被覆盖（insertIfAbsent 逐行原子）', async () => {
+    const memory = createMemoryIntegrationSettingsStore();
+    // 门闸：首次 insertIfAbsent 执行前先注入 admin 已改行（模拟 readAll→upsert 间隙的并发写）
+    let injected = false;
+    const store = {
+      async readAll(db: Parameters<typeof memory.store.readAll>[0]) {
+        return memory.store.readAll(db);
+      },
+      async upsert(
+        db: Parameters<typeof memory.store.upsert>[0],
+        input: Parameters<typeof memory.store.upsert>[1],
+      ) {
+        if (!injected) {
+          injected = true;
+          await memory.store.upsert(db, {
+            key: 'smtp',
+            enabled: false,
+            config: { host: 'admin-smtp.example.com', user: 'admin', pass: 'CIPHER<<admin-pass>>' },
+            previousSecrets: null,
+            rotatedAt: null,
+            adminId: 9,
+          });
+        }
+        return memory.store.upsert(db, input);
+      },
+      async insertIfAbsent(
+        db: Parameters<typeof memory.store.upsert>[0],
+        input: Parameters<typeof memory.store.upsert>[1],
+      ) {
+        if (!injected) {
+          injected = true;
+          await memory.store.upsert(db, {
+            key: 'smtp',
+            enabled: false,
+            config: { host: 'admin-smtp.example.com', user: 'admin', pass: 'CIPHER<<admin-pass>>' },
+            previousSecrets: null,
+            rotatedAt: null,
+            adminId: 9,
+          });
+        }
+        const existing = (await memory.store.readAll(db)).find((r) => r.key === input.key);
+        if (existing != null) return false;
+        await memory.store.upsert(db, input);
+        return true;
+      },
+    };
+    const deps = {
+      db: createMemoryDb(),
+      stores: { integrationSettings: store },
+      cipher,
+      now: () => new Date('2026-08-25T00:00:00Z'),
+    };
+    const report = await applyIntegrationImport(deps, planIntegrationImport(FULL_ENV));
+    // admin 行未被覆盖；report 只把真正插入的键记为 imported
+    expect(memory.rows.get('smtp')?.config['host']).toBe('admin-smtp.example.com');
+    expect(report.imported).not.toContain('smtp');
+    expect(report.skippedExisting).toContain('smtp');
+  });
+
+  it('审计逐键一条：targetId ≤ 64（audit_logs 列宽）', async () => {
+    const memory = createMemoryIntegrationSettingsStore();
+    const audit = createMemoryAudit();
+    const deps = {
+      db: createMemoryDb(),
+      stores: { integrationSettings: memory.store },
+      cipher,
+      audit: audit.sink,
+      now: () => new Date('2026-08-25T00:00:00Z'),
+    };
+    const plan = planIntegrationImport(FULL_ENV);
+    await applyIntegrationImport(deps, plan);
+    const events = audit.entries.filter((e) => e.action === 'settings.integrations.import');
+    expect(events.length).toBe(plan.imports.length);
+    for (const event of events) {
+      expect(String(event.targetId).length).toBeLessThanOrEqual(64);
+    }
+    expect(new Set(events.map((e) => e.targetId))).toEqual(new Set(plan.imports.map((i) => i.key)));
   });
 });

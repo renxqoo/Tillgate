@@ -54,4 +54,21 @@ export const postgresIntegrationSettingsStore: IntegrationSettingsStore = {
         },
       });
   },
+
+  async insertIfAbsent(db, input) {
+    const inserted = await db
+      .insert(integrationSettings)
+      .values({
+        key: input.key,
+        enabled: input.enabled,
+        config: input.config,
+        previousSecrets: input.previousSecrets,
+        rotatedAt: input.rotatedAt,
+        updatedByAdminId: input.adminId,
+        updatedAt: new Date(),
+      })
+      .onConflictDoNothing({ target: integrationSettings.key })
+      .returning({ key: integrationSettings.key });
+    return inserted.length > 0;
+  },
 };

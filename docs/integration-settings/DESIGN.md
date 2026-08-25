@@ -254,6 +254,10 @@ admin-api（写入方）以 `ENCRYPTION_KEY` 加密；client-api 以 `ENCRYPTION
 - 缓存预算：TTL 60s（domain 常量单一来源；与网关 billing-timezone 缓存同量级）；
   过期后下一次 resolve 重读；**读失败 fail-loud**（与 pricing-read 时区读同口径：
   DB 故障时登录/充值路径本就不可用，不静默降级到旧凭据）；
+- 缓存代次（review 修复 A-2）：admin-api 写路径完成后调用 `invalidate()`（递增代次），
+  在飞读完成时若代次已变则结果不进缓存——「写后本进程立即可见」不被写前发起的读破坏；
+- 观测出口（review 修复 M3）：secret 解密失败（双键不等/密文损坏）按 `<key>.<field>`
+  经 onError 上报告警，不再静默 degrade；
 - 一致性预算：写后本进程立即可见（admin-api 写路径用例完成即失效本地缓存——
   仅对同进程读者有意义），跨进程最迟 60s 收敛。对各消费面的余量验证：
   OAuth state TTL 600s ≫ 60s（轮换期间在途 state 过期自然终止，用户重试即新凭据）；
@@ -281,11 +285,14 @@ admin-api（写入方）以 `ENCRYPTION_KEY` 加密；client-api 以 `ENCRYPTION
    `payment.stripe.webhookSecret` 变更时，旧值移入 `previous_secrets` 并记录
    `rotated_at`；验签次序 = 先新后旧，旧值仅在窗口内参与。窗口
    `PAYMENT_SECRET_ROTATION_WINDOW_MS = 96h`（domain 常量；Stripe 官方重试期
-   3 天 + 余量；epay 同窗）。**退出条件 = 时间到期**（reader 过期后自然丢弃，
-   无需人工清理；窗口外旧签名事件由 billing 对账哨兵兜底——既有机制）。
+   3 天 + 余量；epay 同窗）。**退出条件 = 时间到期**（review 修复 A-1：非轮换
+   写入——改 URL/启停/no-op——不得清窗；已过期窗口随下一次写入清空=存储自愈）。
+   **多代语义（显式接受）**：窗口只追踪最近一次轮换，连续两次轮换覆盖上一代——
+   96h 内轮换两次属异常操作，残余旧签名由 billing 对账哨兵兜底。
    billing 包的 provider 工厂扩展可选参数 `verifyKeys?: readonly string[]`
    （epay）/`webhookSecrets?: readonly string[]`（stripe），缺省单键——向后
-   兼容的参数扩展，非双轨；
+   兼容的参数扩展，非双轨；**显式空序列在工厂构造期拒绝**（review 修复 C-1：
+   空序列 = 静默关死回调面的脚枪）；
 3. epay `key` 同时用于**下单签名**（新 key）与**回调验签**（新+旧窗口内）——
    双读窗只作用于验签侧。
 
@@ -324,10 +331,11 @@ mailer 不改 identity 契约：client-api 注入**动态 Mailer 包装**（实�
 epay/stripe 的 `notifyUrl/returnUrl/successUrl/cancelUrl` 是集成配置字段，随各自
 集成行动态消费（无白名单契约约束）。
 
-消费侧读法细分（D4 补充）：**同步/UX 面**（identity getter、capabilities、
-providers 列表）读最近快照（stale-OK + 后台过期刷新，同步契约不抛）；**发送与
-资金面**（邮件发送、支付下单/验签）走 `resolve()` 严格读（fail-loud）——UX 提示
-面允许陈旧，资金面不允许。
+消费侧读法细分（D4 补充 + review 修复 B-2 修订）：**同步/UX 面**（identity
+getter、capabilities、providers 列表）读最近快照（stale-OK + 后台过期刷新，
+同步契约不抛）；**发送面**（邮件）走 `resolve()` 严格读（fail-loud）；**支付
+验签面**受 `parseNotify` 同步端口所迫读 latest——由回调路由在 `handleNotify`
+前调用 `reader.refresh()`（强制重读）预刷缓存，轮换后新签回调零盲窗。
 
 ### D10 端点覆盖不上管理端（安全收窄）
 

@@ -9,7 +9,7 @@ import { INTEGRATION_FIELD_MAX_LENGTH } from './keys';
 import type { IntegrationKey } from './keys';
 
 /** 字段值形状（校验器选择） */
-export type IntegrationFieldKind = 'text' | 'url' | 'port' | 'payType';
+export type IntegrationFieldKind = 'text' | 'url' | 'host' | 'port' | 'payType';
 
 export interface IntegrationFieldSpec {
   readonly name: string;
@@ -49,6 +49,7 @@ const field = (
 });
 
 const text = (name: string, flags: FieldFlags): IntegrationFieldSpec => field(name, 'text', flags);
+const host = (name: string, flags: FieldFlags): IntegrationFieldSpec => field(name, 'host', flags);
 const url = (name: string, flags: FieldFlags): IntegrationFieldSpec => field(name, 'url', flags);
 const port = (name: string): IntegrationFieldSpec => field(name, 'port', { required: false });
 const payType = (name: string): IntegrationFieldSpec => field(name, 'payType', { required: false });
@@ -67,7 +68,7 @@ export const INTEGRATION_SPECS: Readonly<Record<IntegrationKey, IntegrationSpec>
     text('clientSecret', { required: true, secret: true }),
   ]),
   smtp: spec('smtp', [
-    text('host', { required: true }),
+    host('host', { required: true }),
     port('port'),
     text('user', { required: true }),
     text('pass', { required: true, secret: true }),
@@ -99,14 +100,17 @@ export function specOf(key: IntegrationKey): IntegrationSpec {
   return INTEGRATION_SPECS[key];
 }
 
-/** 字段形状校验（纯函数；长度上限对所有 kind 生效） */
+/** 字段形状校验（纯函数；长度上限与空白串拒绝对所有 kind 生效） */
 export function isValidFieldValue(kind: IntegrationFieldKind, value: string): boolean {
   if (value.length === 0 || value.length > INTEGRATION_FIELD_MAX_LENGTH) return false;
+  if (value.trim().length === 0) return false; // 空白串 = 无效值（review 修复：R3）
   switch (kind) {
     case 'text':
       return true;
     case 'url':
       return isValidHttpUrl(value);
+    case 'host':
+      return isValidSmtpHost(value);
     case 'port':
       return isValidPort(value);
     case 'payType':
@@ -117,10 +121,34 @@ export function isValidFieldValue(kind: IntegrationFieldKind, value: string): bo
 function isValidHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    // SSRF 探测面收窄（review 修复 H1/H3）：拒绝回环/私网/链路本地字面量
+    // （e2e/私有化经 store 直种绕过本层；DNS 级 rebinding 不在本层范围——DESIGN §6 修订）
+    return !isPrivateNetworkHost(parsed.hostname);
   } catch {
     return false;
   }
+}
+
+/** SMTP 主机形状：裸主机名/IP（允许私网内网中继——合法形态），拒绝 scheme/路径 */
+function isValidSmtpHost(value: string): boolean {
+  if (value.includes('://') || value.includes('/')) return false;
+  if (value !== value.trim()) return false;
+  return /^[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function isPrivateNetworkHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (normalized === 'localhost' || normalized === '::1' || normalized === '0.0.0.0') return true;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(normalized);
+  if (v4 != null) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    if (a === 127 || a === 10 || a === 0) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 169 && b === 254) return true;
+  }
+  return false;
 }
 
 function isValidPort(value: string): boolean {

@@ -35,31 +35,20 @@ export function createEpayProvider(config: {
       `epay pay type not supported: ${config.payType} (allowed: ${EPAY_PAY_TYPES.join('/')})`,
     );
   }
+  if (config.verifyKeys != null && config.verifyKeys.length === 0) {
+    // 空验签序列 = 静默关死回调面——fail-loud（review 修复 C-1）
+    throw new Error('epay verifyKeys must not be empty');
+  }
   return {
     name: 'epay',
     accepting: () => true,
     async createOrder(input) {
-      const params: Record<string, string> = {
-        pid: config.pid,
-        type: config.payType,
-        out_trade_no: input.orderId,
-        notify_url: config.notifyUrl,
-        return_url: config.returnUrl,
-        name: input.subject,
-        money: input.amount,
-        timestamp: String(Math.floor((config.clock ?? Date.now)() / 1000)),
-      };
-      params.sign = epaySign(params, config.key);
-      params.sign_type = 'MD5';
-      const query = Object.entries(params)
-        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-        .join('&');
+      const query = epaySignedQuery(config, input);
       // 易支付无预下单 API：商户订单号即 providerOrderId（渠道回调 trade_no 忽略）
       return { providerOrderId: input.orderId, payUrl: `${config.gatewayUrl}?${query}` };
     },
     parseNotify(query) {
-      const verifyKeys = config.verifyKeys ?? [config.key];
-      if (!verifyKeys.some((secret) => epayVerify(query, secret))) return null;
+      if (!verifyEpaySigned(query, config)) return null;
       if (query.pid !== config.pid) return null;
       const payload = parseEpayNotify(query);
       if (!payload || payload.tradeStatus !== 'TRADE_SUCCESS') return null;
@@ -86,6 +75,10 @@ export interface StripeProviderConfig {
 
 /** Stripe 渠道适配（Checkout Session 创建 + webhook 验签规则在 domain/payment/stripe） */
 export function createStripeProvider(config: StripeProviderConfig): PaymentProviderPort {
+  // 空验签序列 = 静默关死 webhook 面（review 修复 C-1）——fail-loud 拒绝构造
+  if (config.webhookSecrets != null && config.webhookSecrets.length === 0) {
+    throw new Error('stripe webhookSecrets must not be empty');
+  }
   const doFetch = config.fetchImpl ?? fetch;
   const nowMs = config.clock ?? (() => Date.now());
   const apiBase = config.apiBase ?? 'https://api.stripe.com';
@@ -145,4 +138,42 @@ function stripeParseNotify(
     merchantOrderId: event.orderId,
     paidAmount: event.paidAmount,
   };
+}
+
+/** epay 回调验签（密钥序列先新后旧——双读窗；空序列已构造期拒绝） */
+function verifyEpaySigned(
+  query: Record<string, string>,
+  config: { key: string; verifyKeys?: readonly string[] },
+): boolean {
+  const verifyKeys = config.verifyKeys ?? [config.key];
+  return verifyKeys.some((secret) => epayVerify(query, secret));
+}
+
+/** epay 下单签名参数串（键序 MD5——domain 纯规则；下单签名恒用当前 key） */
+function epaySignedQuery(
+  config: {
+    pid: string;
+    key: string;
+    payType: string;
+    notifyUrl: string;
+    returnUrl: string;
+    clock?: () => number;
+  },
+  input: { orderId: string; amount: string; subject: string },
+): string {
+  const params: Record<string, string> = {
+    pid: config.pid,
+    type: config.payType,
+    out_trade_no: input.orderId,
+    notify_url: config.notifyUrl,
+    return_url: config.returnUrl,
+    name: input.subject,
+    money: input.amount,
+    timestamp: String(Math.floor((config.clock ?? Date.now)() / 1000)),
+  };
+  params.sign = epaySign(params, config.key);
+  params.sign_type = 'MD5';
+  return Object.entries(params)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
 }

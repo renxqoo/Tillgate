@@ -74,7 +74,7 @@ function createSchema(production: boolean) {
     PAYMENT_ORDER_TTL_MS: z.coerce.number().int().positive().default(1_800_000),
     /** 易支付五件套全配才启用该渠道；PAY_TYPE 从词表校验（不写死 alipay） */
     // 支付渠道凭据（EPAY/STRIPE）已迁 integration_settings（动态配置——DESIGN §7.3）
-    /** 邮箱验证码两级登录：auto = SMTP 已配置即强制 / on 强制 / off 关闭（单密码） */
+    /** 邮箱验证码两级登录：auto = smtp 集成行生效即强制 / on 强制 / off 关闭（单密码） */
     EMAIL_CODE_REQUIRED: z.enum(['auto', 'on', 'off']).default('auto'),
     // SMTP/CAPTCHA/OAuth 凭据与基地址已迁入 integration_settings（动态配置——
     // docs/integration-settings/DESIGN.md §7.3；本 schema 只留端点覆盖与 TTL）

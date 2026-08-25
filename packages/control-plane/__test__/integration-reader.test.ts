@@ -180,6 +180,7 @@ describe('reader（TTL 缓存 + 单飞 + 失效 + fail-loud）', () => {
         return memory.store.readAll(db);
       },
       upsert: memory.store.upsert.bind(memory.store),
+      insertIfAbsent: memory.store.insertIfAbsent.bind(memory.store),
     };
     let nowMs = 0;
     const reader = createIntegrationSettingsReader({
@@ -263,6 +264,7 @@ describe('reader（TTL 缓存 + 单飞 + 失效 + fail-loud）', () => {
         return memory.store.readAll(db);
       },
       upsert: memory.store.upsert.bind(memory.store),
+      insertIfAbsent: memory.store.insertIfAbsent.bind(memory.store),
     };
     let nowMs = 0;
     const reader = createIntegrationSettingsReader({
@@ -281,3 +283,118 @@ describe('reader（TTL 缓存 + 单飞 + 失效 + fail-loud）', () => {
     expect(reads).toBe(1); // 失败读不计数；快照保持旧值
   });
 });
+
+describe('review 修复规格：invalidate 竞态与观测出口', () => {
+  it('invalidate 后 resolve() 不得复用写前发起的读；旧读完成不得滞留缓存', async () => {
+    const gated = createGatedStore([row('oauth.base', { config: BASE_FULL })]);
+    let nowMs = 0;
+    const reader = createIntegrationSettingsReader({
+      db: createMemoryDb(),
+      stores: { integrationSettings: gated.store },
+      cipher,
+      now: () => nowMs,
+    });
+    // t0：首个严格读挂起（快照固定为 enabled=true）
+    const first = reader.resolve();
+    // 写路径提交 + 用例完成即失效（DESIGN §5 D4 机制）
+    await gated.memory.store.upsert(createMemoryDb(), {
+      key: 'oauth.base',
+      enabled: false,
+      config: BASE_FULL,
+      previousSecrets: null,
+      rotatedAt: null,
+      adminId: 1,
+    });
+    reader.invalidate();
+    // 写后读：期望新值
+    const second = reader.resolve();
+    gated.flush();
+    await first;
+    const afterWrite = await second;
+    expect(afterWrite.oauth.base.enabled).toBe(false);
+    // 旧读完成不得把 cachedAt 刷成完成时刻 → TTL 内第三次读仍应命中新快照
+    nowMs += 1_000;
+    const third = await reader.resolve();
+    expect(third.oauth.base.enabled).toBe(false);
+  });
+
+  it('解密失败的存量密文经 onError 观测出口上报（不再静默 degrade）', async () => {
+    const errors: string[] = [];
+    const memory = createMemoryIntegrationSettingsStore([
+      row('smtp', {
+        config: {
+          host: 'smtp.example.com',
+          user: 'ops',
+          pass: 'CORRUPT<<not-decryptable>>',
+        },
+      }),
+    ]);
+    const reader = createIntegrationSettingsReader({
+      db: createMemoryDb(),
+      stores: { integrationSettings: memory.store },
+      cipher,
+      onError: (error) => errors.push(String(error)),
+    });
+    const snap = await reader.resolve();
+    expect(snap.smtp.config).toBeNull(); // 单行 fail-safe 保持
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('smtp.pass');
+  });
+
+  it('refresh() 强制绕过 TTL 重读（支付回调路由预刷缓存用——DESIGN D9 修订）', async () => {
+    const memory = createMemoryIntegrationSettingsStore([row('oauth.base', { config: BASE_FULL })]);
+    let reads = 0;
+    const store = {
+      async readAll(db: Parameters<typeof memory.store.readAll>[0]) {
+        reads += 1;
+        return memory.store.readAll(db);
+      },
+      upsert: memory.store.upsert.bind(memory.store),
+      insertIfAbsent: memory.store.insertIfAbsent.bind(memory.store),
+    };
+    const reader = createIntegrationSettingsReader({
+      db: createMemoryDb(),
+      stores: { integrationSettings: store },
+      cipher,
+    });
+    await reader.resolve();
+    expect(reads).toBe(1);
+    // TTL 未到但强制刷新：必须重读
+    const forced = await reader.refresh();
+    expect(reads).toBe(2);
+    expect(forced.oauth.base.effective).toBe(true);
+    // refresh 后 latest() 立即拿到新数据（写侧 upsert + refresh 的盲窗消除）
+    await memory.store.upsert(createMemoryDb(), {
+      key: 'oauth.base',
+      enabled: false,
+      config: BASE_FULL,
+      previousSecrets: null,
+      rotatedAt: null,
+      adminId: null,
+    });
+    await reader.refresh();
+    expect(reader.latest().oauth.base.enabled).toBe(false);
+  });
+});
+
+/** 门闸 store：读挂起，flush 后按发起时刻快照完成 */
+function createGatedStore(seed: IntegrationSettingsRow[]) {
+  const memory = createMemoryIntegrationSettingsStore(seed);
+  const pending: Array<{
+    rows: IntegrationSettingsRow[];
+    release: (rows: IntegrationSettingsRow[]) => void;
+  }> = [];
+  const store = {
+    readAll(): Promise<IntegrationSettingsRow[]> {
+      const rows = [...memory.rows.values()].map((r) => ({ ...r, config: { ...r.config } }));
+      let release!: (rows: IntegrationSettingsRow[]) => void;
+      pending.push({ rows, release: (value) => release(value) });
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    },
+    upsert: memory.store.upsert.bind(memory.store),
+    insertIfAbsent: memory.store.insertIfAbsent.bind(memory.store),
+  };
+  return { store, memory, flush: () => pending.splice(0).forEach((p) => p.release(p.rows)) };
+}

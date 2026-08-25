@@ -13,6 +13,8 @@ import { maskSecret } from '../src/domain/integrations/masking';
 import { isConfigComplete } from '../src/domain/integrations/completeness';
 import type { SecretCipher } from '../src/ports/secret-cipher';
 import { updateIntegration } from '../src/application/integrations/update-integration';
+import { resolveIntegrationSnapshot } from '../src/application/integrations/resolve-snapshot';
+import type { IntegrationSettingsRow } from '../src/ports/integration-settings-store';
 import {
   adminCtx,
   createMemoryAudit,
@@ -298,5 +300,269 @@ describe('updateIntegration（字段三态 + 不变量 + 轮换 + 审计）', ()
       updateIntegration(deps, { ctx: adminCtx(), key: 'smtp', enabled: true, config: SMTP_FULL }),
     ).rejects.toThrow('audit sink down');
     expect(memory.rows.get('smtp')).toBeUndefined();
+  });
+});
+
+// ── review 修复规格（红测移植：A-1/A-3/R3/R4/R5/M8/H1 形状守卫）────────────────────
+
+/** 已轮换的 stripe 行（t0 起窗）——窗口保留规格共用装置 */
+function rotatedStripeRow(): IntegrationSettingsRow {
+  return {
+    key: 'payment.stripe',
+    enabled: true,
+    config: {
+      secretKey: 'CIPHER<<sk-live-aaaa>>',
+      webhookSecret: 'CIPHER<<whsec_new>>',
+      successUrl: 'https://app.example.com/ok',
+      cancelUrl: 'https://app.example.com/no',
+    },
+    previousSecrets: { webhookSecret: 'CIPHER<<whsec_old>>' },
+    rotatedAt: new Date('2026-08-25T00:00:00Z'),
+    updatedByAdminId: 1,
+    updatedAt: new Date('2026-08-25T00:00:00Z'),
+  };
+}
+
+/** 双前缀 cipher 装置：构造互不解密的两把 key（换 key 场景） */
+function prefixCipher(prefix: string): SecretCipher {
+  return {
+    encrypt: (plain) => `${prefix}<<${plain}>>`,
+    decrypt: (packed) => {
+      const match = new RegExp(`^${prefix}<<(.*)>>$`).exec(packed);
+      if (match == null) throw new Error('bad ciphertext');
+      return match[1] ?? '';
+    },
+  };
+}
+
+/** 窗口应保留的期望：previous_secrets 旧密文仍在、rotatedAt 不回退 */
+function expectWindowKept(memory: ReturnType<typeof createMemoryIntegrationSettingsStore>): void {
+  const row = memory.rows.get('payment.stripe');
+  expect(row?.previousSecrets?.['webhookSecret']).toBe('CIPHER<<whsec_old>>');
+  expect(row?.rotatedAt?.toISOString()).toBe('2026-08-25T00:00:00.000Z');
+}
+
+describe('review 修复规格：双读窗保留（DESIGN §5 D6 退出条件=时间到期）', () => {
+  const windowDeps = (seed: IntegrationSettingsRow[], nowValue: Date) => {
+    const memory = createMemoryIntegrationSettingsStore(seed);
+    const audit = createMemoryAudit();
+    const now = { value: nowValue };
+    return {
+      memory,
+      deps: {
+        db: createMemoryDb(),
+        stores: { integrationSettings: memory.store },
+        cipher,
+        audit: audit.sink,
+        auditTx: audit.txSink,
+        now: () => now.value,
+      } as Parameters<typeof updateIntegration>[0],
+      advance: (next: Date) => {
+        now.value = next;
+      },
+    };
+  };
+
+  it('场景 A：轮换后仅改非 rotatable 字段（successUrl）→ 窗口保留', async () => {
+    const { deps, memory } = windowDeps([rotatedStripeRow()], new Date('2026-08-25T02:00:00Z'));
+    await updateIntegration(deps, {
+      ctx: adminCtx(),
+      key: 'payment.stripe',
+      config: { successUrl: 'https://app.example.com/ok2' },
+    });
+    expectWindowKept(memory);
+  });
+
+  it('场景 B：轮换后停用渠道 → 窗口保留（停用不停验签——验签序列仍 [新, 旧]）', async () => {
+    const { deps, memory } = windowDeps([rotatedStripeRow()], new Date('2026-08-25T02:00:00Z'));
+    await updateIntegration(deps, { ctx: adminCtx(), key: 'payment.stripe', enabled: false });
+    expectWindowKept(memory);
+    const snap = resolveIntegrationSnapshot({
+      cipher,
+      rows: [...memory.rows.values()],
+      nowMs: new Date('2026-08-25T02:00:00Z').getTime(),
+    });
+    expect(snap.payments.stripe.config?.webhookSecrets).toEqual(['whsec_new', 'whsec_old']);
+  });
+
+  it('场景 C：提交与现值相同的 rotatable 值（no-op）→ 窗口保留', async () => {
+    const { deps, memory } = windowDeps([rotatedStripeRow()], new Date('2026-08-25T02:00:00Z'));
+    await updateIntegration(deps, {
+      ctx: adminCtx(),
+      key: 'payment.stripe',
+      config: { webhookSecret: 'whsec_new' },
+    });
+    expectWindowKept(memory);
+  });
+
+  it('窗口到期后的下一次写入清窗（存储自愈——M9）', async () => {
+    const { deps, memory } = windowDeps(
+      [rotatedStripeRow()],
+      new Date('2026-08-29T01:00:00Z'), // t0+97h：窗口已过期
+    );
+    await updateIntegration(deps, {
+      ctx: adminCtx(),
+      key: 'payment.stripe',
+      config: { successUrl: 'https://app.example.com/ok3' },
+    });
+    expect(memory.rows.get('payment.stripe')?.previousSecrets).toBeNull();
+    expect(memory.rows.get('payment.stripe')?.rotatedAt).toBeNull();
+  });
+});
+
+describe('review 修复规格：解密失败的存量密文不得二次加密、不得回显密文片段', () => {
+  const legacyRow = (): IntegrationSettingsRow => ({
+    key: 'smtp',
+    enabled: true,
+    config: {
+      host: 'smtp.example.com',
+      port: '465',
+      user: 'ops@example.com',
+      pass: prefixCipher('OLD').encrypt('secret-pass-9'),
+      from: 'no-reply@example.com',
+    },
+    previousSecrets: null,
+    rotatedAt: null,
+    updatedByAdminId: null,
+    updatedAt: new Date(0),
+  });
+
+  const legacyDeps = (seed: IntegrationSettingsRow[]) => {
+    const memory = createMemoryIntegrationSettingsStore(seed);
+    const audit = createMemoryAudit();
+    return {
+      memory,
+      deps: {
+        db: createMemoryDb(),
+        stores: { integrationSettings: memory.store },
+        cipher: prefixCipher('NEW'),
+        audit: audit.sink,
+        auditTx: audit.txSink,
+        now: () => new Date('2026-08-25T00:00:00Z'),
+      } as Parameters<typeof updateIntegration>[0],
+    };
+  };
+
+  it('更新非 secret 字段：旧 key 密文原样保留（换回旧 key 可恢复），不被二次包装', async () => {
+    const { deps, memory } = legacyDeps([legacyRow()]);
+    await updateIntegration(deps, {
+      ctx: adminCtx(),
+      key: 'smtp',
+      config: { host: 'smtp2.example.com' },
+    });
+    expect(memory.rows.get('smtp')?.config['pass']).toBe(
+      prefixCipher('OLD').encrypt('secret-pass-9'),
+    );
+  });
+
+  it('PUT 响应对不可解密字段回显 ****；快照面整行 fail-safe 不被击穿', async () => {
+    const { deps, memory } = legacyDeps([legacyRow()]);
+    const item = await updateIntegration(deps, {
+      ctx: adminCtx(),
+      key: 'smtp',
+      config: { host: 'smtp2.example.com' },
+    });
+    expect(item.config['pass']).toBe('****');
+    const snap = resolveIntegrationSnapshot({
+      cipher: prefixCipher('NEW'),
+      rows: [...memory.rows.values()],
+      nowMs: 0,
+    });
+    expect(snap.smtp.config).toBeNull();
+    expect(snap.smtp.effective).toBe(false);
+  });
+});
+
+describe('review 修复规格：写入校验加固', () => {
+  it('空白串值拒绝（trim 后为空 = 无效值）', async () => {
+    const { deps } = makeDeps();
+    await expect(
+      updateIntegration(deps, { ctx: adminCtx(), key: 'smtp', config: { host: ' ' } }),
+    ).rejects.toMatchObject({ code: 'control_plane.integration_field_invalid' });
+  });
+
+  it('enc: 伪装密文检查覆盖前导空白与大小写变体', async () => {
+    const { deps } = makeDeps();
+    for (const value of [' enc:v1:iv:tag:body', 'ENC:v1:iv:tag:body', 'Enc:v1:x']) {
+      await expect(
+        updateIntegration(deps, { ctx: adminCtx(), key: 'smtp', config: { pass: value } }),
+      ).rejects.toMatchObject({ code: 'control_plane.integration_secret_encrypted' });
+    }
+  });
+
+  it('URL 字段拒绝内网/回环字面量（SSRF 探测面收窄）', () => {
+    for (const bad of [
+      'http://127.0.0.1:8080/x',
+      'http://localhost/x',
+      'http://10.1.2.3/x',
+      'http://192.168.1.1/x',
+      'http://172.16.0.1/x',
+      'http://169.254.169.254/latest/meta-data',
+      'http://[::1]/x',
+      'http://0.0.0.0/x',
+    ]) {
+      expect(isValidFieldValue('url', bad), bad).toBe(false);
+    }
+    for (const good of ['https://api.stripe.com', 'http://203.0.113.10/x']) {
+      expect(isValidFieldValue('url', good), good).toBe(true);
+    }
+  });
+
+  it('smtp.host 形状校验：拒绝 scheme/路径；允许私网中继（合法形态）', () => {
+    expect(isValidFieldValue('host', 'smtp.example.com')).toBe(true);
+    expect(isValidFieldValue('host', '192.168.1.5')).toBe(true);
+    expect(isValidFieldValue('host', 'http://smtp.example.com')).toBe(false);
+    expect(isValidFieldValue('host', 'smtp.example.com/path')).toBe(false);
+  });
+
+  it('list 的 secretsSet 与掩码口径一致（空串不计入——M8）', async () => {
+    const memory = createMemoryIntegrationSettingsStore();
+    await memory.store.upsert(createMemoryDb(), {
+      key: 'smtp',
+      enabled: false,
+      config: { host: 'h', user: 'u', pass: '' },
+      previousSecrets: null,
+      rotatedAt: null,
+      adminId: null,
+    });
+    const { listIntegrations } = await import('../src/application/integrations/list-integrations');
+    const view = await listIntegrations({
+      db: createMemoryDb(),
+      stores: { integrationSettings: memory.store },
+      cipher,
+    });
+    const smtp = view.integrations.find((i) => i.key === 'smtp');
+    expect(smtp?.secretsSet).toEqual([]);
+    expect(smtp?.config['pass']).toBeNull();
+  });
+
+  it('出网点变更（url/host 字段）审计高亮 outboundEndpointChanged', async () => {
+    const { deps, audit } = makeDeps();
+    await updateIntegration(deps, {
+      ctx: adminCtx(),
+      key: 'payment.stripe',
+      enabled: true,
+      config: {
+        secretKey: 'sk-live-aaaa',
+        webhookSecret: 'whsec-aaaa',
+        successUrl: 'https://app.example.com/ok',
+        cancelUrl: 'https://app.example.com/no',
+      },
+    });
+    await updateIntegration(deps, {
+      ctx: adminCtx(),
+      key: 'payment.stripe',
+      config: { successUrl: 'https://app.example.com/ok2' },
+    });
+    const events = audit.entries.filter((e) => e.action === 'settings.integrations.update');
+    expect(events[1]?.detail).toMatchObject({ outboundEndpointChanged: true });
+    // 非 url 字段变更不标
+    await updateIntegration(deps, {
+      ctx: adminCtx(),
+      key: 'payment.stripe',
+      config: { secretKey: 'sk-live-bbbb' },
+    });
+    const third = audit.entries.filter((e) => e.action === 'settings.integrations.update').at(-1);
+    expect(third?.detail).not.toHaveProperty('outboundEndpointChanged');
   });
 });

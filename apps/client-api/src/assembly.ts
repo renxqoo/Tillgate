@@ -47,6 +47,7 @@ import { createSubscriptionRead } from './adapters/subscription-read.js';
 import { createPricingRead } from './adapters/pricing-read.js';
 import { createRedisFixedWindowCounter } from './adapters/redis-rate-counter.js';
 import { createIdentityStack } from './adapters/identity-stack.js';
+import { captchaSiteKeyOf } from './adapters/dynamic-captcha.js';
 import { RESET_TOKEN_TTL_MINUTES } from './adapters/redis-reset-token.js';
 
 export interface ClientApiAssembly {
@@ -141,6 +142,7 @@ export async function assembleClientApi(
     reader,
     apiBase: bootApiBase,
     frontendUrl: bootFrontendUrl,
+    frontendUrlConfigured,
   } = await bootIntegrationReader(db, config.ENCRYPTION_KEY, logger);
 
   // ---- identity（凭据/挑战/会话/OAuth/吊销——动态装配在 adapters/identity-stack.ts） ----
@@ -285,7 +287,9 @@ export async function assembleClientApi(
   };
 
   // capabilities 每请求求值（DESIGN §4.2：快照驱动的 UX 面）
-  const captchaSiteKey = (): string | null => reader.latest().captcha.config?.siteKey ?? null;
+  // captchaSiteKey 按 effective（DESIGN §4.2：停用 = siteKey null——注册闸门随之关闭；
+  // review 修复 B-1）——计算真源在 dynamic-captcha.captchaSiteKeyOf（测试锁真源防表达式漂移）
+  const captchaSiteKey = (): string | null => captchaSiteKeyOf(reader.latest().captcha);
   const capabilities = () => ({
     registerEnabled: config.REGISTER_ENABLED,
     captchaSiteKey: captchaSiteKey(),
@@ -335,7 +339,8 @@ export async function assembleClientApi(
       consumeResetToken: resetTokens.consume,
       sendResetLink:
         mailer != null ? (to, url, ctx) => mailer.sendPasswordResetLink(to, url, ctx) : null,
-      resetLinkBase: frontendUrl !== 'http://localhost:3000' ? frontendUrl : null,
+      // 显式配置才作为找回链接基地址（缺省回落值不算——review 修复魔法串反推）
+      resetLinkBase: frontendUrlConfigured ? frontendUrl : null,
       resetTokenTtlMinutes: RESET_TOKEN_TTL_MINUTES,
       guards: { emailIp: loginGuard, ip: ipGuard },
       userStatus: accountRead.activeUserStatus,
@@ -396,7 +401,12 @@ export async function assembleClientApi(
       redeem: redemption.redeem,
       history: redemption.history,
     },
-    payments: { payments },
+    payments: {
+      refreshIntegrationSnapshot: async () => {
+        await reader.refresh();
+      },
+      payments,
+    },
     subscriptions: {
       api: billing.subscriptions,
       reads: subscriptionRead,

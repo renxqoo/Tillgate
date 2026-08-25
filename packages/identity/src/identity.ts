@@ -160,7 +160,7 @@ export function buildIdentityContext(params: CreateIdentityParams): IdentityUseC
     if (override != null) return override;
     const creds = config.oauth()[name];
     if (creds == null) return null;
-    validateOauthCreds({ [name]: creds }, [...guards.providers]);
+    validateOauthCreds(creds, name);
     const adapterParams = {
       clientId: creds.clientId,
       clientSecret: creds.clientSecret,
