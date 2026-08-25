@@ -23,22 +23,23 @@ export function EmailTwoFactorCard({
   me,
   smtp,
   smtpUnavailable,
+  canManageIntegrations,
   onSavedSmtp,
 }: {
   me: AdminMeInfo | null;
   smtp: IntegrationSettingItem | null;
-  /** 无 settings_integrations 权限/加载失败——隐藏配置入口（2FA 启停不受影响） */
+  /** 集成列表加载失败——隐藏 SMTP 配置入口（2FA 启停不受影响） */
   smtpUnavailable: boolean;
+  /** settings:integrations 持有者可见 SMTP 配置入口（2026-08-25 用户裁决 D1；2FA 启停属 SELF 域不挂码） */
+  canManageIntegrations: boolean;
   onSavedSmtp: (item: IntegrationSettingItem) => void;
 }) {
   // 未绑定验证器：2FA 开关与 SMTP 配置均不可达（ADR-0011——服务端同样拒绝）
   const t = useTranslations('settings');
   const tc = useTranslations('common');
-  const ti = useTranslations('settings.integrations');
   const [pending, startTransition] = useTransition();
   const notify = useActionResult();
   const [enabled, setEnabled] = useState(Boolean(me?.twoFactorEnabled));
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [stepupOpen, setStepupOpen] = useState(false);
   const totpEnabled = me?.totpEnabled === true;
   const stepupTitle = totpEnabled ? undefined : t('stepupRequired');
@@ -62,17 +63,13 @@ export function EmailTwoFactorCard({
           <CardTitle className="flex items-center gap-2 text-base">
             <ShieldCheckIcon className="size-4" /> {t('twoFactor')}
           </CardTitle>
-          {!smtpUnavailable ? (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!totpEnabled}
-              title={stepupTitle}
-              onClick={() => setDialogOpen(true)}
-            >
-              {ti('configure')}
-            </Button>
-          ) : null}
+          <SmtpConfigEntry
+            smtp={smtp}
+            visible={!smtpUnavailable && canManageIntegrations}
+            totpEnabled={totpEnabled}
+            stepupTitle={stepupTitle}
+            onSaved={onSavedSmtp}
+          />
         </div>
         <CardDescription>{t('twoFactorDescription', { email: me?.email ?? '—' })}</CardDescription>
       </CardHeader>
@@ -103,16 +100,42 @@ export function EmailTwoFactorCard({
         title={`${enabled ? t('disable') : t('enable')} — ${t('twoFactor')}`}
         onConfirm={(code) => confirmTwoFactor(code)}
       />
-      {smtp != null ? (
+    </Card>
+  );
+}
+
+/** SMTP 配置入口（右上按钮 + 配置弹窗，哑件拆分——主组件复杂度收口，铁律 22 ②） */
+function SmtpConfigEntry(input: {
+  smtp: IntegrationSettingItem | null;
+  visible: boolean;
+  totpEnabled: boolean;
+  stepupTitle: string | undefined;
+  onSaved: (item: IntegrationSettingItem) => void;
+}) {
+  const ti = useTranslations('settings.integrations');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  if (!input.visible) return null;
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={!input.totpEnabled}
+        title={input.stepupTitle}
+        onClick={() => setDialogOpen(true)}
+      >
+        {ti('configure')}
+      </Button>
+      {input.smtp != null ? (
         <IntegrationFormDialog
-          item={smtp}
+          item={input.smtp}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
-          onSaved={onSavedSmtp}
+          onSaved={input.onSaved}
           includeEnabled
         />
       ) : null}
-    </Card>
+    </>
   );
 }
 

@@ -68,7 +68,7 @@ function timezoneOptions(current: string): ReadonlyArray<{ group?: string; zones
 }
 
 /** 计费时区卡（system_configs billing_timezone）：schedule 分时段策略的墙钟口径，全系统统一 */
-export function BillingTimezoneCard() {
+export function BillingTimezoneCard({ canUpdate }: { canUpdate: boolean }) {
   const t = useTranslations('settings');
   const tc = useTranslations('common');
   const notify = useActionResult();
@@ -104,48 +104,53 @@ export function BillingTimezoneCard() {
         <CardDescription>{t('billingTimezoneDescription')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-center gap-2">
-          <NativeSelect
-            value={timezone}
-            onChange={(e) => setTimezone(e.target.value)}
-            aria-label={t('billingTimezone')}
-            className="w-64"
-            selectClassName="font-mono"
-          >
-            {groups.map((group, gi) =>
-              gi === 0 ? (
-                <NativeSelectOptGroup key={`g${gi}`} label={t('timezoneCommonGroup')}>
-                  {group.zones.map((tz) => (
-                    <NativeSelectOption key={tz} value={tz}>
-                      {tz}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelectOptGroup>
-              ) : (
-                <NativeSelectOptGroup key={`g${gi}`} label={t('timezoneAllGroup')}>
-                  {group.zones.map((tz) => (
-                    <NativeSelectOption key={tz} value={tz}>
-                      {tz}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelectOptGroup>
-              ),
-            )}
-          </NativeSelect>
-          <Button
-            size="sm"
-            disabled={pending || timezone === '' || timezone === loaded}
-            onClick={() =>
-              startTransition(async () => {
-                const res = await updateBillingTimezoneAction(timezone).catch(() => null);
-                if (notify(res ?? {}, tc('actionFailed'), tc('saved'))) setLoaded(timezone);
-              })
-            }
-          >
-            {pending && <Loader2Icon className="animate-spin" />}
-            {tc('save')}
-          </Button>
-        </div>
+        {/* 无 settings:update：隐藏选择器与保存钮，只读展示当前值（2026-08-25 用户裁决 D1） */}
+        {canUpdate ? (
+          <div className="flex items-center gap-2">
+            <NativeSelect
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              aria-label={t('billingTimezone')}
+              className="w-64"
+              selectClassName="font-mono"
+            >
+              {groups.map((group, gi) =>
+                gi === 0 ? (
+                  <NativeSelectOptGroup key={`g${gi}`} label={t('timezoneCommonGroup')}>
+                    {group.zones.map((tz) => (
+                      <NativeSelectOption key={tz} value={tz}>
+                        {tz}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelectOptGroup>
+                ) : (
+                  <NativeSelectOptGroup key={`g${gi}`} label={t('timezoneAllGroup')}>
+                    {group.zones.map((tz) => (
+                      <NativeSelectOption key={tz} value={tz}>
+                        {tz}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelectOptGroup>
+                ),
+              )}
+            </NativeSelect>
+            <Button
+              size="sm"
+              disabled={pending || timezone === '' || timezone === loaded}
+              onClick={() =>
+                startTransition(async () => {
+                  const res = await updateBillingTimezoneAction(timezone).catch(() => null);
+                  if (notify(res ?? {}, tc('actionFailed'), tc('saved'))) setLoaded(timezone);
+                })
+              }
+            >
+              {pending && <Loader2Icon className="animate-spin" />}
+              {tc('save')}
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm font-mono">{timezone || '—'}</p>
+        )}
         <p className="text-xs text-muted-foreground">{t('billingTimezoneHint')}</p>
       </CardContent>
     </Card>

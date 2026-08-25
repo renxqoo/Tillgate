@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * 邮箱验证码二次登录卡规格（docs/integration-settings/IMPLEMENTATION 增量 2026-08-25）：
- * SMTP 无独立集成卡——配置按钮在 2FA 卡右上（无 settings_integrations 权限时
- * 隐藏，2FA 启停不受影响）；邮件通道三态状态行；弹窗含启停开关，
+ * SMTP 无独立集成卡——配置按钮在 2FA 卡右上（无 settings:integrations 权限或
+ * 集成列表加载失败时隐藏，2FA 启停不受影响）；邮件通道三态状态行；弹窗含启停开关，
  * 提交 { enabled, config } 同传。
  */
 import '@testing-library/jest-dom/vitest';
@@ -50,6 +50,7 @@ const me = { email: 'ops@example.test', twoFactorEnabled: false, totpEnabled: tr
 function renderCard(overrides?: {
   smtp?: IntegrationSettingItem | null;
   smtpUnavailable?: boolean;
+  canManageIntegrations?: boolean;
 }) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
@@ -57,6 +58,7 @@ function renderCard(overrides?: {
         me={me}
         smtp={overrides?.smtp !== undefined ? overrides.smtp : smtpItem}
         smtpUnavailable={overrides?.smtpUnavailable ?? false}
+        canManageIntegrations={overrides?.canManageIntegrations ?? true}
         onSavedSmtp={vi.fn()}
       />
     </NextIntlClientProvider>,
@@ -82,10 +84,18 @@ describe('EmailTwoFactorCard：SMTP 配置入口与状态行', () => {
     expect(screen.getByText(/ready \(SMTP enabled\)/i)).toBeInTheDocument();
   });
 
-  it('无 settings_integrations 权限：配置按钮隐藏，2FA 启停不受影响', () => {
+  it('集成列表加载失败：配置按钮隐藏，2FA 启停不受影响', () => {
     renderCard({ smtpUnavailable: true });
     expect(screen.queryByRole('button', { name: 'Configure' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enable' })).toBeInTheDocument();
+  });
+
+  it('无 settings:integrations 权限（D1 裁决）：配置按钮隐藏，2FA 启停与状态行不受影响', () => {
+    renderCard({ canManageIntegrations: false });
+    expect(screen.queryByRole('button', { name: 'Configure' })).not.toBeInTheDocument();
+    // SELF 域启停钮与 SMTP 只读状态行仍在
+    expect(screen.getByRole('button', { name: 'Enable' })).toBeInTheDocument();
+    expect(screen.getByText(/configured but disabled/i)).toBeInTheDocument();
   });
 
   it('弹窗提交：启停开关与字段同传 { enabled, config }', async () => {

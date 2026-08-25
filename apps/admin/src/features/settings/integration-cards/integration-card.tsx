@@ -3,6 +3,8 @@
 // 集成单卡（哑件）：标题左、配置按钮右上与标题对齐（用户裁决）；内容面
 // 状态徽章 + 启停按钮 + Turnstile 停用联动警告（DESIGN §5 D11）。
 // 卡面不显示配置字段值（2026-08-25 用户裁决：与 2FA/TOTP 卡同形态，配置收进弹窗）。
+// 无 settings:integrations 权限：配置/启停操作位隐藏，保留状态只读展示
+// （2026-08-25 用户裁决 D1；权威判定在 admin-api ACL）。
 
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tillgate/ui';
 import {
@@ -40,12 +42,15 @@ export function IntegrationCard({
   item,
   signupGiftOn,
   totpEnabled,
+  canManage,
 }: {
   item: IntegrationSettingItem;
   /** 注册送礼开启（Turnstile 停用联动警告的数据源） */
   signupGiftOn: boolean;
   /** 当前管理员已绑定验证器（ADR-0011——未绑定者敏感按钮置灰引导绑定） */
   totpEnabled: boolean;
+  /** settings:integrations 持有者可见配置/启停操作位（隐藏时保留状态只读展示） */
+  canManage: boolean;
 }) {
   const t = useTranslations('settings.integrations');
   const ts = useTranslations('settings');
@@ -83,15 +88,17 @@ export function IntegrationCard({
           <CardTitle className="flex items-center gap-2 text-base">
             <Icon className="size-4" /> {t(`cards.${i18nKey(current.key)}`)}
           </CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!totpEnabled}
-            title={totpEnabled ? undefined : ts('stepupRequired')}
-            onClick={() => setDialogOpen(true)}
-          >
-            {t('configure')}
-          </Button>
+          {canManage ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!totpEnabled}
+              title={totpEnabled ? undefined : ts('stepupRequired')}
+              onClick={() => setDialogOpen(true)}
+            >
+              {t('configure')}
+            </Button>
+          ) : null}
         </div>
         <CardDescription>{t(`descriptions.${i18nKey(current.key)}`)}</CardDescription>
       </CardHeader>
@@ -103,6 +110,7 @@ export function IntegrationCard({
           totpEnabled={totpEnabled}
           stepupTitle={totpEnabled ? undefined : ts('stepupRequired')}
           onRequestToggle={() => setStepupOpen(true)}
+          canManage={canManage}
         />
         {current.key === 'captcha.turnstile' && current.enabled && signupGiftOn ? (
           <p className="text-xs text-amber-600">{t('captchaWarning')}</p>
@@ -129,7 +137,7 @@ export function IntegrationCard({
   );
 }
 
-/** 启停按钮 + 状态行（哑件拆分——主组件复杂度收口，铁律 22 ②） */
+/** 启停按钮 + 状态行（哑件拆分——主组件复杂度收口，铁律 22 ②）；canManage=false 只渲染状态行 */
 function ToggleRow(input: {
   enabled: boolean;
   configured: boolean;
@@ -137,20 +145,23 @@ function ToggleRow(input: {
   totpEnabled: boolean;
   stepupTitle: string | undefined;
   onRequestToggle: () => void;
+  canManage: boolean;
 }) {
   const t = useTranslations('settings.integrations');
   return (
     <div className="flex items-center gap-3">
-      <Button
-        variant={input.enabled ? 'destructive' : 'default'}
-        size="sm"
-        disabled={input.pending || !input.totpEnabled || (!input.enabled && !input.configured)}
-        title={input.stepupTitle}
-        onClick={input.onRequestToggle}
-      >
-        {input.pending && <Loader2Icon className="animate-spin" />}
-        {input.enabled ? t('disable') : t('enable')}
-      </Button>
+      {input.canManage ? (
+        <Button
+          variant={input.enabled ? 'destructive' : 'default'}
+          size="sm"
+          disabled={input.pending || !input.totpEnabled || (!input.enabled && !input.configured)}
+          title={input.stepupTitle}
+          onClick={input.onRequestToggle}
+        >
+          {input.pending && <Loader2Icon className="animate-spin" />}
+          {input.enabled ? t('disable') : t('enable')}
+        </Button>
+      ) : null}
       <span className="text-sm text-muted-foreground">
         <span className={input.enabled ? 'text-green-600' : ''}>
           {input.enabled ? t('enabledState') : t('disabledState')}

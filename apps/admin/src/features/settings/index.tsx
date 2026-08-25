@@ -4,6 +4,9 @@
 // 邮箱验证码二次登录卡（含 SMTP 配置入口）→ TOTP → 计费时区 → 集成卡区。
 // 集成列表与注册送礼联动源在此统一加载（单次请求），SMTP 项注入 2FA 卡、
 // 其余注入受控的 IntegrationCards（2026-08-25 收敛，DESIGN 分叉表）。
+// 按钮级权限（2026-08-25 用户裁决 D1）：页级 server 端算好布尔下传——
+// settings:update → 时区可写；settings:integrations → 集成/SMTP 操作位；
+// TOTP/2FA 启停属 SELF 域不挂码。显隐仅 UX，权威判定在 admin-api ACL。
 
 import { Card, CardContent } from '@tillgate/ui';
 import { useEffect, useState } from 'react';
@@ -20,7 +23,19 @@ import { EmailTwoFactorCard } from './email-two-factor-card';
 import { IntegrationCards } from './integration-cards';
 import { TotpCard } from './totp-card';
 
-export function SettingsContent({ me, error }: { me: AdminMeInfo | null; error: string | null }) {
+export function SettingsContent({
+  me,
+  error,
+  canUpdateTimezone,
+  canManageIntegrations,
+}: {
+  me: AdminMeInfo | null;
+  error: string | null;
+  /** settings:update 持有者可写计费时区；否则只读展示当前值 */
+  canUpdateTimezone: boolean;
+  /** settings:integrations 持有者可见集成/SMTP 配置与启停操作位 */
+  canManageIntegrations: boolean;
+}) {
   const [integrations, setIntegrations] = useState<IntegrationSettingItem[] | null>(null);
   const [integrationsError, setIntegrationsError] = useState(false);
   const [signupGiftOn, setSignupGiftOn] = useState(false);
@@ -64,18 +79,20 @@ export function SettingsContent({ me, error }: { me: AdminMeInfo | null; error: 
         me={me}
         smtp={smtp}
         smtpUnavailable={integrationsError}
+        canManageIntegrations={canManageIntegrations}
         onSavedSmtp={saveSmtp}
       />
 
       <TotpCard totpEnabled={me?.totpEnabled ?? false} />
 
-      <BillingTimezoneCard />
+      <BillingTimezoneCard canUpdate={canUpdateTimezone} />
       {/* SMTP 项由 2FA 卡消费；集成卡区按词表渲染（ORDER 不含 smtp） */}
       <IntegrationCards
         items={integrations}
         error={integrationsError}
         signupGiftOn={signupGiftOn}
         totpEnabled={me?.totpEnabled === true}
+        canManage={canManageIntegrations}
       />
     </div>
   );

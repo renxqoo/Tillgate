@@ -4,7 +4,8 @@
  * 词表次序渲染（SMTP 无独立卡——挂 2FA 卡）；卡面不显示配置字段值
  * （2026-08-25 用户裁决：配置收进弹窗，secret 掩码只在弹窗 placeholder 回显）；
  * 启停走 update 动作；Turnstile 停用在注册送礼开启时出警告（不阻断）；
- * 表单三态组装（空=缺席、勾选清除=null）。
+ * 表单三态组装（空=缺席、勾选清除=null）；无 settings:integrations 权限时
+ * 配置/启停操作位隐藏（2026-08-25 用户裁决 D1，状态只读保留）。
  */
 import '@testing-library/jest-dom/vitest';
 
@@ -52,10 +53,18 @@ const epayItem: IntegrationSettingItem = {
   updatedByAdminId: 7,
 };
 
-function renderCard(item: IntegrationSettingItem, signupGiftOn = false, totpEnabled = true) {
+function renderCard(
+  item: IntegrationSettingItem,
+  opts?: { signupGiftOn?: boolean; totpEnabled?: boolean; canManage?: boolean },
+) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <IntegrationCard item={item} signupGiftOn={signupGiftOn} totpEnabled={totpEnabled} />
+      <IntegrationCard
+        item={item}
+        signupGiftOn={opts?.signupGiftOn ?? false}
+        totpEnabled={opts?.totpEnabled ?? true}
+        canManage={opts?.canManage ?? true}
+      />
     </NextIntlClientProvider>,
   );
 }
@@ -121,7 +130,7 @@ describe('IntegrationCard 交互', () => {
 
   it('Turnstile 加固：注册送礼开启时停用出警告 toast（不阻断）；其他集成停用无警告', async () => {
     updateIntegration.mockResolvedValue({ ...epayItem, key: 'captcha.turnstile', enabled: false });
-    renderCard({ ...epayItem, key: 'captcha.turnstile', config: {} }, true);
+    renderCard({ ...epayItem, key: 'captcha.turnstile', config: {} }, { signupGiftOn: true });
     // 启用态下卡片内常驻风险提示（先于停用断言——停用后条件翻转）
     expect(screen.getByText(/disabling captcha removes register anti-abuse/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
@@ -134,7 +143,7 @@ describe('IntegrationCard 交互', () => {
     vi.clearAllMocks();
     updateIntegration.mockResolvedValue({ ...epayItem, enabled: false });
     cleanup();
-    renderCard(epayItem, true);
+    renderCard(epayItem, { signupGiftOn: true });
     await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
     await userEvent.type(screen.getByPlaceholderText('000000'), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -150,12 +159,22 @@ describe('IntegrationCard 交互', () => {
   });
 
   it('未绑定验证器（ADR-0011）：配置与启停按钮置灰并带引导提示', () => {
-    renderCard(epayItem, false, false);
+    renderCard(epayItem, { totpEnabled: false });
     expect(screen.getByRole('button', { name: 'Configure' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Disable' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Disable' })).toHaveAttribute(
       'title',
       'Bind your authenticator (TOTP) first',
     );
+  });
+
+  it('无 settings:integrations 权限（D1 裁决）：配置/启停操作位隐藏，状态与警告只读保留', () => {
+    renderCard({ ...epayItem, key: 'captcha.turnstile', config: {} }, { signupGiftOn: true, canManage: false });
+    expect(screen.queryByRole('button', { name: 'Configure' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument();
+    // 只读面：状态徽章 + 注册送礼风险提示仍在
+    expect(screen.getByText('Enabled')).toBeInTheDocument();
+    expect(screen.getByText('Configured')).toBeInTheDocument();
+    expect(screen.getByText(/disabling captcha removes register anti-abuse/i)).toBeInTheDocument();
   });
 });
