@@ -1015,8 +1015,12 @@
     },
     "emailCode": {
       "codeLabel": "6-digit email code",
-      "codeHint": "Sent to your admin email; valid for 5 minutes, 5 failed attempts invalidate it; resend blocked for 60 seconds",
-      "dialogDescription": "Enter the 6-digit code from your email to confirm this change"
+      "codeHint": "Valid for 5 minutes; 5 failed attempts invalidate it",
+      "dialogDescription": "Enter the 6-digit code from your email to confirm this change",
+      "sendHint": "The code goes to your admin email",
+      "sendCode": "Send code",
+      "resendCountdown": "Resend in {seconds}s",
+      "sentToast": "Code sent — check your inbox"
     },
     "totp": {
       "title": "Authenticator (TOTP)",

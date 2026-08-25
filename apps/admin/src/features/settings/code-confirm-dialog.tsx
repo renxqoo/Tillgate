@@ -17,6 +17,8 @@ export function CodeConfirmDialog({
   onConfirm,
   title,
   variant = 'totp',
+  above,
+  submitDisabled,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -26,6 +28,10 @@ export function CodeConfirmDialog({
   title: string;
   /** 码的来源：totp = 验证器 step-up;email = 本人邮箱确认码 */
   variant?: 'totp' | 'email';
+  /** 码框上方的补充区块（email 变体的「发送验证码 + 倒计时」行由调用方注入） */
+  above?: React.ReactNode;
+  /** 外部条件禁用确认钮（如邮箱码未发送前） */
+  submitDisabled?: boolean;
 }) {
   const t = useTranslations(variant === 'email' ? 'settings.emailCode' : 'settings.stepup');
   const tc = useTranslations('common');
@@ -43,6 +49,7 @@ export function CodeConfirmDialog({
       title={title}
       description={t('dialogDescription')}
       submitLabel={tc('confirm')}
+      submitDisabled={submitDisabled}
     >
       {() => (
         <form
@@ -55,6 +62,7 @@ export function CodeConfirmDialog({
             onConfirm(typeof value === 'string' ? value : '');
           }}
         >
+          {above}
           <FormItem>
             <FieldLabel htmlFor={`${formId}-input`}>{t('codeLabel')}</FieldLabel>
             <Input

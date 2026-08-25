@@ -1015,8 +1015,12 @@
     },
     "emailCode": {
       "codeLabel": "邮箱 6 位验证码",
-      "codeHint": "确认码已发送到你的管理员邮箱，5 分钟内有效，连续输错 5 次作废；60 秒内不可重发",
-      "dialogDescription": "输入邮箱收到的 6 位验证码确认本次变更"
+      "codeHint": "5 分钟内有效，连续输错 5 次作废",
+      "dialogDescription": "输入邮箱收到的 6 位验证码确认本次变更",
+      "sendHint": "确认码发送到你的管理员邮箱",
+      "sendCode": "发送验证码",
+      "resendCountdown": "{seconds}s 后可重发",
+      "sentToast": "验证码已发送，请查收邮箱"
     },
     "totp": {
       "title": "验证器(TOTP)",
