@@ -7,10 +7,10 @@
 // 邮件通道（SMTP）是系统级配置——独立集成卡,2026-08-25 二次裁决;通道不可用
 // 在发码步即被拒（503）,不再等点击开关后报错。
 
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, CountdownButton } from '@tillgate/ui';
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 
-import { Loader2Icon, ShieldCheckIcon } from 'lucide-react';
+import { ShieldCheckIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -100,25 +100,11 @@ export function EmailTwoFactorCard({ me }: { me: AdminMeInfo | null }) {
         variant="email"
         title={`${enabled ? t('disable') : t('enable')} — ${t('twoFactor')}`}
         submitDisabled={challengeId == null}
-        above={
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-sm text-muted-foreground">{te('sendHint')}</span>
-            <CountdownButton
-              variant="outline"
-              size="sm"
-              cooldownUntil={cooldownUntil}
-              disabled={sending}
-              label={
-                <>
-                  {sending && <Loader2Icon className="animate-spin" />}
-                  {te('sendCode')}
-                </>
-              }
-              countdownLabel={(seconds) => te('resendCountdown', { seconds })}
-              onClick={sendCode}
-            />
-          </div>
-        }
+        sendCode={{
+          onSend: sendCode,
+          cooldownUntil,
+          pending: sending,
+        }}
         onConfirm={confirmToggle}
       />
     </Card>
