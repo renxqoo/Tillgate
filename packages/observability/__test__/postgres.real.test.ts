@@ -28,7 +28,7 @@ import { createObservability } from '../src/observability';
 import type { SpanRow } from '../src/tracing/types';
 import { defined } from './defined';
 
-const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
+const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/tillgate';
 let db: Db | null = null;
 const retry: TxRetryPolicy = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 };
 const newRequestId = (): string => randomUUID();

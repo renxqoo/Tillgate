@@ -13,7 +13,7 @@ import { createClientApiApp } from '../src/app.js';
 const env: NodeJS.ProcessEnv = {
   NODE_ENV: 'development',
   DATABASE_URL:
-    process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
+    process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/tillgate',
   REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
   JWT_SECRET: process.env.JWT_SECRET ?? 'real-test-jwt-secret-0123456789ab',
   CLIENT_CODE_PEPPER: process.env.CLIENT_CODE_PEPPER ?? 'real-test-pepper-0123456789abcd',

@@ -15,7 +15,7 @@ import { defined } from './defined';
  * 数据纪律:service='trr-test-svc' 前缀,自建自清。
  */
 
-const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
+const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/tillgate';
 let db: Db | null = null;
 
 beforeAll(async () => {
