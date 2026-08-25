@@ -118,8 +118,6 @@ export const allowAllUrls: UrlGuard = async () => {};
 export interface SafeUrlOptions {
   /** 允许 http:// 与内网地址（仅测试/本地调试；生产必须 false） */
   allowLocal?: boolean;
-  /** 生产可调用的受信 hostname 白名单；命中后仍执行 DNS 私网地址校验。 */
-  allowedHosts?: string[];
 }
 
 const PRIVATE_HOSTS = new Set([
@@ -159,15 +157,12 @@ export function assertSafeUrlSync(url: string, opts: SafeUrlOptions = {}): URL {
 
 /**
  * 完整校验：同步快速失败 + DNS 解析后逐地址判定（防 DNS rebinding）。
+ * 出口信任 = 机械基线 + 运营面（渠道写入是 admin 域——ADR-0010）；
  * 域名解析失败时放行（交给 fetch 自然报 network 错误，未解析=无法发起连接，安全）。
  */
 export async function assertSafeUrl(url: string, opts: SafeUrlOptions = {}): Promise<URL> {
   const u = assertSafeUrlSync(url, opts);
   if (opts.allowLocal) return u;
-  const hostname = u.hostname.toLowerCase();
-  if (opts.allowedHosts?.length && !opts.allowedHosts.includes(hostname)) {
-    throw new Error(`upstream host is not allowlisted: ${hostname}`);
-  }
   let addresses: string[];
   try {
     addresses = (await lookup(u.hostname, { all: true, verbatim: true })).map((a) => a.address);
@@ -191,11 +186,11 @@ export interface FetchUpstreamOptions {
 }
 
 /**
- * fetch 封装：受信 host + DNS 私网校验 → connectMs 超时 → 外部信号传播 → 错误分类。
+ * fetch 封装：机械基线校验 → connectMs 超时 → 外部信号传播 → 错误分类。
  * 返回原始 Response（含非 2xx，状态码分类由 adapter.mapError 负责）；body 由调用方接管。
  *
- * SSRF 防护：生产必须配置受信 provider hostname 白名单，同时逐个拒绝 DNS 私网地址。
- * 白名单从根上禁止用户/数据库注入任意攻击者域名；TLS 仍校验原 hostname。
+ * SSRF 防护（ADR-0010）：机械基线逐个拒绝私网地址与危险协议，出口信任锚在
+ * 运营面（上游 URL 全部来自 admin 域的渠道/provider 表）；TLS 仍校验原 hostname。
  */
 export async function fetchUpstream(
   url: string,
@@ -219,9 +214,9 @@ export async function fetchUpstream(
     throw error;
   }
   try {
-    // 原生 fetch 保持响应体逐块流式传输；生产安全边界是不可由请求方控制的
-    // provider host allowlist（装配注入 allowedHosts），加上 DNS 私网地址检查
-    // 和 HTTPS 证书校验。
+    // 原生 fetch 保持响应体逐块流式传输；生产安全边界是机械基线
+    // （https-only + 私网/IPv6 解包拒绝 + DNS 私网地址检查）与 HTTPS 证书校验；
+    // 出口信任锚在运营面（渠道写入是 admin 域——ADR-0010）。
     // redirect:'manual'：守卫只校验初始 URL，自动跟随 3x 等于让未过审目标
     // （含 http 内网/metadata 降级跳转）绕过守卫——3x 按 非 2xx 交 mapError 分类。
     return await fetch(url, { ...init, redirect: 'manual', signal: controller.signal });

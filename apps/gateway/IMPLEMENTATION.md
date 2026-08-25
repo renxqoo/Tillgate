@@ -159,3 +159,13 @@ src 顶层文件集合快照；`/composition` 只允许出现在 {assembly.ts, a
    由 `Number(p) === 0` 改 `Decimal(p).isZero()`（脏值非免费——空串曾被
    Number 归零误盖 `explicitlyFree`；口径与全包 Decimal 一致）。
    回归：`__test__/billing-port-free-gate.test.ts`（复核批次红测转绿）。
+
+## 增量：出口信任回归运营面（2026-08-25 ADR-0010）
+
+撤销 §7 第 1 条的 env 白名单形态：删除 `GATEWAY_UPSTREAM_ALLOWED_HOSTS`
+（schema / superRefine 生产必填门禁 / `GatewayConfig.upstreamAllowedHosts` /
+装配注入），`guardUrl` 回归 `assertSafeUrl(url)` 机械基线（https-only +
+私网与 IPv6 内嵌解包拒绝 + DNS 逐地址判定 + 重定向不跟随）。裁决依据：
+上游 hostname 全部来自 admin 域渠道/provider 表，env 列表只能是 DB 镜像，
+多云动态厂商集合使枚举不可运维；残余风险与回摆条件见 ADR-0010。
+§7 第 2 条（免费闸 Decimal 口径）不受影响。

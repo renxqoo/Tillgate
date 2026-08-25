@@ -311,3 +311,14 @@ claude-stream 既有拆分同款约定，全部 import 点同步更新、无转�
 
 回归：`__test__/upstream-redirect.test.ts`、`__test__/ipv6-edge-forms.test.ts`
 （复核批次红测转绿）、transport-deep 的 abort 用例改锁新契约。
+
+## 7. 出口信任回归运营面（2026-08-25 ADR-0010）
+
+撤销 §6 第 1 条所述的 `allowedHosts` 白名单形态（该形态当时由 gateway/worker
+以生产必填 env 装配）：`SafeUrlOptions.allowedHosts` 选项与 `assertSafeUrl` 的
+名单成员判定删除——上游 hostname 全部来自 admin 域渠道/provider 表，env 名单
+只能是 DB 镜像而非独立信任边界，动态厂商集合使枚举不可运维。生产防线回归
+机械基线（https-only + 私网/IPv6 解包拒绝 + DNS 逐地址判定）+ 运营面信任
+（RBAC + 审计）；§6 其余三项（redirect manual / IPv6 解包 / DNS 逐地址判定）
+不变。DESIGN §2 组合示例与 §0.4 表述以 ADR-0010 为准。残余风险与回摆条件
+见 ADR-0010。

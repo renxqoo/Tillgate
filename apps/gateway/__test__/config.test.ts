@@ -109,17 +109,10 @@ describe('fail-closed', () => {
     expect(() => loadGatewayConfig({ ...BASE, JWT_SECRET: secret('xY9z', 16) })).not.toThrow();
   });
 
-  it('生产缺上游白名单拒绝启动（SSRF 主防线必填）；非生产缺省空表；解析逗号分隔', () => {
-    expect(() => loadGatewayConfig({ ...BASE, NODE_ENV: 'production' })).toThrow(/allowlist/);
-    const dev = loadGatewayConfig({ ...BASE });
-    expect(dev.upstreamAllowedHosts).toEqual([]);
-    const prod = loadGatewayConfig({
-      ...BASE,
-      NODE_ENV: 'production',
-      GATEWAY_UPSTREAM_ALLOWED_HOSTS: ' API.openai.com , api.anthropic.com ',
-      JWT_SECRET: secret('xY9z', 32),
-    });
-    expect(prod.upstreamAllowedHosts).toEqual(['api.openai.com', 'api.anthropic.com']);
+  it('生产启动不再要求上游白名单 env（ADR-0010：出口信任锚在运营面）', () => {
+    expect(() =>
+      loadGatewayConfig({ ...BASE, NODE_ENV: 'production', JWT_SECRET: secret('xY9z', 32) }),
+    ).not.toThrow();
   });
 
   it('SSRF 逃生门：字符串 "false" 不开门；生产误配也恒关', () => {
@@ -133,7 +126,6 @@ describe('fail-closed', () => {
       loadGatewayConfig({
         ...BASE,
         NODE_ENV: 'production',
-        GATEWAY_UPSTREAM_ALLOWED_HOSTS: 'api.openai.com',
         GATEWAY_AI_ALLOW_LOCAL_URL: 'true',
       }).aiAllowLocalUrl,
     ).toBe(true); // config 层如实透传；装配层与 NODE_ENV 双门收口（assembly 测试覆盖）
@@ -144,7 +136,6 @@ describe('fail-closed', () => {
     const c = loadGatewayConfig({
       ...BASE,
       NODE_ENV: 'production',
-      GATEWAY_UPSTREAM_ALLOWED_HOSTS: 'api.openai.com',
       GLOBAL_RPM: '99999',
     });
     expect(c.globalRpm).toBe(5_000);

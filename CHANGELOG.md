@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+### Changed —— 上游出口信任模型（ADR-0010）
+
+- **撤销上游 env 主机名白名单**：删除 `GATEWAY_UPSTREAM_ALLOWED_HOSTS` /
+  `WORKER_UPSTREAM_ALLOWED_HOSTS` 与生产必填门禁——上游 hostname 全部来自
+  admin 域的渠道/provider 表，env 列表只能是 DB 镜像而非独立信任边界，
+  且多云/Azure 按资源子域名/中转站的动态厂商集合使枚举运维上不可行。
+  防线收敛为机械基线（https-only + 私网/IPv6 内嵌解包拒绝 + DNS 逐地址
+  判定 + 重定向不跟随）+ 运营面信任（RBAC + 审计）；`packages/ai` 的
+  `allowedHosts` 选项作为无调用方死代码一并移除。残余风险与回摆条件
+  （admin 管理的安全级设置 / DNS pinning）见 ADR-0010。
+
 ### Changed —— v2 monorepo 结构重构
 
 - 仓库按 [docs/project-structure-refactoring.md](docs/project-structure-refactoring.md) 从 v1

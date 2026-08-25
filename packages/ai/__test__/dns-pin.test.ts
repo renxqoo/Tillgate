@@ -1,8 +1,8 @@
 /**
  * DNS 解析后校验（防 rebinding）：vi.mock 掉 node:dns/promises ——
- * 域名 → 私网地址拒绝、解析失败降级放行、白名单外 host 拒绝。
+ * 域名 → 私网地址拒绝、解析失败降级放行、公网解析放行。
  * 本文件独占该 mock，不与其他传输测试混跑。
- * （2026-08-25 收口：resolveAndPin 死代码已删除，白名单语义由 assertSafeUrl 承担。）
+ * （2026-08-25 ADR-0010：hostname 白名单形态已撤销，防线 = 机械基线 + 运营面。）
  */
 import { describe, expect, it, vi } from 'vitest';
 
@@ -32,15 +32,7 @@ describe('assertSafeUrl：DNS 解析后逐地址判定', () => {
   it('解析失败 → 放行（交给 fetch 自然报 network，未解析=无法连接）', async () => {
     await expect(assertSafeUrl('https://nxdomain.test/x')).resolves.toBeInstanceOf(URL);
   });
-  it('白名单外 host → 拒绝（allowlist 是生产主防线）；白名单内仍过 DNS 判定', async () => {
-    await expect(
-      assertSafeUrl('https://public.test/x', { allowedHosts: ['other.test'] }),
-    ).rejects.toThrow(/not allowlisted/);
-    await expect(
-      assertSafeUrl('https://private-v4.test/x', { allowedHosts: ['private-v4.test'] }),
-    ).rejects.toThrow(/resolves to/);
-    await expect(
-      assertSafeUrl('https://public.test/x', { allowedHosts: ['public.test'] }),
-    ).resolves.toBeInstanceOf(URL);
+  it('公网解析（多地址全公网）→ 放行（机械基线不枚举 hostname——ADR-0010）', async () => {
+    await expect(assertSafeUrl('https://public.test/x')).resolves.toBeInstanceOf(URL);
   });
 });

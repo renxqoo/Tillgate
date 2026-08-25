@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { withRetry, backoffDelayMs } from '../src/retry/with-retry.js';
 import { UpstreamError } from '../src/errors/kinds.js';
-import {
-  assertSafeUrlSync,
-  assertSafeUrl,
-  allowAllUrls,
-  fetchUpstream,
-} from '../src/transport/http-client.js';
+import { assertSafeUrlSync, allowAllUrls, fetchUpstream } from '../src/transport/http-client.js';
 
 const opts = {
   maxAttempts: 3,
@@ -96,11 +91,6 @@ describe('transport/http-client：SSRF 守卫矩阵（机制/策略分离）', (
     expect(assertSafeUrlSync('http://127.0.0.1:3000/x', { allowLocal: true }).hostname).toBe(
       '127.0.0.1',
     );
-  });
-  it('异步完整校验：allowedHosts 白名单外拒绝（B5 实际防线）', async () => {
-    await expect(
-      assertSafeUrl('https://evil.example.com/x', { allowedHosts: ['api.openai.com'] }),
-    ).rejects.toThrow(/not allowlisted/);
   });
   it('fetchUpstream guard 注入：allowAllUrls 放行本地；缺省基线拒绝本地', async () => {
     // 缺省基线拒绝（不真正建连）

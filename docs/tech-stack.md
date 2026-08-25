@@ -225,7 +225,7 @@ client-api┘                                             └─▶ Tempo（链�
 ## 10. v2 结构治理与质量门禁（新增）
 
 - **结构重构方案**：[project-structure-refactoring.md](./project-structure-refactoring.md) 是结构目标态唯一权威；根 `AGENTS.md` 是执行摘要与硬约束（铁律 17 条）；两者冲突以结构文档为准。
-- **ADR 体系**：`docs/adr/NNNN-kebab-title.md`，编号递增，被推翻的决策标记 Superseded 不删除。在案七篇：0001 errors 注册表归属、0002 http 与 db 解耦、0003 wallet+ledger-core 合并入 billing、0004 上游 4xx 透传、0005 服务端部署产物策略、0006 `ai` 保留独立库包、0007 apps 装配与 `ai` 注入。结构例外、包准入/合并、发布白名单变更必须先写 ADR 再动代码。
+- **ADR 体系**：`docs/adr/NNNN-kebab-title.md`，编号递增，被推翻的决策标记 Superseded 不删除。在案十篇：0001 errors 注册表归属、0002 http 与 db 解耦、0003 wallet+ledger-core 合并入 billing、0004 上游 4xx 透传、0005 服务端部署产物策略、0006 `ai` 保留独立库包、0007 apps 装配与 `ai` 注入、0008 动态 RBAC、0009 端点绑定数据化、0010 上游出口信任模型。结构例外、包准入/合并、发布白名单变更必须先写 ADR 再动代码。
 - **包边界门禁**：`scripts/check-package-boundaries.ts`（`bun run boundaries`，并前置进 `bun run test`）——① package graph 无环；② packages 不得依赖 apps；③ 跨包 import 只能命中显式 exports（禁 `@tillgate/x/src` 深导入）；④ 相对 import 不得越出 workspace 根；⑤ 根 tsconfig paths 不得把包名映射回源码绕过 exports。
 - **四门**：typecheck / lint / test / build 全绿是任何变更的完成条件（覆盖率阈值只许补测试、禁止调低换绿）。
 - **e2e/**：跨进程系统测试统一在根 `e2e/`（非 workspace 包），四个运行门——① 默认 mock 门（`bun run test:e2e`：mock 上游 + 全真 PG/Redis + 双形态进程冒烟 bun 源码 / node dist）；② 真上游 real 门（`E2E_REAL_UPSTREAM=1 bun run test:e2e:real`，花真钱显式 opt-in）；③ admin 管理面旅程门（`cd apps/admin-api && bun run test:e2e`）；④ 用户/跨 app/worker 旅程门（`e2e/client-journey`、`e2e/cross-app`、`e2e/billing-recovery` 各自 `bun x vitest run`，环境不可达整组 skip）。分组目录：`gateway` / `security` / `admin` / `client-journey` / `cross-app` / `billing-recovery`；每个测试文件独占隔离 schema（`tillgate_e2e_*`，结束 drop cascade）。
