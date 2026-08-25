@@ -4,8 +4,16 @@
  * (begin-challenge 对 email 目标直接 undeliverable,不静默降级,B12)。
  */
 export interface Mailer {
-  /** 发送登录/注册验证码(locale 跟随触发请求,默认英文;ip 用于邮件内来源提示) */
-  sendLoginCode(to: string, code: string, ctx: { ip: string; locale?: 'en' | 'zh' }): Promise<void>;
+  /**
+   * 发送验证码(locale 跟随触发请求,默认英文;ip 用于邮件内来源提示)。
+   * purpose 区分用途文案:login=登录/注册(缺省);two_factor_toggle=管理端
+   * 「邮箱验证码二次登录」开关确认(admin-email-2fa,2026-08-25)。
+   */
+  sendLoginCode(
+    to: string,
+    code: string,
+    ctx: { ip: string; locale?: 'en' | 'zh'; purpose?: 'login' | 'two_factor_toggle' },
+  ): Promise<void>;
   /** 发送找回密码一次性链接(url 由消费方按部署基地址拼装;ttlMinutes 随邮件展示) */
   sendPasswordResetLink(
     to: string,

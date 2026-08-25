@@ -32,8 +32,13 @@ export interface BeginChallengeInput {
   readonly target: ChallengeTarget;
   readonly payload?: Record<string, unknown>;
   readonly overrides?: { ttlMs?: number; cooldownMs?: number; maxAttempts?: number };
-  /** 投递上下文(随邮件展示;不落库,begin→deliver 同调用内存流动) */
-  readonly delivery?: { ip: string; locale?: 'en' | 'zh' };
+  /** 投递上下文(随邮件展示/定文案;不落库,begin→deliver 同调用内存流动) */
+  readonly delivery?: {
+    ip: string;
+    locale?: 'en' | 'zh';
+    /** 邮件用途文案:login 缺省;two_factor_toggle=管理端 2FA 开关确认 */
+    purpose?: 'login' | 'two_factor_toggle';
+  };
 }
 
 export interface BeginChallengeResult {
@@ -208,6 +213,7 @@ async function deliverLoginCode(
     await mailer.sendLoginCode(args.to, args.code, {
       ip: args.delivery?.ip ?? '',
       ...(args.delivery?.locale != null ? { locale: args.delivery.locale } : {}),
+      ...(args.delivery?.purpose != null ? { purpose: args.delivery.purpose } : {}),
     });
   } catch {
     try {

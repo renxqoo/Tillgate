@@ -1,6 +1,7 @@
 /**
  * 验证码邮件渲染测试(v1 mailer.test 迁移):中英双语要素、HTML 内联样式、
- * 品牌与语言切换、时效参数注入。
+ * 品牌与语言切换、时效参数注入、用途文案分支(admin-email-2fa:开关确认码
+ * 与登录码区分——缺省 login 行为不变)。
  */
 import { describe, expect, it } from 'vitest';
 import { renderLoginCodeEmail, type MailBrand } from '../src/templates/login-code-email.js';
@@ -65,5 +66,35 @@ describe('renderLoginCodeEmail', () => {
     expect(mail.subject).toContain('[Tillgate Console]');
     expect(mail.text).toContain('10 minutes');
     expect(mail.text).toContain('3 failed attempts');
+  });
+
+  it('purpose=two_factor_toggle(中英):标题与引导句按用途切换,其余要素不变', () => {
+    const zh = renderLoginCodeEmail(
+      '222222',
+      { ip: 'ip', locale: 'zh', purpose: 'two_factor_toggle' },
+      BRAND,
+      PARAMS,
+      NOW,
+    );
+    expect(zh.subject).toBe('【Tillgate 管理后台】安全确认码 222222');
+    expect(zh.text).toContain('「邮箱验证码二次登录」设置,请使用以下验证码确认');
+    expect(zh.text).not.toContain('你正在登录');
+
+    const en = renderLoginCodeEmail(
+      '222222',
+      { ip: 'ip', purpose: 'two_factor_toggle' },
+      BRAND,
+      PARAMS,
+      NOW,
+    );
+    expect(en.subject).toBe('[Tillgate Admin Console] Security confirmation code 222222');
+    expect(en.text).toContain('changing the email second-factor sign-in setting');
+    expect(en.html).toContain('second-factor sign-in setting');
+  });
+
+  it('purpose 缺省 = login(回归):不出现开关确认文案', () => {
+    const mail = renderLoginCodeEmail('654321', { ip: 'ip', locale: 'zh' }, BRAND, PARAMS, NOW);
+    expect(mail.subject).toContain('登录验证码');
+    expect(mail.html).not.toContain('二次登录');
   });
 });

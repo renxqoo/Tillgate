@@ -39,11 +39,41 @@ export const MAIL_BASE_STYLE = {
 export const MAIL_FONT_FAMILY =
   "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei','Helvetica Neue',Arial,sans-serif;";
 
-/** 渲染验证码邮件(subject + text + html);时间格式化由 now 注入(可测) */
+/** 用途×语言文案(标题词 + 引导句)——查表替分支堆叠(铁律 22 ②);
+ * two_factor_toggle=管理端「邮箱验证码二次登录」开关确认(admin-email-2fa)。 */
+function copyOf(
+  en: boolean,
+  toggle: boolean,
+  brand: string,
+): { subjectWord: string; intro: string } {
+  if (toggle) {
+    return en
+      ? {
+          subjectWord: 'Security confirmation code',
+          intro: `You are changing the email second-factor sign-in setting of ${brand}. Confirm with the following code:`,
+        }
+      : {
+          subjectWord: '安全确认码',
+          intro: `你正在变更${brand}「邮箱验证码二次登录」设置,请使用以下验证码确认:`,
+        };
+  }
+  return en
+    ? {
+        subjectWord: 'Login verification code',
+        intro: `You are signing in to ${brand}. Use the following code to complete the verification:`,
+      }
+    : {
+        subjectWord: '登录验证码',
+        intro: `你正在登录${brand},请使用以下验证码完成验证:`,
+      };
+}
+
+/** 渲染验证码邮件(subject + text + html);时间格式化由 now 注入(可测)。
+ * purpose 区分用途文案(login 缺省;two_factor_toggle=管理端 2FA 开关确认)。 */
 // eslint-disable-next-line max-params, max-lines-per-function -- 渲染入参五要素各有其位(公共导出,调用方按位置参数锁定);双语邮件模板 text/html 逐行平铺属数据渲染
 export function renderLoginCodeEmail(
   code: string,
-  ctx: { ip: string; locale?: 'en' | 'zh' },
+  ctx: { ip: string; locale?: 'en' | 'zh'; purpose?: 'login' | 'two_factor_toggle' },
   mailBrand: MailBrand,
   params: LoginCodeEmailContext,
   now: Date,
@@ -52,16 +82,15 @@ export function renderLoginCodeEmail(
   const { brandSub, ttlMinutes, maxAttempts } = { ...mailBrand, ...params };
   const brand = en ? mailBrand.brandEn : mailBrand.brand;
   const sentAt = now.toLocaleString(en ? 'en-US' : 'zh-CN', { hour12: false });
+  const copy = copyOf(en, ctx.purpose === 'two_factor_toggle', brand);
 
-  const subject = en
-    ? `[${brand}] Login verification code ${code}`
-    : `【${brand}】登录验证码 ${code}`;
+  const subject = en ? `[${brand}] ${copy.subjectWord} ${code}` : `【${brand}】${copy.subjectWord} ${code}`;
 
   const text = en
     ? [
         `[${brand}]`,
         '',
-        'You are signing in. Your verification code is:',
+        copy.intro,
         '',
         `    ${code}`,
         '',
@@ -76,7 +105,7 @@ export function renderLoginCodeEmail(
     : [
         `【${brand}】`,
         '',
-        '你正在登录,本次登录的验证码为:',
+        copy.intro,
         '',
         `    ${code}`,
         '',
@@ -99,7 +128,7 @@ export function renderLoginCodeEmail(
 
 <p style="${MAIL_BASE_STYLE.logo}">${brand}</p>
 <p style="${MAIL_BASE_STYLE.p}">${en ? 'Hi there,' : '你好,'}</p>
-<p style="${MAIL_BASE_STYLE.p}">${en ? `You are signing in to ${brand}. Use the following code to complete the verification:` : `你正在登录${brand},请使用以下验证码完成验证:`}</p>
+<p style="${MAIL_BASE_STYLE.p}">${copy.intro}</p>
 <p style="${MAIL_BASE_STYLE.code}">${code}</p>
 <p style="${MAIL_BASE_STYLE.p}">${en ? `The code is valid for <strong>${ttlMinutes} minutes</strong>; <strong>${maxAttempts}</strong> failed attempts invalidate it.` : `验证码 <strong>${ttlMinutes} 分钟内</strong>有效,连续输错 <strong>${maxAttempts} 次</strong>将作废。`}</p>
 <p style="${MAIL_BASE_STYLE.p}">${en ? `If this was not you, <a href="mailto:support@tillgate.com" style="${MAIL_BASE_STYLE.link}">contact support</a> or change your password immediately.` : `若非你本人操作,请 <a href="mailto:support@tillgate.com" style="${MAIL_BASE_STYLE.link}">联系支持</a>或立即修改密码。`}</p>
