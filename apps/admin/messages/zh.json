@@ -1054,6 +1054,7 @@
       "enableToggleLabel": "启用此集成",
       "stepupCodeLabel": "验证器 6 位码",
       "stepupCodeHint": "保存前需通过验证器二次确认（ADR-0011）",
+      "oauthBaseGateHint": "基础地址未配置或未启用时，GitHub / Google 登录整体不生效（服务端快照的 effective 联动）。",
       "enableToggleHint": "关闭后保留凭据，功能面停用",
       "secretKeepHint": "已设置（{masked}）——留空保持不变",
       "secretUnsetHint": "未设置——输入明文以配置",
@@ -1068,6 +1069,7 @@
       "rotatedAt": "验签密钥轮换于 {at}（双读窗内旧密钥回调仍可验签）",
       "cards": {
         "oauth_base": "OAuth 基地址",
+        "oauth_login": "OAuth 登录",
         "oauth_github": "GitHub 登录",
         "oauth_google": "Google 登录",
         "smtp": "邮件服务（SMTP）",
@@ -1077,6 +1079,7 @@
       },
       "descriptions": {
         "oauth_base": "社交登录回调/跳转基地址（装配期生效：变更后需重启服务进程）",
+        "oauth_login": "GitHub / Google 第三方登录。基础地址是两者共享的部署配置（回调白名单 + 前端落点），也是 OAuth 登录的总开关。",
         "oauth_github": "GitHub OAuth 应用凭据（Client ID / Client Secret）",
         "oauth_google": "Google OAuth 客户端凭据（Client ID / Client Secret）",
         "smtp": "登录验证码 / 找回密码 / 管理端 2FA / 运维告警共用的发信通道",

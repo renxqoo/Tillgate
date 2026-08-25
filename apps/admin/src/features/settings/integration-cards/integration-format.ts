@@ -4,14 +4,11 @@
  */
 
 /**
- * 卡片渲染次序（管理面阅读序：登录 → 防刷 → 支付）。SMTP 不在此列——
- * 邮件通道是「邮箱验证码二次登录」的实现细节，配置/启停挂 2FA 卡
- * （2026-08-25 用户裁决：不另立邮件服务配置面）。
+ * 独立卡渲染次序（管理面阅读序：防刷 → 支付）。SMTP 挂「邮箱验证码二次登录」卡；
+ * OAuth 三键（base/github/google）合并为一张「OAuth 登录」组合卡（2026-08-25
+ * 用户裁决：基地址是共享部署配置，不独立占卡）。
  */
 export const INTEGRATION_CARD_ORDER = [
-  'oauth.base',
-  'oauth.github',
-  'oauth.google',
   'captcha.turnstile',
   'payment.epay',
   'payment.stripe',

@@ -235,3 +235,8 @@ src/features/settings/integration-cards/
    TOTP 小窗（`totp-stepup-dialog.tsx`）；未绑定者按钮置灰并引导绑定。
 4. **运维预案**：全员解绑 TOTP / 手机与恢复码双丢失 → 数据库救援
    （deployment-checklist §密钥管理）。
+5. **OAuth 登录组合卡**（2026-08-25 用户裁决：基地址不独立占卡）：
+   `oauth-card.tsx` 三行（base 总闸 + GitHub + Google）共居一卡，每行独立
+   启停/配置（各自一次 step-up，单 key 单 PUT 不变）；`ToggleRow` 提取为
+   共享哑件；词表独立卡缩为 3（captcha/epay/stripe）。base 未配置/未启用
+   时两个 provider 整体不生效（服务端 effective 联动，卡面常驻提示）。
