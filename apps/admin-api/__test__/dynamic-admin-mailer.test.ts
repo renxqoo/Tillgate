@@ -96,7 +96,7 @@ describe('dynamic-admin-mailer（集成设置驱动）', () => {
     const { state, reader } = stubReader();
     state.smtp = SMTP_ON(465);
     const { mailer, transports, sent } = await buildMailer(reader);
-    const ctx = { ip: '1.2.3.4', locale: 'zh' };
+    const ctx = { ip: '1.2.3.4', locale: 'zh' as const };
     await mailer.sendLoginCode('ops@tillgate.dev', '111111', ctx);
     await mailer.sendLoginCode('ops@tillgate.dev', '222222', ctx);
     expect(sent).toHaveLength(2);
@@ -109,7 +109,7 @@ describe('dynamic-admin-mailer（集成设置驱动）', () => {
     const { state, reader } = stubReader();
     state.smtp = SMTP_ON(465);
     const { mailer, transports } = await buildMailer(reader);
-    const ctx = { ip: '1.2.3.4', locale: 'zh' };
+    const ctx = { ip: '1.2.3.4', locale: 'zh' as const };
     await mailer.sendLoginCode('ops@tillgate.dev', '111111', ctx);
     state.smtp = SMTP_ON(587); // 指纹变化（端口不同）
     await mailer.sendLoginCode('ops@tillgate.dev', '222222', ctx);
