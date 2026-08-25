@@ -34,6 +34,7 @@ export function ChangePasswordDialog({
     >
       {({ run }) => (
         <form
+          method="post"
           id="change-password-form"
           noValidate
           onSubmit={(event) => {

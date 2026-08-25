@@ -4,14 +4,15 @@
  */
 
 /**
- * 卡片渲染次序（管理面阅读序：登录 → 防刷 → 支付）。SMTP 挂 2FA 卡、
- * oauth.base 退回 env（ADR-0012）——均不在此列。SMTP 不在此列——
- * 邮件通道是「邮箱验证码二次登录」的实现细节，配置/启停挂 2FA 卡
- * （2026-08-25 用户裁决：不另立邮件服务配置面）。
+ * 卡片渲染次序（管理面阅读序：登录 → 邮件 → 防刷 → 支付）。SMTP 独立卡——
+ * 2026-08-25 二次裁决推翻首裁「挂 2FA 卡」：邮件通道是系统级配置（登录验证码/
+ * 找回密码/2FA/告警共用），与 OAuth/支付同级，门控粒度对齐 settings:integrations；
+ * oauth.base 退回 env（ADR-0012）仍不在此列。
  */
 export const INTEGRATION_CARD_ORDER = [
   'oauth.github',
   'oauth.google',
+  'smtp',
   'captcha.turnstile',
   'payment.epay',
   'payment.stripe',
@@ -21,6 +22,7 @@ export const INTEGRATION_CARD_ORDER = [
 export const INTEGRATION_ICON: Record<string, string> = {
   'oauth.github': 'github',
   'oauth.google': 'chrome',
+  smtp: 'mail',
   'captcha.turnstile': 'shield',
   'payment.epay': 'wallet',
   'payment.stripe': 'card',

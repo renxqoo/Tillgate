@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /**
- * 邮箱验证码二次登录卡规格（docs/integration-settings/IMPLEMENTATION 增量 2026-08-25）：
- * SMTP 无独立集成卡——配置按钮在 2FA 卡右上（无 settings_integrations 权限时
- * 隐藏，2FA 启停不受影响）；邮件通道三态状态行；弹窗含启停开关，
- * 提交 { enabled, config } 同传。
+ * 邮箱验证码二次登录卡规格（纯个人自助，SELF 域）：点开关只开弹窗（不自动
+ * 发码）——弹窗内手动「发送验证码」（60s 冷却倒计时,CountdownButton;关弹窗
+ * 重开倒计时连续）,未发码前确认钮禁用;输码确认生效（admin-email-2fa D2=A,
+ * 2026-08-25 交互修订）。未绑 TOTP 也可开启（D2 取消前置）。SMTP 是系统级
+ * 配置——独立集成卡,本卡不承载配置入口与通道状态行（二次裁决 + D1）。
  */
 import '@testing-library/jest-dom/vitest';
 
@@ -14,53 +15,41 @@ import { NextIntlClientProvider } from 'next-intl';
 
 import en from '../messages/en.json';
 
-const updateIntegration = vi.fn();
 const setTwoFactor = vi.fn();
+const requestCode = vi.fn();
 
-vi.mock('@/server/settings-actions', async () => {
-  const actual = await vi.importActual<object>('@/server/settings-actions');
-  return { ...actual, updateIntegrationAction: (...args: unknown[]) => updateIntegration(...args) };
+vi.mock('@/server/auth-actions', async () => {
+  const actual = await vi.importActual<object>('@/server/auth-actions');
+  return {
+    ...actual,
+    setTwoFactorAction: (...args: unknown[]) => setTwoFactor(...args),
+    requestTwoFactorCodeAction: (...args: unknown[]) => requestCode(...args),
+  };
 });
-
-vi.mock('@/server/auth-actions', () => ({
-  setTwoFactorAction: (...args: unknown[]) => setTwoFactor(...args),
-}));
 
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
 
-import type { IntegrationSettingItem } from '@/server/settings-actions';
+import { toast } from 'sonner';
 import type { AdminMeInfo } from '@tillgate/api-client';
 import { EmailTwoFactorCard } from '../src/features/settings/email-two-factor-card';
 
-const smtpItem: IntegrationSettingItem = {
-  key: 'smtp',
-  enabled: false,
-  configured: true,
-  config: { host: 'smtp.example.com', port: '465', user: 'ops', pass: '****s-9', from: null },
-  secretsSet: ['pass'],
-  rotatedAt: null,
-  updatedAt: '2026-08-25T00:00:00.000Z',
-  updatedByAdminId: 7,
-};
-
 const me = { email: 'ops@example.test', twoFactorEnabled: false, totpEnabled: true } as AdminMeInfo;
+const CHALLENGE = '11111111-1111-4111-8111-111111111111';
 
-function renderCard(overrides?: {
-  smtp?: IntegrationSettingItem | null;
-  smtpUnavailable?: boolean;
-}) {
+function renderCard(meOverride?: Partial<AdminMeInfo>) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <EmailTwoFactorCard
-        me={me}
-        smtp={overrides?.smtp !== undefined ? overrides.smtp : smtpItem}
-        smtpUnavailable={overrides?.smtpUnavailable ?? false}
-        onSavedSmtp={vi.fn()}
-      />
+      <EmailTwoFactorCard me={{ ...me, ...meOverride }} />
     </NextIntlClientProvider>,
   );
+}
+
+async function openDialog(meOverride?: Partial<AdminMeInfo>) {
+  renderCard(meOverride);
+  await userEvent.click(screen.getByRole('button', { name: 'Enable' }));
+  return screen.findByRole('button', { name: 'Send code' });
 }
 
 afterEach(() => {
@@ -68,57 +57,93 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('EmailTwoFactorCard：SMTP 配置入口与状态行', () => {
-  it('邮件通道三态：未配置 / 已配置未启用 / 就绪', () => {
-    const { unmount } = renderCard({ smtp: { ...smtpItem, configured: false, config: {} } });
-    expect(screen.getByText(/not configured/i)).toBeInTheDocument();
-    unmount();
-
-    renderCard({ smtp: smtpItem });
-    expect(screen.getByText(/configured but disabled/i)).toBeInTheDocument();
-    cleanup();
-
-    renderCard({ smtp: { ...smtpItem, enabled: true } });
-    expect(screen.getByText(/ready \(SMTP enabled\)/i)).toBeInTheDocument();
-  });
-
-  it('无 settings_integrations 权限：配置按钮隐藏，2FA 启停不受影响', () => {
-    renderCard({ smtpUnavailable: true });
-    expect(screen.queryByRole('button', { name: 'Configure' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Enable' })).toBeInTheDocument();
-  });
-
-  it('弹窗提交：启停开关与字段同传 { enabled, config }', async () => {
-    updateIntegration.mockResolvedValue({ ...smtpItem, enabled: true });
+describe('EmailTwoFactorCard：邮箱码自证开关（手动发码 + 倒计时）', () => {
+  it('无 SMTP 残留（二次裁决）：卡上只有启停钮，无 Configure 入口、无通道状态文案', () => {
     renderCard();
-    await userEvent.click(screen.getByRole('button', { name: 'Configure' }));
-    // 表单含 step-up 码框（ADR-0011 必填）；启停开关回填当前态（false）→ 勾选启用
-    const toggle = screen.getByRole('checkbox');
-    expect((toggle as HTMLInputElement).checked).toBe(false);
-    await userEvent.click(toggle);
-    await userEvent.type(screen.getByLabelText(/host/i), 'smtp.new.example.test');
-    await userEvent.type(screen.getByLabelText(/authenticator code/i), '123456');
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => {
-      expect(updateIntegration).toHaveBeenCalledWith('smtp', {
-        totpCode: '123456',
-        enabled: true,
-        config: { host: 'smtp.new.example.test' },
-      });
-    });
+    expect(screen.getByRole('button', { name: 'Enable' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Configure' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/mail channel/i)).not.toBeInTheDocument();
   });
 
-  it('2FA 启停先过 stepup 小窗：码随开关同传 setTwoFactorAction（ADR-0011）', async () => {
+  it('未绑 TOTP 也可开启（D2 取消前置）：按钮不置灰、无绑定引导提示', () => {
+    renderCard({ totpEnabled: false });
+    expect(screen.getByRole('button', { name: 'Enable' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Enable' })).not.toHaveAttribute('title');
+  });
+
+  it('点开关只开弹窗不自动发码；未发码前确认钮禁用', async () => {
+    await openDialog();
+    expect(requestCode).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+  });
+
+  it('手动发码：调发码 action、确认钮放开、倒计时呈现', async () => {
+    requestCode.mockResolvedValue({ challengeId: CHALLENGE });
+    await openDialog();
+    await userEvent.click(screen.getByRole('button', { name: 'Send code' }));
+    await waitFor(() => {
+      expect(requestCode).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeEnabled();
+    // 60s 冷却倒计时（Resend in Ns,禁用态）
+    const resend = screen.getByRole('button', { name: /^Resend in \d+s$/ });
+    expect(resend).toBeDisabled();
+  });
+
+  it('发码失败（SMTP 未生效/冷却）：toast 报错，确认钮保持禁用', async () => {
+    requestCode.mockResolvedValue({
+      error: 'Email verification code required but SMTP is not configured',
+    });
+    await openDialog();
+    await userEvent.click(screen.getByRole('button', { name: 'Send code' }));
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled();
+    });
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+    expect(setTwoFactor).not.toHaveBeenCalled();
+  });
+
+  it('完整链路：发码 → 输码 → 确认 → setTwoFactorAction(enabled, challengeId, code) → 关弹窗', async () => {
+    requestCode.mockResolvedValue({ challengeId: CHALLENGE });
     setTwoFactor.mockResolvedValue({});
-    renderCard({ smtp: null });
-    await userEvent.click(screen.getByRole('button', { name: 'Enable' }));
-    await userEvent.type(screen.getByPlaceholderText('000000'), '654321');
+    await openDialog();
+    await userEvent.click(screen.getByRole('button', { name: 'Send code' }));
+    await screen.findByRole('button', { name: /^Resend in \d+s$/ });
+    await userEvent.type(screen.getByLabelText(/6-digit email code/i), '654321');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
-      expect(setTwoFactor).toHaveBeenCalledWith(true, '654321');
+      expect(setTwoFactor).toHaveBeenCalledWith(true, CHALLENGE, '654321');
     });
     await waitFor(() => {
       expect(screen.getByText('Enabled')).toBeInTheDocument();
     });
+    // 确认成功即关弹窗
+    expect(screen.queryByLabelText(/6-digit email code/i)).not.toBeInTheDocument();
+  });
+
+  it('冷却跨弹窗连续：发码后关弹窗再点开关，发送钮仍在倒计时', async () => {
+    requestCode.mockResolvedValue({ challengeId: CHALLENGE });
+    await openDialog();
+    await userEvent.click(screen.getByRole('button', { name: 'Send code' }));
+    await screen.findByRole('button', { name: /^Resend in \d+s$/ });
+    // 关弹窗（Cancel）再重开——冷却态由卡片持有,不随弹窗重置
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Enable' }));
+    expect(screen.getByRole('button', { name: /^Resend in \d+s$/ })).toBeDisabled();
+    expect(requestCode).toHaveBeenCalledTimes(1);
+  });
+
+  it('确认失败（错码）：状态不翻转，弹窗保持开可重试', async () => {
+    requestCode.mockResolvedValue({ challengeId: CHALLENGE });
+    setTwoFactor.mockResolvedValue({ error: 'Invalid code' });
+    await openDialog();
+    await userEvent.click(screen.getByRole('button', { name: 'Send code' }));
+    await userEvent.type(await screen.findByLabelText(/6-digit email code/i), '000000');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => {
+      expect(setTwoFactor).toHaveBeenCalled();
+    });
+    expect(screen.getByText('Not enabled')).toBeInTheDocument();
+    expect(screen.getByLabelText(/6-digit email code/i)).toBeInTheDocument();
   });
 });

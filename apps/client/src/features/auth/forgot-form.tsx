@@ -76,6 +76,7 @@ export function ForgotForm() {
       </CardHeader>
       <CardContent>
         <form
+          method="post"
           noValidate
           autoComplete="off"
           onSubmit={form.handleSubmit((v) =>

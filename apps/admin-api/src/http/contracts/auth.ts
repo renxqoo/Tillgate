@@ -17,9 +17,11 @@ export const authContracts = {
     oldPassword: z.string().min(1).max(256),
     newPassword: z.string().min(1).max(256),
   }),
+  /** 2FA 开关确认（admin-email-2fa:邮箱码自证——先 POST /v1/me/two-factor/code 发码） */
   twoFactor: z.object({
-    totpCode: z.string().regex(/^\d{6}$/, 'totpCode must be 6 digits'),
     enabled: z.boolean(),
+    challengeId: z.string().uuid(),
+    code: z.string().regex(/^\d{6}$/, 'code must be 6 digits'),
   }),
   /** TOTP 确认/解绑验证码:6 位数字(TOTP)或 10 位恢复码(去易混字母表) */
   totpCode: z.object({

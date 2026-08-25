@@ -1007,16 +1007,19 @@
     "currentStatus": "当前状态：",
     "enabledState": "已开启",
     "disabledState": "未开启",
-    "smtpState": {
-      "ready": "邮件通道：已就绪（SMTP 已启用）",
-      "off": "邮件通道：已配置但未启用——二次登录邮件将无法发送，可在「配置」中开启",
-      "unconfigured": "邮件通道：未配置——开启二次登录前需先在「配置」中填写 SMTP（个人邮箱开 SMTP 授权码即可）"
-    },
     "stepupRequired": "需先绑定验证器(TOTP)才能执行此操作",
     "stepup": {
       "codeLabel": "验证器 6 位码",
       "codeHint": "打开验证器 App 查看当前 6 位码；恢复码不适用于此操作",
       "dialogDescription": "敏感操作需二次确认——输入验证器当前 6 位码"
+    },
+    "emailCode": {
+      "codeLabel": "邮箱 6 位验证码",
+      "codeHint": "确认码发送到你的管理员邮箱，5 分钟内有效，连续输错 5 次作废",
+      "dialogDescription": "输入邮箱收到的 6 位验证码确认本次变更",
+      "sendCode": "发送验证码",
+      "resendCountdown": "{seconds}s 后可重发",
+      "sentToast": "验证码已发送，请查收邮箱"
     },
     "totp": {
       "title": "验证器(TOTP)",
@@ -1051,10 +1054,8 @@
       "configure": "配置",
       "dialogDescription": "留空 = 保持现值；secret 字段只收明文（回显恒为掩码）",
       "nothingToSave": "没有可保存的变更",
-      "enableToggleLabel": "启用此集成",
       "stepupCodeLabel": "验证器 6 位码",
       "stepupCodeHint": "保存前需通过验证器二次确认（ADR-0011）",
-      "enableToggleHint": "关闭后保留凭据，功能面停用",
       "secretKeepHint": "已设置（{masked}）——留空保持不变",
       "secretUnsetHint": "未设置——输入明文以配置",
       "clearSecret": "清除该密钥",

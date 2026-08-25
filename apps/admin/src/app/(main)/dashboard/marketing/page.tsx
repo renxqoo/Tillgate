@@ -1,4 +1,4 @@
-import { requirePermission } from '@/server/get-admin';
+import { hasPerm, requirePermission } from '@/server/get-admin';
 import { MegaphoneIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -10,7 +10,9 @@ import { MarketingContent, type MarketingSettingsView } from '@/features/billing
 export const dynamic = 'force-dynamic';
 
 export default async function MarketingPage() {
-  await requirePermission('growth:read');
+  const me = await requirePermission('growth:read');
+  // 无 growth:update：保存钮隐藏、输入禁用（2026-08-25 用户裁决 D1/D2；权威判定在 ACL）
+  const canUpdate = hasPerm(me, 'growth:update');
   const t = await getTranslations('marketing');
   const tc = await getTranslations('common');
   let settings: MarketingSettingsView | null = null;
@@ -27,7 +29,7 @@ export default async function MarketingPage() {
       icon={<MegaphoneIcon className="size-5 text-muted-foreground" />}
       unbordered
     >
-      <MarketingContent settings={settings} error={loadError} />
+      <MarketingContent settings={settings} error={loadError} canUpdate={canUpdate} />
     </ListPage>
   );
 }

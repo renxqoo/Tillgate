@@ -15,6 +15,7 @@ export function IntegrationCards({
   error,
   signupGiftOn,
   totpEnabled,
+  canManage,
 }: {
   /** null = 加载中（父级一次性加载列表 + 注册送礼联动源） */
   items: readonly IntegrationSettingItem[] | null;
@@ -23,6 +24,8 @@ export function IntegrationCards({
   signupGiftOn: boolean;
   /** 当前管理员已绑定验证器（ADR-0011——未绑定者敏感按钮置灰） */
   totpEnabled: boolean;
+  /** settings:integrations 持有者可见配置/启停操作位 */
+  canManage: boolean;
 }) {
   const t = useTranslations('settings.integrations');
 
@@ -53,6 +56,7 @@ export function IntegrationCards({
                 item={item}
                 signupGiftOn={signupGiftOn}
                 totpEnabled={totpEnabled}
+                canManage={canManage}
               />,
             ];
       })}

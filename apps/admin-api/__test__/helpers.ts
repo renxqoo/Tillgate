@@ -223,6 +223,7 @@ export function fakeDeps(overrides: {
     mailerConfigured: () => false,
     loginAudit: async () => {},
     stepupAudit: async () => {},
+    twoFactorAudit: async () => {},
     sessionTtlSec: 3600,
     corsOrigins: [],
     bodyLimitBytes: 1024 * 1024,

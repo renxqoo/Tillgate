@@ -1,91 +1,89 @@
 'use client';
 
-// 邮箱验证码二次登录卡（原组装器内联 2FA 块拆出，组装见 ./index.tsx）：2FA 启停 +
-// 邮件通道（SMTP）配置入口。SMTP 无独立集成卡——邮件通道是本卡功能的
-// 实现细节，配置按钮在卡右上（与集成卡同位用户裁决）、启停开关在弹窗内
-// （2026-08-25 用户裁决：不另立邮件服务配置面）。
+// 邮箱验证码二次登录卡（纯个人自助，SELF 域）：只管「我」的二次登录开关与状态。
+// 开关确认 = 邮箱码自证（admin-email-2fa,2026-08-25 D2=A）：点开关只开弹窗，
+// 弹窗内手动「发送验证码」（60s 冷却倒计时，CountdownButton——关弹窗再开
+// 倒计时连续），输码确认生效；取消 TOTP 前置（未绑验证器也可开启——D2）。
+// 邮件通道（SMTP）是系统级配置——独立集成卡,2026-08-25 二次裁决;通道不可用
+// 在发码步即被拒（503）,不再等点击开关后报错。
 
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 
-import { Loader2Icon, ShieldCheckIcon } from 'lucide-react';
+import { ShieldCheckIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 
 import type { AdminMeInfo } from '@tillgate/api-client';
 
-import { setTwoFactorAction } from '@/server/auth-actions';
+import { requestTwoFactorCodeAction, setTwoFactorAction } from '@/server/auth-actions';
 import { useActionResult } from '@/components/action-toast';
-import type { IntegrationSettingItem } from '@/server/settings-actions';
-import { IntegrationFormDialog } from './integration-cards/integration-form-dialog';
-import { TotpStepupDialog } from './totp-stepup-dialog';
+import { CodeConfirmDialog } from './code-confirm-dialog';
 
-export function EmailTwoFactorCard({
-  me,
-  smtp,
-  smtpUnavailable,
-  onSavedSmtp,
-}: {
-  me: AdminMeInfo | null;
-  smtp: IntegrationSettingItem | null;
-  /** 无 settings_integrations 权限/加载失败——隐藏配置入口（2FA 启停不受影响） */
-  smtpUnavailable: boolean;
-  onSavedSmtp: (item: IntegrationSettingItem) => void;
-}) {
-  // 未绑定验证器：2FA 开关与 SMTP 配置均不可达（ADR-0011——服务端同样拒绝）
+/** 服务端挑战冷却（装配 challenge.cooldownMs=60s——与后端同拍展示） */
+const SEND_COOLDOWN_MS = 60_000;
+
+export function EmailTwoFactorCard({ me }: { me: AdminMeInfo | null }) {
   const t = useTranslations('settings');
+  const te = useTranslations('settings.emailCode');
   const tc = useTranslations('common');
-  const ti = useTranslations('settings.integrations');
   const [pending, startTransition] = useTransition();
   const notify = useActionResult();
   const [enabled, setEnabled] = useState(Boolean(me?.twoFactorEnabled));
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [stepupOpen, setStepupOpen] = useState(false);
-  const totpEnabled = me?.totpEnabled === true;
-  const stepupTitle = totpEnabled ? undefined : t('stepupRequired');
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
 
-  function confirmTwoFactor(code: string): void {
+  /** 发码（弹窗内手动触发）：成功记 challengeId 并启动 60s 冷却倒计时 */
+  function sendCode(): void {
+    setSending(true);
+    void (async () => {
+      try {
+        const res = await requestTwoFactorCodeAction();
+        if (res.error != null || res.challengeId == null) {
+          toast.error(res.error ?? tc('actionFailed'));
+          return;
+        }
+        setChallengeId(res.challengeId);
+        setCooldownUntil(Date.now() + SEND_COOLDOWN_MS);
+        toast.success(te('sentToast'));
+      } finally {
+        setSending(false);
+      }
+    })();
+  }
+
+  /** 输码确认 → 开关生效（成功即关弹窗,失败保持开可重试；成功审计在后端） */
+  function confirmToggle(code: string): void {
+    if (challengeId == null) return;
     startTransition(async () => {
       const next = !enabled;
-      const res = await setTwoFactorAction(next, code);
+      const res = await setTwoFactorAction(next, challengeId, code);
       if (notify(res ?? {}, tc('actionFailed'), next ? t('enabledToast') : t('disabledToast'))) {
         setEnabled(next);
+        setConfirmOpen(false);
       }
     });
   }
 
-  const smtpState = smtpStateOf(smtp);
-
   return (
     <Card className="h-full">
       <CardHeader>
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <ShieldCheckIcon className="size-4" /> {t('twoFactor')}
-          </CardTitle>
-          {!smtpUnavailable ? (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!totpEnabled}
-              title={stepupTitle}
-              onClick={() => setDialogOpen(true)}
-            >
-              {ti('configure')}
-            </Button>
-          ) : null}
-        </div>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ShieldCheckIcon className="size-4" /> {t('twoFactor')}
+        </CardTitle>
         <CardDescription>{t('twoFactorDescription', { email: me?.email ?? '—' })}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-center gap-3">
+          {/* D2：不再按 TOTP 绑定置灰——邮箱码即确认凭证 */}
           <Button
             variant={enabled ? 'destructive' : 'default'}
             size="sm"
-            disabled={pending || !totpEnabled}
-            title={stepupTitle}
-            onClick={() => setStepupOpen(true)}
+            disabled={pending}
+            onClick={() => setConfirmOpen(true)}
           >
-            {pending && <Loader2Icon className="animate-spin" />}
             {enabled ? t('disable') : t('enable')}
           </Button>
           <span className="text-sm text-muted-foreground">
@@ -95,29 +93,20 @@ export function EmailTwoFactorCard({
             </span>
           </span>
         </div>
-        <p className="text-xs text-muted-foreground">{t(`smtpState.${smtpState}`)}</p>
       </CardContent>
-      <TotpStepupDialog
-        open={stepupOpen}
-        onOpenChange={setStepupOpen}
+      <CodeConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        variant="email"
         title={`${enabled ? t('disable') : t('enable')} — ${t('twoFactor')}`}
-        onConfirm={(code) => confirmTwoFactor(code)}
+        submitDisabled={challengeId == null}
+        sendCode={{
+          onSend: sendCode,
+          cooldownUntil,
+          pending: sending,
+        }}
+        onConfirm={confirmToggle}
       />
-      {smtp != null ? (
-        <IntegrationFormDialog
-          item={smtp}
-          open={dialogOpen}
-          onOpenChange={setDialogOpen}
-          onSaved={onSavedSmtp}
-          includeEnabled
-        />
-      ) : null}
     </Card>
   );
-}
-
-/** 邮件通道三态（模块级纯函数——主组件复杂度收口） */
-function smtpStateOf(smtp: IntegrationSettingItem | null): 'ready' | 'off' | 'unconfigured' {
-  if (smtp == null || !smtp.configured) return 'unconfigured';
-  return smtp.enabled ? 'ready' : 'off';
 }

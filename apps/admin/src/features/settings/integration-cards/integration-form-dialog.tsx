@@ -1,6 +1,8 @@
 'use client';
 
-// 集成字段编辑弹窗（spec 驱动字段面：secret write-only——留空=保持、勾选清除提交 null）
+// 集成字段编辑弹窗（spec 驱动字段面：secret write-only——留空=保持、勾选清除提交 null；
+// 启停不经弹窗——独立卡卡面启停钮触达，2026-08-25 二次裁决 SMTP 亦独立成卡后
+// 本弹窗恒为纯字段编辑）。
 
 import { Button, FieldDescription, FieldLabel, FormItem, Input } from '@tillgate/ui';
 import { useTranslations } from 'next-intl';
@@ -17,24 +19,17 @@ export function IntegrationFormDialog({
   open,
   onOpenChange,
   onSaved,
-  includeEnabled = false,
 }: {
   item: IntegrationSettingItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: (item: IntegrationSettingItem) => void;
-  /**
-   * 弹窗内含启停开关（提交 { enabled, config } 同传）。独立集成卡的启停在
-   * 卡面按钮；无独立卡的集成（SMTP 挂 2FA 卡）经此开关触达。
-   */
-  includeEnabled?: boolean;
 }) {
   const t = useTranslations('settings.integrations');
   const tc = useTranslations('common');
   const formId = `integration-form-${item.key}`;
   const fields = Object.keys(item.config);
   const [cleared, setCleared] = useState<ReadonlySet<string>>(new Set());
-  const [enabledNext, setEnabledNext] = useState(item.enabled);
 
   const isSecret = (field: string): boolean =>
     item.secretsSet.includes(field) || SECRET_FIELD_NAMES.has(field);
@@ -43,11 +38,7 @@ export function IntegrationFormDialog({
     <FormDialog
       formId={formId}
       open={open}
-      onOpenChange={(next) => {
-        // 每次打开回填当前启停态（上一次未保存的拨动不跨会话残留）
-        if (next) setEnabledNext(item.enabled);
-        onOpenChange(next);
-      }}
+      onOpenChange={onOpenChange}
       title={t(`cards.${i18nKey(item.key)}`)}
       description={t('dialogDescription')}
       submitLabel={tc('save')}
@@ -63,14 +54,13 @@ export function IntegrationFormDialog({
               const values: Record<string, string> = {};
               for (const field of fields) values[field] = String(data.get(field) ?? '');
               const config = buildConfigPayload(fields, values, cleared);
-              if (payloadIsEmpty(config) && enabledNext === item.enabled) {
+              if (payloadIsEmpty(config)) {
                 toast.info(t('nothingToSave'));
                 return false;
               }
               const totpCode = String(data.get('totpCode') ?? '');
               const saved = await updateIntegrationAction(item.key, {
                 totpCode,
-                ...(includeEnabled ? { enabled: enabledNext } : {}),
                 ...(!payloadIsEmpty(config) ? { config } : {}),
               });
               onSaved(saved);
@@ -80,9 +70,6 @@ export function IntegrationFormDialog({
           }}
         >
           <StepupField itemId={item.key} />
-          {includeEnabled ? (
-            <EnabledToggle checked={enabledNext} onChange={setEnabledNext} />
-          ) : null}
           {fields.map((field) => {
             const secret = isSecret(field);
             const masked = item.config[field];
@@ -153,36 +140,11 @@ function StepupField({ itemId }: { itemId: string }) {
         inputMode="numeric"
         autoComplete="one-time-code"
         maxLength={6}
-        placeholder="000000"
+        placeholder=""
         required
         pattern="\d{6}"
       />
       <FieldDescription>{t('stepupCodeHint')}</FieldDescription>
     </FormItem>
-  );
-}
-
-/** 启停开关（无独立卡集成的启停入口——SMTP 挂 2FA 卡经此触达） */
-function EnabledToggle({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  const t = useTranslations('settings.integrations');
-  return (
-    <div className="space-y-1">
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-          className="size-4"
-        />
-        {t('enableToggleLabel')}
-      </label>
-      <FieldDescription>{t('enableToggleHint')}</FieldDescription>
-    </div>
   );
 }

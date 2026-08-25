@@ -119,6 +119,12 @@ export interface AdminAppDeps {
   loginAudit: AuthRoutesDeps['loginAudit'];
   /** step-up 失败审计（ADR-0011——action 自由词面：settings.stepup.failed 等） */
   stepupAudit: (entry: { action: string; adminId: number; ip: string | null }) => Promise<void>;
+  /** 2FA 开关成功审计（admin-email-2fa——settings.two_factor,后置旁路） */
+  twoFactorAudit: (entry: {
+    adminId: number;
+    enabledFrom: boolean;
+    enabledTo: boolean;
+  }) => Promise<void>;
   /** P2:会话 TTL（签发面） */
   sessionTtlSec: number;
   corsOrigins: readonly string[];
@@ -299,14 +305,10 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
     '/',
     meRoutes({
       identity: deps.identity,
-      stepup: {
-        guards: deps.authGuards,
-        audit: deps.stepupAudit,
-        trustedProxyHops: deps.trustedProxyHops,
-      },
+      twoFactorAudit: deps.twoFactorAudit,
       admins: deps.controlPlane.admins,
       rbac: deps.controlPlane.rbac,
-      mailerConfigured: deps.mailerConfigured,
+      trustedProxyHops: deps.trustedProxyHops,
       sessionTtlSec: deps.sessionTtlSec,
     }),
   );

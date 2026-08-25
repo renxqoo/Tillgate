@@ -75,12 +75,6 @@ export const AdminErrors = defineErrorCatalog('admin', {
     message: 'TOTP verification required: bind your authenticator first',
     zh: '需先绑定验证器(TOTP)才能执行此操作',
   },
-  /** 开启 2FA 前置 SMTP 未配置（与 two_factor_unavailable 分列:前置校验 400） */
-  smtp_not_configured: {
-    category: 'invalid_input',
-    message: 'Enabling two-factor authentication requires SMTP configuration first',
-    zh: '开启两步验证需先配置 SMTP',
-  },
   /** TOTP 解绑码无效（验证器/恢复码都不匹配） */
   invalid_totp_code: {
     category: 'invalid_input',

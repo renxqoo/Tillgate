@@ -39,9 +39,12 @@ function trimNumeric(value: string): string {
 export function MarketingContent({
   settings,
   error: loadError,
+  canUpdate,
 }: {
   settings: MarketingSettingsView | null;
   error: string | null;
+  /** growth:update 持有者可保存；否则只读（2026-08-25 用户裁决 D1/D2——权威判定在 ACL） */
+  canUpdate: boolean;
 }) {
   const t = useTranslations('marketing');
   const tc = useTranslations('common');
@@ -108,6 +111,7 @@ export function MarketingContent({
             value={form.signupGiftAmount}
             onChange={set('signupGiftAmount')}
             inputMode="decimal"
+            disabled={!canUpdate}
           />
         </FormItem>
         <FormItem>
@@ -117,6 +121,7 @@ export function MarketingContent({
             value={form.referralSignupBonus}
             onChange={set('referralSignupBonus')}
             inputMode="decimal"
+            disabled={!canUpdate}
           />
         </FormItem>
         <FormItem>
@@ -126,6 +131,7 @@ export function MarketingContent({
             value={form.referralCommissionRate}
             onChange={set('referralCommissionRate')}
             inputMode="decimal"
+            disabled={!canUpdate}
           />
         </FormItem>
         {gifted ? (
@@ -133,11 +139,13 @@ export function MarketingContent({
             {t('giftWarning')}
           </p>
         ) : null}
-        <div className="flex items-center gap-2">
-          <Button onClick={save} disabled={pending}>
-            {pending ? <Loader2Icon className="size-4 animate-spin" /> : null} {tc('save')}
-          </Button>
-        </div>
+        {canUpdate ? (
+          <div className="flex items-center gap-2">
+            <Button onClick={save} disabled={pending}>
+              {pending ? <Loader2Icon className="size-4 animate-spin" /> : null} {tc('save')}
+            </Button>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

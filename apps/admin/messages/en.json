@@ -1007,16 +1007,19 @@
     "currentStatus": "Current status: ",
     "enabledState": "Enabled",
     "disabledState": "Not enabled",
-    "smtpState": {
-      "ready": "Mail channel: ready (SMTP enabled)",
-      "off": "Mail channel: configured but disabled — login codes cannot be delivered; enable it via Configure",
-      "unconfigured": "Mail channel: not configured — set up SMTP via Configure before enabling this feature"
-    },
     "stepupRequired": "Bind your authenticator (TOTP) first",
     "stepup": {
       "codeLabel": "6-digit authenticator code",
       "codeHint": "Open your authenticator app for the current code; recovery codes are not accepted here",
       "dialogDescription": "Sensitive action — enter the current 6-digit authenticator code"
+    },
+    "emailCode": {
+      "codeLabel": "6-digit email code",
+      "codeHint": "The code goes to your admin email; valid for 5 minutes, 5 failed attempts invalidate it",
+      "dialogDescription": "Enter the 6-digit code from your email to confirm this change",
+      "sendCode": "Send code",
+      "resendCountdown": "Resend in {seconds}s",
+      "sentToast": "Code sent — check your inbox"
     },
     "totp": {
       "title": "Authenticator (TOTP)",
@@ -1051,10 +1054,8 @@
       "configure": "Configure",
       "dialogDescription": "Empty = keep current value; secret fields accept plaintext only (echo is always masked)",
       "nothingToSave": "Nothing to save",
-      "enableToggleLabel": "Enable this integration",
       "stepupCodeLabel": "6-digit authenticator code",
       "stepupCodeHint": "Saving requires authenticator confirmation (ADR-0011)",
-      "enableToggleHint": "Credentials are kept while disabled",
       "secretKeepHint": "Set ({masked}) — leave empty to keep",
       "secretUnsetHint": "Not set — enter plaintext to configure",
       "clearSecret": "Clear this secret",

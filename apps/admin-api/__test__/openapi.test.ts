@@ -110,6 +110,7 @@ const ENDPOINTS: readonly string[] = [
   'POST /v1/me/totp/disable',
   'POST /v1/me/totp/enroll',
   'POST /v1/me/two-factor',
+  'POST /v1/me/two-factor/code',
   'POST /v1/model-catalog/import',
   'POST /v1/models',
   'POST /v1/models/:id/channels',

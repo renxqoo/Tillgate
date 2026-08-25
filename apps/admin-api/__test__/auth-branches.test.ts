@@ -184,16 +184,8 @@ describe('auth/me 未走分支', () => {
 
   it('me:资料行缺失 401 admin_not_found;2FA 开启成功路径(SMTP 已配)回显开关', async () => {
     const meDeps: MeRoutesDeps = {
-      stepup: {
-        guards: {
-          ip: {
-            isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-            recordFailure: async () => ({ locked: false, retryAfterSec: 0 }),
-          },
-        },
-        audit: async () => {},
-        trustedProxyHops: 0,
-      },
+      twoFactorAudit: async () => {},
+      trustedProxyHops: 0,
       rbac: {
         roles: {
           find: async () => ({
@@ -220,6 +212,11 @@ describe('auth/me 未走分支', () => {
         },
       },
       identity: {
+        challenges: {
+          begin: (async () => ({ challengeId: 'c' })) as never,
+          verify: (async () => ({ target: {}, payload: {} })) as never,
+          abort: async () => ({ aborted: true }),
+        },
         mfa: mfaStub(),
         passwords: {
           authenticate: async () => ({ userId: 0 }),
@@ -236,7 +233,6 @@ describe('auth/me 未走分支', () => {
         },
       },
       admins: { find: async () => null, setTwoFactorEnabled: async () => {} },
-      mailerConfigured: () => true,
       sessionTtlSec: 3600,
     };
     const app = meRoutes(meDeps);
@@ -248,20 +244,29 @@ describe('auth/me 未走分支', () => {
     const enable = await app.request('/v1/me/two-factor', {
       method: 'POST',
       headers: { ...json, authorization: `Bearer ${TOKEN}` },
-      body: JSON.stringify({ totpCode: '123456', enabled: true }),
+      body: JSON.stringify({
+        enabled: true,
+        challengeId: '11111111-1111-4111-8111-111111111111',
+        code: '123456',
+      }),
     });
     expect(enable.status).toBe(200);
     expect(await enable.json()).toEqual({ twoFactorEnabled: true });
     const disable = await app.request('/v1/me/two-factor', {
       method: 'POST',
       headers: { ...json, authorization: `Bearer ${TOKEN}` },
-      body: JSON.stringify({ totpCode: '123456', enabled: false }),
+      body: JSON.stringify({
+        enabled: false,
+        challengeId: '11111111-1111-4111-8111-111111111111',
+        code: '123456',
+      }),
     });
     expect(await disable.json()).toEqual({ twoFactorEnabled: false });
   });
 
   it('登录成功但 touch/审计为 best-effort 分支（audit 拒绝不阻断登录）', async () => {
     const app = authRoutes({
+      mailerConfigured: () => false,
       identity: {
         mfa: mfaStub(),
         passwords: {
@@ -313,7 +318,6 @@ describe('auth/me 未走分支', () => {
         throw new Error('audit down');
       },
       trustedProxyHops: 0,
-      mailerConfigured: () => false,
       sessionTtlSec: 3600,
     });
     app.onError((error, c) =>

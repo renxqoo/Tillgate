@@ -84,6 +84,8 @@ interface FormDialogBaseProps {
   open?: boolean;
   /** open 变化回调：受控模式下由调用方落 state，非受控模式下是额外回调（如关闭时 reset 表单） */
   onOpenChange?: (open: boolean) => void;
+  /** 外部条件禁用提交钮（pending 之外的语义态——如「验证码未发送前禁用确认」） */
+  submitDisabled?: boolean;
   /** 表单体；render-prop 形式拿 { pending, run, close } */
   children: ReactNode | ((ctx: FormDialogRenderProps) => ReactNode);
 }
@@ -119,6 +121,7 @@ export function FormDialog(props: FormDialogProps) {
     titleClassName,
     open: openProp,
     onOpenChange,
+    submitDisabled,
     children,
   } = props;
   const cancelLabel = cancelLabelOverride ?? t('cancel');
@@ -158,14 +161,14 @@ export function FormDialog(props: FormDialogProps) {
         <DialogFooter>
           <DialogClose render={<Button variant="outline">{cancelLabel}</Button>} />
           {formId ? (
-            <Button type="submit" form={formId} disabled={pending}>
+            <Button type="submit" form={formId} disabled={pending || submitDisabled}>
               {pending && <Loader2Icon className="animate-spin" />}
               {submitLabel}
             </Button>
           ) : (
             <Button
               type="button"
-              disabled={pending}
+              disabled={pending || submitDisabled}
               onClick={() => run(async () => (await onSubmitClick?.()) === true)}
             >
               {pending && <Loader2Icon className="animate-spin" />}

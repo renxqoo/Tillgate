@@ -86,6 +86,7 @@ export function LoginForm() {
         </CardHeader>
         <CardContent>
           <form
+          method="post"
             noValidate
             onSubmit={(e) => {
               e.preventDefault();
@@ -157,6 +158,7 @@ export function LoginForm() {
         </CardHeader>
         <CardContent>
           <form
+          method="post"
             noValidate
             onSubmit={(e) => {
               e.preventDefault();
@@ -216,6 +218,7 @@ export function LoginForm() {
       </CardHeader>
       <CardContent>
         <form
+          method="post"
           noValidate
           autoComplete="off"
           onSubmit={form.handleSubmit(onSubmit)}

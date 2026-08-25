@@ -1,4 +1,4 @@
-import { requirePermission } from '@/server/get-admin';
+import { hasPerm, requirePermission } from '@/server/get-admin';
 import { getTranslations } from 'next-intl/server';
 
 import { ApiError } from '@tillgate/api-client';
@@ -19,5 +19,16 @@ export default async function SettingsPage() {
   } catch (error) {
     loadError = error instanceof ApiError ? error.message : tc('loadFailed');
   }
-  return <SettingsContent me={me} error={loadError} />;
+  // 按钮级显隐（2026-08-25 用户裁决 D1）：无 settings:update → 时区只读；
+  // 无 settings:integrations → 集成/SMTP 操作位隐藏。权威判定在 admin-api ACL。
+  const canUpdateTimezone = me != null && hasPerm(me, 'settings:update');
+  const canManageIntegrations = me != null && hasPerm(me, 'settings:integrations');
+  return (
+    <SettingsContent
+      me={me}
+      error={loadError}
+      canUpdateTimezone={canUpdateTimezone}
+      canManageIntegrations={canManageIntegrations}
+    />
+  );
 }

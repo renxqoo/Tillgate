@@ -389,6 +389,15 @@ describe('me（P2 管理员自身）', () => {
         },
       },
       identity: {
+        challenges: {
+          begin: (async () => {
+            throw identityErrors.business('undeliverable_challenge', {
+              kind: 'admin_two_factor_code',
+            });
+          }) as never,
+          verify: (async () => ({ target: {}, payload: {} })) as never,
+          abort: async () => ({ aborted: true }),
+        },
         mfa: mfaStub(),
         passwords: {
           authenticate: async () => ({ userId: ADMIN_ID }),
@@ -404,21 +413,12 @@ describe('me（P2 管理员自身）', () => {
           logout: async () => ({ ok: true as const }),
         },
       },
-      stepup: {
-        guards: {
-          ip: {
-            isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-            recordFailure: async () => ({ locked: false, retryAfterSec: 0 }),
-          },
-        },
-        audit: async () => {},
-        trustedProxyHops: 0,
-      },
+      twoFactorAudit: async () => {},
+      trustedProxyHops: 0,
       admins: {
         find: async () => adminRecord,
         setTwoFactorEnabled: async () => {},
       },
-      mailerConfigured: () => false,
       sessionTtlSec: 3600,
       ...overrides,
     };
@@ -438,6 +438,7 @@ describe('me（P2 管理员自身）', () => {
     const change = vi.fn(async () => ({ invalidBefore: '2026-08-23T00:00:00Z' }));
     const app2 = meHarness({
       identity: {
+        challenges: {} as never,
         mfa: mfaStub(),
         passwords: {
           authenticate: async () => ({ userId: 0 }),
@@ -468,12 +469,12 @@ describe('me（P2 管理员自身）', () => {
       newPassword: 'new-pass-123',
     });
 
-    const enable = await app.request('/v1/me/two-factor', {
+    // admin-email-2fa：SMTP 前置前移到发码步——开关本体不再查 mailerConfigured
+    const code = await app.request('/v1/me/two-factor/code', {
       method: 'POST',
       headers: { ...json, authorization: `Bearer ${VALID_TOKEN}` },
-      body: JSON.stringify({ totpCode: '123456', enabled: true }),
     });
-    expect(enable.status).toBe(400);
-    expect(await enable.json()).toMatchObject({ error: { code: 'admin.smtp_not_configured' } });
+    expect(code.status).toBe(503);
+    expect(await code.json()).toMatchObject({ error: { code: 'identity.undeliverable_challenge' } });
   });
 });

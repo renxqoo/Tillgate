@@ -290,6 +290,7 @@ const EXPECTED_EXPORTS = [
   'AlertDescription',
   'AlertAction',
   'ConfirmDialog',
+  'CountdownButton',
   'CopyButton',
   'FormDialog',
   'Progress',
@@ -301,6 +302,7 @@ const EXPECTED_EXPORTS = [
   'toast',
   // hooks
   'useCopy',
+  'useCountdown',
   'useIsMobile',
   'useMediaQuery',
   // formatting 工厂

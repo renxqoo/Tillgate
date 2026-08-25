@@ -108,6 +108,7 @@ export function ResetPasswordForm({ token }: { readonly token: string | null }) 
       </CardHeader>
       <CardContent>
         <form
+          method="post"
           noValidate
           onSubmit={(e) => {
             e.preventDefault();
