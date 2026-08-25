@@ -1,7 +1,8 @@
 'use client';
 
 // 集成单卡（哑件）：标题左、配置按钮右上与标题对齐（用户裁决）；内容面
-// 状态徽章 + 启停按钮 + 字段掩码摘要 + Turnstile 停用联动警告（DESIGN §5 D11）。
+// 状态徽章 + 启停按钮 + Turnstile 停用联动警告（DESIGN §5 D11）。
+// 卡面不显示配置字段值（2026-08-25 用户裁决：与 2FA/TOTP 卡同形态，配置收进弹窗）。
 
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tillgate/ui';
 import {
@@ -101,14 +102,6 @@ export function IntegrationCard({
             <span>{current.configured ? t('configuredState') : t('unconfiguredState')}</span>
           </span>
         </div>
-        <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          {Object.entries(current.config).map(([field, value]) => (
-            <div key={field} className="col-span-2 flex gap-3">
-              <dt className="w-32 shrink-0 truncate">{t(`fields.${field}`)}</dt>
-              <dd className="truncate font-mono">{value ?? '—'}</dd>
-            </div>
-          ))}
-        </dl>
         {current.key === 'captcha.turnstile' && current.enabled && signupGiftOn ? (
           <p className="text-xs text-amber-600">{t('captchaWarning')}</p>
         ) : null}

@@ -1007,7 +1007,11 @@
     "currentStatus": "Current status: ",
     "enabledState": "Enabled",
     "disabledState": "Not enabled",
-    "smtpHint": "Requires SMTP configured server-side (a personal mailbox with an SMTP authorization code works). Enabling is rejected when unconfigured — it never silently degrades to password-only.",
+    "smtpState": {
+      "ready": "Mail channel: ready (SMTP enabled)",
+      "off": "Mail channel: configured but disabled — login codes cannot be delivered; enable it via Configure",
+      "unconfigured": "Mail channel: not configured — set up SMTP via Configure before enabling this feature"
+    },
     "totp": {
       "title": "Authenticator (TOTP)",
       "bind": "Bind authenticator",
@@ -1041,6 +1045,8 @@
       "configure": "Configure",
       "dialogDescription": "Empty = keep current value; secret fields accept plaintext only (echo is always masked)",
       "nothingToSave": "Nothing to save",
+      "enableToggleLabel": "Enable this integration",
+      "enableToggleHint": "Credentials are kept while disabled",
       "secretKeepHint": "Set ({masked}) — leave empty to keep",
       "secretUnsetHint": "Not set — enter plaintext to configure",
       "clearSecret": "Clear this secret",

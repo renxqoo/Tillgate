@@ -193,3 +193,24 @@ src/features/settings/integration-cards/
 - [x] 权限拆分：迁移 0087 新增 `settings:integrations` 码，PUT 端点改挂——
       出网点写入与 settings:update 分离（H1/H2 爆炸半径收窄）；
 - [x] docs：deployment-checklist 动态配置口径 / openapi 403 / DESIGN D4/D6/D9 修订回写。
+
+---
+
+## 增量：设置页 UI 收敛（2026-08-25 用户裁决）
+
+1. **SMTP 归位 2FA 卡**：删除独立「邮件服务 (SMTP)」集成卡——邮件通道是
+   「邮箱验证码二次登录」的实现细节，不另立邮件服务配置面。SMTP 的配置/
+   启停入口移至 2FA 卡：右上「配置」按钮（位置同其余集成卡的用户裁决）→
+   复用 `IntegrationFormDialog`（新增 `includeEnabled` 开关，提交
+   `{ enabled, config }` 同传——后端契约本就支持）。
+2. **卡面不显示配置字段值**：`IntegrationCard` 删除 `<dl>` 字段平铺——所有
+   集成卡与「邮箱验证码二次登录」「验证器 (TOTP)」卡同形态（标题 + 描述 +
+   启停 + 状态行），配置值只存在于弹窗表单（secret 掩码回显在 placeholder）。
+   `rotatedAt` 与 Turnstile 联动警告保留（状态面，非配置值）。
+3. **数据加载上提**：integrations 列表 + 注册送礼联动源由 `SettingsContent`
+   统一加载（单次请求），`IntegrationCards` 改受控组件；无
+   `settings_integrations` 权限时集成区维持 loadFailed 卡、2FA 卡隐藏配置
+   按钮（2FA 启停不受影响）。
+4. 2FA 卡拆出 `email-two-factor-card.tsx`（settings-content 职责瘦身），
+   原 `smtpHint` 静态文案改为按 SMTP 实际状态的三态提示
+   （就绪 / 已配置未启用 / 未配置）。

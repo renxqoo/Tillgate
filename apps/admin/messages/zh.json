@@ -1007,7 +1007,11 @@
     "currentStatus": "当前状态：",
     "enabledState": "已开启",
     "disabledState": "未开启",
-    "smtpHint": "需要服务端已配置 SMTP（个人邮箱开 SMTP 授权码即可）。未配置时开启会被拒绝——绝不静默降级为单密码。",
+    "smtpState": {
+      "ready": "邮件通道：已就绪（SMTP 已启用）",
+      "off": "邮件通道：已配置但未启用——二次登录邮件将无法发送，可在「配置」中开启",
+      "unconfigured": "邮件通道：未配置——开启二次登录前需先在「配置」中填写 SMTP（个人邮箱开 SMTP 授权码即可）"
+    },
     "totp": {
       "title": "验证器(TOTP)",
       "bind": "绑定验证器",
@@ -1041,6 +1045,8 @@
       "configure": "配置",
       "dialogDescription": "留空 = 保持现值；secret 字段只收明文（回显恒为掩码）",
       "nothingToSave": "没有可保存的变更",
+      "enableToggleLabel": "启用此集成",
+      "enableToggleHint": "关闭后保留凭据，功能面停用",
       "secretKeepHint": "已设置（{masked}）——留空保持不变",
       "secretUnsetHint": "未设置——输入明文以配置",
       "clearSecret": "清除该密钥",
