@@ -344,6 +344,7 @@ export { ThemeSwitcher, type ThemeSwitcherProps } from './components/navigation/
 export { Alert, AlertTitle, AlertDescription, AlertAction } from './components/feedback/alert';
 export { ConfirmDialog, type ConfirmDialogProps } from './components/feedback/confirm-dialog';
 export { CopyButton, type CopyButtonProps } from './components/feedback/copy-button';
+export { CountdownButton, type CountdownButtonProps } from './components/feedback/countdown-button';
 export { FormDialog, type FormDialogProps } from './components/feedback/form-dialog';
 export {
   Progress,
@@ -357,6 +358,7 @@ export { toast } from 'sonner';
 
 // ---- hooks ----
 export { useCopy, type UseCopyResult } from './hooks/use-copy';
+export { useCountdown, type UseCountdownResult } from './hooks/use-countdown';
 export { useIsMobile } from './hooks/use-mobile';
 export { useMediaQuery } from './hooks/use-media-query';
 
