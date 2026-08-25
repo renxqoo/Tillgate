@@ -14,12 +14,15 @@ export function IntegrationCards({
   items,
   error,
   signupGiftOn,
+  totpEnabled,
 }: {
   /** null = 加载中（父级一次性加载列表 + 注册送礼联动源） */
   items: readonly IntegrationSettingItem[] | null;
   error: boolean;
   /** 注册送礼开启（Turnstile 停用联动警告的数据源） */
   signupGiftOn: boolean;
+  /** 当前管理员已绑定验证器（ADR-0011——未绑定者敏感按钮置灰） */
+  totpEnabled: boolean;
 }) {
   const t = useTranslations('settings.integrations');
 
@@ -44,7 +47,14 @@ export function IntegrationCards({
         const item = byKey.get(key);
         return item == null
           ? []
-          : [<IntegrationCard key={key} item={item} signupGiftOn={signupGiftOn} />];
+          : [
+              <IntegrationCard
+                key={key}
+                item={item}
+                signupGiftOn={signupGiftOn}
+                totpEnabled={totpEnabled}
+              />,
+            ];
       })}
     </>
   );

@@ -138,6 +138,40 @@ describe('mfa.verify(步号单调防重放)', () => {
   });
 });
 
+describe('mfa.verifyTotpOnly（ADR-0011 step-up：仅 TOTP，不落恢复码分支）', () => {
+  it('有效码放行且不可重放（步号单调 CAS 与 verify 同口径）', async () => {
+    const h = harness();
+    const enrolled = await h.api.mfa.enrollTotp({ userId: 1 });
+    await h.api.mfa.confirmTotp({ userId: 1, code: currentCode(h, enrolled.secret) });
+    const code = nextCode(h, enrolled.secret);
+    await h.api.mfa.verifyTotpOnly({ userId: 1, code });
+    await expect(h.api.mfa.verifyTotpOnly({ userId: 1, code })).rejects.toMatchObject({
+      code: 'identity.invalid_totp_code',
+    });
+  });
+  it('恢复码不被接受也不被消耗（step-up 不烧紧急通道——登录面 verify 仍可用）', async () => {
+    const h = harness();
+    const enrolled = await h.api.mfa.enrollTotp({ userId: 1 });
+    const { recoveryCodes } = await h.api.mfa.confirmTotp({
+      userId: 1,
+      code: currentCode(h, enrolled.secret),
+    });
+    const recovery = defined(recoveryCodes[0], 'recoveryCodes[0]');
+    await expect(h.api.mfa.verifyTotpOnly({ userId: 1, code: recovery })).rejects.toMatchObject({
+      code: 'identity.invalid_totp_code',
+    });
+    await expect(h.api.mfa.verify({ userId: 1, code: recovery })).resolves.toMatchObject({
+      method: 'recovery',
+    });
+  });
+  it('未绑定 → totp_not_enrolled（调用方转引导绑定）', async () => {
+    const h = harness();
+    await expect(h.api.mfa.verifyTotpOnly({ userId: 1, code: '123456' })).rejects.toMatchObject({
+      code: 'identity.totp_not_enrolled',
+    });
+  });
+});
+
 describe('mfa.disableTotp', () => {
   it('已确认必须携有效码;成功后 MFA+恢复码全清,可重新注册', async () => {
     const h = harness();

@@ -218,3 +218,20 @@ src/features/settings/integration-cards/
    billing-timezone-card / integration-cards/），组装器 `settings-content.tsx`
    改名 `index.tsx` 只做编排与数据加载；TOTP 卡壳从组装器内聚进
    `totp-card.tsx`（视觉不变）；页面改从 `@/features/settings` 目录根导入。
+
+
+---
+
+## 增量：TOTP step-up（2026-08-25，ADR-0011）
+
+1. **identity**：新增 `mfa.verifyTotpOnly` 窄用例——仅 TOTP 步进单调 CAS
+   （复用 lastUsedStep 防重放），不落恢复码分支（恢复码仅紧急登录）。
+2. **admin-api**：`PUT /v1/settings/integrations/:key` 与
+   `POST /v1/me/two-factor` 契约增加必填 `totpCode`（6 位数字）；
+   路由先验 TOTP——未绑定 403（`totp_stepup_required`，引导绑定）、
+   错码 401（identity `invalid_totp_code` 透传）并按登录面同口径计
+   IP 守卫错次；失败与放行均写审计。
+3. **管理台 UI**：配置弹窗内嵌 TOTP 输入框；启/停与 2FA 开关先弹
+   TOTP 小窗（`totp-stepup-dialog.tsx`）；未绑定者按钮置灰并引导绑定。
+4. **运维预案**：全员解绑 TOTP / 手机与恢复码双丢失 → 数据库救援
+   （deployment-checklist §密钥管理）。

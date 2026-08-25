@@ -67,7 +67,9 @@ export function IntegrationFormDialog({
                 toast.info(t('nothingToSave'));
                 return false;
               }
+              const totpCode = String(data.get('totpCode') ?? '');
               const saved = await updateIntegrationAction(item.key, {
+                totpCode,
                 ...(includeEnabled ? { enabled: enabledNext } : {}),
                 ...(!payloadIsEmpty(config) ? { config } : {}),
               });
@@ -77,19 +79,9 @@ export function IntegrationFormDialog({
             });
           }}
         >
+          <StepupField itemId={item.key} />
           {includeEnabled ? (
-            <div className="space-y-1">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={enabledNext}
-                  onChange={(e) => setEnabledNext(e.target.checked)}
-                  className="size-4"
-                />
-                {t('enableToggleLabel')}
-              </label>
-              <FieldDescription>{t('enableToggleHint')}</FieldDescription>
-            </div>
+            <EnabledToggle checked={enabledNext} onChange={setEnabledNext} />
           ) : null}
           {fields.map((field) => {
             const secret = isSecret(field);
@@ -148,3 +140,50 @@ export function IntegrationFormDialog({
 
 /** secret 字段名集合（掩码回显只标已设置项；未设置的 secret 字段按规格名单标记） */
 const SECRET_FIELD_NAMES = new Set(['clientSecret', 'pass', 'secretKey', 'key', 'webhookSecret']);
+
+
+/** step-up 码框（ADR-0011：敏感写操作强制 TOTP——原生校验 6 位，模块级哑件拆分） */
+function StepupField({ itemId }: { itemId: string }) {
+  const t = useTranslations('settings.integrations');
+  return (
+    <FormItem>
+      <FieldLabel htmlFor={`integration-stepup-${itemId}`}>{t('stepupCodeLabel')}</FieldLabel>
+      <Input
+        id={`integration-stepup-${itemId}`}
+        name="totpCode"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={6}
+        placeholder="000000"
+        required
+        pattern="\d{6}"
+      />
+      <FieldDescription>{t('stepupCodeHint')}</FieldDescription>
+    </FormItem>
+  );
+}
+
+/** 启停开关（无独立卡集成的启停入口——SMTP 挂 2FA 卡经此触达） */
+function EnabledToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  const t = useTranslations('settings.integrations');
+  return (
+    <div className="space-y-1">
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="size-4"
+        />
+        {t('enableToggleLabel')}
+      </label>
+      <FieldDescription>{t('enableToggleHint')}</FieldDescription>
+    </div>
+  );
+}

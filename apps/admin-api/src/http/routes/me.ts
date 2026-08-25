@@ -11,9 +11,12 @@ import type { Identity } from '@tillgate/identity';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { authContracts } from '../contracts/auth';
+import { requireTotpStepup, type StepupVerifyDeps } from '../stepup-verify';
 
 export interface MeRoutesDeps {
   readonly identity: Pick<Identity, 'passwords' | 'sessions' | 'mfa'>;
+  /** step-up 强制面（ADR-0011——2FA 开关为登录形态变更，与集成写入同口径） */
+  readonly stepup: Pick<StepupVerifyDeps, 'guards' | 'audit' | 'trustedProxyHops'>;
   readonly admins: Pick<ControlPlane['admins'], 'find' | 'setTwoFactorEnabled'>;
   /** 动态 RBAC：角色资料（me 的 role 对象）+ 权限树（menus 过滤） */
   readonly rbac: Pick<ControlPlane['rbac'], 'permissions'> & {
@@ -109,8 +112,9 @@ export function meRoutes(deps: MeRoutesDeps) {
     });
   });
 
-  app.post('/v1/me/two-factor', async (c) => {
-    const body = authContracts.twoFactor.parse(await c.req.json());
+  app.post('/v1/me/two-factor', jsonBody(authContracts.twoFactor), async (c) => {
+    const body = c.req.valid('json');
+    await requireTotpStepup({ identity: deps.identity, ...deps.stepup }, c, body.totpCode);
     if (body.enabled && !deps.mailerConfigured()) {
       throw AdminErrors.business('smtp_not_configured', {});
     }

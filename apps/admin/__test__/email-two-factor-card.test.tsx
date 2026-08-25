@@ -45,7 +45,7 @@ const smtpItem: IntegrationSettingItem = {
   updatedByAdminId: 7,
 };
 
-const me = { email: 'ops@example.test', twoFactorEnabled: false } as AdminMeInfo;
+const me = { email: 'ops@example.test', twoFactorEnabled: false, totpEnabled: true } as AdminMeInfo;
 
 function renderCard(overrides?: {
   smtp?: IntegrationSettingItem | null;
@@ -92,26 +92,30 @@ describe('EmailTwoFactorCard：SMTP 配置入口与状态行', () => {
     updateIntegration.mockResolvedValue({ ...smtpItem, enabled: true });
     renderCard();
     await userEvent.click(screen.getByRole('button', { name: 'Configure' }));
-    // 启停开关回填当前态（false）→ 勾选启用
+    // 表单含 step-up 码框（ADR-0011 必填）；启停开关回填当前态（false）→ 勾选启用
     const toggle = screen.getByRole('checkbox');
     expect((toggle as HTMLInputElement).checked).toBe(false);
     await userEvent.click(toggle);
     await userEvent.type(screen.getByLabelText(/host/i), 'smtp.new.example.test');
+    await userEvent.type(screen.getByLabelText(/authenticator code/i), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => {
       expect(updateIntegration).toHaveBeenCalledWith('smtp', {
+        totpCode: '123456',
         enabled: true,
         config: { host: 'smtp.new.example.test' },
       });
     });
   });
 
-  it('2FA 启停仍走 setTwoFactorAction', async () => {
+  it('2FA 启停先过 stepup 小窗：码随开关同传 setTwoFactorAction（ADR-0011）', async () => {
     setTwoFactor.mockResolvedValue({});
     renderCard({ smtp: null });
     await userEvent.click(screen.getByRole('button', { name: 'Enable' }));
+    await userEvent.type(screen.getByPlaceholderText('000000'), '654321');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
-      expect(setTwoFactor).toHaveBeenCalledWith(true);
+      expect(setTwoFactor).toHaveBeenCalledWith(true, '654321');
     });
     await waitFor(() => {
       expect(screen.getByText('Enabled')).toBeInTheDocument();

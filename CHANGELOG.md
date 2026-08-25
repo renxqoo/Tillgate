@@ -90,6 +90,13 @@ adapters` 分层；应用（gateway / client-api / admin-api / worker / trace-re
   响应曾被误分类为 `invalid_response`。
 - **网关免费闸口径**：候选免费判定改 Decimal 比较——脏价格（如空串）不再被
   `Number('') === 0` 归零误盖 `explicitlyFree`。
+- **敏感设置操作 TOTP step-up（ADR-0011）**：集成配置/启停（`PUT /v1/settings/
+  integrations/:key`）与邮箱验证码二次登录开关（`POST /v1/me/two-factor`）强制
+  每次操作输入 6 位验证器码——未绑定者 403 引导绑定；同 30 秒窗码不可重放；
+  step-up 不收恢复码；错码计 IP 守卫错次并写审计。管理台配置弹窗内嵌验证器
+  码框、启停与 2FA 开关先弹 TOTP 小窗、未绑定者按钮置灰引导绑定。
+  解绑 TOTP 维持自助现状；全员解绑/手机与恢复码双丢失的数据库救援预案见
+  deployment-checklist。
 
 ## [0.1.0] - 2026-08-21
 

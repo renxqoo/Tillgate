@@ -17,8 +17,8 @@ import { setTwoFactorAction } from '@/server/auth-actions';
 import { useActionResult } from '@/components/action-toast';
 import type { IntegrationSettingItem } from '@/server/settings-actions';
 import { IntegrationFormDialog } from './integration-cards/integration-form-dialog';
+import { TotpStepupDialog } from './totp-stepup-dialog';
 
-type SmtpState = 'ready' | 'off' | 'unconfigured';
 
 export function EmailTwoFactorCard({
   me,
@@ -32,6 +32,7 @@ export function EmailTwoFactorCard({
   smtpUnavailable: boolean;
   onSavedSmtp: (item: IntegrationSettingItem) => void;
 }) {
+  // 未绑定验证器：2FA 开关与 SMTP 配置均不可达（ADR-0011——服务端同样拒绝）
   const t = useTranslations('settings');
   const tc = useTranslations('common');
   const ti = useTranslations('settings.integrations');
@@ -39,9 +40,21 @@ export function EmailTwoFactorCard({
   const notify = useActionResult();
   const [enabled, setEnabled] = useState(Boolean(me?.twoFactorEnabled));
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [stepupOpen, setStepupOpen] = useState(false);
+  const totpEnabled = me?.totpEnabled === true;
+  const stepupTitle = totpEnabled ? undefined : t('stepupRequired');
 
-  const smtpState: SmtpState =
-    smtp == null || !smtp.configured ? 'unconfigured' : smtp.enabled ? 'ready' : 'off';
+  function confirmTwoFactor(code: string): void {
+    startTransition(async () => {
+      const next = !enabled;
+      const res = await setTwoFactorAction(next, code);
+      if (notify(res ?? {}, tc('actionFailed'), next ? t('enabledToast') : t('disabledToast'))) {
+        setEnabled(next);
+      }
+    });
+  }
+
+  const smtpState = smtpStateOf(smtp);
 
   return (
     <Card className="h-full">
@@ -51,7 +64,13 @@ export function EmailTwoFactorCard({
             <ShieldCheckIcon className="size-4" /> {t('twoFactor')}
           </CardTitle>
           {!smtpUnavailable ? (
-            <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!totpEnabled}
+              title={stepupTitle}
+              onClick={() => setDialogOpen(true)}
+            >
               {ti('configure')}
             </Button>
           ) : null}
@@ -63,22 +82,9 @@ export function EmailTwoFactorCard({
           <Button
             variant={enabled ? 'destructive' : 'default'}
             size="sm"
-            disabled={pending}
-            onClick={() =>
-              startTransition(async () => {
-                const next = !enabled;
-                const res = await setTwoFactorAction(next);
-                if (
-                  notify(
-                    res ?? {},
-                    tc('actionFailed'),
-                    next ? t('enabledToast') : t('disabledToast'),
-                  )
-                ) {
-                  setEnabled(next);
-                }
-              })
-            }
+            disabled={pending || !totpEnabled}
+            title={stepupTitle}
+            onClick={() => setStepupOpen(true)}
           >
             {pending && <Loader2Icon className="animate-spin" />}
             {enabled ? t('disable') : t('enable')}
@@ -92,6 +98,12 @@ export function EmailTwoFactorCard({
         </div>
         <p className="text-xs text-muted-foreground">{t(`smtpState.${smtpState}`)}</p>
       </CardContent>
+      <TotpStepupDialog
+        open={stepupOpen}
+        onOpenChange={setStepupOpen}
+        title={`${enabled ? t('disable') : t('enable')} — ${t('twoFactor')}`}
+        onConfirm={(code) => confirmTwoFactor(code)}
+      />
       {smtp != null ? (
         <IntegrationFormDialog
           item={smtp}
@@ -103,4 +115,11 @@ export function EmailTwoFactorCard({
       ) : null}
     </Card>
   );
+}
+
+
+/** 邮件通道三态（模块级纯函数——主组件复杂度收口） */
+function smtpStateOf(smtp: IntegrationSettingItem | null): 'ready' | 'off' | 'unconfigured' {
+  if (smtp == null || !smtp.configured) return 'unconfigured';
+  return smtp.enabled ? 'ready' : 'off';
 }

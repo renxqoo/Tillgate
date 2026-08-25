@@ -52,10 +52,14 @@ const epayItem: IntegrationSettingItem = {
   updatedByAdminId: 7,
 };
 
-function renderCard(item: IntegrationSettingItem, signupGiftOn = false) {
+function renderCard(
+  item: IntegrationSettingItem,
+  signupGiftOn = false,
+  totpEnabled = true,
+) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <IntegrationCard item={item} signupGiftOn={signupGiftOn} />
+      <IntegrationCard item={item} signupGiftOn={signupGiftOn} totpEnabled={totpEnabled} />
     </NextIntlClientProvider>,
   );
 }
@@ -99,12 +103,19 @@ describe('IntegrationCard 交互', () => {
     expect((secretInput as HTMLInputElement).value).toBe('');
   });
 
-  it('停用动作：update 动作收到 enabled=false 并刷新卡片状态', async () => {
+  it('停用动作：先过 stepup 小窗（ADR-0011）——码随 enabled 同传并刷新卡片状态', async () => {
     updateIntegration.mockResolvedValue({ ...epayItem, enabled: false });
     renderCard(epayItem);
     await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    // stepup 小窗：6 位码 + 确认
+    const codeInput = screen.getByPlaceholderText('000000');
+    await userEvent.type(codeInput, '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
-      expect(updateIntegration).toHaveBeenCalledWith('payment.epay', { enabled: false });
+      expect(updateIntegration).toHaveBeenCalledWith('payment.epay', {
+        totpCode: '123456',
+        enabled: false,
+      });
     });
     await waitFor(() => {
       expect(screen.getByText('Disabled')).toBeInTheDocument();
@@ -117,6 +128,8 @@ describe('IntegrationCard 交互', () => {
     // 启用态下卡片内常驻风险提示（先于停用断言——停用后条件翻转）
     expect(screen.getByText(/disabling captcha removes register anti-abuse/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    await userEvent.type(screen.getByPlaceholderText('000000'), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
       expect(toast.warning).toHaveBeenCalledTimes(1);
     });
@@ -126,6 +139,8 @@ describe('IntegrationCard 交互', () => {
     cleanup();
     renderCard(epayItem, true);
     await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    await userEvent.type(screen.getByPlaceholderText('000000'), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
       expect(updateIntegration).toHaveBeenCalled();
     });
@@ -135,5 +150,15 @@ describe('IntegrationCard 交互', () => {
   it('未配置集成：启用按钮禁用（enabled⇒完整性不变量的 UI 面）', () => {
     renderCard({ ...epayItem, enabled: false, configured: false, config: {} });
     expect(screen.getByRole('button', { name: 'Enable' })).toBeDisabled();
+  });
+
+  it('未绑定验证器（ADR-0011）：配置与启停按钮置灰并带引导提示', () => {
+    renderCard(epayItem, false, false);
+    expect(screen.getByRole('button', { name: 'Configure' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Disable' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Disable' })).toHaveAttribute(
+      'title',
+      'Bind your authenticator (TOTP) first',
+    );
   });
 });

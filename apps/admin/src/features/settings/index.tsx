@@ -75,6 +75,7 @@ export function SettingsContent({ me, error }: { me: AdminMeInfo | null; error: 
         items={integrations}
         error={integrationsError}
         signupGiftOn={signupGiftOn}
+        totpEnabled={me?.totpEnabled === true}
       />
     </div>
   );

@@ -167,11 +167,14 @@ export async function verifyLoginAction(
   redirect('/dashboard');
 }
 
-/** 邮箱验证码二次登录开关（设置页） */
-export async function setTwoFactorAction(enabled: boolean): Promise<{ error?: string }> {
+/** 邮箱验证码二次登录开关（设置页；totpCode = step-up 强制，ADR-0011） */
+export async function setTwoFactorAction(
+  enabled: boolean,
+  totpCode: string,
+): Promise<{ error?: string }> {
   const t = await getTranslations('auth');
   try {
-    await adminApi().post('/v1/me/two-factor', { enabled });
+    await adminApi().post('/v1/me/two-factor', { totpCode, enabled });
   } catch (error) {
     return {
       error: error instanceof ApiError ? error.message : t('operationFailedStatus', { status: 0 }),

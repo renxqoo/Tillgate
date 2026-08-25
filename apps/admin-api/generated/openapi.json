@@ -5540,11 +5540,16 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "totpCode": {
+                    "type": "string",
+                    "pattern": "^\\d{6}$"
+                  },
                   "enabled": {
                     "type": "boolean"
                   }
                 },
                 "required": [
+                  "totpCode",
                   "enabled"
                 ]
               }
@@ -29246,6 +29251,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "totpCode": {
+                    "type": "string",
+                    "pattern": "^\\d{6}$"
+                  },
                   "enabled": {
                     "type": "boolean"
                   },
@@ -29269,7 +29278,10 @@
                       ]
                     }
                   }
-                }
+                },
+                "required": [
+                  "totpCode"
+                ]
               }
             }
           }
