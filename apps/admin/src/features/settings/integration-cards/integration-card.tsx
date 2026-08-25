@@ -66,8 +66,13 @@ export function IntegrationCard({
     setPending(true);
     void (async () => {
       try {
-        const saved = await updateIntegrationAction(current.key, { totpCode, enabled: next });
-        setCurrent(saved);
+        const res = await updateIntegrationAction(current.key, { totpCode, enabled: next });
+        // 失败经 action 翻译成 error 字段（Server Action 抛错会被 Next 脱敏弹错）
+        if (res.error != null || res.item == null) {
+          toast.error(res.error ?? tc('actionFailed'));
+          return;
+        }
+        setCurrent(res.item);
         // 确认成功即关弹窗（失败保持开——可换码重试）
         setStepupOpen(false);
         if (current.key === 'captcha.turnstile' && !next && signupGiftOn) {
