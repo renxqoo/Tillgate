@@ -1,6 +1,6 @@
 # 第三方集成动态配置（integration-settings）设计方案
 
-- 状态：**草稿**（定稿后推进到「已实施」；实现推翻本设计时先改本文再改代码）
+- 状态：**已核销**（2026-08-25 全验收清单勾销 + 收口补记；§4.3/§6 权限码按 0087 拆分修订）
 - 分级：**大级**（跨包 control-plane / identity / billing / db / 四个后端 app + admin 前端；资金域触碰；公共契约变化：identity 配置契约、admin API 新端点、能力端点语义；不可逆迁移：env 凭据删除）
 - 分支：`feat/integration-settings`（worktree `../TokenLens-v2-intsettings`）
 - 配套施工图：[IMPLEMENTATION.md](./IMPLEMENTATION.md)
@@ -13,7 +13,7 @@
 | env → DB 迁移语义 | **一次性导入脚本 + 删除 env 键**（单一真相 = DB，无运行时 env 兜底） |
 | Turnstile 人机验证 | **纳入并带加固**（方案 A：审计高亮 + 关闭时营销联动警告） |
 | 敏感写操作认证 | **TOTP step-up**（ADR-0011）：`PUT /v1/settings/integrations/:key` 与 `POST /v1/me/two-factor` 请求体必填 `totpCode`，每次操作输入 6 位码；未绑定者 403 引导绑定；不收恢复码、无时间窗 |
-| admin UI 形态 | 与 `/dashboard/settings` 现有卡片风格一致；**设置按钮放卡片右上方、与标题对齐**；**卡面不显示配置字段值**（配置收进弹窗，2026-08-25 裁决）；**SMTP 无独立卡**——配置/启停挂「邮箱验证码二次登录」卡（邮件通道是 2FA 的实现细节，不另立邮件服务面） |
+| admin UI 形态 | 与 `/dashboard/settings` 现有卡片风格一致；**设置按钮放卡片右上方、与标题对齐**；**卡面不显示配置字段值**（配置收进弹窗，2026-08-25 裁决）；**SMTP 无独立卡**——配置/启停挂「邮箱验证码二次登录」卡（邮件通道是 2FA 的实现细节，不另立邮件服务面）；**无 `settings:integrations` 权限者隐藏配置/启停操作位，保留只读卡**（2026-08-25 裁决 D1；与 RBAC 页 canUpdate/canDelete 模式同源） |
 
 ## 1. 背景与目标
 
@@ -161,7 +161,7 @@ CREATE TABLE integration_settings (
 - 列表恒含全部 7 个词表 key（无行视为 `enabled=false, configured=false,
   config={}`）。
 
-**`PUT /v1/settings/integrations/:key`** ← `settings:update`
+**`PUT /v1/settings/integrations/:key`** ← `settings:integrations`（0087 自 `settings:update` 拆分——凭据/出网点写入收窄到独立码；GET 仍 `settings:read`）
 
 - body：`{ enabled?: boolean, config?: Record<string, string | null> }`；
 - config 字段语义（三类，写入时逐字段裁决）：
@@ -186,11 +186,11 @@ CREATE TABLE integration_settings (
 | `POST /v1/payments/orders` 等 | 向**非 effective** 渠道下单 → 既有 `payment_unavailable`（不变） |
 | epay 回调 / stripe webhook | **不因渠道停用而拒绝**：验签归账继续（§5 D6），密钥轮换走双读窗 |
 
-### 4.3 ACL 绑定种子（同迁移 0086）
+### 4.3 ACL 绑定种子（0086 建、0087 把 PUT 改挂拆分码）
 
 ```sql
 ('GET',  '/v1/settings/integrations',       settings:read),
-('PUT',  '/v1/settings/integrations/:key',  settings:update),
+('PUT',  '/v1/settings/integrations/:key',  settings:integrations),  -- 0087 自 settings:update 改挂
 ```
 
 未绑定即 fail-closed 403（ADR-0009）；`:key` 路径参数匹配已由 acl 中间件支持。
@@ -361,8 +361,8 @@ token 端点——**保持 env 专属**，DB 凭据与 env 端点覆盖在 clien
 | 威胁 | 对策 |
 | --- | --- |
 | DB 泄漏（备份/拖库） | secret 字段 `enc:v1` 密文（AES-256-GCM），根密钥在 env——与 `channels.api_key_enc` 同信任模型，DB 单独泄漏不泄凭据 |
-| admin 账号被盗 | ACL（`settings:update`）+ 同事务审计（谁改了什么、何时，掩码值进 detail）+ secret 回显永不还原（write-only）+ Turnstile 联动警告；攻击面不高于现有渠道 Key 管理（同级权限已可管理真金白银的上游凭据） |
-| 前端/接口泄漏 | GET 响应只含掩码；`enc:` 伪装密文提交拒绝（防回灌已知密文探测） |
+| admin 账号被盗 | ACL（`settings:integrations`，0087 拆分）+ TOTP step-up（ADR-0011）+ 同事务审计（谁改了什么、何时，掩码值进 detail）+ secret 回显永不还原（write-only）+ Turnstile 联动警告；攻击面不高于现有渠道 Key 管理（同级权限已可管理真金白银的上游凭据） |
+| 前端/接口泄漏 | GET 响应只含掩码；`enc:` 伪装密文提交拒绝（防回灌已知密文探测）；无 `settings:integrations` 权限者前端隐藏配置/启停操作位（只读卡，2026-08-25 裁决——权威判定仍在 ACL，显隐仅 UX） |
 | 轮换期间的在途资金流 | 双读窗 96h + 停用不停验签（§5 D6）；窗口外由对账哨兵兜底 |
 | 配置错误传播 | 写入时成组校验（enabled ⇒ 完整）、URL/端口/词表形状校验；60s 内全进程收敛 |
 | 降级攻击（关 captcha 刷注册） | 审计标志位 + 营销联动警告（§5 D11）；关闭本身仍允许（运营正当需求），风险显式留痕 |
