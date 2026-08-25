@@ -5,7 +5,7 @@ import { ApiError } from '@tillgate/api-client';
 import type { AdminMeInfo } from '@tillgate/api-client';
 import { adminApi } from '@/server/admin-api';
 
-import { SettingsContent } from '@/features/settings/settings-content';
+import { SettingsContent } from '@/features/settings';
 
 export const dynamic = 'force-dynamic';
 

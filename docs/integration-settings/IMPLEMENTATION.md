@@ -211,6 +211,10 @@ src/features/settings/integration-cards/
    统一加载（单次请求），`IntegrationCards` 改受控组件；无
    `settings_integrations` 权限时集成区维持 loadFailed 卡、2FA 卡隐藏配置
    按钮（2FA 启停不受影响）。
-4. 2FA 卡拆出 `email-two-factor-card.tsx`（settings-content 职责瘦身），
-   原 `smtpHint` 静态文案改为按 SMTP 实际状态的三态提示
-   （就绪 / 已配置未启用 / 未配置）。
+4. 2FA 卡拆出 `email-two-factor-card.tsx`，原 `smtpHint` 静态文案改为按 SMTP
+   实际状态的三态提示（就绪 / 已配置未启用 / 未配置）。
+5. **目录收口**（rule/component-split §2 目录化标准形态）：设置页 feature
+   每张卡独立组件一文件（email-two-factor-card / totp-card /
+   billing-timezone-card / integration-cards/），组装器 `settings-content.tsx`
+   改名 `index.tsx` 只做编排与数据加载；TOTP 卡壳从组装器内聚进
+   `totp-card.tsx`（视觉不变）；页面改从 `@/features/settings` 目录根导入。

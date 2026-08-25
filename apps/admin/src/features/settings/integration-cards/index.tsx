@@ -1,6 +1,6 @@
 'use client';
 
-// 集成卡编排（受控哑件：数据由 settings-content 统一加载注入；词表次序渲染）。
+// 集成卡编排（受控哑件：数据由组装器 ../index.tsx 统一加载注入；词表次序渲染）。
 // SMTP 不渲染独立卡（挂「邮箱验证卡二次登录」卡），见 integration-format.ts。
 
 import { Card, CardContent } from '@tillgate/ui';

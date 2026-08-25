@@ -1,14 +1,12 @@
 'use client';
 
-// 设置页编排：邮箱验证码二次登录卡（含 SMTP 配置入口）→ TOTP → 计费时区 →
-// 集成卡区。集成列表与注册送礼联动源在此统一加载（单次请求），SMTP 项注入
-// 2FA 卡、其余注入受控的 IntegrationCards（2026-08-25 收敛，DESIGN 分叉表）。
+// 设置页组装器（feature 出口：每张卡独立组件一文件，本文件只做编排）：
+// 邮箱验证码二次登录卡（含 SMTP 配置入口）→ TOTP → 计费时区 → 集成卡区。
+// 集成列表与注册送礼联动源在此统一加载（单次请求），SMTP 项注入 2FA 卡、
+// 其余注入受控的 IntegrationCards（2026-08-25 收敛，DESIGN 分叉表）。
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tillgate/ui';
+import { Card, CardContent } from '@tillgate/ui';
 import { useEffect, useState } from 'react';
-
-import { SmartphoneIcon } from 'lucide-react';
-import { useTranslations } from 'next-intl';
 
 import type { AdminMeInfo } from '@tillgate/api-client';
 
@@ -23,7 +21,6 @@ import { IntegrationCards } from './integration-cards';
 import { TotpCard } from './totp-card';
 
 export function SettingsContent({ me, error }: { me: AdminMeInfo | null; error: string | null }) {
-  const t = useTranslations('settings');
   const [integrations, setIntegrations] = useState<IntegrationSettingItem[] | null>(null);
   const [integrationsError, setIntegrationsError] = useState(false);
   const [signupGiftOn, setSignupGiftOn] = useState(false);
@@ -70,19 +67,7 @@ export function SettingsContent({ me, error }: { me: AdminMeInfo | null; error: 
         onSavedSmtp={saveSmtp}
       />
 
-      <Card className="max-w-xl">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <SmartphoneIcon className="size-4" /> {t('totp.title')}
-          </CardTitle>
-          <CardDescription>
-            {me?.totpEnabled ? t('totp.boundDescription') : t('totp.bindDescription')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <TotpCard totpEnabled={me?.totpEnabled ?? false} />
-        </CardContent>
-      </Card>
+      <TotpCard totpEnabled={me?.totpEnabled ?? false} />
 
       <BillingTimezoneCard />
       {/* SMTP 项由 2FA 卡消费；集成卡区按词表渲染（ORDER 不含 smtp） */}
