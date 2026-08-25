@@ -70,6 +70,7 @@ function RegisterCodeStep({
       </CardHeader>
       <CardContent>
         <form
+          method="post"
           noValidate
           onSubmit={(e) => {
             e.preventDefault();
@@ -192,7 +193,8 @@ export function RegisterForm({
         <CardDescription>{t('registerDesc')}</CardDescription>
       </CardHeader>
       <CardContent>
-        <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form
+          method="post" noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FieldGroup>
             <Controller
               control={form.control}

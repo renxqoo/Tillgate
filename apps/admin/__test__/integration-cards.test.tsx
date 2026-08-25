@@ -115,7 +115,7 @@ describe('IntegrationCard 交互', () => {
     renderCard(epayItem);
     await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
     // stepup 小窗：6 位码 + 确认
-    const codeInput = screen.getByPlaceholderText('000000');
+    const codeInput = screen.getByLabelText(/authenticator code/i);
     await userEvent.type(codeInput, '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
@@ -128,7 +128,7 @@ describe('IntegrationCard 交互', () => {
       expect(screen.getByText('Disabled')).toBeInTheDocument();
     });
     // 确认成功即关弹窗（回归：成功后不残留）
-    expect(screen.queryByPlaceholderText('000000')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/authenticator code/i)).not.toBeInTheDocument();
   });
 
   it('Turnstile 加固：注册送礼开启时停用出警告 toast（不阻断）；其他集成停用无警告', async () => {
@@ -137,7 +137,7 @@ describe('IntegrationCard 交互', () => {
     // 启用态下卡片内常驻风险提示（先于停用断言——停用后条件翻转）
     expect(screen.getByText(/disabling captcha removes register anti-abuse/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
-    await userEvent.type(screen.getByPlaceholderText('000000'), '123456');
+    await userEvent.type(screen.getByLabelText(/authenticator code/i), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
       expect(toast.warning).toHaveBeenCalledTimes(1);
@@ -148,7 +148,7 @@ describe('IntegrationCard 交互', () => {
     cleanup();
     renderCard(epayItem, { signupGiftOn: true });
     await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
-    await userEvent.type(screen.getByPlaceholderText('000000'), '123456');
+    await userEvent.type(screen.getByLabelText(/authenticator code/i), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
       expect(updateIntegration).toHaveBeenCalled();

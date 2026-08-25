@@ -73,7 +73,7 @@ describe('EmailTwoFactorCard：邮箱码自证开关（D2=A）', () => {
     });
     // 确认弹窗（邮箱码变体文案）
     expect(screen.getByText(/code from your email/i)).toBeInTheDocument();
-    await userEvent.type(screen.getByPlaceholderText('000000'), '654321');
+    await userEvent.type(screen.getByLabelText(/6-digit email code/i), '654321');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
       expect(setTwoFactor).toHaveBeenCalledWith(
@@ -86,7 +86,7 @@ describe('EmailTwoFactorCard：邮箱码自证开关（D2=A）', () => {
       expect(screen.getByText('Enabled')).toBeInTheDocument();
     });
     // 确认成功即关弹窗（回归：成功后不残留）
-    expect(screen.queryByPlaceholderText('000000')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/6-digit email code/i)).not.toBeInTheDocument();
   });
 
   it('发码失败（SMTP 未生效/冷却）：toast 报错，不弹确认窗、不触达开关', async () => {
@@ -105,7 +105,7 @@ describe('EmailTwoFactorCard：邮箱码自证开关（D2=A）', () => {
     setTwoFactor.mockResolvedValue({ error: 'Invalid code' });
     renderCard();
     await userEvent.click(screen.getByRole('button', { name: 'Enable' }));
-    await userEvent.type(await screen.findByPlaceholderText('000000'), '000000');
+    await userEvent.type(await screen.findByLabelText(/6-digit email code/i), '000000');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
       expect(setTwoFactor).toHaveBeenCalled();
