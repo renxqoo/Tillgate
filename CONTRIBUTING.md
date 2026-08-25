@@ -11,7 +11,7 @@ bun install
 cp .env.example .env               # required keys only; defaults live in each app's config.ts
 docker compose -f docker/compose.dev.yml up -d
 bun run db:migrate                 # schema (packages/db, drizzle-kit)
-bun run db:seed                    # optional dev seed (admin + channel + model mapping + test key)
+cd apps/admin-api && bun scripts/create-admin.ts --email=admin@ai-gateway.local --password=admin12345 --apply && cd ../..   # dev admin bootstrap (production: omit --password)
 bun dev                            # turbo dev — all seven apps, hot reload
 ```
 

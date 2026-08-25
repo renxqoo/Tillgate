@@ -11,8 +11,7 @@
   "scripts": {
     "boundaries": "bun scripts/check-package-boundaries.ts",
     "build": "bunx turbo build",
-    "db:migrate": "cd packages/db && bun --env-file=../../.env x drizzle-kit migrate",
-    "db:seed": "bun packages/db/scripts/seed-dev.ts",
+    "db:migrate": "cd packages/db && bun run  --env-file=../../.env  drizzle-kit migrate",
     "dev": "bunx turbo dev",
     "docker:up": "docker compose -f docker/compose.yml up -d",
     "docker:up:obs": "docker compose -f docker/compose.yml --profile obs up -d",

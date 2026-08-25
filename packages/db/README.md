@@ -17,9 +17,9 @@
   `transientTxFailureCode`——裸 SQLSTATE 事实上浮供消费方判定,→HTTP 翻译归 http 包。
 - `./schema` 子入口:46 表(v1 基线 39 + identity 七表)+ 词表 + relations 的**物理 schema
   登记点**(根入口亦 `export *` schema)。
-- 迁移链:`migrations/` 0000–0076 共 76 个 SQL(journal 历史缺口 0036;最新
-  `0076_identity_tables.sql`)+ `meta/` journal——**不可改写的物理事实**,已应用于
-  生产的 SQL 一字不改。
+- 迁移链:`migrations/` 0000–0091(journal 历史缺口 0036;v1 复制段 0000–0075 一字不改,
+  v2 增量自 0076 起,0083/0089/0090/0091 为旧列退役)+ `meta/` journal——**不可改写的
+  物理事实**,已应用于生产的 SQL 一字不改。
 
 ## 常用命令
 
@@ -27,10 +27,19 @@
 cd packages/db
 DATABASE_URL=postgres://... bun run db:migrate   # drizzle-kit migrate(连接串必填、无默认)
 DATABASE_URL=postgres://... bun run db:studio    # drizzle-kit studio 浏览器查看 schema
-DATABASE_URL=... ENCRYPTION_KEY=... bun scripts/seed-dev.ts
-# 开发种子:用户+费率卡+管理员+测试虚拟 Key(sk_xxx)+供应商/渠道/模型映射;
-# 幂等按唯一键判存;DEEPSEEK_API_KEY / MINIMAX_API_KEY 可选(缺则跳过该供应商段)
 ```
+
+**空库初始化**(链上 0055/0056/0057 前向引用 identity/wallet 建表——须先 provision):
+
+```bash
+bun packages/db/scripts/provision-fresh.ts      # 幂等前置 0059+0076 建表 DDL(重复跑=零操作)
+cd packages/db && bun --env-file=../../.env drizzle-kit migrate   # 整条链到 0091
+# 管理员引导(dev/生产同一脚本;生产省略 --password 即现场生成一次性强密码):
+cd apps/admin-api && bun scripts/create-admin.ts --email=you@example.com [--password=...] --apply
+```
+
+种子脚本 seed-dev.ts 已退役删除(2026-08-26):职责收敛——管理员 → create-admin,
+费率卡 → 管理台创建(无卡 = 系数 1.0 兜底,`billing/domain/rating/coefficient.ts`)。
 
 注意:`request_logs` 自迁移 0040 起是分区母表——禁止对它跑 `db:generate`
 (`drizzle.config.ts` 头注释 / IMPLEMENTATION.md B5)。
@@ -46,7 +55,7 @@ src/
 ├── schema/        # 46 表定义 + 词表 + relations(./schema 子入口)
 └── index.ts       # 公共出口(含 schema 整体转出口)
 migrations/        # 迁移链 0000–0076 + meta journal
-scripts/seed-dev.ts # 开发环境种子数据
+scripts/provision-fresh.ts # 空库前置 provision(幂等前置 0059+0076)
 drizzle.config.ts  # drizzle-kit 配置(DATABASE_URL 必填)
 ```
 
