@@ -65,7 +65,7 @@ export function CodeConfirmDialog({
               maxLength={6}
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="000000"
+              placeholder=""
               required
               pattern="\d{6}"
               autoFocus

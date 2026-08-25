@@ -140,7 +140,7 @@ function StepupField({ itemId }: { itemId: string }) {
         inputMode="numeric"
         autoComplete="one-time-code"
         maxLength={6}
-        placeholder="000000"
+        placeholder=""
         required
         pattern="\d{6}"
       />
