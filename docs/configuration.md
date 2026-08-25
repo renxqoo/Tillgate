@@ -55,7 +55,6 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `TRACE_RECEIVER_TOKEN` | 空 | 链路鉴权（见「可选功能组」） |
 | `OTEL_METRICS_INTERVAL_MS` | gateway/admin/worker/trace `10000`；client-api `60000` | OTLP 指标推送周期（otlp 模式生效） |
 | `OTEL_SERVICE_VERSION` | `0.1.0` | OTel 资源版本（admin-api / worker / trace-receiver） |
-| `SMTP_PORT` | `465` | 邮件出站端口（三处 SMTP 消费方同键） |
 
 ## 三、网关（gateway）——`apps/gateway/src/config.ts`
 
