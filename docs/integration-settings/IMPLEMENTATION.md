@@ -250,3 +250,31 @@ src/features/settings/integration-cards/
    语义随之消失——base 不再来自 DB，reader 无 boot 冻结面）。
 3. **管理台**：OAuth 基地址卡随词表消失（独立卡 5 张）；`docs/configuration.md`
    与 `.env.example` 增补两键。
+
+
+---
+
+## 增量：SMTP 独立成卡（2026-08-25 二次裁决，推翻首裁「挂 2FA 卡」）
+
+背景：验收发现「SMTP 挂『邮箱验证码二次登录』卡」把系统级通道配置塞进个人
+自助卡——概念边界与 RBAC 门控粒度错位（配置入口本应统一按
+`settings:integrations` 门控，却长在 SELF 域卡上）。二次裁决：邮件通道是
+系统级配置（登录验证码/找回密码/2FA/告警共用），与 OAuth/支付同级。
+
+1. **词表**：`INTEGRATION_CARD_ORDER` 加入 `smtp`（登录族后、防刷前，
+   5→6 张）+ `INTEGRATION_ICON` 补 `mail`；卡片文案键 `cards.smtp` /
+   `descriptions.smtp` 沿用既有。
+2. **2FA 卡回归纯个人自助**（SELF 域）：删 SMTP 配置入口、配置弹窗、
+   `smtp`/`smtpUnavailable`/`canManageIntegrations`/`onSavedSmtp` props 与
+   通道三态状态行（同日裁决 D1：状态行完全移除，通道信息只在 SMTP 卡）。
+3. **编辑弹窗去 includeEnabled**：SMTP 独立卡后启停恒在卡面按钮，
+   弹窗回归纯字段编辑（无变化守卫不再比对 enabled）。
+4. **i18n 清理**：删 `settings.smtpState` 三态组与
+   `settings.integrations.enableToggleLabel/Hint`（死键）。
+5. **测试**：词表断言 5→6 + smtp 卡形态用例；2FA 卡测试瘦身为纯个人卡
+   （含「无 SMTP 残留」守卫）；门控契约断言同步（2FA 卡不接收权限布尔）。
+6. **权限面**：SMTP 卡自动进 `IntegrationCards` 的 `settings:integrations`
+   门控（配置/启停操作位无权隐藏、状态只读）——与其他五张卡一致。
+
+后续：2FA 开启流程改「邮箱验证码自证」（取消 TOTP 前置与 step-up）属独立
+需求，方案见 `docs/admin-email-2fa/`（Phase 2，另行定稿实施）。

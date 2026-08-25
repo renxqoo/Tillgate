@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 /**
  * 集成设置卡交互规格（docs/integration-settings/DESIGN.md §4.1/§5 D11、§9）：
- * 词表次序渲染（SMTP 无独立卡——挂 2FA 卡）；卡面不显示配置字段值
- * （2026-08-25 用户裁决：配置收进弹窗，secret 掩码只在弹窗 placeholder 回显）；
- * 启停走 update 动作；Turnstile 停用在注册送礼开启时出警告（不阻断）；
- * 表单三态组装（空=缺席、勾选清除=null）；无 settings:integrations 权限时
- * 配置/启停操作位隐藏（2026-08-25 用户裁决 D1，状态只读保留）。
+ * 词表次序渲染（SMTP 独立卡——2026-08-25 二次裁决推翻首裁「挂 2FA 卡」：
+ * 系统级配置与个人自助分离，门控粒度对齐 settings:integrations）；卡面不显示
+ * 配置字段值（配置收进弹窗，secret 掩码只在弹窗 placeholder 回显）；启停走
+ * update 动作；Turnstile 停用在注册送礼开启时出警告（不阻断）；表单三态组装
+ * （空=缺席、勾选清除=null）；无 settings:integrations 权限时配置/启停操作位
+ * 隐藏（2026-08-25 用户裁决 D1，状态只读保留）。
  */
 import '@testing-library/jest-dom/vitest';
 
@@ -84,9 +85,9 @@ describe('integration-format 纯函数', () => {
     expect(payload).toEqual({ pid: '1002', key: null });
   });
 
-  it('词表封闭：独立卡 5 项；smtp（挂 2FA 卡）与 oauth.base（退回 env，ADR-0012）不在列', () => {
-    expect(INTEGRATION_CARD_ORDER).toHaveLength(5);
-    expect(INTEGRATION_CARD_ORDER).not.toContain('smtp');
+  it('词表封闭：独立卡 6 项（含 smtp 独立卡——2026-08-25 二次裁决）；oauth.base（退回 env，ADR-0012）不在列', () => {
+    expect(INTEGRATION_CARD_ORDER).toHaveLength(6);
+    expect(INTEGRATION_CARD_ORDER).toContain('smtp');
     expect(INTEGRATION_CARD_ORDER).not.toContain('oauth.base');
     expect(new Set(INTEGRATION_CARD_ORDER).size).toBe(INTEGRATION_CARD_ORDER.length);
   });
@@ -156,6 +157,20 @@ describe('IntegrationCard 交互', () => {
   it('未配置集成：启用按钮禁用（enabled⇒完整性不变量的 UI 面）', () => {
     renderCard({ ...epayItem, enabled: false, configured: false, config: {} });
     expect(screen.getByRole('button', { name: 'Enable' })).toBeDisabled();
+  });
+
+  it('SMTP 独立卡（2026-08-25 二次裁决）：通用卡形态——标题/配置钮/启停钮俱全', () => {
+    renderCard({
+      ...epayItem,
+      key: 'smtp',
+      config: { host: 'smtp.example.com', port: '465', user: 'ops', pass: '****s-9', from: null },
+      secretsSet: ['pass'],
+    });
+    expect(screen.getByText('Email (SMTP)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Configure' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Disable' })).toBeInTheDocument();
+    // 卡面无配置字段值（含掩码）
+    expect(screen.queryByText('****s-9')).not.toBeInTheDocument();
   });
 
   it('未绑定验证器（ADR-0011）：配置与启停按钮置灰并带引导提示', () => {

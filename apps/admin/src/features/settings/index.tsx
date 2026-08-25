@@ -1,11 +1,11 @@
 'use client';
 
 // 设置页组装器（feature 出口：每张卡独立组件一文件，本文件只做编排）：
-// 邮箱验证码二次登录卡（含 SMTP 配置入口）→ TOTP → 计费时区 → 集成卡区。
-// 集成列表与注册送礼联动源在此统一加载（单次请求），SMTP 项注入 2FA 卡、
-// 其余注入受控的 IntegrationCards（2026-08-25 收敛，DESIGN 分叉表）。
+// 邮箱验证码二次登录卡（纯个人自助）→ TOTP → 计费时区 → 集成卡区
+// （SMTP 独立卡在卡区，2026-08-25 二次裁决——系统级配置与个人自助分离）。
+// 集成列表与注册送礼联动源在此统一加载（单次请求），整表注入 IntegrationCards。
 // 按钮级权限（2026-08-25 用户裁决 D1）：页级 server 端算好布尔下传——
-// settings:update → 时区可写；settings:integrations → 集成/SMTP 操作位；
+// settings:update → 时区可写；settings:integrations → 集成卡区操作位；
 // TOTP/2FA 启停属 SELF 域不挂码。显隐仅 UX，权威判定在 admin-api ACL。
 
 import { Card, CardContent } from '@tillgate/ui';
@@ -66,27 +66,14 @@ export function SettingsContent({
     );
   }
 
-  const smtp = integrations?.find((item) => item.key === 'smtp') ?? null;
-  const saveSmtp = (saved: IntegrationSettingItem): void => {
-    setIntegrations((prev) =>
-      prev == null ? prev : prev.map((item) => (item.key === saved.key ? saved : item)),
-    );
-  };
-
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <EmailTwoFactorCard
-        me={me}
-        smtp={smtp}
-        smtpUnavailable={integrationsError}
-        canManageIntegrations={canManageIntegrations}
-        onSavedSmtp={saveSmtp}
-      />
+      <EmailTwoFactorCard me={me} />
 
       <TotpCard totpEnabled={me?.totpEnabled ?? false} />
 
       <BillingTimezoneCard canUpdate={canUpdateTimezone} />
-      {/* SMTP 项由 2FA 卡消费；集成卡区按词表渲染（ORDER 不含 smtp） */}
+      {/* 集成卡区按词表渲染（ORDER 含 smtp——独立卡，2026-08-25 二次裁决） */}
       <IntegrationCards
         items={integrations}
         error={integrationsError}
