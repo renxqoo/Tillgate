@@ -85,7 +85,9 @@ export function modelsRoutes(deps: ModelsRoutesDeps) {
         ...(body.rpmLimit !== undefined ? { rpmLimit: body.rpmLimit } : {}),
         ...(body.tpmLimit !== undefined ? { tpmLimit: body.tpmLimit } : {}),
         ...(body.pricingUnit !== undefined ? { pricingUnit: body.pricingUnit } : {}),
-        ...(body.billingConfig !== undefined ? { billingConfig: body.billingConfig ?? {} } : {}),
+        // null = 清除变体配置：原样透传给 domain 校验（清除语义的 notNull 落库转换
+        // 在 application 层校验后进行——路由提前转 {} 会被 strategy 词表校验拒绝）
+        ...(body.billingConfig !== undefined ? { billingConfig: body.billingConfig } : {}),
         ...(priceSet
           ? {
               prices: {

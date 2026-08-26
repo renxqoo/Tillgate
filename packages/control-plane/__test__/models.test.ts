@@ -210,6 +210,20 @@ describe('单位计价与变体价格', () => {
       }),
     ).rejects.toMatchObject({ code: 'control_plane.invalid_model_input' });
   });
+
+  // 回归（R-8）：路由曾把 PATCH 的 null（清除语义）提前转成 {} 进校验——
+  // 空对象缺 strategy 被 closed vocabulary 拒绝，导致一切「无差价配置」编辑 400。
+  // 锁定：strategy 缺失/词表外 → invalid_model_input；null（清除）→ 合法。
+  it('billingConfig 空对象（缺 strategy）或词表外 strategy → invalid_model_input；null=清除 合法', async () => {
+    const { deps, models } = setup();
+    await expect(
+      updateModel(deps, { ctx: adminCtx(), mappingId: 1, patch: { billingConfig: {} } }),
+    ).rejects.toMatchObject({ code: 'control_plane.invalid_model_input' });
+    await expect(
+      createOk(deps, { billingConfig: { strategy: 'unknown' } as never }),
+    ).rejects.toMatchObject({ code: 'control_plane.invalid_model_input' });
+    expect(models.rows.size).toBe(0);
+  });
 });
 
 describe('重名创建 → model_exists 精确回执', () => {

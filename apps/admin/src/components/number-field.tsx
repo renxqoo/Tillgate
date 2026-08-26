@@ -12,6 +12,8 @@ export interface NumberFieldProps<T extends FieldValues> {
   step?: string;
   min?: number;
   placeholder?: string;
+  /** 禁用输入（值仍保留在表单状态——如免费模型禁价格输入，取消勾选后可恢复编辑） */
+  disabled?: boolean;
 }
 
 /**
@@ -29,6 +31,7 @@ export function NumberField<T extends FieldValues>({
   step,
   min,
   placeholder,
+  disabled,
 }: NumberFieldProps<T>) {
   return (
     <Controller
@@ -45,6 +48,7 @@ export function NumberField<T extends FieldValues>({
             min={min}
             placeholder={placeholder}
             {...field}
+            disabled={disabled}
             value={field.value ?? ''}
             onChange={(e) => field.onChange(e.target.value)}
           />

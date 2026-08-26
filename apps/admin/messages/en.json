@@ -425,6 +425,7 @@
     "unitModeHint": "Unit: ¥ / {unit}; tier misses bill at the flat price",
     "tokenModeHint": "Unit: ¥ / million tokens; blank cache write price = no cache write fee",
     "isFreeLabel": "Explicit free model (¥0 authorization, no balance/quota reserved)",
+    "freeModeHint": "Free model checked: prices are optional and saved as 0",
     "advanced": "Advanced (fallback models / param rules / billing policy / limits / status)",
     "fallbackLabel": "Fallback models (comma-separated)",
     "paramRulesLabel": "Param rules (JSON)",
