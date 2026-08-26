@@ -81,6 +81,7 @@ async function main() {
   await db.execute(sql`delete from wallet_accounts where user_id in (select id from users where issuer = 'rt-load')`);
   await db.execute(sql`delete from api_keys where user_id in (select id from users where issuer = 'rt-load')`);
   await db.execute(sql`delete from users where issuer = 'rt-load'`);
+  await db.execute(sql`delete from wallet_legs where transaction_id not in (select id from wallet_transactions)`);
   await db.execute(sql`set session_replication_role = default`);
   // 引导测试管理员(与 run.ts 同款,幂等)
   Bun.spawnSync([
@@ -150,9 +151,7 @@ async function main() {
 
   // X10 同款三不变量(全库) + 计数 + 抽样精确
   // 腿平衡口径对齐 X10:限定 rt-load 用户域(internal 平台账户的 admin 铸币腿按设计单边)
-  const bad1 = await db.execute(sql`select count(*)::int as n from (select l.transaction_id from wallet_legs l join wallet_accounts a on a.id = l.account_id where a.user_id in (select id from users where issuer = 'rt-load') group by 1 having sum(l.amount) <> 0) x`);
-  const peek = await db.execute(sql`select l.transaction_id, a.kind, l.amount::text, l.balance_after::text from wallet_legs l join wallet_accounts a on a.id = l.account_id where l.transaction_id in (select transaction_id from wallet_legs group by 1 having sum(amount) <> 0 limit 2) order by l.transaction_id, l.id`);
-  console.log('  [dbg] 不平衡交易样例腿:', JSON.stringify(rowsOf(peek)).slice(0, 400));
+  const bad1 = await db.execute(sql`select count(*)::int as n from (select transaction_id from wallet_legs group by 1 having sum(amount) <> 0) x`);
   const bad2 = await db.execute(sql`select count(*)::int as n from wallet_accounts ac where ac.balance <> coalesce((select l.balance_after from wallet_legs l where l.account_id = ac.id order by l.id desc limit 1), 0)`);
   const bad3 = await db.execute(sql`select count(*)::int as n from wallet_accounts ac where ac.in_flight <> coalesce((select sum(a.amount) from wallet_authorizations a where a.account_id = ac.id and a.status = 'active'), 0)`);
   const usageN = await db.execute<{ n: number }>(sql`select count(*)::int as n from usage_logs where user_id in (select id from users where issuer = 'rt-load')`);
