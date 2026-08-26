@@ -103,6 +103,7 @@ function PlaygroundToolbar(props: {
         onValueChange={(v) => {
           if (typeof v === 'string' && v !== '') onModelChange(v);
         }}
+        items={models.map((m) => ({ value: m, label: m }))}
       >
         <SelectTrigger className="w-64">
           <SelectValue placeholder={t('selectModel')} />

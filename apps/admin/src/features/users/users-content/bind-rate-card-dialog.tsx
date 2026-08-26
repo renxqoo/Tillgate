@@ -87,7 +87,18 @@ export function BindRateCardDialog({
           <DialogDescription>{t('bindDescription')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          <Select value={value} onValueChange={(v) => setValue(v ?? '')}>
+          {/* items 同源映射：Base UI 无 items 时 Value 回显原始值(id)而非标签 */}
+          <Select
+            value={value}
+            onValueChange={(v) => setValue(v ?? '')}
+            items={[
+              { value: 'none', label: t('unbind') },
+              ...rateCards.map((r) => ({
+                value: String(r.id),
+                label: `${r.name} (x${fmtCoefficient(r.coefficient)})`,
+              })),
+            ]}
+          >
             <SelectTrigger className="w-full">
               <SelectValue placeholder={t('selectRateCard')} />
             </SelectTrigger>

@@ -100,6 +100,10 @@ export function RateCardForm({
                 <Select
                   value={String(field.value)}
                   onValueChange={(v) => field.onChange(Number(v))}
+                  items={[
+                    { value: '0', label: tc('enabled') },
+                    { value: '1', label: tc('disabled') },
+                  ]}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />

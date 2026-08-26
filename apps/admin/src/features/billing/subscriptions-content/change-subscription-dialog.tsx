@@ -113,7 +113,15 @@ export function ChangeSubscriptionDialog({
         <FieldGroup>
           <FormItem>
             <FieldLabel>{t('targetPlan')}</FieldLabel>
-            <Select value={targetPlanId} onValueChange={(v) => setTargetPlanId(v ?? '')}>
+            {/* items 同源映射：回显方案名（当前方案行显示加购席位文案）而非原始 id */}
+            <Select
+              value={targetPlanId}
+              onValueChange={(v) => setTargetPlanId(v ?? '')}
+              items={targets.map((p) => ({
+                value: String(p.id),
+                label: p.id === row.planId ? t('addSeats', { name: p.name }) : p.name,
+              }))}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>

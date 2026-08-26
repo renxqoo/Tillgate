@@ -95,7 +95,11 @@ export function ProviderForm({
           render={({ field }: { field: { value: string; onChange: (v: string) => void } }) => (
             <FormItem>
               <FieldLabel>{t('protocol')}</FieldLabel>
-              <Select value={field.value} onValueChange={(v) => field.onChange(v ?? '')}>
+              <Select
+                value={field.value}
+                onValueChange={(v) => field.onChange(v ?? '')}
+                items={protocols.map((p) => ({ value: p, label: p }))}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -119,6 +123,10 @@ export function ProviderForm({
               <Select
                 value={field.value || 'none'}
                 onValueChange={(v) => field.onChange(!v || v === 'none' ? '' : v)}
+                items={[
+                  { value: 'none', label: t('noVendor') },
+                  ...vendors.map((v) => ({ value: v, label: v })),
+                ]}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />
@@ -141,7 +149,14 @@ export function ProviderForm({
           render={({ field }: { field: { value: number; onChange: (v: number) => void } }) => (
             <FormItem>
               <FieldLabel>{tc('status')}</FieldLabel>
-              <Select value={String(field.value)} onValueChange={(v) => field.onChange(Number(v))}>
+              <Select
+                value={String(field.value)}
+                onValueChange={(v) => field.onChange(Number(v))}
+                items={[
+                  { value: '0', label: tc('enabled') },
+                  { value: '1', label: tc('disabled') },
+                ]}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
