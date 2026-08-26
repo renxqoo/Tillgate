@@ -39,5 +39,8 @@
   "engines": {
     "bun": ">=1.4.0"
   },
-  "packageManager": "bun@1.4.0"
+  "packageManager": "bun@1.4.0",
+  "patchedDependencies": {
+    "@bcoe/v8-coverage@1.0.2": "patches/@bcoe%2Fv8-coverage@1.0.2.patch"
+  }
 }

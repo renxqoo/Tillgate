@@ -1,0 +1,24 @@
+diff --git a/src/lib/range-tree.js b/src/lib/range-tree.js
+index 2bd456f4f5e46bbf19f06e1199ba529a4d47d49b..092b4e810a1d72e12eaacea3a249516a127bdabb 100644
+--- a/src/lib/range-tree.js
++++ b/src/lib/range-tree.js
+@@ -19,6 +19,19 @@ class RangeTree {
+     // Stack of parent trees and parent counts.
+     const stack = [];
+     for (const range of ranges) {
++      if (root !== undefined && range.startOffset >= range.endOffset) {
++        // Tillgate patch (bun#39821 / bun PR #39822): Bun's
++        // Profiler.takePreciseCoverage emits zero-width ranges
++        // (startOffset === endOffset); V8 never does. A zero-width entry is
++        // not a valid range-tree node — merge.js never progresses on it and
++        // recurses infinitely (RangeError: Maximum call stack size exceeded).
++        // Zero-width ranges cover no source span, so dropping them cannot
++        // change line/statement/branch coverage. Root range kept as-is: it
++        // anchors the function span and cannot nest children anyway.
++        // EXIT CONDITION: remove this patch once Bun ships the #39822 fix
++        // (or @bcoe/v8-coverage merges an equivalent guard).
++        continue;
++      }
+       const node = new RangeTree(
+         range.startOffset,
+         range.endOffset,
