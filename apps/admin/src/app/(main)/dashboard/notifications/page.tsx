@@ -29,8 +29,10 @@ export default async function NotificationsPage() {
   await requirePermission('growth:read');
   const t = await getTranslations('notifications');
   const tc = await getTranslations('common');
+  // GET /v1/notifications 返回裸数组（openapi 锁定），不是 {rows}/{list} 信封——
+  // 曾按信封误读导致创建成功但列表恒空（R-9）
   const data = await adminApi()
-    .get<{ rows?: ChannelRow[]; list?: ChannelRow[] }>('/v1/notifications')
+    .get<ChannelRow[]>('/v1/notifications')
     .catch(() => null);
 
   const columns: DataTableColumn<ChannelRow>[] = [
@@ -79,12 +81,7 @@ export default async function NotificationsPage() {
       icon={<BellIcon className="size-5 text-muted-foreground" />}
     >
       <ChannelForm />
-      <DataTable
-        rowKey={(r) => r.id}
-        rows={data?.rows ?? data?.list ?? []}
-        columns={columns}
-        empty={t('noChannels')}
-      />
+      <DataTable rowKey={(r) => r.id} rows={data ?? []} columns={columns} empty={t('noChannels')} />
     </ListPage>
   );
 }
