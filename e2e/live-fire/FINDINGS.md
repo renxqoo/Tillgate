@@ -128,3 +128,14 @@
 - **workaround：池 ≥ 峰值并发（消除检出排队）**。实测：池 210 × 200 同瞬并发 → **200/200 全成功 779ms 零 5xx**；全量 live-fire **80/80**。
 - 部署约束：池上限受 PG max_connections 限制（本机已抬 400；部署形态需配套：独占 PG 预算 / 前置 pgbouncer 需评估 prepared-statement 兼容 / 或应用层准入闸把 in-flight 钳在池内）。上游修复后可撤 workaround。
 - 排除矩阵（均实证）：bun fetch 客户端（curl 同结果）、prepare:true/false、池 20/40/64、fire-and-forget 请求日志、ioredis 内联 multi/exec、bun 1.4.0/canary 1.4.1、src/dist 形态、单进程迷你网关（2/10 语句事务、真 wallet.authorize 链 60 并发均 130-475ms 全过）。
+
+## 增补：node vs bun-native 双分支 A/B（2026-08-26 深夜，同机同负载同用例）
+
+分支：`feat/live-fire-hardening`（node dist + pg + @hono/node-server）vs `feat/bun-native`（bun dist + Bun.sql + Bun.serve）；同宿主（含 agent-work 并行负载）、同 80 用例、同 DB_POOL_MAX=210：
+
+| 场景 | node（池40） | node（池210） | bun-native（池40） | bun-native（池210） |
+|---|---|---|---|---|
+| X11 200 同瞬并发 | 8~25/200（pg-pool 建连超时 500） | **200/200 @735ms** | 0/200（检出排队→事务楔死） | **200/200 @779ms** |
+| 全量 live-fire | 79/80 | **80/80** | 77/80 | **80/80** |
+
+结论：两形态都需要「池 ≥ 峰值并发」才能扛 200 突发；失效模式不同（pg-pool 建连超时 vs Bun SQL 检出排队楔死）；满足该条件后吞吐同量级（735 vs 779ms，单样本）。bun-native 无兼容层、正确性/安全用例全绿，作为未上线仓库的候选形态成立；上游 bun#38163/#38231 修复后可解除池尺寸耦合。
