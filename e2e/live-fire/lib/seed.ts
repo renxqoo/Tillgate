@@ -96,9 +96,9 @@ export async function seedCatalog(): Promise<Seeded> {
   // 4 个 mock 厂商(独立端口=熔断隔离) + 2 个特殊 provider(openmock-rpm 限速渠道 / ssrf 靶子)
   const providerDefs: Array<[string, string]> = [
     ['openmock', `${URLS.mock}/openmock`],
-    ['deepmock', `${URLS.mock.replace(/:\d+$/, ':8791')}/deepmock`],
-    ['moonmock', `${URLS.mock.replace(/:\d+$/, ':8792')}/moonmock`],
-    ['chaosmock', `${URLS.mock.replace(/:\d+$/, ':8793')}/chaosmock`],
+    ['deepmock', `${URLS.mock.replace(/:\d+$/, ':8891')}/deepmock`],
+    ['moonmock', `${URLS.mock.replace(/:\d+$/, ':8892')}/moonmock`],
+    ['chaosmock', `${URLS.mock.replace(/:\d+$/, ':8893')}/chaosmock`],
     ['openmock-rpm', `${URLS.mock}/openmock`],
     ['ssrf', 'http://127.0.0.1:2525'],
   ];

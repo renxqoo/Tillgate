@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { sleep, http } from './h.ts';
 
 export const PORTS = {
-  mock: 8790,
+  mock: 8890,
   smtp: 2525,
   gw: 8810,
   client: 8811,
