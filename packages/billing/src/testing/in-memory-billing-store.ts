@@ -413,6 +413,18 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
       return claimed;
     },
 
+    async listDueSettlementRequests(_conn, input) {
+      const due = [...requests.values()]
+        .filter(
+          (row) =>
+            (row.status === 'settlement_pending' || row.status === 'retry_wait') &&
+            (row.nextSettlementAt == null || row.nextSettlementAt.getTime() <= Date.now()),
+        )
+        .toSorted((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        .slice(0, input.limit);
+      return due.map((row) => row.requestId);
+    },
+
     renewClaims(_conn, input) {
       for (const row of requests.values()) {
         if (

@@ -53,9 +53,18 @@ export function settleFailurePolicy(
   if (isDeadLetterFamily(error)) {
     return { dead: true, failureClass };
   }
+  // F-1 回归防护(live-fire 红队 F-1):attempt 非有限数值时退避公式产出 NaN,
+  // NaN 流向 casToRetryOrDead 的 interval 乘法 SQL 会打崩失败处置事务并逃逸
+  // 成进程级故障——非法计数直接死信人工复核,永不进退避路径
+  if (!Number.isFinite(input.attempt) || input.attempt < 1) {
+    return { dead: true, failureClass: `${failureClass}_invalid_attempt` };
+  }
   if (input.attempt >= input.maxAttempts) {
     return { dead: true, failureClass: `${failureClass}_max_attempts` };
   }
   const retryInMs = Math.min(input.maxDelayMs, input.baseDelayMs * 2 ** (input.attempt - 1));
+  if (!Number.isFinite(retryInMs)) {
+    return { dead: true, failureClass: `${failureClass}_invalid_delay` };
+  }
   return { dead: false, retryInMs, failureClass };
 }

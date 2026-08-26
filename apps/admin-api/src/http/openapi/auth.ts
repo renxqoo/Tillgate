@@ -2,7 +2,7 @@
  * 认证/自身域 OpenAPI registry（routes/{auth,me}.ts 的契约面）。
  * 请求 schema 引用 contracts/auth.ts;响应 wire 形状在此声明（生成链单一真相）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { authContracts } from '../contracts/auth';
 import { okTrue, type OpenApiEndpoint } from './shared';
 

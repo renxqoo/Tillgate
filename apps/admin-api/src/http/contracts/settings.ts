@@ -3,7 +3,7 @@
  * 动态配置 integrations（docs/integration-settings/DESIGN.md §4.1）。
  * 集成字段级校验（词表/URL/端口/enc: 拒绝）在 control-plane 用例——契约层只拦形状。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const settingsContracts = {
   /** IANA 名结构性校验在 control-plane 用例（invalid_billing_timezone）——契约层只拦形状 */

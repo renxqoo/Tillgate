@@ -268,7 +268,7 @@ export function createPostgresBillingStore(
             filter (where status in ('settlement_pending', 'retry_wait')), 0)::float8 as oldest_pending_ms
         from billing_requests
         where status in ('settlement_pending', 'retry_wait')`);
-      const [row] = result.rows;
+      const [row] = result;
       return {
         pending: row?.pending ?? 0,
         retrying: row?.retrying ?? 0,

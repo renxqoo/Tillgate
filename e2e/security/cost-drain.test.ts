@@ -92,7 +92,7 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
     }>(
       sql`select request_id, status, reserved_amount, receipt from billing_requests where user_id = ${userId} order by created_at desc limit 1`,
     );
-    return defined(rows.rows[0], 'latest bill row');
+    return defined(rows[0], 'latest bill row');
   }
 
   /** 等待收据落库（流式终态信号是响应完成后的异步动作——不是同步可见） */
@@ -179,7 +179,7 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
       const bills = await world.db.execute(
         sql`select * from billing_requests where user_id = ${userId}`,
       );
-      expect(bills.rows.length).toBe(0);
+      expect(bills.length).toBe(0);
       expect(world.upstream.recorded.length).toBe(0); // 上游一次都没被调——平台零损失
     }, 30_000);
 
@@ -202,7 +202,7 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
       const usage = await world.db.execute<{ amount: string }>(
         sql`select amount::text from usage_logs where user_id = ${userId}`,
       );
-      const usageAmount = defined(usage.rows[0], 'usage row').amount;
+      const usageAmount = defined(usage[0], 'usage row').amount;
       expect(new Decimal(usageAmount).gt(50)).toBe(true);
       const w = await keys.walletOf(userId);
       expect(new Decimal(w.balance).eq(new Decimal('0.5').minus(usageAmount))).toBe(true);
@@ -255,7 +255,7 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
         sql`select amount::text from usage_logs where user_id = ${userId}`,
       );
       // 输出估算量 × ¥600/M ≥ ¥0.08，加上输入费用——总扣费必须为正且显著
-      expect(new Decimal(defined(usage.rows[0], 'usage row').amount).gt('0.05')).toBe(true);
+      expect(new Decimal(defined(usage[0], 'usage row').amount).gt('0.05')).toBe(true);
       const w = await keys.walletOf(userId);
       expect(w.inFlight).toBe('0');
     }, 60_000);
@@ -286,7 +286,7 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
       const usage = await world.db.execute<{ amount: string }>(
         sql`select amount::text from usage_logs where user_id = ${userId}`,
       );
-      expect(new Decimal(defined(usage.rows[0], 'usage row').amount).gt('0.05')).toBe(true);
+      expect(new Decimal(defined(usage[0], 'usage row').amount).gt('0.05')).toBe(true);
       const w = await keys.walletOf(userId);
       expect(w.inFlight).toBe('0');
     }, 60_000);
@@ -324,7 +324,7 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
         .times(60)
         .plus(new Decimal(receipt.usage.outputTokens).times(600))
         .div(1_000_000);
-      expect(new Decimal(defined(usage.rows[0], 'usage row').amount).eq(expected)).toBe(true); // 分毫=公式
+      expect(new Decimal(defined(usage[0], 'usage row').amount).eq(expected)).toBe(true); // 分毫=公式
       const w = await keys.walletOf(userId);
       expect(w.inFlight).toBe('0');
     }, 60_000);

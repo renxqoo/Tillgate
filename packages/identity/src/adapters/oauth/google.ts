@@ -5,6 +5,9 @@
 import type { OAuthProvider, OAuthProfile } from '../../ports/oauth-provider.js';
 import type { ProviderAdapterOptions } from './github.js';
 
+/** 可注入 fetch(bun 类型加宽了全局 fetch——注入面收窄为可调用视图) */
+type FetchLike = (...args: Parameters<typeof fetch>) => Promise<Response>;
+
 const GOOGLE_ENDPOINTS = {
   authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
   tokenUrl: 'https://oauth2.googleapis.com/token',
@@ -14,7 +17,7 @@ const GOOGLE_ENDPOINTS = {
 // 模块级:token 交换 + userinfo 拉取与邮箱策略,依赖经参数注入保持工厂单一装配职责
 async function googleExchangeAndProfile(
   deps: {
-    doFetch: typeof fetch;
+    doFetch: FetchLike;
     endpoints: { tokenUrl: string; profileUrl: string };
     opts: ProviderAdapterOptions;
   },

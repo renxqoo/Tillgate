@@ -3,7 +3,7 @@
  * 铁律 3：一切可变值装配注入且必填/显式缺省——本层是缺省值唯一真相。
  * 环境键名与 v1 保持一致（运维接口连续性）；v2 演进见 MIGRATION §3。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
 
 /** 正金额（20 位整数 + 18 位小数、非零）——v1 positiveDecimal 同形 */
@@ -51,7 +51,7 @@ function createSchema(production: boolean) {
       GATEWAY_PORT: z.coerce.number().int().min(1).max(65_535).default(8_080),
       DATABASE_URL: z.string().url(),
       REDIS_URL: z.string().url(),
-      DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+      DB_POOL_MAX: z.coerce.number().int().min(1).max(300).default(10),
       GATEWAY_CURRENCY: z.string().length(3).default('CNY'),
       ADMISSION_MAX_PENDING: z.coerce.number().int().min(1).default(10_000),
       ADMISSION_MAX_OLDEST_MS: z.coerce.number().int().min(1_000).default(300_000),

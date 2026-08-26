@@ -5,6 +5,7 @@
  * 错误分流标记）——拆分 model-form 前先锁死当前行为，逐字等价搬迁的回归底座。
  */
 import { describe, expect, it } from 'vitest';
+import type * as z from 'zod';
 
 import {
   buildBillingConfigPayload,
@@ -16,6 +17,10 @@ import {
   type TierRow,
   type WindowRow,
 } from '../src/features/models/models-content/billing-config-payload';
+import {
+  FREE_MODEL_PRICES,
+  refinePricing,
+} from '../src/features/models/models-content/model-pricing';
 
 /** 造一行完整窗口（start ≠ end、HH:MM 合法、有价格） */
 const goodWindow = (over: Partial<WindowRow> = {}): WindowRow => ({
@@ -29,6 +34,16 @@ const goodWindow = (over: Partial<WindowRow> = {}): WindowRow => ({
   ...over,
 });
 
+/** refinePricing 断言收集器：addIssue 全收，返回触发的字段路径集合 */
+function collectIssues(v: Parameters<typeof refinePricing>[0]): string[] {
+  const paths: string[] = [];
+  const ctx = {
+    addIssue: (issue: { path: PropertyKey[] }) => paths.push(String(issue.path[0])),
+  } as unknown as z.RefinementCtx;
+  refinePricing(v, ctx, 'bad');
+  return paths;
+}
+
 /** 造一行预设档位（勾选、value/price 齐全） */
 const tier = (over: Partial<TierRow> = {}): TierRow => ({
   label: '1K',
@@ -37,6 +52,51 @@ const tier = (over: Partial<TierRow> = {}): TierRow => ({
   on: true,
   custom: false,
   ...over,
+});
+
+describe('refinePricing（免费免填 / 未免费必填分支校验）', () => {
+  const tokenBase = {
+    pricingUnit: 'token',
+    inputPrice: '1',
+    outputPrice: '2',
+    cacheInputPrice: '0.5',
+  };
+  const tokenEmpty = { inputPrice: '', outputPrice: '', cacheInputPrice: '' };
+
+  it('未勾选免费：token 三价空 → 全部 invalid（既有必填行为锁定）', () => {
+    expect(collectIssues({ ...tokenBase, ...tokenEmpty })).toEqual([
+      'inputPrice',
+      'outputPrice',
+      'cacheInputPrice',
+    ]);
+  });
+
+  it('勾选免费：token 三价全空 → 无 issue（价格免填，提交由 FREE_MODEL_PRICES 归零）', () => {
+    expect(collectIssues({ ...tokenBase, ...tokenEmpty, isFree: true })).toEqual([]);
+  });
+
+  it('勾选免费：已填值仍按形状校验——垃圾形状拦截、合法金额放行', () => {
+    expect(collectIssues({ ...tokenBase, inputPrice: 'abc', isFree: true })).toEqual([
+      'inputPrice',
+    ]);
+    expect(collectIssues({ ...tokenBase, inputPrice: '1.5', isFree: true })).toEqual([]);
+  });
+
+  it('单位计价：免费空单价放行；未免费空单价拦截（分支对称）', () => {
+    const unitEmpty = { ...tokenBase, ...tokenEmpty, pricingUnit: 'image', unitPrice: '' };
+    expect(collectIssues({ ...unitEmpty, isFree: true })).toEqual([]);
+    expect(collectIssues(unitEmpty)).toEqual(['unitPrice']);
+  });
+
+  it('FREE_MODEL_PRICES：五价分量全零（domain freePriceConsistent「显式免费必须全零」同口径）', () => {
+    expect(FREE_MODEL_PRICES).toEqual({
+      inputPrice: '0',
+      outputPrice: '0',
+      cacheInputPrice: '0',
+      cacheWritePrice: '0',
+      unitPrice: '0',
+    });
+  });
 });
 
 describe('buildTiers（billingConfig → 档位行）', () => {

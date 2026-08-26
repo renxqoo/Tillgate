@@ -4,6 +4,14 @@ import { defineConfig } from 'vitest/config';
 // bun run test:e2e:smoke
 export default defineConfig({
   test: {
+    // bun-vitest 的 ssrTransform 会丢 zod v4 的 `export { z }` 再导出——
+    // node_modules 全量外部化,由 bun 运行时原生解析(源码转换不受影响)
+    server: {
+      deps: {
+        external: [/node_modules/],
+      },
+    },
+
     root: __dirname,
     include: ['gateway/process-smoke.test.ts'],
     environment: 'node',

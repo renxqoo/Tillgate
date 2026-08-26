@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 /**
  * 数字文本字段 schema（配合 NumberField 组件使用）。

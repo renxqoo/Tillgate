@@ -56,7 +56,6 @@ async function seedFallbackAdmin(url: string): Promise<void> {
     poolMax: 1,
     idleTimeoutMillis: 5_000,
     connectionTimeoutMillis: 3_000,
-    maxUses: 10,
   });
   try {
     // admins 必填 email/password_hash（client-journey seedRedeemCode 同形状——占位哈希不可登录）

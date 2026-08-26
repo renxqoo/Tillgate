@@ -7,7 +7,7 @@ import { PencilIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useForm, type UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import * as z from 'zod';
 import { moneyText, numericText } from '@/lib/forms';
 import { useActionResult } from '@/components/action-toast';
 import type { AdminChannelRow, ProviderOption } from '@tillgate/api-client';

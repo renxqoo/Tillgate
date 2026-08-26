@@ -36,6 +36,7 @@ if (autostart) {
     closeDb: assembly.closeDb,
     scheduler: assembly.scheduler,
     wakeup: assembly.wakeup,
+    settleQueue: assembly.settleQueue,
     abandonOwnedClaims: assembly.abandonOwnedClaims,
     graceMs: config.shutdownGraceMs,
     logger: assembly.logger,

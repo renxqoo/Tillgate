@@ -2,7 +2,7 @@
  * 费率卡/汇率域 OpenAPI registry（routes/{rate-cards,fx}.ts 契约面）。
  * 请求 schema 引用 contracts/rates.ts;响应 wire 形状在此声明。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { rateCardsContracts, fxCatalogContracts } from '../contracts/rates';
 import { idPathParam, listQuery, paginatedOf, okTrue, type OpenApiEndpoint } from './shared';
 import { fxStateSchema } from './catalog';

@@ -2,7 +2,7 @@
  * 费率卡/fx 域契约（v1 rate-cards.ts + fx.ts zod 面平移）。
  * 系数 numeric(6,3)：0.001..9.999,只收十进制字符串。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const RATE_CARD_SORTS = ['id', 'name', 'status', 'createdAt'] as const;
 export const RATE_CARD_USER_SORTS = ['id', 'subject', 'createdAt'] as const;

@@ -40,6 +40,27 @@ describe('pgSqlState(任意 5 位 SQLSTATE,全链)', () => {
     expect(pgSqlState(pgLike('40p01'))).toBeNull(); // 小写不算 SQLSTATE
   });
 
+  it('R-4 回归:系统 errno 串(code/errno 双字段)不再被 5 位词形误判为 SQLSTATE', () => {
+    // pg 的连接层错误挂 code('EPIPE');Bun SQL 挂 errno('EPERM'/'ELOOP')
+    // ——纯字母 5 位串曾被 /^[0-9A-Z]{5}$/ 误收,污染 pgSqlState 返回契约
+    expect(pgSqlState(pgLike('EPERM'))).toBeNull();
+    expect(pgSqlState(pgLike('ELOOP'))).toBeNull();
+    expect(pgSqlState(pgLike('EPIPE'))).toBeNull();
+    expect(pgSqlState(pgLike('EACCES'))).toBeNull();
+    expect(
+      pgSqlState(Object.assign(new Error('bun sql connect failed'), { errno: 'EPERM' })),
+    ).toBeNull();
+    expect(
+      pgSqlState(Object.assign(new Error('bun sql too many symlinks'), { errno: 'ELOOP' })),
+    ).toBeNull();
+  });
+
+  it('含数字的字母类开头 SQLSTATE(HV/P0/XX 族)仍可检出', () => {
+    expect(pgSqlState(pgLike('HV00N'))).toBe('HV00N');
+    expect(pgSqlState(pgLike('P0002'))).toBe('P0002');
+    expect(pgSqlState(pgLike('XX001'))).toBe('XX001');
+  });
+
   it('code 非字符串 / 无 code / null 输入 / 链尾终止', () => {
     expect(pgSqlState(new Error('plain'))).toBeNull();
     expect(pgSqlState(Object.assign(new Error('num'), { code: 23505 }))).toBeNull();

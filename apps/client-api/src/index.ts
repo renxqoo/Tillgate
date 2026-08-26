@@ -3,7 +3,7 @@
  * 加载环境 → 装配（内部完成 DB 建连与 Redis fail-closed 连通性验证）→
  * createApp → serve → 配置快照 → 优雅停机。
  */
-import { serve } from '@hono/node-server';
+import { serveApp } from '@tillgate/http';
 import { loadClientApiConfig } from './config.js';
 import { assembleClientApi } from './assembly.js';
 import { createClientApiApp } from './app.js';
@@ -13,8 +13,8 @@ const config = loadClientApiConfig();
 const { logger, otel, db, redis, deps } = await assembleClientApi(config);
 const app = createClientApiApp(deps);
 
-const server = serve({ fetch: app.fetch, port: config.CLIENT_API_PORT }, (info) => {
-  logger.info({ port: info.port }, 'client-api listening');
+const server = serveApp(app, { port: config.CLIENT_API_PORT }, () => {
+  logger.info({ port: config.CLIENT_API_PORT }, 'client-api listening');
   // 配置快照：关键业务参数生效值一处可查（排查「以为配了其实默认」类问题）
   logger.info(
     {

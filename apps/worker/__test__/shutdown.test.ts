@@ -14,7 +14,7 @@ const hangingExit =
   };
 
 describe('createWorkerShutdown', () => {
-  it('收口顺序：server → otel → scheduler → wakeup → abandon → db → exit(0)', async () => {
+  it('收口顺序：server → otel → scheduler → settleQueue → wakeup → abandon → db → exit(0)', async () => {
     const events: string[] = [];
     const exitRecord = { code: null as number | null };
     const shutdown = createWorkerShutdown({
@@ -27,6 +27,11 @@ describe('createWorkerShutdown', () => {
       otel: {
         async shutdown() {
           events.push('otel');
+        },
+      },
+      settleQueue: {
+        async close() {
+          events.push('settleQueue');
         },
       },
       closeDb: async () => {
@@ -57,7 +62,7 @@ describe('createWorkerShutdown', () => {
     await new Promise((resolve) => {
       setTimeout(resolve, 20);
     });
-    expect(events).toEqual(['server', 'otel', 'scheduler', 'wakeup', 'abandon', 'db']);
+    expect(events).toEqual(['server', 'otel', 'scheduler', 'settleQueue', 'wakeup', 'abandon', 'db']);
     expect(exitRecord.code).toBe(0);
   });
 
@@ -70,6 +75,7 @@ describe('createWorkerShutdown', () => {
         },
       },
       otel: { async shutdown() {} },
+      settleQueue: { async close() {} },
       closeDb: async () => {
         events.push('db');
       },

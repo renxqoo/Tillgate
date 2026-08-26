@@ -54,7 +54,7 @@ import { defined } from './defined.js';
     const status = await h.db.execute<{ status: string }>(
       sql`select status from wallet_authorizations where ref_type = 'billing' and ref_id = 'b1'`,
     );
-    expect(['settled', 'released']).toContain(defined(status.rows[0]).status);
+    expect(['settled', 'released']).toContain(defined(status[0]).status);
     expect(defined((await h.api.accounts(userId))[0]).inFlight).toBe('0');
     await assertLedgerCoherent(h.db);
   });

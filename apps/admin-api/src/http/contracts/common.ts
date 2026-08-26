@@ -4,7 +4,7 @@
  *   - 统一列表契约:?page&page_size≤100&q&sort_by&order;白名单外 400;
  *   - 信封 {rows,total,page,pageSize}(v1 键名——前端 fetchAdminList 消费口径)。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { Decimal, parseNonNegativeAmount, parsePositiveAmount } from '@tillgate/billing';
 import { listQuerySchema } from '@tillgate/http';
 import { AdminErrors } from '../error-face';

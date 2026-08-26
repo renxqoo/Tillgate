@@ -1,3 +1,4 @@
+import type { RequestSummary } from './request-log.js';
 /**
  * API Key 鉴权中间件（v1 middleware/api-key.ts 语义迁移；A1/A8 在案）：
  *   Bearer sk_xxx → SHA-256 → accounts resolveKeyByHash（status/过期/属主守卫在
@@ -39,6 +40,8 @@ export interface AuthEnv {
   Variables: {
     auth: AuthContext;
     requestId: string;
+    /** 路由解析 body 后放入的请求摘要（request-log 消费——日志面不读 body） */
+    requestLogSummary?: RequestSummary;
   };
 }
 

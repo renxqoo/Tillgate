@@ -7,11 +7,14 @@ import type { LoggerLike } from '../../ports/logger.js';
 import type { OAuthProfile, OAuthProvider } from '../../ports/oauth-provider.js';
 import type { OAuthEndpointsOverride } from '../../domain/config.js';
 
+/** 可注入 fetch(bun 类型加宽了全局 fetch——注入面收窄为可调用视图) */
+type FetchLike = (...args: Parameters<typeof fetch>) => Promise<Response>;
+
 export interface ProviderAdapterOptions {
   readonly clientId: string;
   readonly clientSecret: string;
   readonly endpoints?: OAuthEndpointsOverride;
-  readonly fetchImpl?: typeof fetch;
+  readonly fetchImpl?: FetchLike;
   readonly logger: LoggerLike;
 }
 
@@ -25,7 +28,7 @@ const GITHUB_ENDPOINTS = {
 // 模块级:授权码换 access_token(Authorization Code 流标准半程)
 async function exchangeGithubToken(
   deps: {
-    doFetch: typeof fetch;
+    doFetch: FetchLike;
     endpoints: { tokenUrl: string };
     opts: ProviderAdapterOptions;
   },
@@ -55,7 +58,7 @@ async function exchangeGithubToken(
 // 模块级:/user 与 /user/emails 拉取与邮箱策略,依赖经参数注入保持工厂单一装配职责
 async function githubExchangeAndProfile(
   deps: {
-    doFetch: typeof fetch;
+    doFetch: FetchLike;
     endpoints: { tokenUrl: string; profileUrl: string; emailsUrl: string };
     opts: ProviderAdapterOptions;
   },

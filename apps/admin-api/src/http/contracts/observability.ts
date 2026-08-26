@@ -5,7 +5,7 @@
  * estimated 是字符串布尔显式解析（'true'/'1' → true——coerce.boolean 会把
  * 'false' 变 true,v1 陷阱在 contracts 层收口）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { USAGE_SORT_FIELDS } from '@tillgate/observability';
 
 export const AUDIT_SORTS = ['id', 'action', 'createdAt'] as const;

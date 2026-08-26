@@ -4,7 +4,7 @@
  * PATCH 为部分更新（method/path/permissionId 至少一项）。
  */
 import { Hono } from 'hono';
-import { z } from 'zod';
+import * as z from 'zod';
 import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';

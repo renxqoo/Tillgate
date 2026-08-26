@@ -4,7 +4,7 @@
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
-import { z } from 'zod';
+import * as z from 'zod';
 import { jsonBody } from '@tillgate/http';
 import type { AccountUseCases } from '@tillgate/accounts';
 import {

@@ -19,11 +19,11 @@ import { CpuIcon, Loader2Icon, PlusCircleIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useForm, type UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import * as z from 'zod';
 
 import { useActionResult } from '@/components/action-toast';
 import { ModelForm, type ModelFormValues, type WithBillingConfig } from './model-form';
-import { PRICING_UNITS, refinePricing, type PricingUnit } from './model-pricing';
+import { PRICING_UNITS, FREE_MODEL_PRICES, refinePricing, type PricingUnit } from './model-pricing';
 
 /** 校验消息走目录：schema 在组件内用 t 构造 */
 function buildCreateSchema(t: ReturnType<typeof useTranslations<'models'>>) {
@@ -89,20 +89,25 @@ export function CreateModelDialog() {
         externalName: values.externalName,
         realModel: values.realModel,
         pricingUnit: values.pricingUnit,
-        // 只提交当前计价方式下的价格：token 三价 / 单位单价（另一侧字段对 API 无意义，补 0 占位）
-        ...(tokenMode
-          ? {
-              inputPrice: values.inputPrice,
-              outputPrice: values.outputPrice,
-              cacheInputPrice: values.cacheInputPrice,
-              ...(values.cacheWritePrice !== '' ? { cacheWritePrice: values.cacheWritePrice } : {}),
-            }
-          : {
-              inputPrice: '0',
-              outputPrice: '0',
-              cacheInputPrice: '0',
-              unitPrice: values.unitPrice,
-            }),
+        // 免费模型：五价显式归零（价格输入已禁用免填）；其余只提交当前计价方式下的价格：
+        // token 三价 / 单位单价（另一侧字段对 API 无意义，补 0 占位）
+        ...(values.isFree
+          ? FREE_MODEL_PRICES
+          : tokenMode
+            ? {
+                inputPrice: values.inputPrice,
+                outputPrice: values.outputPrice,
+                cacheInputPrice: values.cacheInputPrice,
+                ...(values.cacheWritePrice !== ''
+                  ? { cacheWritePrice: values.cacheWritePrice }
+                  : {}),
+              }
+            : {
+                inputPrice: '0',
+                outputPrice: '0',
+                cacheInputPrice: '0',
+                unitPrice: values.unitPrice,
+              }),
         // billingConfig 由 ModelForm 差价编辑器并入（单位计价 + 按参数差价时存在）
         ...(values.billingConfig != null ? { billingConfig: values.billingConfig } : {}),
         isFree: values.isFree ?? false,

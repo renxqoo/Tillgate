@@ -647,7 +647,7 @@ describe('渠道适配器配置（币种/支付类型单真相）', () => {
       cancelUrl: 'https://app.example/cancel',
       currency: 'CNY',
       apiBase: 'https://stripe.test',
-      fetchImpl: (async () => new Response('{}')) as typeof fetch,
+      fetchImpl: async () => new Response('{}'),
       clock: () => nowSec * 1000,
     };
     const windowed = createStripeProvider({ ...base, webhookSecrets: ['whsec_new', 'whsec_old'] });

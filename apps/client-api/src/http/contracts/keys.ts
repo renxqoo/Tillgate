@@ -1,7 +1,7 @@
 /**
  * API Key 契约：列表/创建/修补（金额与过期时间的结构性校验在此收口）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { isValidSpendLimitInput } from './shared.js';
 
 const spendLimit = z

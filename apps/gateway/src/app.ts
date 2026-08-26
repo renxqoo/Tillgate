@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import {
   bodyParserLimit,
   corsPreflight,
+  dbBudgetMiddleware,
   errorHandler,
   securityHeaders,
   requestIdMiddleware,
@@ -57,6 +58,8 @@ export interface GatewayAppDeps {
   oauthIpGuard?: AuthFailureGuard;
   corsOrigins?: readonly string[];
   bodyLimitBytes?: number;
+  /** DB 并发预算门(万级形态入口排队;缺省关闭——不注入即旁路) */
+  dbBudget?: { limit: number; maxQueue: number; waitTimeoutMs: number };
   uploadLimits?: {
     imageMime: ReadonlySet<string>;
     audioMime: ReadonlySet<string>;
@@ -97,6 +100,7 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
   );
   app.use('*', securityHeaders);
   app.use('*', bodyParserLimit(deps.bodyLimitBytes ?? 10 * 1024 * 1024));
+  if (deps.dbBudget != null) app.use('*', dbBudgetMiddleware(deps.dbBudget));
   app.use('*', requestIdMiddleware());
   // requestId 之后挂载：span 属性 request.id 依赖它；off 模式为 no-op
   app.use('*', otelMiddleware());

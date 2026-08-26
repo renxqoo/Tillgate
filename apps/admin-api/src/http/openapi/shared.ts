@@ -8,7 +8,7 @@
  * 门禁:__test__/openapi.test.ts 锁重生成逐字节相等 + 端点词表封闭 + 与 routes 对账。
  * 本目录不属于运行时热路径:routes 不 import 此处（仅 scripts/__test__/generator 消费）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { listQuerySchema } from '@tillgate/http';
 
 export type OpenApiMethod = 'get' | 'post' | 'patch' | 'put' | 'delete';

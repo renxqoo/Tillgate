@@ -1,4 +1,5 @@
-import { check, bigint, boolean, jsonb, pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { jsonb } from './jsonb.js';
+import { check, bigint, boolean, pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**

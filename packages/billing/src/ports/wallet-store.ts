@@ -9,6 +9,7 @@
  * （腿链跨表恒等 + Σ=0 由提交期触发器在四表间联查）。
  */
 import type { AccountSnapshot } from '../domain/wallet/accounts.js';
+import type { GuardKind } from '../domain/wallet/exposure.js';
 import type { AuthorizationSnapshot } from '../domain/wallet/authorization.js';
 
 /** 只读会话句柄（opaque：仅 adapters 构造） */
@@ -167,6 +168,24 @@ export interface WalletStore {
   ): Promise<void>;
   /** 账户在途敞口绝对值设置（authorize/settle/release 专用；账户行必须已锁） */
   setInFlight(tx: WalletConn, accountId: string, value: string): Promise<void>;
+  /**
+   * 原子资金门（2026-08-26 快路径增量；**必须事务内调用**——deferred
+   * coherence 在 commit 校验，autocommit 直调立即检查必炸）：单语句条件占用
+   * in_flight——守卫（可用额口径 guardKind / 账户 active）进 WHERE，
+   * 成功即「守卫过 + 占用
+   * 完成」，行锁窗口 = 本语句→commit。collectOverage（#over 结算补扣专属）
+   * 恒过——负余额只经结算侧，普通授权无法借道。返回 null = 守卫未过
+   * （调用方读快照分类报错，错误口径复用域守卫）。
+   */
+  conditionalReserve(
+    tx: WalletConn,
+    input: {
+      accountId: string;
+      amount: string;
+      guardKind: GuardKind;
+      collectOverage: boolean;
+    },
+  ): Promise<{ balance: string; creditLimit: string; inFlight: string } | null>;
   /** 账户授信地板绝对值设置（credit_line 专用；账户行必须已锁） */
   setCreditLimit(tx: WalletConn, accountId: string, value: string): Promise<void>;
   /** 数据库时钟（过期判定必须用 DB now——多副本时钟漂移防线） */

@@ -1,16 +1,29 @@
 /**
  * 连接与生命周期:池创建、健康探测、优雅收口。
  *
- * 零隐藏默认(铁律 3):连接串与全部池参数必填注入,装配层(app config)持有缺省值;
- * v1 的默认连接串与池默认 max=20(与 app 默认 10 形成两套真相)已删除(B2/IMPLEMENTATION.md)。
+ * bun-native 形态:驱动为 Bun 原生 SQL(`import { SQL } from 'bun'`)+ drizzle
+ * bun-sql 会话——不经 node 兼容层。类型映射与 pg 缺省一致(numeric→string、
+ * timestamptz→Date、bigint→string,探针 2026-08-26 实测);SQLSTATE 在错误的
+ * `errno` 字段(pg 在 `code`——pg-error.ts 沿 cause 链双字段探测)。
+ *
+ * 零隐藏默认(铁律 3):连接串与全部池参数必填注入,装配层(app config)持有缺省值。
+ * pg 的 maxUses(按查询次数回收连接)无 Bun 对应——其 maxLifetime 按秒计是另一
+ * 维度,不做假映射;字段移除,连接寿命不设限(等价 pg maxUses 缺省=不限)。
+ * 毫秒入参按秒向上取整(Bun 池参数以秒为粒度,亚秒值会退化为 0=禁用)。
  */
 import { sql } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import pg from 'pg';
+import { drizzle } from 'drizzle-orm/bun-sql';
 import { InfrastructureError } from '@tillgate/errors';
 import * as schema from './schema/index.js';
 
-/** 池配置(全部必填——语义注释承接 v1 实测值:生产常用 20/30_000/5_000/1_000) */
+/**
+ * Bun SQL 取全局而非 `import { SQL } from 'bun'`:源码经 vitest(Vite)转换时
+ * 'bun' 是运行时内建、非可解析包名;全局在 bun 运行时(dev/test/dist)恒可用,
+ * node_modules 内驱动(如 drizzle bun-sql)的 'bun' import 会被外部化、原生解析。
+ */
+const { SQL } = Bun;
+
+/** 池配置(全部必填——语义注释承接 v1 实测值:生产常用 20/30_000/5_000) */
 export interface DbPoolConfig {
   /** 连接串;并行测试约束:worker 数 × poolMax < PG max_connections */
   readonly url: string;
@@ -20,8 +33,6 @@ export interface DbPoolConfig {
   readonly idleTimeoutMillis: number;
   /** 取连接超时毫秒数(DB 不可用时快速失败而非无限等待) */
   readonly connectionTimeoutMillis: number;
-  /** 单连接最大使用次数(防长连接内存泄漏,达限回收重建) */
-  readonly maxUses: number;
 }
 
 /**
@@ -29,14 +40,12 @@ export interface DbPoolConfig {
  * 池对象不外泄——生命周期仅经 ping/closeDb(DESIGN.md §1)。
  */
 export function createDb(config: DbPoolConfig) {
-  const pool = new pg.Pool({
-    connectionString: config.url,
+  const client = new SQL(config.url, {
     max: config.poolMax,
-    idleTimeoutMillis: config.idleTimeoutMillis,
-    connectionTimeoutMillis: config.connectionTimeoutMillis,
-    maxUses: config.maxUses,
+    idleTimeout: Math.max(1, Math.ceil(config.idleTimeoutMillis / 1_000)),
+    connectionTimeout: Math.max(1, Math.ceil(config.connectionTimeoutMillis / 1_000)),
   });
-  return drizzle(pool, { schema });
+  return drizzle(client, { schema });
 }
 
 export type Db = ReturnType<typeof createDb>;

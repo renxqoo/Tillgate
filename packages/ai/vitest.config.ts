@@ -2,6 +2,14 @@ import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    // bun-vitest 的 ssrTransform 会丢 zod v4 的 `export { z }` 再导出——
+    // node_modules 全量外部化,由 bun 运行时原生解析(源码转换不受影响)
+    server: {
+      deps: {
+        external: [/node_modules/],
+      },
+    },
+
     include: ['__test__/*.test.ts'],
     // 铁律 14：真实凭证上游集成以 *.real.test.ts 文件名区分，默认门禁按文件名排除
     // （含裸 `vitest run`——不依赖 package.json 脚本参数）；test:real 脚本显式覆盖排除运行

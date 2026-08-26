@@ -1,78 +1,71 @@
 /**
- * 结算批次 job（v1 run-once.ts 语义平移；业务在 billing settlement facade）：
- * 认领（SKIP LOCKED）→ 租约保活（interval 续租，失败不杀批次——CAS 五元组 +
- * usage_logs 唯一约束兜底）→ 并行 processClaim → 计数回执。
- * 恢复 job：三类滞留单兜底（authorized 过期 / in_flight 租约过期 / processing
- * 认领过期——recover 用例语义）。
+ * 结算驱动（2026-08-26 BullMQ 增量重写）：单条结算 processor ——
+ * 定向认领（requestIds=[id]；空认领 = 已终态/他方持有，幂等完成）→
+ * processClaim（结算/失败策略/死信判定全在 @tillgate/billing，与调度层无关）。
+ * 未知异常不外抛（记日志返回 unknown-failure）——调用方（BullMQ Worker /
+ * 直驱 runner）决定重投；毒账单绝不外溢成进程级故障（live-fire F-1 语义）。
+ * `createSettlementDirectJob`：listDue 扫描 + 逐条直驱 processor ——
+ * runners.settle 与 E2E 的确定性入口（同一生产函数，不经 BullMQ runtime）。
  */
-import type { RecoveryRunResult, SettlementApi, SettlementClaim } from '@tillgate/billing';
+import type { SettlementApi } from '@tillgate/billing';
 
-interface SettlementBatchResult {
-  claimed: number;
-  settled: number;
-  retried: number;
-  dead: number;
-  claimLost: number;
+export type SettlementProcessOutcome =
+  | 'settled'
+  | 'retried'
+  | 'dead'
+  | 'claim_lost'
+  | 'unknown-failure';
+
+export interface SettlementProcessorDeps {
+  readonly settlement: Pick<SettlementApi, 'claim' | 'processClaim'>;
+  readonly ownerId: string;
+  readonly claimLeaseMs: number;
+  readonly onError: (error: unknown, context: string) => void;
 }
 
-type SettlementBatchJob = () => Promise<SettlementBatchResult>;
-type RecoveryJob = () => Promise<RecoveryRunResult>;
-
-export function createSettlementBatchJob(deps: {
-  settlement: Pick<SettlementApi, 'claim' | 'renewClaims' | 'processClaim'>;
-  ownerId: string;
-  batchSize: number;
-  claimLeaseMs: number;
-}): SettlementBatchJob {
-  return async function runSettlementBatch(): Promise<SettlementBatchResult> {
-    const claims = await deps.settlement.claim({
-      ownerId: deps.ownerId,
-      batchSize: deps.batchSize,
-      claimLeaseMs: deps.claimLeaseMs,
-    });
-    if (claims.length === 0) {
-      return { claimed: 0, settled: 0, retried: 0, dead: 0, claimLost: 0 };
-    }
-    const result: SettlementBatchResult = {
-      claimed: claims.length,
-      settled: 0,
-      retried: 0,
-      dead: 0,
-      claimLost: 0,
-    };
-    // 租约保活：批次运行期间按 claimLeaseMs/3 续租（v1 同节奏；unref 不阻停机）
-    const tokens = claims.map((claim: SettlementClaim) => claim.claimToken);
-    const renewTimer = setInterval(
-      () => {
-        void deps.settlement
-          .renewClaims({ ownerId: deps.ownerId, tokens, claimLeaseMs: deps.claimLeaseMs })
-          .catch(() => {});
-      },
-      Math.max(1_000, Math.floor(deps.claimLeaseMs / 3)),
-    );
-    renewTimer.unref();
+/** 单条结算驱动：已知结局透传；未知异常吞掉并标记（重投决策归调用方） */
+export function createSettlementProcessor(deps: SettlementProcessorDeps) {
+  return async function processSettlementRequest(requestId: string): Promise<SettlementProcessOutcome> {
     try {
-      const outcomes = await Promise.all(
-        claims.map(async (claim) => deps.settlement.processClaim(claim)),
-      );
-      for (const outcome of outcomes) {
-        if (outcome === 'settled') result.settled += 1;
-        else if (outcome === 'retried') result.retried += 1;
-        else if (outcome === 'dead') result.dead += 1;
-        else result.claimLost += 1;
-      }
-      return result;
-    } finally {
-      clearInterval(renewTimer);
+      const claims = await deps.settlement.claim({
+        ownerId: deps.ownerId,
+        batchSize: 1,
+        claimLeaseMs: deps.claimLeaseMs,
+        requestIds: [requestId],
+      });
+      const [claim] = claims;
+      if (claim == null) return 'claim_lost';
+      return await deps.settlement.processClaim(claim);
+    } catch (error) {
+      deps.onError(error, `settlement process request=${requestId}`);
+      return 'unknown-failure';
     }
   };
 }
 
-export function createRecoveryJob(deps: {
-  settlement: Pick<SettlementApi, 'recover'>;
-  batchSize: number;
-}): RecoveryJob {
-  return async function runRecovery() {
-    return await deps.settlement.recover({ batchSize: deps.batchSize });
+export interface SettlementDirectJobDeps extends SettlementProcessorDeps {
+  readonly settlement: Pick<SettlementApi, 'claim' | 'processClaim' | 'listDueRequestIds'>;
+  readonly batchSize: number;
+}
+
+/** 直驱一轮：扫 due 行并逐条同步处理（runners.settle / E2E 确定性入口） */
+export function createSettlementDirectJob(deps: SettlementDirectJobDeps) {
+  const process = createSettlementProcessor(deps);
+  return async function runSettlementDirect(): Promise<{
+    due: number;
+    outcomes: Record<SettlementProcessOutcome, number>;
+  }> {
+    const due = await deps.settlement.listDueRequestIds({ limit: deps.batchSize });
+    const outcomes: Record<SettlementProcessOutcome, number> = {
+      settled: 0,
+      retried: 0,
+      dead: 0,
+      claim_lost: 0,
+      'unknown-failure': 0,
+    };
+    for (const requestId of due) {
+      outcomes[await process(requestId)] += 1;
+    }
+    return { due: due.length, outcomes };
   };
 }

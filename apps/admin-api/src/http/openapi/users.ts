@@ -3,7 +3,7 @@
  * 请求 schema 引用 contracts/users.ts 与 contracts/auth.ts;响应 wire 形状在此声明
  * （形状与 presenters/users.ts、presenters/keys.ts 投影逐字段对齐——金额恒十进制字符串）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { keysContracts, usersContracts } from '../contracts/users';
 import { authContracts } from '../contracts/auth';
 import { idPathParam, listQuery, paginatedOf, okTrue, type OpenApiEndpoint } from './shared';

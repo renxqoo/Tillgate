@@ -22,10 +22,10 @@
     "build": "rm -rf dist && bun build src/index.ts src/composition.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
     "typecheck": "bun x tsc --noEmit",
     "lint": "bun x oxlint",
-    "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
-    "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
-    "test:real": "bun x vitest run postgres.real.test.ts --passWithNoTests",
-    "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
+    "test": "bun x --bun vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:watch": "bun x --bun vitest --exclude \"__test__/*.real.test.ts\"",
+    "test:real": "bun x --bun vitest run postgres.real.test.ts --passWithNoTests",
+    "test:coverage": "bun x --bun vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",

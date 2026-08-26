@@ -9,13 +9,13 @@
   "scripts": {
     "dev": "bun --env-file=../../.env --watch src/index.ts",
     "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
-    "start": "node dist/index.js",
+    "start": "bun dist/index.js",
     "typecheck": "bun x tsc --noEmit",
     "lint": "bun x oxlint",
-    "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
-    "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
-    "test:real": "bun x vitest run \"__test__/*.real.test.ts\" --passWithNoTests",
-    "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
+    "test": "bun x --bun vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:watch": "bun x --bun vitest --exclude \"__test__/*.real.test.ts\"",
+    "test:real": "bun x --bun vitest run \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:coverage": "bun x --bun vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
   },
   "dependencies": {
     "@tillgate/accounts": "workspace:*",
@@ -28,6 +28,8 @@
     "@tillgate/notifications": "workspace:*",
     "@tillgate/observability": "workspace:*",
     "@tillgate/runtime": "workspace:*",
+    "bullmq": "^6.2.2",
+    "ioredis": "^6.0.0",
     "nodemailer": "^9.0.5",
     "zod": "^4.4.3"
   },

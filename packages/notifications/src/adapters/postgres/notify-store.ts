@@ -127,7 +127,7 @@ export const postgresNotifyStore: NotifyStore = {
       where o.id = c2.id
       returning o.id, o.event, o.payload, o.attempts, o.claim_token, o.delivered_channel_ids
     `);
-    return result.rows.map((row) => ({
+    return result.map((row) => ({
       // node-postgres 把 bigint 以字符串返回(bigserial mode:'number' 只作用于
       // 查询构建器映射)——此处显式归一为 port 契约的 number(v1 隐式同形)
       id: Number(row.id),

@@ -315,6 +315,40 @@ describe('models + rate-cards + fx + catalog', () => {
     expect(bind).toHaveBeenCalledWith(expect.objectContaining({ mappingId: 3 }));
   });
 
+  // 回归：路由曾把 null 提前转 {} 再进 domain 校验，strategy 词表拒绝空对象 →
+  // 一切「无差价配置」的编辑保存全 400 invalid_model_input（R-8）
+  it('models:PATCH billingConfig:null 原样透传（清除语义转换属于 application 层，路由不得提前转 {}）', async () => {
+    const update = vi.fn(async () => modelRow);
+    const app = controlPlaneApp({
+      models: {
+        list: async () => ({ rows: [], total: 0 }),
+        create: async () => modelRow,
+        update,
+        delete: async () => ({ ok: true as const }),
+        undelete: async () => ({ ok: true as const }),
+        bindChannels: async () => ({ bound: 0 }),
+        probe: async () => ({ ok: true, durationMs: 1, results: [] }),
+      },
+    });
+    const patched = await app.request('/v1/models/3', {
+      method: 'PATCH',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ billingConfig: null, inputPrice: '1', status: 0 }),
+    });
+    expect(patched.status).toBe(200);
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ patch: expect.objectContaining({ billingConfig: null }) }),
+    );
+    // undefined = 不改：不带该字段进 patch（清除与不改是两个语义）
+    const untouched = await app.request('/v1/models/3', {
+      method: 'PATCH',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ status: 1 }),
+    });
+    expect(untouched.status).toBe(200);
+    expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ patch: { status: 1 } }));
+  });
+
   it('rate-cards:系数词表 400;卡内用户/健康', async () => {
     const app = controlPlaneApp({
       rates: {

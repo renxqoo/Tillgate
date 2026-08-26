@@ -2,7 +2,7 @@
  * 管理员认证/资料路由契约（P2;v1 routes/{auth,me}.ts 内联 zod 平移）。
  * zod 只做协议形状（长度/格式/上界），策略判定在 identity/domain（密码策略单源）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const authContracts = {
   login: z.object({

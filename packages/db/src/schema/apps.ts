@@ -1,3 +1,4 @@
+import { jsonb } from './jsonb.js';
 import {
   pgTable,
   bigserial,
@@ -5,8 +6,7 @@ import {
   varchar,
   smallint,
   timestamp,
-  jsonb,
-  index,
+    index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { users } from './users.js';

@@ -29,7 +29,6 @@ describe.skipIf(url == null)('生成任务 postgres 存储（真实 PG）', () =
       poolMax: 5,
       idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 3_000,
-      maxUses: 1_000,
     });
     const migrationsDir = fileURLToPath(new URL('../../db/migrations', import.meta.url));
     const { readdirSync } = await import('node:fs');
@@ -58,7 +57,7 @@ describe.skipIf(url == null)('生成任务 postgres 存储（真实 PG）', () =
     // 最小 FK 种子链：users → providers → channels / model_mappings / api_keys / billing_requests
     const one = async (statement: ReturnType<typeof sql>) => {
       const r = await db.execute(statement);
-      return r.rows[0] as Record<string, unknown>;
+      return r[0] as Record<string, unknown>;
     };
     const owner = await one(sql`
       insert into users (issuer, subject, identity_provider) values ('it-gen', 'owner', 'oidc')

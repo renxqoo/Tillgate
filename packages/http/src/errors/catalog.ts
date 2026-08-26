@@ -52,6 +52,20 @@ export const HttpErrors = defineErrorCatalog('http', {
   // ── 路由边界 ──
   not_found: { category: 'not_found', message: 'Path not found', zh: '路径不存在' },
 
+  // ── DB 并发预算门（db-budget 中间件抛点;unavailable → 503,客户端按 Retry-After 重试）──
+  /** 预算队列已满：立即拒绝（不排队）——入口背压,过载保护 */
+  db_budget_full: {
+    category: 'unavailable',
+    message: 'DB concurrency budget queue full, retry later',
+    zh: '数据库并发预算队列已满，请稍后重试',
+  },
+  /** 预算排队超时：已等待 waitTimeoutMs 仍未获得预算 */
+  db_budget_timeout: {
+    category: 'unavailable',
+    message: 'DB concurrency budget wait timeout, retry later',
+    zh: '数据库并发预算排队超时，请稍后重试',
+  },
+
   // ── PG SQLSTATE 边界翻译族（ADR-0002：翻译表归 http，探测函数由 db 注入）──
   pg_unique_violation: {
     category: 'conflict',

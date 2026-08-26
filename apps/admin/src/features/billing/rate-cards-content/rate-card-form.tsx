@@ -17,7 +17,7 @@ import {
 import { NumberField } from '@/components/number-field';
 import { useTranslations } from 'next-intl';
 import { Controller, type UseFormReturn } from 'react-hook-form';
-import { z } from 'zod';
+import * as z from 'zod';
 
 // 校验消息走目录：schema 在组件内用 t 构造
 export function buildSchema(t: ReturnType<typeof useTranslations<'rateCards'>>) {

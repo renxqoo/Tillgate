@@ -72,7 +72,7 @@ const stubProvider: PaymentProviderPort = {
       insert into users (issuer, subject, identity_provider, email)
       values ('local', ${`payrace-${Date.now()}-${userSeq}@test`}, 'local', ${`payrace-${Date.now()}-${userSeq}@test`})
       returning id`);
-    return Number(defined(row.rows[0]).id);
+    return Number(defined(row[0]).id);
   };
 
   const balanceOf = async (userId: number): Promise<string> =>
@@ -80,7 +80,7 @@ const stubProvider: PaymentProviderPort = {
 
   const countInt = async (query: SQL): Promise<number> => {
     const row = await db.execute<{ n: number }>(query);
-    return row.rows[0]?.n ?? -1;
+    return row[0]?.n ?? -1;
   };
 
   /** 下单 + 构造同签名面回调载荷 */
@@ -157,7 +157,7 @@ const stubProvider: PaymentProviderPort = {
     // 订单终态 credited
     const row = await db.execute<{ status: number }>(sql`
       select status from payment_orders where id = ${orderId}::uuid`);
-    expect(defined(row.rows[0]).status).toBe(2);
+    expect(defined(row[0]).status).toBe(2);
 
     // 顺序重放（竞态尘埃落定后）：幂等返回 success，不二次入账
     expect(await payments.handleNotify('stripe', raw)).toBe('success');
@@ -200,9 +200,9 @@ const stubProvider: PaymentProviderPort = {
     expect(new Decimal(await balanceOf(userId)).eq(10)).toBe(true);
     const row = await db.execute<{ status: number; failure_reason: string | null }>(sql`
       select status, failure_reason from payment_orders where id = ${orderId}::uuid`);
-    expect(defined(row.rows[0]).status).toBe(2);
+    expect(defined(row[0]).status).toBe(2);
     // close 的 CAS 赢家留痕（复活收尾不清 failure_reason——关单动作可审计）
-    expect(defined(row.rows[0]).failure_reason).toBe(closeWon ? 'payrace-admin-close' : null);
+    expect(defined(row[0]).failure_reason).toBe(closeWon ? 'payrace-admin-close' : null);
     expect(errorLogs).toEqual([]);
     await assertLedgerCoherent(db);
   });

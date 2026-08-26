@@ -175,7 +175,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
       const bills = await world.db.execute(
         sql`select * from billing_requests where user_id = ${userId}`,
       );
-      for (const rows of [requestLogs.rows, usageLogs.rows, bills.rows]) {
+      for (const rows of [requestLogs, usageLogs, bills]) {
         haystacks.push(JSON.stringify(rows));
       }
       const enc = await world.db.execute<{ api_key_enc: string }>(
@@ -183,7 +183,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
       );
       for (const hay of haystacks) {
         expect(hay.includes(E2E_UPSTREAM_KEY)).toBe(false); // 明文密钥
-        expect(hay.includes(defined(enc.rows[0], 'channel key row').api_key_enc)).toBe(false); // 密文也不出业务表
+        expect(hay.includes(defined(enc[0], 'channel key row').api_key_enc)).toBe(false); // 密文也不出业务表
       }
     }, 120_000);
   });
@@ -238,8 +238,8 @@ describe.skipIf(!hasEnv)('E2E', () => {
       }>(
         sql`select request_id, status, reserved_amount, channel_id, lease_expires_at, released_at, quote, receipt from billing_requests where user_id = ${userId}`,
       );
-      expect(bills.rows.length).toBe(3);
-      for (const bill of bills.rows) {
+      expect(bills.length).toBe(3);
+      for (const bill of bills) {
         expect(bill.status).toBe('settled');
         expect(Number(bill.channel_id)).toBe(world.seed.channelId);
         expect(bill.lease_expires_at).toBeNull(); // 结算后租约清理
@@ -271,7 +271,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
         expect(new Decimal(receipt.inputPrice).eq(E2E_INPUT_PRICE)).toBe(true);
         expect(receipt.usage.estimated).toBe(false);
       }
-      const streamCount = bills.rows.filter(receiptStream).length;
+      const streamCount = bills.filter(receiptStream).length;
       expect(streamCount).toBe(1); // 旗标与请求形态一一对应
 
       // ---- billing_reservations：份额合计 == 预扣、状态 settled ----
@@ -281,11 +281,11 @@ describe.skipIf(!hasEnv)('E2E', () => {
         status: string;
         source_type: string;
       }>(
-        sql`select billing_request_id, amount::text, status, source_type from billing_reservations where billing_request_id = any(${sql.raw(requestIdUuidArray(bills.rows))})`,
+        sql`select billing_request_id, amount::text, status, source_type from billing_reservations where billing_request_id = any(${sql.raw(requestIdUuidArray(bills))})`,
       );
-      expect(reservations.rows.length).toBeGreaterThanOrEqual(3);
-      for (const bill of bills.rows) {
-        const own = reservationsOf(reservations.rows, bill.request_id);
+      expect(reservations.length).toBeGreaterThanOrEqual(3);
+      for (const bill of bills) {
+        const own = reservationsOf(reservations, bill.request_id);
         const sum = sumAmounts(own);
         expect(sum.eq(bill.reserved_amount)).toBe(true); // 明细合计==投影列
         expect(own.every(isSettledPayg)).toBe(true);
@@ -310,9 +310,9 @@ describe.skipIf(!hasEnv)('E2E', () => {
       }>(
         sql`select request_id, input_tokens::text, cached_input_tokens::text, output_tokens::text, amount::text, input_price::text, output_price::text, cache_input_price::text, real_model, external_model, estimated, billed_by, duration_ms::text, units::text from usage_logs where user_id = ${userId}`,
       );
-      expect(usage.rows.length).toBe(3);
-      for (const bill of bills.rows) {
-        const log = defined(findRowByRequestId(usage.rows, bill.request_id), 'usage_log row');
+      expect(usage.length).toBe(3);
+      for (const bill of bills) {
+        const log = defined(findRowByRequestId(usage, bill.request_id), 'usage_log row');
         const ru = (
           bill.receipt as unknown as {
             usage: { inputTokens: number; cachedInputTokens: number; outputTokens: number };
@@ -346,7 +346,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
 
       // ---- wallet：余额对账 + 流水连续（balance_before/after 链）+ 授权 settled==实扣 ----
       const walletState = await keys.walletOf(userId);
-      const charged = sumAmounts(usage.rows);
+      const charged = sumAmounts(usage);
       expect(new Decimal(walletState.balance).eq(new Decimal(FUND).minus(charged))).toBe(true);
       expect(new Decimal(walletState.inFlight).eq('0')).toBe(true);
 
@@ -361,20 +361,20 @@ describe.skipIf(!hasEnv)('E2E', () => {
       }>(
         sql`select l.amount::text, l.balance_before::text, l.balance_after::text, t.ref_type
             from wallet_legs l join wallet_transactions t on t.id = l.transaction_id
-            where l.account_id = ${defined(account.rows[0], 'wallet account row').id} order by l.id`,
+            where l.account_id = ${defined(account[0], 'wallet account row').id} order by l.id`,
       );
-      expect(legs.rows.length).toBe(4); // 1 充值 + 3 结算
-      expect(defined(legs.rows[0], 'legs[0]').ref_type).toBe('topup');
-      for (let i = 1; i < legs.rows.length; i++) {
-        const leg = defined(legs.rows[i], `legs[${i}]`);
-        const prevLeg = defined(legs.rows[i - 1], `legs[${i - 1}]`);
+      expect(legs.length).toBe(4); // 1 充值 + 3 结算
+      expect(defined(legs[0], 'legs[0]').ref_type).toBe('topup');
+      for (let i = 1; i < legs.length; i++) {
+        const leg = defined(legs[i], `legs[${i}]`);
+        const prevLeg = defined(legs[i - 1], `legs[${i - 1}]`);
         expect(new Decimal(leg.balance_before).eq(prevLeg.balance_after)).toBe(true); // 链式连续
         expect(leg.ref_type).toBe('billing');
       }
       expect(
-        new Decimal(defined(legs.rows.at(-1), 'last leg').balance_after).eq(walletState.balance),
+        new Decimal(defined(legs.at(-1), 'last leg').balance_after).eq(walletState.balance),
       ).toBe(true); // 尾账==账户余额
-      const settleSum = sumAmounts(legs.rows.slice(1)).abs();
+      const settleSum = sumAmounts(legs.slice(1)).abs();
       expect(settleSum.eq(charged)).toBe(true); // 流水合计==usage_logs 合计
 
       const authorizations = await world.db.execute<{
@@ -386,12 +386,12 @@ describe.skipIf(!hasEnv)('E2E', () => {
         sql`select wa.ref_id, wa.amount::text, wa.settled_amount::text, wa.status from wallet_authorizations wa
             join wallet_accounts acc on acc.id = wa.account_id where acc.user_id = ${userId} and wa.ref_type = 'billing' and wa.ref_id not like '%#over'`,
       );
-      expect(authorizations.rows.length).toBe(3); // 每请求恰一条主授权（#over 超额另计）
-      for (const authz of authorizations.rows) {
+      expect(authorizations.length).toBe(3); // 每请求恰一条主授权（#over 超额另计）
+      for (const authz of authorizations) {
         expect(authz.status).toBe('settled');
-        const bill = defined(findRowByRequestId(bills.rows, authz.ref_id), 'bill row');
+        const bill = defined(findRowByRequestId(bills, authz.ref_id), 'bill row');
         expect(bill).toBeDefined();
-        const log = defined(findRowByRequestId(usage.rows, authz.ref_id), 'usage_log row');
+        const log = defined(findRowByRequestId(usage, authz.ref_id), 'usage_log row');
         expect(new Decimal(authz.amount).eq(bill.reserved_amount)).toBe(true); // 授权额==预扣投影
         expect(new Decimal(authz.settled_amount).eq(log.amount)).toBe(true); // 实结==实扣
       }
@@ -405,9 +405,9 @@ describe.skipIf(!hasEnv)('E2E', () => {
       }>(
         sql`select request_id, status_code::text, path, method from request_logs where user_id = ${userId}`,
       );
-      expect(requestLogs.rows.length).toBe(3);
-      for (const bill of bills.rows) {
-        const rl = findRowByRequestId(requestLogs.rows, bill.request_id);
+      expect(requestLogs.length).toBe(3);
+      for (const bill of bills) {
+        const rl = findRowByRequestId(requestLogs, bill.request_id);
         expect(rl?.status_code).toBe('200');
         expect(rl?.path).toBe('/v1/chat/completions');
         expect(rl?.method).toBe('POST');
@@ -417,13 +417,13 @@ describe.skipIf(!hasEnv)('E2E', () => {
       const after = await world.db.execute<{ budget: string }>(
         sql`select upstream_budget::text as budget from channels where id = ${world.seed.channelId}`,
       );
-      const delta = new Decimal(defined(before.rows[0], 'budget before').budget).minus(
-        defined(after.rows[0], 'budget after').budget,
+      const delta = new Decimal(defined(before[0], 'budget before').budget).minus(
+        defined(after[0], 'budget after').budget,
       );
       expect(delta.eq(charged)).toBe(true); // 渠道进货扣减精确等于用户成本（系数 1 口径）
 
       console.log(
-        `⑫ 审计通过：3 笔 Σ实扣 ${charged.toString()}，流水 ${legs.rows.length} 腿连续，预算 delta ${delta.toString()}`,
+        `⑫ 审计通过：3 笔 Σ实扣 ${charged.toString()}，流水 ${legs.length} 腿连续，预算 delta ${delta.toString()}`,
       );
     }, 240_000);
   });

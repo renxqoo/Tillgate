@@ -219,7 +219,7 @@ async function channelTtft(db: Db, since: Date) {
     order by samples desc
     limit 100
   `);
-  return result.rows.map((r): ChannelTtftRow => ({
+  return result.map((r): ChannelTtftRow => ({
     channelId: r.channel_id == null ? null : Number(r.channel_id),
     channelName: r.channel_name,
     samples: r.samples,

@@ -200,8 +200,9 @@ export const userQueries: Pick<
     const offset = (input.page - 1) * input.limit;
     const [rows, totalRows] = await Promise.all([
       db
-        .select(USER_COLUMNS)
+        .select({ ...USER_COLUMNS, rateCardName: rateCards.name })
         .from(users)
+        .leftJoin(rateCards, eq(users.rateCardId, rateCards.id))
         .where(where)
         .orderBy(...orderBy)
         .limit(input.limit)

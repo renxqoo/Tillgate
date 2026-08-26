@@ -37,7 +37,6 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
       poolMax: 5,
       idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 3_000,
-      maxUses: 1_000,
     });
     const migrationsDir = fileURLToPath(
       new URL('../../../packages/db/migrations', import.meta.url),
@@ -64,7 +63,7 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
 
     const one = async (statement: ReturnType<typeof sql>) => {
       const r = await db.execute(statement);
-      return r.rows[0] as Record<string, unknown>;
+      return r[0] as Record<string, unknown>;
     };
     // 种子：用户（绑卡）+ 费率卡（global 0.8 / model 0.5）+ 目录 + fallback + 渠道 + Key + App
     const card = await one(sql`insert into rate_cards (name) values ('it-gw-card') returning id`);
@@ -246,6 +245,6 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
   /** owner 用户 id（种子行） */
   async function scalarUserId(): Promise<string | number> {
     const r = await db.execute(sql`select id from users where issuer = 'it-gw' limit 1`);
-    return (r.rows[0] as { id: string | number }).id;
+    return (r[0] as { id: string | number }).id;
   }
 });

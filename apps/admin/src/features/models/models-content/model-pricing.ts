@@ -2,7 +2,7 @@
 // 仅被表单消费的编辑器构造件（buildTiers/buildWindows 等）随 model-form，不沉本文件。
 
 import type { AdminModelRow } from '@tillgate/api-client';
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const PRICING_UNITS = ['token', 'request', 'image', 'second', 'char'] as const;
 export type PricingUnit = (typeof PRICING_UNITS)[number];
@@ -43,11 +43,25 @@ export function tierLabelFor(unit: string, value: string): string {
 const MONEY_PATTERN = /^\d{1,20}(?:\.\d{1,18})?$/;
 
 /**
+ * 免费模型提交价组：五价显式归零（与 domain freePriceConsistent「显式免费必须全零」同口径）。
+ * 显式带全部分量——PATCH 合并判不残留 DB 旧非零价（含另一计价方式的 unitPrice/缓存写价）。
+ */
+export const FREE_MODEL_PRICES = {
+  inputPrice: '0',
+  outputPrice: '0',
+  cacheInputPrice: '0',
+  cacheWritePrice: '0',
+  unitPrice: '0',
+} as const;
+
+/**
  * 价格分支校验：只校验当前计价方式下可见的字段。
  * 隐藏字段不参与校验——否则切到单位计价后隐藏的 token 三价仍必填，提交必挂。
+ * 免费模型例外：勾选 isFree 后可见价格免填（提交时五价归零），已填的仍按形状校验。
  */
 export function refinePricing(
   v: {
+    isFree?: boolean;
     pricingUnit: string;
     inputPrice: string;
     outputPrice: string;
@@ -60,10 +74,17 @@ export function refinePricing(
 ) {
   const bad = (path: string, message: string) =>
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+  // 免费：空串放行（提交归零）；非空仍须合法形状（填了垃圾一样拦）
+  const priceOk = (raw: string | undefined) => {
+    const value = raw ?? '';
+    return v.isFree === true
+      ? value === '' || MONEY_PATTERN.test(value)
+      : MONEY_PATTERN.test(value);
+  };
   if (v.pricingUnit === 'token') {
-    if (!MONEY_PATTERN.test(v.inputPrice ?? '')) bad('inputPrice', invalidPrice);
-    if (!MONEY_PATTERN.test(v.outputPrice ?? '')) bad('outputPrice', invalidPrice);
-    if (!MONEY_PATTERN.test(v.cacheInputPrice ?? '')) bad('cacheInputPrice', invalidPrice);
+    if (!priceOk(v.inputPrice)) bad('inputPrice', invalidPrice);
+    if (!priceOk(v.outputPrice)) bad('outputPrice', invalidPrice);
+    if (!priceOk(v.cacheInputPrice)) bad('cacheInputPrice', invalidPrice);
     if (
       v.cacheWritePrice != null &&
       v.cacheWritePrice !== '' &&
@@ -71,7 +92,7 @@ export function refinePricing(
     ) {
       bad('cacheWritePrice', invalidPrice);
     }
-  } else if (v.pricingUnit !== '' && !MONEY_PATTERN.test(v.unitPrice ?? '')) {
+  } else if (v.pricingUnit !== '' && !priceOk(v.unitPrice)) {
     bad('unitPrice', invalidPrice);
   }
 }

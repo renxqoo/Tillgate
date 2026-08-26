@@ -3,7 +3,7 @@
  * 请求 schema 引用 contracts/control-plane.ts;响应 wire 形状在此声明
  * （与 presenters/control-plane.ts 投影逐字段对齐——金额恒十进制字符串）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import {
   channelFundsContracts,
   channelsContracts,

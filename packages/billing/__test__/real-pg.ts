@@ -9,6 +9,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
+import { pgSqlState } from '@tillgate/db';
 import { closeDb, createDb, type Db } from '@tillgate/db';
 import { createPostgresWalletStore } from '../src/adapters/postgres/wallet-store.js';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
@@ -29,14 +30,9 @@ const WALLET_MIGRATIONS = [
 /** v1 行为等价重试策略（db 包 transaction.ts 注释口径；生产缺省归 app config） */
 export const V1_RETRY: TxRetryPolicy = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 };
 
-/** 沿 cause 链探测 SQLSTATE（drizzle 包装 pg 错误；42P01 = 缺外部链表，容错跳过） */
-export function causeChainHasCode(error: unknown, code: string, maxDepth = 5): boolean {
-  let current: unknown = error;
-  for (let depth = 0; current != null && depth < maxDepth; depth += 1) {
-    if ((current as { code?: string }).code === code) return true;
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
+/** SQLSTATE 判等（db 包统一分类:pg 在 code、Bun SQL 在 errno——沿 cause 链双字段探测） */
+export function causeChainHasCode(error: unknown, code: string): boolean {
+  return pgSqlState(error) === code;
 }
 
 export interface RealWalletHarness {
@@ -56,7 +52,6 @@ export async function setupRealWallet(label: string): Promise<RealWalletHarness>
     poolMax: 5,
     idleTimeoutMillis: 5_000,
     connectionTimeoutMillis: 3_000,
-    maxUses: 1_000,
   });
   await db.execute(sql.raw(`drop schema if exists ${schema} cascade`));
   await db.execute(sql.raw(`create schema ${schema}`));
@@ -120,8 +115,8 @@ export async function assertLedgerCoherent(db: Db): Promise<void> {
   expect0(inFlightDrift, 'in_flight differs from active authorizations');
 }
 
-function expect0(result: { rows: Array<{ n: number }> }, what: string): void {
-  const n = result.rows[0]?.n ?? -1;
+function expect0(result: Array<Record<string, unknown>>, what: string): void {
+  const n = Number(result[0]?.n ?? -1);
   if (n !== 0) throw new Error(`ledger incoherent: ${what} = ${n}`);
 }
 
@@ -145,7 +140,6 @@ export async function setupRealFullSchema(label: string): Promise<RealFullSchema
     poolMax: 5,
     idleTimeoutMillis: 5_000,
     connectionTimeoutMillis: 3_000,
-    maxUses: 2_000,
   });
   await db.execute(sql.raw(`drop schema if exists ${schema} cascade`));
   await db.execute(sql.raw(`create schema ${schema}`));

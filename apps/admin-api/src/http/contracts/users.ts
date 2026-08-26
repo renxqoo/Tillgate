@@ -2,7 +2,7 @@
  * 用户/Key 域契约（v1 routes/users.ts + keys.ts zod 面平移）。
  * PATCH 封禁语义：freezeReason 只能随封禁（status=1）一并设置——状态语义不二义。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { nonNegativeMoneyString, positiveMoneyString, signedNonZeroMoneyString } from './common';
 
 export const USER_SORTS = ['id', 'subject', 'createdAt', 'lastLoginAt'] as const;

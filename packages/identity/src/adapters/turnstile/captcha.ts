@@ -6,13 +6,16 @@
  */
 import type { Captcha } from '../../ports/captcha.js';
 
+/** 可注入 fetch(bun 类型加宽了全局 fetch——注入面收窄为可调用视图) */
+type FetchLike = (...args: Parameters<typeof fetch>) => Promise<Response>;
+
 export interface TurnstileCaptchaOptions {
   readonly siteKey: string;
   readonly secretKey: string;
   /** 覆盖 siteverify 地址(测试注入/私有化) */
   readonly verifyUrl?: string;
   /** 覆盖 fetch(测试注入) */
-  readonly fetchImpl?: typeof fetch;
+  readonly fetchImpl?: FetchLike;
   /** siteverify 超时毫秒(必填注入,铁律 3) */
   readonly timeoutMs: number;
 }

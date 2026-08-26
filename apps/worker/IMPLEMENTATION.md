@@ -152,3 +152,141 @@ assembly 生产形态给 `createAi` 注入 `guardUrl = assertSafeUrl(url,
 （schema / superRefine 生产必填门禁 / `WorkerConfig.upstreamAllowedHosts` /
 装配注入），`guardUrl` 回归 `assertSafeUrl(url)` 机械基线。裁决依据与
 残余风险见 ADR-0010；webhook 投递防线（机械基线 + 不跟随重定向）不变。
+
+## 增量：BullMQ 结算调度（2026-08-26 定稿，方案状态：已核销）
+
+> 级别：中。动机 = live-fire 红队压测 F-1（`e2e/live-fire/FINDINGS.md`）：
+> 单条毒账单（usage_logs 持久性插入失败等）经 `settleFailurePolicy` 算出
+> NaN 退避 → `casToRetryOrDead` 的 interval 乘法 SQL 报错 → 逃逸批处理
+> `Promise.all` → **worker 进程退出**（毒账单反复重领反复打崩 = 结算拒绝服务）。
+> 用户裁决：采用 BullMQ 重构结算调度（进程级隔离 + 框架退避），PG 状态机保留为真相。
+
+### 契约
+
+- **billing 面（改动两处）**：① `settleFailurePolicy` 入参加 `Number.isFinite`
+  防护——attempt/退避输入非有限数值时直接判死信（`failureClass` 带
+  `_invalid_attempt` 后缀），NaN 不再流向 SQL。② settlement 面新增只读
+  `listDueRequestIds({limit})`：扫 due 行（`settlement_pending/retry_wait` 且
+  到期）只取 id 不认领——sweep 入队与直驱 runner 共用，候选口径与
+  `claimPending` 一致（SQL 住 postgres adapter）。其余 API 零改动
+  （`claim.requestIds` 定向认领为既有形态）。
+- **worker 面（新）**：
+  - `processSettlementRequest(requestId): Promise<'settled'|'retried'|'dead'|'claim_lost'|'unknown-failure'>`
+    ——纯闭包：定向 claim（空认领=幂等完成）→ processClaim → 结局映射。
+    未知异常**不外抛**（记日志返回 `unknown-failure`，由入队方决定重投）。
+  - `runSettlementSweep(): Promise<number>` ——扫描 due 行（复用 claim 的
+    候选查询口径但不认领，只取 request_id）→ 批量入队，返回入队数。
+  - BullMQ Queue/Worker 装配：`WORKER_REDIS_URL`（回落 `REDIS_URL`）、
+    `WORKER_BULLMQ_PREFIX`（缺省 `{bull}`）、`WORKER_SETTLE_CONCURRENCY`（8）、
+    `WORKER_SETTLE_MAX_ATTEMPTS`（10）；ioredis 专用实例
+    （`maxRetriesPerRequest: null`——BullMQ 硬性要求）。
+- **错误形态**：processor 内已知结局正常返回；`retried` → job 抛错交 BullMQ
+  指数退避（`backoff: { type: 'exponential', delay: baseDelayMs }`）重投；
+  BullMQ failed 事件 = 缺陷信号（error 日志）。
+- **事件时序**：死信判定 → PG dead + billing_dead 同事务入箱（不变，billing 内）；
+  job 完成最后；一次性事件恰好一次由 PG 幂等层保证（与队列无关）。
+
+### 问题域
+
+- 处理：结算触发的三源入队（wake/sweep/BullMQ 重投）、单条结算驱动、
+  毒账单进程隔离、瞬时失败退避时序。
+- 不处理：结算业务规则与死信判定（→ `@tillgate/billing`，零变化）；
+  recover 业务（→ billing，回收行由 sweep 兜底入队）；其余六 job（不动）；
+  网关热路径（零改动）。
+
+### 并发/一致性预算
+
+- 单条结算 < 1s、租约 60s：单 job 内不需保活（批式 renewTimer 随批形态移除）。
+- Worker concurrency 8 × 多副本：正确性全在 PG（claim SKIP LOCKED + revision
+  CAS + lease + usage_logs unique + wallet 幂等）——队列重复投递/多源并发
+  入队天然安全（空认领幂等完成）。
+- Redis 丢任务/丢通知：sweep 周期（30s 缺省）扫 due 行重投，账务不依赖 Redis。
+- 定时器个数：不变（settle interval 语义改为 sweep；无新增常驻定时器）。
+
+### 拆分（目标位置）
+
+| 文件 | 动作 |
+| --- | --- |
+| `packages/billing/src/domain/billing/settle-failure.ts` | NaN 防护（真 bug 根因修复） |
+| `packages/billing/src/application/settlement/`（+ postgres adapter） | 只读 `listDueRequestIds`（due 行 id 扫描，不认领；sweep/直驱共用） |
+| `apps/worker/src/queue/settlement-queue.ts` | 新增：BullMQ Queue/Worker/ioredis 装配工厂 |
+| `apps/worker/src/jobs/settlement.ts` | 重写：`createSettlementProcessor`（单条驱动）+ `createSettlementSweepJob`（due 扫描入队）；`createSettlementBatchJob` 删除（铁律 8 单轨） |
+| `apps/worker/src/wakeup/postgres-notify.ts` | 通知回调改定向入队；coalescing/drain 移除 |
+| `apps/worker/src/config.ts` | settle 段 + bullmq 四旋钮 |
+| `apps/worker/src/assembly.ts` | queue/processor/sweep 装配 + runners.settle 新语义 |
+| `apps/worker/src/shutdown.ts` / `index.ts` | 停机顺序 + queue/worker close |
+
+### 裁决（用户裁决/默认裁决）
+
+1. **【用户裁决】** 用 BullMQ 重构（对比最小修复 ~10 行）——用户明确指定。
+2. PG `settlement_attempts` = 业务死信判定唯一真相；BullMQ attempts = 保险丝。
+3. `retried` 结局由 BullMQ 退避重投承担首试时序；PG `next_settlement_at`
+   保留（sweep 兜底 + 可观测），两消费者语义一致（最早重试时刻），非双轨。
+4. `runners.settle` = sweep + 直驱 processor（E2E 确定性；生产函数不经
+   BullMQ runtime 的同一管线）。
+5. recover 不返回回收 ids（既有契约零改动）——回收行由 sweep 周期兜底入队
+   （recover 本身是兜底路径，多等一个 sweep 周期可接受）。
+
+### 测试口径
+
+- 单元（billing）：`settle-failure` NaN/Infinity/负数 attempt 矩阵 → 全部落
+  死信（表驱动）；正常 attempt 退避公式不变。
+- 单元（worker）：processor 结局映射（settled/retried/dead/claim_lost/未知
+  异常不外抛）；sweep 只入队 due 行；wakeup payload 解析（UUID/垃圾/缺失）。
+- real（worker，真 PG+Redis）：enqueue → BullMQ worker 消费 → settled；
+  **毒账单回归**（F-1 症状：结算管线的 usage 插入持续失败）→ worker 进程
+  存活 + 账单最终 dead + billing_dead 入箱。
+- e2e：billing-recovery 旅程适配（runners.settle 新语义）全绿。
+- live-fire：80 用例全量回归 + 新增 P1 毒账单用例。
+
+### 验收清单（2026-08-26 核销）
+
+- [x] F-1 复现场景（毒账单）worker 不崩、账单进 dead、billing_dead 入箱
+      ——live-fire P1 用例（635ms 闭环：用户删行→usage FK 持续失败→重试耗尽→
+      dead + 入箱，进程存活）
+- [x] 结算恰好一次语义不变——billing settlement-lifecycle real 4/4；
+      billing-recovery e2e 3/3（⑯a/⑯b/⑯c 真 scheduler→sweep→BullMQ 消费链）；
+      live-fire 81/81（X6 worker SIGKILL 恰好一次、X10 三不变量全库核验）
+- [x] 四门全绿——根 typecheck/lint/test/build（34/34/34/20 任务）；
+      worker 覆盖率 97.14/90.74/97.14/99.13（阈值 90/85 不降）；
+      billing 338 用例全绿（含 NaN 防护矩阵回归）
+- [x] DESIGN/IMPLEMENTATION 同步（本节即修订记录；DESIGN §1/§2.2/§2.4/§3.2/§3.3/§4/§6 同步演进）
+
+## 增量：终态残留重投出口（2026-08-26，方案状态：已核销待验收）
+
+> 级别：中。动机 = 红队复审 R-1（`e2e/live-fire/FINDINGS.md`）：BullMQ
+> `removeOnComplete/removeOnFail` 保留集内的旧 job 使同 jobId 的 `addBulk`
+> 被 lua `EXISTS jobIdKey` 恒跳过——「PG 行非终态但 job 已完结」组合下
+> （unknown-failure → 15s 退避重投落 60s 租约内 → claim_lost 正常完结 →
+> recover 归还 retry_wait → sweep 永久 no-op；worker 崩溃 stalled 路径同构），
+> 该请求的结算**确定性停摆**，资金冻结 in_flight，仅一条 failed 事件缺陷信号。
+
+### 契约
+
+- `enqueueMany` 在 `addBulk` 后逐 id 复核 job 状态：state ∈ {completed, failed}
+  且 `finishedOn` 早于本批入队时刻（排除「本批投放被瞬时消费」竞态）→
+  `queue.remove(jobId)` 后按原 jobOptions 重投；活 job（waiting/active/delayed）
+  与缺 job 跳过。bullmq 6.x 去重与新建同返回 jobId，返回值不可分辨，复核是
+  唯一探测面。
+- 处理面单一真相不变（裁决 4/裁决 5 维持）：sweep 仍不直接结算，出口只做
+  队列面的 remove+重投；结算语义全部仍在 processor + BullMQ Worker。
+- 多副本并发同扫：remove 幂等、重投二次被去重，无害；PG claim CAS 兜底
+  重复投递（既有不变量）。
+
+### 裁决
+
+- 【方案比对】否决「sweep 直驱 processor」——违反处理面单一真相（毒账单
+  进程隔离边界）；否决 `removeOnComplete: true`——丢失刻意保留的 Redis
+  审计面且不能自愈已停摆存量；否决「claim_lost 查状态非终态即 throw」——
+  与 settle 重投共享 attempts 预算，耗尽后同样落入本缺陷，只能作后续增强。
+- 修正三处虚假注释（settlement-queue failed 事件、recovery、sweep 头注——
+  「重复触发天然安全」对终态残留不成立）。
+
+### 测试口径
+
+- 单元（worker，mock bullmq）：终态残留 remove+重投形状；活 job/缺 job/
+  竞态完结（finishedOn 晚于入队）不动。
+- real（worker，真 Redis）：job 完结进 completed 保留集后同 jobId 重投必须
+  再次送达 worker（旧形态此处永久 no-op——R-1 队列侧本体回归）。
+- live-fire：B16 用例——真实结算完结 → `pg_notify(settle-wake)` 定向重投 →
+  断言 job 重建（timestamp 更新）且已结算行不被重复计费。

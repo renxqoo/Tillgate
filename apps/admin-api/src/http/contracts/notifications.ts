@@ -3,7 +3,7 @@
  * webhook 需 url+secret;email 需 recipients（refine 互斥;events 词表封闭）。
  * 事件词表单一真相 = notifications domain NOTIFY_EVENTS（此处 import,不复制）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { NOTIFY_EVENTS } from '@tillgate/notifications';
 
 const configSchema = z

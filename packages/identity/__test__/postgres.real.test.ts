@@ -121,7 +121,6 @@ async function exec(db: Db, sqlText: string): Promise<void> {
       poolMax: 8,
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 10_000,
-      maxUses: 5_000,
     });
     await exec(realDb, DDL);
     for (const table of [

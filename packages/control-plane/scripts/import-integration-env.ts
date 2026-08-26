@@ -37,7 +37,6 @@ const db = createDb({
   poolMax: 2,
   idleTimeoutMillis: 10_000,
   connectionTimeoutMillis: 5_000,
-  maxUses: 5_000,
 });
 const cipher = createCipher(requiredEnv('ENCRYPTION_KEY'));
 

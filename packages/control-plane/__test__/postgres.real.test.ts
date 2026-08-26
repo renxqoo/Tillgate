@@ -67,7 +67,6 @@ beforeAll(async () => {
       poolMax: 2,
       idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 3_000,
-      maxUses: 10_000,
     });
     await candidate
       .select({ one: sql<number>`1` })

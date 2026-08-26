@@ -18,13 +18,13 @@ import { Loader2Icon, PencilIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import * as z from 'zod';
 
 import type { AdminModelRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 import { numericText } from '@/lib/forms';
 import { ModelForm, type WithBillingConfig } from './model-form';
-import { PRICING_UNITS, refinePricing, type PricingUnit } from './model-pricing';
+import { PRICING_UNITS, FREE_MODEL_PRICES, refinePricing, type PricingUnit } from './model-pricing';
 
 function buildEditSchema(
   t: ReturnType<typeof useTranslations<'models'>>,
@@ -103,22 +103,25 @@ function buildEditDefaultValues(model: AdminModelRow) {
   };
 }
 
-/** 编辑提交载荷：表单字符串值 → API 载荷（价格按计价方式分流、空值归 null/undefined、billingConfig 显式清除） */
+/** 编辑提交载荷：表单字符串值 → API 载荷（免费五价归零、价格按计价方式分流、空值归 null/undefined、billingConfig 显式清除） */
 function toEditPayload(values: WithBillingConfig<EditFormValues>) {
   const tokenMode = values.pricingUnit === 'token';
   return {
     externalName: values.externalName,
     realModel: values.realModel,
     pricingUnit: values.pricingUnit,
-    // 只提交当前计价方式下的价格（另一侧保留 DB 旧值，计费按 pricingUnit 分流不受影响）
-    ...(tokenMode
-      ? {
-          inputPrice: values.inputPrice,
-          outputPrice: values.outputPrice,
-          cacheInputPrice: values.cacheInputPrice,
-          ...(values.cacheWritePrice !== '' ? { cacheWritePrice: values.cacheWritePrice } : {}),
-        }
-      : { unitPrice: values.unitPrice }),
+    // 免费模型：五价显式归零（价格输入已禁用免填，合并判不残留旧非零价）；
+    // 其余只提交当前计价方式下的价格（另一侧保留 DB 旧值，计费按 pricingUnit 分流不受影响）
+    ...(values.isFree
+      ? FREE_MODEL_PRICES
+      : tokenMode
+        ? {
+            inputPrice: values.inputPrice,
+            outputPrice: values.outputPrice,
+            cacheInputPrice: values.cacheInputPrice,
+            ...(values.cacheWritePrice !== '' ? { cacheWritePrice: values.cacheWritePrice } : {}),
+          }
+        : { unitPrice: values.unitPrice }),
     // 差价/时段配置显式管理：表单带 billingConfig 提交（variant 或 schedule），
     // 否则 null 清除（避免 DB 残留与界面不一致）——token 模式也可配分时段价
     ...(values.billingConfig == null

@@ -1,17 +1,23 @@
 /**
- * worker 真 PG 集成（铁律 14：默认门禁按文件名排除，test:real 显式运行）。
+ * worker 真 PG/Redis 集成（铁律 14：默认门禁按文件名排除，test:real 显式运行）。
  * 覆盖 app 特有的真实面——结算/佣金/对账核验的用例本体已在 billing 包 real 门
  * （settlement-lifecycle / wallet-contract / wallet-invariants）覆盖，此处不重复：
- *   ① 唤醒全链：pg_notify('settle-wake') → 专用连接 LISTEN → 批次触发（真通道）
+ *   ① 唤醒全链：pg_notify('settle-wake') → 专用连接 LISTEN → onWake 触发（真通道）
  *   ② 会话级 advisory try-lock 互斥：他连接持键 → 本连接获锁失败（对账门语义）
- * 环境：DB_TEST_URL / DATABASE_URL（根 .env）；不可达时全组跳过。零业务数据写入。
+ *   ③ BullMQ 结算队列：jobId 去重入队 → worker 消费 → retried 重投（真 Redis；
+ *      毒账单进程隔离的全栈验证归 live-fire P1 用例）
+ *   ④ 终态残留出口：job 完结进 completed 保留集后同 jobId 重投不被去重吞掉
+ *      （F1 回归——队列侧本体；PG 行非终态×job 已完结的全栈形态归 live-fire B15）
+ * 环境：DB_TEST_URL / DATABASE_URL + REDIS_URL（根 .env）；不可达时对应组跳过。
+ * 零业务数据写入。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { closeDb, createDb, ping } from '@tillgate/db';
+import { closeDb, createDb, ping, withSessionTryLock } from '@tillgate/db';
 import type { Db } from '@tillgate/db';
 import { SETTLE_WAKE_CHANNEL } from '@tillgate/billing';
+import IORedis from 'ioredis';
 import { createSettleWakeListener } from '../src/wakeup/postgres-notify';
-import type { ListenConnection } from '../src/wakeup/postgres-notify';
+import { createSettlementQueue } from '../src/queue/settlement-queue';
 
 const url = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
 let db: Db | null = null;
@@ -24,7 +30,6 @@ beforeAll(async () => {
       poolMax: 5,
       idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 3_000,
-      maxUses: 1_000,
     });
     await ping(candidate);
     db = candidate;
@@ -48,14 +53,9 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<boo
   return predicate();
 }
 
-/** 池化连接发 NOTIFY（经池客户端原生查询——app 不依赖 drizzle 面） */
+/** 池直发 NOTIFY（unsafe 裸文本+参——app 不依赖 drizzle 面） */
 async function notify(target: Db, channel: string, payload: string): Promise<void> {
-  const client = await target.$client.connect();
-  try {
-    await client.query({ text: 'select pg_notify($1, $2)', values: [channel, payload] });
-  } finally {
-    client.release();
-  }
+  await target.$client.unsafe('select pg_notify($1, $2)', [channel, payload]);
 }
 
 describe('worker 真 PG：结算唤醒全链', () => {
@@ -64,13 +64,11 @@ describe('worker 真 PG：结算唤醒全链', () => {
     const connected = db;
     let runs = 0;
     const listener = createSettleWakeListener({
-      connect: async () => (await connected.$client.connect()) as unknown as ListenConnection,
+      listen: (channel, onMessage) => connected.$client.listen(channel, onMessage),
       channel: SETTLE_WAKE_CHANNEL,
-      runBatch: async () => {
+      onWake: async () => {
         runs += 1;
-        return 0; // 非满批
       },
-      batchSize: 5,
       logger: { warn: () => {}, error: () => {} },
     });
     try {
@@ -109,39 +107,120 @@ describe('worker 真 PG：对账会话锁门', () => {
     if (!db) return context.skip();
     const connected = db;
     const key = 'tillgate-worker-real-test:reconcile';
-    const holder = await connected.$client.connect();
+    const holder = await connected.$client.reserve();
     try {
-      const locked = await holder.query<{ locked: boolean }>({
-        text: 'select pg_try_advisory_lock(hashtext($1)) as locked',
-        values: [key],
-      });
-      expect(locked.rows[0]?.locked).toBe(true);
-      const gateOutcome = await withTryLock(connected, key, async () => 'ran');
+      const locked = await holder.unsafe<Array<{ locked: boolean }>>(
+        'select pg_try_advisory_lock(hashtext($1)) as locked',
+        [key],
+      );
+      expect(locked[0]?.locked).toBe(true);
+      const gateOutcome = await withSessionTryLock(connected, { key }, async () => 'ran');
       expect(gateOutcome).toBeNull();
       // 释放后可获
-      await holder.query({ text: 'select pg_advisory_unlock(hashtext($1))', values: [key] });
-      expect(await withTryLock(connected, key, async () => 'ran')).toBe('ran');
+      await holder.unsafe('select pg_advisory_unlock(hashtext($1))', [key]);
+      expect(await withSessionTryLock(connected, { key }, async () => 'ran')).toBe('ran');
     } finally {
-      holder.release();
+      await holder.release();
     }
   });
 });
 
-/** 与 assembly 同形的会话锁门（真实 PG 语义验证） */
-async function withTryLock<T>(target: Db, key: string, fn: () => Promise<T>): Promise<T | null> {
-  const client = await target.$client.connect();
-  try {
-    const locked = await client.query<{ locked: boolean }>({
-      text: 'select pg_try_advisory_lock(hashtext($1)) as locked',
-      values: [key],
+
+
+const redisUrl = process.env.WORKER_REDIS_URL ?? process.env.REDIS_URL;
+
+describe('worker 真 Redis：BullMQ 结算队列', () => {
+  /** Redis 可达性探测（不可达整组 skip——与 PG 同口径） */
+  async function redisReachable(): Promise<boolean> {
+    if (!redisUrl) return false;
+    const probe = new IORedis(redisUrl, {
+      maxRetriesPerRequest: 0,
+      connectTimeout: 1_000,
+      lazyConnect: true,
     });
-    if (locked.rows[0]?.locked !== true) return null;
     try {
-      return await fn();
+      await probe.connect();
+      const pong = await probe.ping();
+      return pong === 'PONG';
+    } catch {
+      return false;
     } finally {
-      await client.query({ text: 'select pg_advisory_unlock(hashtext($1))', values: [key] });
+      probe.disconnect();
     }
-  } finally {
-    client.release();
   }
-}
+
+  it(
+    'jobId 去重入队 → worker 消费（重复 id 只处理一次）;retried 结局重投后完成',
+    async (context) => {
+      if (!(await redisReachable())) return context.skip();
+      const calls: string[] = [];
+      let retryOncePending = true;
+      const face = createSettlementQueue({
+        redisUrl: redisUrl as string,
+        prefix: `{bull}:worker-real-test:${Date.now()}`, // 共享 Redis 隔离前缀
+        concurrency: 2,
+        maxAttempts: 3,
+        backoffBaseMs: 50,
+        process: async (requestId) => {
+          calls.push(requestId);
+          if (requestId === 'retry-once' && retryOncePending) {
+            retryOncePending = false;
+            return 'retried'; // 首次瞬时失败 → BullMQ 退避重投
+          }
+          return 'settled';
+        },
+        logger: { info: () => {}, error: () => {} },
+      });
+      try {
+        await face.enqueueMany(['job-a', 'job-b', 'job-a']); // 重复 id
+        const dedupDone = () =>
+          calls.includes('job-a') && calls.includes('job-b') && calls.filter((c) => c === 'job-a').length === 1;
+        expect(await waitFor(dedupDone, 5_000)).toBe(true);
+        await face.enqueueMany(['retry-once']);
+        const retriedTwice = () => calls.filter((c) => c === 'retry-once').length >= 2;
+        expect(await waitFor(retriedTwice, 5_000)).toBe(true); // retried → 重投 → settled
+      } finally {
+        await face.close();
+      }
+    },
+    15_000,
+  );
+
+  it(
+    '终态残留出口：job 完结(claim_lost→completed 保留集)后同 jobId 重投不再被去重吞掉',
+    async (context) => {
+      if (!(await redisReachable())) return context.skip();
+      // 场景=F1 链路的队列侧本体:PG 行非终态但 job 已完结时,sweep 的重投必须
+      // 仍能送达 worker——bullmq 对 completed 保留集内的 jobId 恒 EXISTS 跳过,
+      // 出口 = enqueueMany 复核终态后 remove+重投(旧形态此处永久 no-op)。
+      const calls: string[] = [];
+      const face = createSettlementQueue({
+        redisUrl: redisUrl as string,
+        prefix: `{bull}:worker-real-test:${Date.now()}`, // 共享 Redis 隔离前缀
+        concurrency: 1,
+        maxAttempts: 2,
+        backoffBaseMs: 50,
+        process: async (requestId) => {
+          calls.push(requestId);
+          return 'claim_lost'; // 行不在/他方持有 → job 正常完结进 completed 保留集
+        },
+        logger: { info: () => {}, error: () => {} },
+      });
+      const consumedOnce = () => calls.filter((c) => c === 'stuck-1').length === 1;
+      const consumedAgain = () => calls.filter((c) => c === 'stuck-1').length >= 2;
+      try {
+        await face.enqueueMany(['stuck-1']);
+        expect(await waitFor(consumedOnce, 5_000)).toBe(true);
+        // 完结时间必须早于第二次入队(finishedOn 竞态闸):稍候让 completed 定格
+        await new Promise((resolve) => {
+          setTimeout(resolve, 200);
+        });
+        await face.enqueueMany(['stuck-1']); // 旧形态:completed 残留 → 去重 no-op
+        expect(await waitFor(consumedAgain, 5_000)).toBe(true); // 新出口:remove+重投 → 再消费
+      } finally {
+        await face.close();
+      }
+    },
+    15_000,
+  );
+});

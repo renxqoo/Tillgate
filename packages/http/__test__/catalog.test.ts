@@ -8,8 +8,10 @@ import { HttpErrors } from '../src/errors/catalog';
  */
 
 describe('HttpErrors 目录内容', () => {
-  it('码集封闭（15 码，装配即锁）', () => {
+  it('码集封闭（17 码，装配即锁）', () => {
     expect([...HttpErrors.codes].toSorted()).toEqual([
+      'http.db_budget_full',
+      'http.db_budget_timeout',
       'http.invalid_idempotency_key',
       'http.invalid_json',
       'http.invalid_path_param',

@@ -6,7 +6,7 @@
  *   - page_size 上限 100（防超大查询拖垮 DB）
  *   - 返回 {list, total, page, page_size} 标准结构
  */
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const PAGE_SIZE_MAX = 100;
 export const PAGE_SIZE_DEFAULT = 20;

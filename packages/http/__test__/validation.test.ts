@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
-import { z } from 'zod';
+import * as z from 'zod';
 import { intParam } from '../src/validation/int-param';
 import { jsonBody, query } from '../src/validation/zod-validator';
 import { errorHandler } from '../src/errors/handler';

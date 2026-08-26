@@ -1,3 +1,4 @@
+import { requestSummaryOf } from '../middleware/request-log.js';
 /**
  * Gemini 原生协议端点（v1 routes/native-protocol.ts 迁移）：
  * POST /v1beta/models/:modelAction —— 模型名在 URL 的路径参数形态，端点注册表表达不了。
@@ -44,6 +45,8 @@ export function geminiNativeRoutes(deps: {
     }
     const { model, stream } = parsed;
     const raw = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    const genSummary = requestSummaryOf(c.req.method, raw);
+    if (genSummary != null) c.set('requestLogSummary', genSummary);
     if (!raw) {
       throw GatewayErrors.business('invalid_body', {
         detail: 'Request body must be a JSON object',

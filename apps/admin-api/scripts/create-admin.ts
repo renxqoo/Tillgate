@@ -95,7 +95,6 @@ async function main(): Promise<void> {
     poolMax: 2,
     idleTimeoutMillis: 5_000,
     connectionTimeoutMillis: 5_000,
-    maxUses: 10_000,
   });
   const [roleRow] = await db
     .select({ id: rolesTable.id })
@@ -148,10 +147,21 @@ async function main(): Promise<void> {
             `Use a dedicated admin email.`,
         );
       }
-      await tx
+      // 哈希冲突同理必须 fail-loud:identity_passwords 若残留同 user_id 旧行
+      // (admins 行曾被单独清除的半状态),静默跳过会造出「创建成功但登不上」的
+      // 废号——登录 join 到旧哈希,任何口令都 401(2026-08-27 实证)
+      const pwd = await tx
         .insert(identityPasswords)
         .values({ userId: id, passwordHash: hash })
-        .onConflictDoNothing({ target: identityPasswords.userId });
+        .onConflictDoNothing({ target: identityPasswords.userId })
+        .returning({ userId: identityPasswords.userId });
+      if (pwd.length === 0) {
+        throw new Error(
+          `identity_passwords already has an orphan row for user_id ${id} ` +
+            `(admins row was cleared but identity rows survived a prior deletion); ` +
+            `admin NOT created, transaction rolled back. Clear the orphan identity rows first.`,
+        );
+      }
       return id;
     });
     console.log(`created admin id=${created} (${email}, role ${roleCode})`);

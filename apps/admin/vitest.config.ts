@@ -51,6 +51,14 @@ export default defineConfig({
     },
   },
   test: {
+    // bun-vitest 的 ssrTransform 会丢 zod v4 的 `export { z }` 再导出——
+    // node_modules 全量外部化,由 bun 运行时原生解析(源码转换不受影响)
+    server: {
+      deps: {
+        external: [/node_modules/],
+      },
+    },
+
     include: ['__test__/*.test.ts', '__test__/*.test.tsx'],
     environment: 'node',
     fileParallelism: false,

@@ -303,9 +303,9 @@ describe.skipIf(!hasEnv)('E2E', () => {
       }>(
         sql`select request_id, input_tokens::text, output_tokens::text from usage_logs where user_id = ${userId}`,
       );
-      expect(logs.rows.length).toBe(8);
+      expect(logs.length).toBe(8);
       for (const bill of bills) {
-        const log = findLogByRequestId(logs.rows, bill.request_id);
+        const log = findLogByRequestId(logs, bill.request_id);
         expect(log).toBeDefined();
         const usage = (
           bill.receipt as { usage?: { inputTokens?: number; outputTokens?: number } } | null

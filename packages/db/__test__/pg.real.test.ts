@@ -15,6 +15,7 @@ import {
   ping,
   runTx,
   uniqueViolationConstraint,
+  withSessionTryLock,
   type Db,
   type DbTx,
 } from '../src/index.js';
@@ -27,7 +28,6 @@ const POOL = {
   poolMax: 5,
   idleTimeoutMillis: 5_000,
   connectionTimeoutMillis: 3_000,
-  maxUses: 1_000,
 } as const;
 
 (url ? describe : describe.skip)('真实 PostgreSQL(db 基础设施)', () => {
@@ -35,7 +35,7 @@ const POOL = {
 
   const countKv = async (k: number): Promise<number> => {
     const r = await db.execute(sql`select count(*)::int as n from ${SCHEMA}.kv where k = ${k}`);
-    return (r.rows[0] as { n: number }).n;
+    return (r[0] as { n: number }).n;
   };
 
   // 内层事务体:插入后抛错——SAVEPOINT 回滚断言的行为载体(作用域级具名函数,压平回调嵌套)
@@ -101,7 +101,7 @@ const POOL = {
         const innerRows = await tx.execute(
           sql`select count(*)::int as n from ${SCHEMA}.kv where k = 3`,
         );
-        expect((innerRows.rows[0] as { n: number }).n).toBe(0); // savepoint 已回滚
+        expect((innerRows[0] as { n: number }).n).toBe(0); // savepoint 已回滚
       },
       { maxAttempts: 2, baseDelayMs: 5, maxJitterMs: 5 },
     );
@@ -145,5 +145,39 @@ const POOL = {
     await ping(own); // select 1
     await closeDb(own);
     await expect(own.execute(sql`select 1`)).rejects.toThrow();
+  });
+
+  it('withSessionTryLock:持锁连接在锁窗口内被杀 → 结果不丢、锁释放、池健康(R-5)', async () => {
+    const key = 'tillgate-db-test:unlock-fail';
+    const defects: Array<{ key: string }> = [];
+    const advisoryLockCount = async (): Promise<number> => {
+      const rows = await db.execute<{ n: number }>(sql`
+        select count(*)::int as n from pg_locks
+        where locktype = 'advisory' and classid = 0 and objid = hashtext(${key})::bigint`);
+      return Number((rows[0] as { n: number }).n);
+    };
+    const result = await withSessionTryLock(
+      db,
+      { key, onDefect: (error, defectKey) => {
+        void error;
+        defects.push({ key: defectKey });
+      } },
+      async () => {
+        // fn 走池连接;持锁者是 withSessionTryLock 内部的保留连接——杀死它,
+        // 后续 unlock 语句必然失败(连接已死),进入解锁失败处置分支
+        await db.execute(sql`
+          select pg_terminate_backend(l.pid) from pg_locks l
+          where l.locktype = 'advisory' and l.classid = 0 and l.objid = hashtext(${key})::bigint`);
+        return 'ran';
+      },
+    );
+    expect(result).toBe('ran'); // fn 结果不被解锁失败反杀
+    expect(defects).toHaveLength(1); // 缺陷上报恰一次
+    expect(defects[0]?.key).toBe(key);
+    // 锁不残留(连接死亡即释放——若实现把持锁死连接归还池,锁表可见悬挂)
+    expect(await advisoryLockCount()).toBe(0);
+    // 池仍健康:同键 try-lock 立即可用
+    expect(await withSessionTryLock(db, { key }, async () => 'second')).toBe('second');
+    expect(await advisoryLockCount()).toBe(0);
   });
 });

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
 import type { OtelMode } from '@tillgate/observability';
 import type { DbPoolConfig } from '@tillgate/db';
@@ -231,7 +231,6 @@ export function loadAdminApiConfig(env: NodeJS.ProcessEnv = process.env): AdminA
       poolMax: parsed.DB_POOL_MAX,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
-      maxUses: 1_000,
     },
   };
 }

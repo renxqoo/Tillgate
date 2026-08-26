@@ -1,5 +1,5 @@
 /** 管理面用户列表:q 模糊(subject/email/displayName)+ status/enterprise 过滤 + 排序分页(v1 listAdminUsers) */
-import type { PageResult, UserRecord } from '../ports/account-store.js';
+import type { PageResult, UserProfile } from '../ports/account-store.js';
 import { USER_SORT_FIELDS, clampListQuery, resolveSort } from './list-query.js';
 import type { UseCaseContext } from './context.js';
 
@@ -16,7 +16,7 @@ export interface AdminListUsersInput {
 export async function adminListUsers(
   ctx: UseCaseContext,
   input: AdminListUsersInput,
-): Promise<PageResult<UserRecord>> {
+): Promise<PageResult<UserProfile>> {
   return ctx.store.listUsers(ctx.db, {
     q: input.q?.trim() || undefined,
     status: input.status,

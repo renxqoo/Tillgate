@@ -1,7 +1,7 @@
 /**
  * Application（OAuth 客户端应用）契约：列表/创建（scope 嵌套形状）/ 路径参数。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { listQuerySchema } from './shared.js';
 
 export const appsListQuerySchema = listQuerySchema;

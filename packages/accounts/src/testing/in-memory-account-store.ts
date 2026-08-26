@@ -558,7 +558,14 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
         else cmp = String(av ?? '').localeCompare(String(bv ?? ''));
         return (input.sort.order === 'asc' ? cmp : -cmp) || b.id - a.id;
       });
-      return paginate(rows.map(pubUser), input.page, input.limit);
+      return paginate(
+        rows.map((r) => ({
+          ...pubUser(r),
+          rateCardName: r.rateCardId == null ? null : (state.rateCards.get(r.rateCardId)?.name ?? null),
+        })),
+        input.page,
+        input.limit,
+      );
     },
 
     async insertKey(_db, input: ApiKeyInsert) {

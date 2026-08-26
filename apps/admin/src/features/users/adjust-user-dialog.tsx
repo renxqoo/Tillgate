@@ -22,7 +22,7 @@ import { Loader2Icon, ScaleIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import * as z from 'zod';
 
 import { moneyText } from '@/lib/forms';
 import { formatMoney } from '@/lib/formatters';

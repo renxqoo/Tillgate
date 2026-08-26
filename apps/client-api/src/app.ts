@@ -5,7 +5,7 @@
  * pgSqlState 是纯 SQLSTATE 分类函数（trace-receiver 同款白名单例外）。
  */
 import { Hono } from 'hono';
-import {
+import { dbBudgetMiddleware,
   bodyParserLimit,
   corsPreflight,
   errorHandler,
@@ -42,6 +42,8 @@ export interface ClientApiDeps {
     readonly corsMaxAgeSeconds: number;
     readonly bodyLimitBytes: number;
   };
+  /** DB 并发预算门(公网 ingress 入口排队;缺省关闭——不注入即旁路) */
+  readonly dbBudget?: { limit: number; maxQueue: number; waitTimeoutMs: number };
   readonly logger: { error(obj: Record<string, unknown>, msg?: string): void };
   readonly health: { pingDb(): Promise<void>; pingRedis(): Promise<void> };
   readonly validateSession: SessionValidator;
@@ -88,6 +90,7 @@ export function createClientApiApp(deps: ClientApiDeps): Hono<SessionEnv> {
   );
   app.use('*', securityHeaders);
   app.use('*', bodyParserLimit(deps.protocol.bodyLimitBytes));
+  if (deps.dbBudget != null) app.use('*', dbBudgetMiddleware(deps.dbBudget));
   app.use('*', requestIdMiddleware<SessionEnv>());
 
   app.get('/healthz', async (c) => {

@@ -3,7 +3,7 @@
  * 信号注册（v1 index.ts 迁移；停机编排归 shutdown.ts + runtime）。
  * 配置快照日志：排查「以为配了其实默认」——密钥类只打长度不打值。
  */
-import { serve } from '@hono/node-server';
+import { serveApp } from '@tillgate/http';
 import { assertRedisReachable } from '@tillgate/runtime';
 import { loadGatewayConfig } from './config';
 import type { GatewayConfig } from './config';
@@ -11,6 +11,7 @@ import { assembleGateway } from './assembly';
 import type { GatewayAssembly } from './assembly';
 import { createGatewayApp } from './app';
 import type { GatewayAppDeps } from './app';
+import { gatewayDbBudget } from './db-budget.js';
 import { createGatewayShutdown } from './shutdown';
 
 /** app 依赖组装（assembly + config → createGatewayApp 入参——纯字段搬运） */
@@ -44,6 +45,9 @@ function toAppDeps(assembly: GatewayAssembly, config: GatewayConfig): GatewayApp
       maxFileBytes: config.uploadLimits.maxFileBytes,
     },
     trustedProxyHops: config.trustedProxyHops,
+    // DB 并发预算门:钳制业务并发在池内(推导见 src/db-budget.ts——绝不越池,
+    // 万级并发下任何形态都须入口排队,node 池队列塌陷 / Bun SQL 排队楔死 F-6)
+    dbBudget: gatewayDbBudget(config.dbPoolMax),
     logger: assembly.logger,
   };
 }
@@ -58,7 +62,7 @@ async function main(): Promise<void> {
 
   const app = createGatewayApp(toAppDeps(assembly, config));
 
-  const server = serve({ fetch: app.fetch, port: config.port }, () => {
+  const server = serveApp(app, { port: config.port }, () => {
     logger.info(
       {
         port: config.port,

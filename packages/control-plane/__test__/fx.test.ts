@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { defined } from './defined';
 import { fxState } from '../src/application/fx/fx-state';
+import type { FetchLike } from '../src/application/fx/fx-shared';
 import { refreshFx } from '../src/application/fx/refresh-fx';
 import { setFxOverride } from '../src/application/fx/set-fx-override';
 import { clearFxOverride } from '../src/application/fx/clear-fx-override';
@@ -12,15 +13,15 @@ import { setFxBuffer } from '../src/application/fx/set-fx-buffer';
 import type { FxDeps } from '../src/application/fx/fx-shared';
 import { adminCtx, createMemoryAudit, createMemoryDb, createMemoryFxStore } from './memory';
 
-function ecbFetch(rate: number | 'fail', calls: { n: number } = { n: 0 }): typeof fetch {
+function ecbFetch(rate: number | 'fail', calls: { n: number } = { n: 0 }): FetchLike {
   return (async () => {
     calls.n += 1;
     if (rate === 'fail') return new Response('boom', { status: 500 });
     return new Response(JSON.stringify({ rates: { CNY: rate } }), { status: 200 });
-  }) as typeof fetch;
+  });
 }
 
-function setup(fetchImpl: typeof fetch) {
+function setup(fetchImpl: FetchLike) {
   const db = createMemoryDb();
   const fx = createMemoryFxStore();
   const audit = createMemoryAudit();

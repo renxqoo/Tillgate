@@ -47,6 +47,7 @@ export function settlementMethods(
 ): Pick<
   BillingStore,
   | 'claimPending'
+  | 'listDueSettlementRequests'
   | 'renewClaims'
   | 'findProcessingForClaim'
   | 'casFinalizeSettled'
@@ -108,7 +109,7 @@ export function settlementMethods(
         where b.request_id = c2.request_id
         returning b.request_id, b.claim_token, b.revision,
                   b.settlement_attempts as attempt, b.receipt, b.trace_parent`);
-      return result.rows.map((row) => ({
+      return result.map((row) => ({
         requestId: row.request_id,
         claimToken: row.claim_token,
         revision: Number(row.revision),
@@ -116,6 +117,16 @@ export function settlementMethods(
         receipt: row.receipt,
         traceParent: row.trace_parent,
       }));
+    },
+
+    async listDueSettlementRequests(conn, input) {
+      const result = await tx(conn).execute<{ request_id: string }>(sql`
+        select request_id from billing_requests
+        where status in ('settlement_pending', 'retry_wait')
+          and (next_settlement_at is null or next_settlement_at <= clock_timestamp())
+        order by next_settlement_at nulls first, created_at
+        limit ${input.limit}`);
+      return result.map((row) => row.request_id);
     },
 
     async renewClaims(conn, input) {
@@ -132,7 +143,6 @@ export function settlementMethods(
           )})
           and claim_until > clock_timestamp()`);
     },
-
     async findProcessingForClaim(conn, claim) {
       const [row] = await tx(conn)
         .select(REQUEST_COLUMNS)
@@ -219,7 +229,7 @@ export function settlementMethods(
           ${upstreamGuard}
         order by lease_expires_at
         limit ${input.limit}`);
-      return result.rows.map((row) => row.request_id);
+      return result.map((row) => row.request_id);
     },
 
     async recoverOneToReleased(conn, input) {
@@ -240,7 +250,7 @@ export function settlementMethods(
         where b.request_id = ${input.requestId} and b.status = ${input.status}
           ${upstreamGuard} ${leaseGuard}
         returning b.request_id, b.reserved_amount, b.channel_id, b.channel_reserved_amount`);
-      const [row] = result.rows;
+      const [row] = result;
       return row
         ? {
             requestId: row.request_id,
@@ -266,7 +276,7 @@ export function settlementMethods(
           updated_at = clock_timestamp()
         from candidates c2 where b.request_id = c2.request_id and b.status = 'processing'
         returning b.request_id`);
-      return result.rows.length;
+      return result.length;
     },
 
     async abandonOwnedClaims(conn, ownerId, now) {

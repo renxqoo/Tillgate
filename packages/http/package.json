@@ -17,12 +17,11 @@
     "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
     "typecheck": "bun x tsc --noEmit",
     "lint": "bun x oxlint",
-    "test": "bun x vitest run --passWithNoTests",
-    "test:watch": "bun x vitest",
-    "test:coverage": "bun x vitest run --coverage"
+    "test": "bun x --bun vitest run --passWithNoTests",
+    "test:watch": "bun x --bun vitest",
+    "test:coverage": "bun x --bun vitest run --coverage"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.0",
     "@tillgate/errors": "workspace:*",
     "hono": "^4.13.0",
     "zod": "^4.4.3"

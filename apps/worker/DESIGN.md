@@ -3,16 +3,21 @@
 > 后台任务、调度与生命周期应用（总纲 §3 目标树 L86–96；§9 P4.3/P5）。
 > 施工图见 [IMPLEMENTATION.md](./IMPLEMENTATION.md)；迁移记录见 [MIGRATION.md](./MIGRATION.md)。
 > 基线：v1 `ai-getway/apps/worker`（八循环 + BullMQ 唤醒 + 健康端点 + 优雅停机）。
+> **2026-08-26 增量**：结算环改 BullMQ 调度（毒账单进程隔离，方案见
+> IMPLEMENTATION.md「增量：BullMQ 结算调度」节）——worker 不再零 Redis，
+> 调度契约见 §2.4/§3.3/§4 修订；其余六 job 节奏模型不变。
 
 ## 1. 问题域
 
 **处理**（本 app 是「节奏与生命周期壳」，业务全部来自能力包 facade）：
 
 - 定时驱动七类后台 job（对位 v1 八循环——trace/request_logs 分区两循环
-  同节奏同变量，v2 合并为单一 job 双动作）：结算扫描、滞留恢复、生成任务轮询、
-  佣金日结、告警投递、周期对账、分区维护。
-- 低延迟结算唤醒：PG `LISTEN settle-wake` 消费端（生产端 = gateway
-  `adapters/settle-wake.ts` 的 `pg_notify` 纯门铃）。
+  同节奏同变量，v2 合并为单一 job 双动作）：结算 sweep 入队、滞留恢复、
+  生成任务轮询、佣金日结、告警投递、周期对账、分区维护。
+- 结算调度（BullMQ）：`LISTEN settle-wake` → 入队；sweep 周期扫描 due 行
+  入队（兜 Redis 丢任务/丢通知）；BullMQ Worker 按 jobId=requestId 消费，
+  单条结算管线（claim 定向认领 → processClaim）——**进程级毒账单隔离**
+  （单条失败绝不杀 worker）与瞬时失败退避重试由 BullMQ 承担。
 - 进程健康端点（`/livez` `/readyz` `/health`）与优雅停机（停收批次 →
   在途宽限 → 归还本副本认领 → 连接收口）。
 
@@ -47,8 +52,8 @@
 
 | #   | 循环       | 节奏 env                        | 缺省      | 动作                                                                                                                                                                                       |
 | --- | ---------- | ------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | settle     | `WORKER_SETTLE_INTERVAL_MS`     | 30_000    | `runSettlementBatch`（claim→保活→processClaim）                                                                                                                                            |
-| 2   | recover    | `WORKER_RECOVER_INTERVAL_MS`    | 15_000    | `settlement.recover({batchSize})`                                                                                                                                                          |
+| 1   | settle     | `WORKER_SETTLE_INTERVAL_MS`     | 30_000    | `runSettlementSweep`（扫描 due 行 → BullMQ 入队；不直接结算）                                                                                                                              |
+| 2   | recover    | `WORKER_RECOVER_INTERVAL_MS`    | 15_000    | `settlement.recover({batchSize})`（回收行由 settle sweep 周期兜底入队）                                                                                                                    |
 | 3   | generation | `WORKER_GENERATION_INTERVAL_MS` | 5_000     | `pollGeneration()`                                                                                                                                                                         |
 | 4   | referral   | `WORKER_REFERRAL_INTERVAL_MS`   | 3_600_000 | 佣金日结（7 日窗口回补）                                                                                                                                                                   |
 | 5   | notify     | `WORKER_NOTIFY_INTERVAL_MS`     | 15_000    | `dispatchOnce`（`WORKER_NOTIFY_ENABLED=false` 时不挂载）                                                                                                                                   |
@@ -63,6 +68,20 @@
   gateway 生产端同值）。worker 是 PG `LISTEN` 消费端，专用连接取自
   `db.$client.connect()`（不进池循环，停机时 release）。
 - `WORKER_SETTLE_WAKE=false` 可整体关闭（多测试进程互偷门铃的隔离开关，v1 同款）。
+
+### 2.4 Redis / BullMQ 面（2026-08-26 增量——原「worker 零 Redis」口径废止）
+
+- Redis 连接：`WORKER_REDIS_URL`（缺省回落 `REDIS_URL`），专用 ioredis 实例
+  （BullMQ 要求 `maxRetriesPerRequest: null`——不复用 runtime 通用客户端的
+  `maxRetriesPerRequest: 1` 形态）。
+- 队列：`settlement`（BullMQ Queue，prefix = `WORKER_BULLMQ_PREFIX`，缺省
+  `{bull}`；测试/隔离世界注入独立前缀防互踩）。jobId = requestId（天然入队
+  去重），无业务 payload——**Redis 不存任何资金状态，PG 是唯一事实源**
+  （BullMQ 只承担触发、进程隔离与瞬时失败退避时序）。
+- 消费：BullMQ Worker `concurrency = WORKER_SETTLE_CONCURRENCY`（缺省 8）；
+  job attempts 上限 = `WORKER_SETTLE_MAX_ATTEMPTS`（缺省 10，保险丝——
+  业务死信判定真相仍在 PG `settlement_attempts` + billing 失败策略）。
+  failed set 出现结算 job = 缺陷信号（error 日志；不自动处理，sweep 兜底）。
 
 ## 3. 调度与生命周期模型
 
@@ -79,26 +98,41 @@
 
 ```
 SIGTERM/SIGINT → healthServer.close → otel.shutdown
-  → closeables: [scheduler.stop（在途宽限）, wakeup.close（LISTEN 连接）,
+  → closeables: [scheduler.stop（在途宽限）, settleWorker.close（BullMQ 消费端，
+                  等在途 job 收口）, settleQueue.close, wakeup.close（LISTEN 连接）,
                   settlement.abandonOwnedClaims（本副本 processing 归还 retry_wait，
                   不等租约自然到期）]
-  → redis: null（worker 零 Redis） → db.end → exit(0)；宽限耗尽 exit(1)
+  → redis（BullMQ 专用连接）disconnect → db.end → exit(0)；宽限耗尽 exit(1)
 ```
 
 `abandonOwnedClaims` 在 db 收口**之前**执行是账务关键步（v1 §1.6）。
 
+### 3.3 结算调度模型（2026-08-26 增量）
+
+- **触发面（三源，全部幂等，jobId=requestId 去重）**：
+  ① `LISTEN settle-wake`（解析 payload requestId 定向入队；无载荷/解析失败
+  触发一次 sweep）；② settle sweep 定时 job（扫 due 行批量入队——兜 Redis
+  丢任务/丢通知/recover 回收行）；③ BullMQ 自身退避重试（瞬时失败后同
+  jobId 延迟重投）。
+- **处理面（单一真相）**：`processSettlementRequest(requestId)` ——
+  `claim({ requestIds: [id], batchSize: 1 })` 定向认领（空认领 = 幂等完成）→
+  `processClaim`（结算/失败策略/死信判定全在 billing，与调度层无关）。
+  结局映射：`settled/dead/claim_lost` → job 完成；`retried`（瞬时失败，PG 已写
+  retry_wait+退避）→ job 抛错交 BullMQ 退避重投；**未知异常** → job 抛错
+  （BullMQ 捕获，进程不死——毒账单隔离核心）。
+- **计数双真相分工**（裁决落档）：PG `settlement_attempts` = 业务死信判定
+  唯一真相（billing 失败策略消费）；BullMQ attempts = 防无限循环保险丝
+  （只兜 processor 分类外的逃逸，正常路径永不触及）。
+- **单条结算快**（< 秒级，租约 60s）：批式保活 renewTimer 随批处理形态一并
+  移除；`renewClaims` API 保留（长结算未来需要时复用）。
+
 ## 4. 唤醒消费模型（wakeup/postgres-notify.ts）
 
-- **coalescing**（v1 `createCoalescedRunner` 纯闭包平移）：`running/pending` 两布尔，
-  N 次并发唤醒 ≤ 2 次实际执行（一轮在跑 + 一轮 pending 补跑）。
-- **drain**（满批排空）：一轮 `runSettlementBatch` 返回 `claimed === batchSize`
-  （满批）则立即再跑一轮，直到非满批或 guard(1000) 上界——积压一次抽干，
-  吞吐不塌到「每个兜底周期一批」。以**认领计数**为排空依据（v1 用
-  inventory pending 计数；v2 口径等价且不新增 billing 读动词：
-  claim 返回 0 = 无积压，返回 < batchSize = 接近排空）。
+- 通知到达解析 payload requestId → 定向入队（入队廉价，无需 coalescing）；
+  payload 缺失/非 UUID → 触发一次 sweep 兜底。
 - **重连**：LISTEN 专用连接 error/end → 指数退避重连（封顶 30s）。通道故障
-  期间结算由 30s 兜底扫描继续——账务不依赖消息（认领/幂等全在 DB）。
-- 通知到达不解析 payload（纯门铃，载荷 requestId 仅日志用途）。
+  期间结算由 sweep 周期兜底——账务不依赖消息（认领/幂等全在 DB）。
+- coalescing/drain（满批排空）随批处理形态移除（BullMQ 天然逐条排空）。
 
 ## 5. 错误与可观测
 
@@ -119,7 +153,11 @@ SIGTERM/SIGINT → healthServer.close → otel.shutdown
 - `assembly.ts` 是唯一装配根：db/cipher/logger/otel/两套 wallet 实例
   （settlement guards 与 referral guards 分立——v1 同款）/settlementApi/
   signal 桥（哨兵 resolver：authorize 路径在 worker 结构性不可达，抛
-  DefectError）/poll 用例/佣金用例/notifications/observability。
+  DefectError）/poll 用例/佣金用例/notifications/observability/
+  BullMQ queue+worker（结算调度面，2026-08-26 增量）。
+- `runners.settle` = sweep 入队 + 同步驱动本次扫到的 due 行（同一
+  `processSettlementRequest` 生产函数，不经 BullMQ runtime——E2E/运维直驱
+  确定性口径，与「调度只是节奏包装」同哲学）。
 - 跨包词表桥接：inference `BillingSignal`（蛇形）↔ billing `BillingEvent`
   （点分）映射在 assembly（与 gateway billing-port 同款映射，两 app 各持
   一份——apps 互不依赖，共享真相是两包的类型本身）。

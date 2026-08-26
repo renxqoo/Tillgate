@@ -17,6 +17,9 @@ import {
 } from '../../domain/payment/stripe.js';
 import type { PaymentProviderPort } from '../../ports/payment-ports.js';
 
+/** 可注入 fetch(bun 类型加宽了全局 fetch——注入面收窄为可调用视图) */
+type FetchLike = (...args: Parameters<typeof fetch>) => Promise<Response>;
+
 /** 易支付渠道适配（签名纯规则在 domain/payment/epay） */
 export function createEpayProvider(config: {
   pid: string;
@@ -69,7 +72,7 @@ export interface StripeProviderConfig {
   currency: string;
   /** API 基地址（默认官方；测试注入 mock 上游） */
   apiBase?: string;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: FetchLike;
   clock?: () => number;
 }
 

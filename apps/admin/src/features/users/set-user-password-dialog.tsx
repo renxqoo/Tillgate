@@ -24,7 +24,7 @@ import { EyeIcon, EyeOffIcon, KeyRoundIcon, Loader2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import * as z from 'zod';
 
 import type { AdminUserRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';

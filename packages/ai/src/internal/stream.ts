@@ -50,12 +50,18 @@ function armFirstByteTimeout(timeoutMs: number): { promise: Promise<never>; clea
   };
 }
 
+/** 上游字节 reader 的最小结构面(node stream/web 与全局 DOM 形名义不同,按结构钉死) */
+interface ByteReader {
+  read(): Promise<{ done: boolean; value?: Uint8Array }>;
+  cancel(reason?: unknown): Promise<void>;
+}
+
 /**
  * 回放式 rest：first 已被预读，包装流先吐 first 再按需续读原始 reader
  * （pull 驱动——与 pipeTo/手动读都兼容；取消透传给原始 reader 归还上游连接）。
  */
 function replayRestStream(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
+  reader: ByteReader,
   firstChunk: Uint8Array,
 ): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
@@ -65,8 +71,9 @@ function replayRestStream(
     async pull(controller) {
       try {
         const { done, value } = await reader.read();
+        // value 形:node stream/web 与全局 DOM 形的类型并集,运行时恒为 Uint8Array
         if (done) controller.close();
-        else controller.enqueue(value);
+        else controller.enqueue(value as Uint8Array);
       } catch (error) {
         controller.error(error);
       }

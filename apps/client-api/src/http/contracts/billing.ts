@@ -2,7 +2,7 @@
  * 资金面契约：钱包流水（游标分页）/ 兑换 / 支付下单 / 订阅购买与变更。
  * 金额输入全部走 billing 域校验（isValidAmountInput：十进制字符串正数）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { isValidAmountInput } from '@tillgate/billing';
 import { listQuerySchema } from './shared.js';
 

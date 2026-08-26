@@ -32,10 +32,10 @@
     "build": "rm -rf dist && bun build src/index.ts src/composition.ts src/wallet.ts src/settlement.ts src/billing.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
     "typecheck": "bun x tsc --noEmit",
     "lint": "bun x oxlint",
-    "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
-    "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
-    "test:real": "bun x vitest run __test__/wallet-contract.real.test.ts __test__/wallet-invariants.real.test.ts __test__/settlement-lifecycle.real.test.ts __test__/redemption-claim.real.test.ts __test__/subscription-races.real.test.ts __test__/payment-races.real.test.ts --passWithNoTests",
-    "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
+    "test": "bun x --bun vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:watch": "bun x --bun vitest --exclude \"__test__/*.real.test.ts\"",
+    "test:real": "bun x --bun vitest run __test__/wallet-contract.real.test.ts __test__/wallet-invariants.real.test.ts __test__/settlement-lifecycle.real.test.ts __test__/redemption-claim.real.test.ts __test__/subscription-races.real.test.ts __test__/payment-races.real.test.ts --passWithNoTests",
+    "test:coverage": "bun x --bun vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
   },
   "dependencies": {
     "@tillgate/db": "workspace:*",

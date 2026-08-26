@@ -3,7 +3,7 @@
  * 查询 schema 引用 contracts/inference.ts（kind/status 词表单一真相在 inference 包）;
  * 响应 wire 形状按 presenters/ops.ts toTaskWireRow（epoch ms → ISO 字符串）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { tasksContracts } from '../contracts/inference';
 import type { OpenApiEndpoint } from './shared';
 

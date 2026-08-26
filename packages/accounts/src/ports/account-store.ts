@@ -307,7 +307,7 @@ export interface AccountStorePort {
   listUsers(
     db: DbLike,
     input: { q?: string; status?: number; enterprise?: boolean; sort: SortSpec } & ListQuery,
-  ): Promise<PageResult<UserRecord>>;
+  ): Promise<PageResult<UserProfile>>;
 
   // ---- API Key ----
   insertKey(db: DbLike, input: ApiKeyInsert): Promise<ApiKeyRecord>;

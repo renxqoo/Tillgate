@@ -8,6 +8,7 @@
  * 世界与平台收入镜像（v1 语义）。跨能力 bridge（walletCredit / sessionInvalidation）
  * 不共享事务——赠送/归因本就是 best-effort 段（accounts G4/G5 注释口径）。
  */
+import { suggestDbBudget } from '@tillgate/http';
 import { createDb, ping, type Db, type TxRetryPolicy } from '@tillgate/db';
 import { bootIntegrationReader } from './adapters/integration-reader.js';
 import { createClientPayments } from './adapters/payment-providers.js';
@@ -100,7 +101,6 @@ export async function assembleClientApi(
     poolMax: config.DB_POOL_MAX,
     idleTimeoutMillis: config.CLIENT_DB_IDLE_TIMEOUT_MS,
     connectionTimeoutMillis: config.CLIENT_DB_CONNECT_TIMEOUT_MS,
-    maxUses: config.CLIENT_DB_MAX_USES,
   });
 
   const redis = createRedisClient(
@@ -309,6 +309,8 @@ export async function assembleClientApi(
       corsMaxAgeSeconds: config.CLIENT_CORS_MAX_AGE_SECONDS,
       bodyLimitBytes: config.CLIENT_BODY_LIMIT_BYTES,
     },
+    // DB 并发预算门:公网 ingress 入口排队(余量 2 给探针旁路;无 fire-and-forget 写入面)
+    dbBudget: suggestDbBudget(config.DB_POOL_MAX, 2),
     logger: {
       error: (obj, msg) => logger.error(obj, msg),
     },

@@ -11,6 +11,7 @@
  */
 
 /** 与 PG SQLSTATE 23505 同形的冲突错误（isUniqueViolation 探测 cause 链） */
+import { Decimal } from '../domain/money.js';
 import type { WalletStore } from '../ports/wallet-store.js';
 
 /** 与 PG SQLSTATE 23505 同形的冲突错误（isUniqueViolation 探测 cause 链） */
@@ -350,6 +351,20 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
       });
       row.balance = input.balanceAfter;
       return Promise.resolve();
+    },
+    async conditionalReserve(_conn, input) {
+      const account = accounts.get(input.accountId);
+      if (account == null || account.status !== 'active') return null;
+      if (!input.collectOverage) {
+        const credit =
+          input.guardKind === 'cash' ? new Decimal(0) : new Decimal(account.creditLimit);
+        const available = new Decimal(account.balance)
+          .plus(credit)
+          .minus(new Decimal(account.inFlight));
+        if (available.lt(new Decimal(input.amount))) return null;
+      }
+      account.inFlight = new Decimal(account.inFlight).plus(new Decimal(input.amount)).toString();
+      return { balance: account.balance, creditLimit: account.creditLimit, inFlight: account.inFlight };
     },
 
     setInFlight(_conn, accountId, value) {

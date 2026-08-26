@@ -7,7 +7,7 @@ import { createShutdown, type Logger } from '@tillgate/runtime';
 
 export interface ClientShutdownDeps {
   readonly serviceName: string;
-  /** @hono/node-server 的 ServerType（http1/http2 并集）——最小 close 面 */
+  /** 最小 close 面（Bun 原生 serveApp 适配形） */
   readonly server: { close(callback: () => void): void };
   readonly otel: { shutdown(): Promise<void> };
   readonly redis: { quit(): Promise<unknown> };

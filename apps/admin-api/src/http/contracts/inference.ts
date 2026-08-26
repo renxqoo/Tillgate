@@ -2,7 +2,7 @@
  * 推理域契约（P4;v1 ops.ts generation-tasks zod 面平移）。
  * kind/status 词表单一真相 = inference 包 GENERATION_TASK_KINDS/STATUSES（不复制）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { GENERATION_TASK_KINDS, GENERATION_TASK_STATUSES } from '@tillgate/inference';
 
 export const tasksContracts = {

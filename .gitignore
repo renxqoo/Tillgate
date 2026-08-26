@@ -22,6 +22,11 @@ out/
 # apps/admin/src/app/(main)/dashboard/logs（CI 首跑 ENOENT 根因）
 /logs/
 
+# live-fire 套件运行时日志目录（栈进程 stdout 落盘；产物勿入库）
+e2e/live-fire/logs/
+# live-fire SMTP 捕获文件（smtp-sink 每次运行再生，含验证码邮件内容）
+e2e/live-fire/.smtp-captures.ndjson
+
 # docker
 docker/data/
 docker/nginx/certs/

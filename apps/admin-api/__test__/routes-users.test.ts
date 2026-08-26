@@ -89,6 +89,24 @@ describe('GET /v1/users', () => {
 });
 
 describe('GET /v1/users/:id 与 PATCH', () => {
+  it('回归(列表费率卡列显示—):行投影的 rateCardName 必须透传出站', async () => {
+    const app = createAdminApp(
+      fakeDeps({
+        accounts: {
+          adminListUsers: async () => ({
+            rows: [{ ...userRow, rateCardId: 7, rateCardName: '企业卡' }],
+            total: 1,
+          }),
+        },
+        wallet: { accounts: async () => [snapshot] },
+      }),
+    );
+    const res = await app.request('/v1/users', { headers: authHeader() });
+    const [row] = ((await res.json()) as { rows: Array<{ rateCardId: number; rateCardName: string }> }).rows;
+    expect(row?.rateCardId).toBe(7);
+    expect(row?.rateCardName).toBe('企业卡'); // 修复前:路由漏传第三参,恒 null → 前端列显 '—'
+  });
+
   it('资料含 rateCardName;PATCH 封禁缺省理由由 accounts 注入', async () => {
     const adminPatchUser = vi.fn(async () => userRow);
     const app = createAdminApp(

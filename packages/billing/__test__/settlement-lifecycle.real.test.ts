@@ -9,6 +9,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { closeDb, createDb, type Db } from '@tillgate/db';
+import { Decimal } from '../src/domain/money.js';
 import { createPostgresWalletStore } from '../src/adapters/postgres/wallet-store.js';
 import { createPostgresBillingStore } from '../src/adapters/postgres/billing-store.js';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
@@ -89,7 +90,7 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
       insert into users (issuer, subject, identity_provider, email)
       values ('local', ${`life-${Date.now()}-${userSeq}@test`}, 'local', ${`life-${Date.now()}-${userSeq}@test`})
       returning id`);
-    return Number(defined(row.rows[0]).id);
+    return Number(defined(row[0]).id);
   };
 
   beforeAll(async () => {
@@ -100,7 +101,6 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
       poolMax: 5,
       idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 3_000,
-      maxUses: 2_000,
     });
     await db.execute(sql.raw(`drop schema if exists ${schema} cascade`));
     await db.execute(sql.raw(`create schema ${schema}`));
@@ -138,9 +138,9 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
       insert into providers (name, base_url) values ('life-provider', 'http://upstream') returning id`);
     const channel = await db.execute<{ id: number }>(sql`
       insert into channels (provider_id, name, api_key_enc, priority, weight, status, upstream_budget, upstream_threshold)
-      values (${Number(defined(provider.rows[0]).id)}, 'life', 'enc', 0, 1, 0, '10', '1')
+      values (${Number(defined(provider[0]).id)}, 'life', 'enc', 0, 1, 0, '10', '1')
       returning id`);
-    channelId = Number(defined(channel.rows[0]).id);
+    channelId = Number(defined(channel[0]).id);
 
     const walletStore = createPostgresWalletStore(db, { retry: V1_RETRY });
     const billingStore = createPostgresBillingStore(db, { retry: V1_RETRY });
@@ -231,16 +231,17 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
     const usage = await db.execute<{ calculated_amount: string; billed_by: string }>(sql`
       select calculated_amount, billed_by from usage_logs where request_id = ${requestId}::uuid`);
     // numeric(38,18) 返回带尾零的定标串——规范化后比较
-    expect(defined(usage.rows[0]).billed_by).toBe('payg');
-    expect(String(defined(usage.rows[0]).calculated_amount).replace(/\.?0+$/, '')).toBe('2');
+    expect(defined(usage[0]).billed_by).toBe('payg');
+    expect(String(defined(usage[0]).calculated_amount).replace(/\.?0+$/, '')).toBe('2');
     const status = await db.execute<{ status: string }>(sql`
       select status from billing_requests where request_id = ${requestId}::uuid`);
-    expect(defined(status.rows[0]).status).toBe('settled');
+    expect(defined(status[0]).status).toBe('settled');
     // 渠道：敞口归还 + 预算按官方成本扣减
     const channel = await db.execute<{ upstream_reserved: string; upstream_budget: string }>(sql`
       select upstream_reserved, upstream_budget from channels where id = ${channelId}`);
-    expect(String(defined(channel.rows[0]).upstream_reserved).replace(/\.?0+$/, '')).toBe('0');
-    expect(String(defined(channel.rows[0]).upstream_budget).replace(/\.?0+$/, '')).toBe('8'); // 10 − 2
+    // Bun SQL 解析 numeric 零为裸 '0'(pg 为定标串)——Decimal 化双形态等价比较
+    expect(new Decimal(String(defined(channel[0]).upstream_reserved)).toString()).toBe('0');
+    expect(String(defined(channel[0]).upstream_budget).replace(/\.?0+$/, '')).toBe('8'); // 10 − 2
     // 对账哨兵：真实触发器下零漂移
     expect((await settlement.verifyInvariants()).ok).toBe(true);
   });
@@ -313,7 +314,7 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
     expect(outcome).toBe('dead');
     const row = await db.execute<{ status: string }>(sql`
       select status from billing_requests where request_id = ${requestId}::uuid`);
-    expect(defined(row.rows[0]).status).toBe('dead');
+    expect(defined(row[0]).status).toBe('dead');
     // 预扣保留（死信人工复核出口——资金不丢）
     expect(defined((await wallet.accounts(userId))[0]).inFlight).toBe('2');
   });
@@ -334,7 +335,7 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
     expect(result.released).toBeGreaterThanOrEqual(1);
     const row = await db.execute<{ status: string }>(sql`
       select status from billing_requests where request_id = ${requestId}::uuid`);
-    expect(defined(row.rows[0]).status).toBe('released');
+    expect(defined(row[0]).status).toBe('released');
     expect(defined((await wallet.accounts(userId))[0]).inFlight).toBe('0');
     expect((await settlement.verifyInvariants()).ok).toBe(true);
   });

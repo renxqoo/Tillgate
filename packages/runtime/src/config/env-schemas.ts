@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 /**
  * 环境变量校验原语（各 app 的 config schema 组装件）。

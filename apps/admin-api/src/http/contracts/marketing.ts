@@ -2,7 +2,7 @@
  * 营销/邀请域契约（P3;v1 routes/marketing.ts + referrals.ts 的内联 zod 收口）。
  * 金额十进制字符串与费率 [0,1] 的正则逐字随迁 v1（含最大 18 位小数界）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 
 const amount = z
   .string()

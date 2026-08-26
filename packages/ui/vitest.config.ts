@@ -2,6 +2,14 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    // bun-vitest 的 ssrTransform 会丢 zod v4 的 `export { z }` 再导出——
+    // node_modules 全量外部化,由 bun 运行时原生解析(源码转换不受影响)
+    server: {
+      deps: {
+        external: [/node_modules/],
+      },
+    },
+
     // 目录结构按总纲 §3 目标树 test/{unit,render,pack}(本包用户指令优先于铁律 14 平铺先例, 见 DESIGN.md)
     include: ['test/{unit,render,pack}/*.test.{ts,tsx}'],
     environment: 'jsdom',

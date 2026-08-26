@@ -169,3 +169,13 @@ src 顶层文件集合快照；`/composition` 只允许出现在 {assembly.ts, a
 上游 hostname 全部来自 admin 域渠道/provider 表，env 列表只能是 DB 镜像，
 多云动态厂商集合使枚举不可运维；残余风险与回摆条件见 ADR-0010。
 §7 第 2 条（免费闸 Decimal 口径）不受影响。
+
+## 增量：request-log 数据流反转（2026-08-26；live-fire F-3 修复）
+
+- clone 嗅探在 @hono/node-server 下未实现 WHATWG tee 语义（先读 clone 分支会把
+  原始 body 标记已读 → 路由 `c.req.json()` 抛 Body already read → 400）。
+- 修复：路由是唯一 body 消费者（inference-endpoints / generation / native-gemini
+  解析后 `c.set('requestLogSummary', …)`）；request-log 中间件只从 context 取。
+- 语义变化：401/429（未到达路由）不再有 requestSummary——日志不为鉴权失败嗅探
+  未授权 body，语义更安全。
+

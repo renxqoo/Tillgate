@@ -23,6 +23,18 @@ export function availableToSpend(
   return new Decimal(account.balance).plus(credit).minus(new Decimal(account.inFlight));
 }
 
+/**
+ * 原子门守卫口径（2026-08-26 快路径增量）：SQL WHERE 侧与 availableToSpend
+ * 同一代数式的离散形态——'credit' = balance+credit_limit-in_flight，
+ * 'cash' = balance-in_flight（allowCredit:false）。口径选择单一真相在此，
+ * postgres adapter 的条件占用（conditionalReserve）按本枚举构造 WHERE。
+ */
+export type GuardKind = 'credit' | 'cash';
+
+export function guardKindOf(guard: DebitGuard): GuardKind {
+  return guard.allowCredit === false ? 'cash' : 'credit';
+}
+
 /** 出账守卫：可用额不足按口径分流为现金/余额两类拒绝（quota_exhausted，充值语义由 face 翻译） */
 // eslint-disable-next-line max-params -- 导出域守卫:调用点遍布 wallet 应用层,改签名放大跨模块 diff
 export function assertCanDebit(

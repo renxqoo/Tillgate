@@ -103,6 +103,8 @@ export function ModelForm({
   const pricingUnit: string = useWatch({ control: form.control, name: 'pricingUnit' }) ?? '';
   const chosen = pricingUnit !== '';
   const unitMode = chosen && pricingUnit !== 'token';
+  // 免费模型：价格输入禁用免填（提交时五价归零），取消勾选即恢复编辑与必填校验
+  const isFree = useWatch({ control: form.control, name: 'isFree' }) ?? false;
   // 差价档位编辑器（variant 策略）：直接勾选预设档位（1K/2K/720p…）只填单价，参数值固定不可改；selector=取价参数名（下拉直选）。
   // 切换计价方式时档位按新单位重建（已填价格不跨单位保留），selector 重置为新单位默认值。
   const initialConfig = initialBillingConfig;
@@ -225,6 +227,7 @@ export function ModelForm({
               label={t('inputPrice')}
               id="m-in"
               step="0.0001"
+              disabled={isFree}
             />
             <NumberField
               control={form.control}
@@ -232,6 +235,7 @@ export function ModelForm({
               label={t('outputPrice')}
               id="m-out"
               step="0.0001"
+              disabled={isFree}
             />
             <NumberField
               control={form.control}
@@ -239,6 +243,7 @@ export function ModelForm({
               label={t('cachePrice')}
               id="m-cache"
               step="0.0001"
+              disabled={isFree}
             />
             <NumberField
               control={form.control}
@@ -246,6 +251,7 @@ export function ModelForm({
               label={t('cacheWritePrice')}
               id="m-cache-w"
               step="0.0001"
+              disabled={isFree}
             />
           </div>
         ) : null}
@@ -256,6 +262,7 @@ export function ModelForm({
             label={t('unitPriceLabel', { unit: unitWord(pricingUnit, locale) })}
             id="m-unit-price"
             step="0.0001"
+            disabled={isFree}
           />
         ) : null}
         {/* 分时段定价（schedule）：全部计价方式可用；启用时与参数差价互斥（strategy 单值） */}
@@ -315,6 +322,7 @@ export function ModelForm({
             </label>
           )}
         />
+        {isFree ? <p className="text-xs text-muted-foreground">{t('freeModeHint')}</p> : null}
         {isEdit && (
           <Collapsible className="rounded-md border p-3">
             <CollapsibleTrigger

@@ -184,7 +184,7 @@ async function countRecentTracesImpl(
       select 1 from ${traceSpans} where ${where} group by ${traceSpans.traceId} ${having}
     ) t
   `);
-  return Number(result.rows[0]?.count ?? 0);
+  return Number(result[0]?.count ?? 0);
 }
 
 /** 点查:hex 白名单拒绝非法形状(防注入),空结果而非抛错 */
@@ -231,7 +231,7 @@ async function channelTopologyImpl(db: Db, sinceMs: number): Promise<ChannelHeal
     group by channel
     order by count(*) desc
   `);
-  return result.rows.map((row) => ({
+  return result.map((row) => ({
     channel: row.channel ?? '(未标注)',
     attempts: Number(row.attempts),
     errors: Number(row.errors),
@@ -245,7 +245,7 @@ async function traceStats(db: Db): Promise<TraceStoreStats> {
   const countRow = await db.execute<{ total: string; oldest: Date | null }>(sql`
     select count(*)::text as total, min(start_time) as oldest from trace_spans
   `);
-  const [row] = countRow.rows;
+  const [row] = countRow;
   const oldest = row?.oldest ? new Date(row.oldest) : null;
   return {
     spans: Number(row?.total ?? 0),

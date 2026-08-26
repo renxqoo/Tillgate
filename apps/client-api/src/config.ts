@@ -4,7 +4,7 @@
  * v1 键名全量保留；新增键为 identity 装配面（CODE_PEPPER/挑战参数/密码策略）与
  * 新机制件（EPAY_PAY_TYPE/用量时区/定价缓存）所需。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
 import { Decimal } from '@tillgate/billing';
 

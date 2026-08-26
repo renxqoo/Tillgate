@@ -1,17 +1,21 @@
 /**
- * jobs 驱动规格：结算批次（认领→保活→processClaim→计数；零认领早退）、
- * 对账（锁未获跳过/差异落表+告警/哨兵异常不算差异）、分区透传。
- * 用例本体（billing/inference/notifications 包内）不在此重复。
+ * jobs 驱动规格（2026-08-26 BullMQ 增量改写）：结算 processor（定向认领→
+ * processClaim→结局映射；未知异常不外抛=毒账单隔离）、直驱 job（due 扫描逐条）、
+ * sweep（due 扫描入队；入队失败不致命）、对账（锁未获跳过/差异落表+告警/
+ * 哨兵异常不算差异）、分区透传。用例本体（billing/inference/notifications
+ * 包内）不在此重复。
  */
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { defined } from './defined.js';
-import type { ReconcileReport, SettlementApi, SettlementClaim } from '@tillgate/billing';
+import type { ClaimInput, ReconcileReport, SettlementClaim } from '@tillgate/billing';
 import { createNotifyJob } from '../src/jobs/notify';
 import { createPartitionJob } from '../src/jobs/partition';
 import { createPollJob } from '../src/jobs/poll';
 import { createReconcileJob } from '../src/jobs/reconcile';
 import { createReferralJob } from '../src/jobs/referral';
-import { createRecoveryJob, createSettlementBatchJob } from '../src/jobs/settlement';
+import { createRecoveryJob } from '../src/jobs/recovery';
+import { createSettlementDirectJob, createSettlementProcessor } from '../src/jobs/settlement';
+import { createSettlementSweepJob } from '../src/jobs/settlement-sweep';
 
 function claimOf(requestId: string): SettlementClaim {
   return {
@@ -25,48 +29,170 @@ function claimOf(requestId: string): SettlementClaim {
   };
 }
 
-describe('jobs/settlement：结算批次', () => {
-  it('零认领早退（零副作用）', async () => {
-    let renewCalls = 0;
-    const run = createSettlementBatchJob({
+/** 记录定向认领入参的假 settlement 面 */
+function settlementFace(claims: SettlementClaim[], overrides: Record<string, unknown> = {}) {
+  const claimInputs: ClaimInput[] = [];
+  return {
+    claimInputs,
+    face: {
+      claim: async (input: ClaimInput) => {
+        claimInputs.push(input);
+        return claims.filter((c) => input.requestIds?.includes(c.requestId));
+      },
+      processClaim: async (_claim: SettlementClaim) => 'settled' as const,
+      listDueRequestIds: async () => claims.map((c) => c.requestId),
+      ...overrides,
+    },
+  };
+}
+
+/** processor 构造助手（describe 外：不捕获作用域变量） */
+function processorOf(face: unknown, errors: unknown[] = []) {
+  return createSettlementProcessor({
+    settlement: face as never,
+    ownerId: 'w1',
+    claimLeaseMs: 60_000,
+    onError: (error) => errors.push(error),
+  });
+}
+
+describe('jobs/settlement：单条 processor（毒账单隔离核心）', () => {
+  it('定向认领：requestIds=[id]、batchSize=1；结局透传', async () => {
+    const h = settlementFace([claimOf('r1')], {
+      processClaim: async () => 'retried' as const,
+    });
+    const process = processorOf(h.face);
+    expect(await process('r1')).toBe('retried');
+    expect(defined(h.claimInputs[0], 'claim input')).toMatchObject({
+      ownerId: 'w1',
+      batchSize: 1,
+      requestIds: ['r1'],
+    });
+  });
+
+  it('空认领（已终态/他方持有）→ claim_lost 幂等完成，不触 processClaim', async () => {
+    let processed = 0;
+    const h = settlementFace([], {
+      processClaim: async () => {
+        processed += 1;
+        return 'settled' as const;
+      },
+    });
+    const process = processorOf(h.face);
+    expect(await process('gone')).toBe('claim_lost');
+    expect(processed).toBe(0);
+  });
+
+  it('未知异常不外抛 → unknown-failure（F-1：毒账单绝不杀进程）+ onError 记录', async () => {
+    const errors: unknown[] = [];
+    const h = settlementFace([claimOf('r1')], {
+      processClaim: async () => {
+        throw new Error('poison bill: usage insert FK violation');
+      },
+    });
+    const process = processorOf(h.face, errors);
+    expect(await process('r1')).toBe('unknown-failure');
+    expect(errors).toHaveLength(1);
+  });
+
+  it('claim 自身抛错（DB 抖动）同样不外抛 → unknown-failure', async () => {
+    const process = createSettlementProcessor({
       settlement: {
-        claim: async () => [],
-        renewClaims: async () => {
-          renewCalls += 1;
+        claim: async () => {
+          throw new Error('connection reset');
         },
         processClaim: async () => 'settled',
       },
       ownerId: 'w1',
-      batchSize: 10,
       claimLeaseMs: 60_000,
+      onError: () => {},
     });
-    expect(await run()).toEqual({ claimed: 0, settled: 0, retried: 0, dead: 0, claimLost: 0 });
-    expect(renewCalls).toBe(0);
+    expect(await process('r1')).toBe('unknown-failure');
   });
+});
 
-  it('批次闭环：认领 N → processClaim 并行 → outcome 计数', async () => {
-    const processed: string[] = [];
-    const run = createSettlementBatchJob({
-      settlement: {
-        claim: async () => [claimOf('r1'), claimOf('r2'), claimOf('r3'), claimOf('r4')],
-        renewClaims: async () => {},
-        processClaim: async (claim) => {
-          processed.push(claim.requestId);
-          if (claim.requestId === 'r1') return 'settled';
-          if (claim.requestId === 'r2') return 'retried';
-          if (claim.requestId === 'r3') return 'dead';
-          return 'claim_lost';
-        },
-      },
+describe('jobs/settlement：直驱 job（runners.settle 确定性入口）', () => {
+  it('due 扫描 → 逐条 processor → outcome 计数', async () => {
+    const outcomeByRequest: Record<string, 'settled' | 'dead' | 'claim_lost'> = {
+      r1: 'settled',
+      r2: 'dead',
+      r3: 'claim_lost',
+    };
+    const h = settlementFace([claimOf('r1'), claimOf('r2'), claimOf('r3')], {
+      processClaim: async (claim: SettlementClaim) => outcomeByRequest[claim.requestId] ?? 'settled',
+    });
+    const run = createSettlementDirectJob({
+      settlement: h.face,
       ownerId: 'w1',
-      batchSize: 10,
       claimLeaseMs: 60_000,
+      batchSize: 10,
+      onError: () => {},
     });
-    expect(await run()).toEqual({ claimed: 4, settled: 1, retried: 1, dead: 1, claimLost: 1 });
-    expect(processed.toSorted()).toEqual(['r1', 'r2', 'r3', 'r4']);
+    expect(await run()).toEqual({
+      due: 3,
+      outcomes: { settled: 1, retried: 0, dead: 1, claim_lost: 1, 'unknown-failure': 0 },
+    });
   });
 
-  it('恢复 job：recover 透传 batchSize', async () => {
+  it('零 due 零副作用', async () => {
+    const h = settlementFace([]);
+    const run = createSettlementDirectJob({
+      settlement: h.face,
+      ownerId: 'w1',
+      claimLeaseMs: 60_000,
+      batchSize: 10,
+      onError: () => {},
+    });
+    expect(await run()).toEqual({
+      due: 0,
+      outcomes: { settled: 0, retried: 0, dead: 0, claim_lost: 0, 'unknown-failure': 0 },
+    });
+  });
+});
+
+describe('jobs/settlement-sweep：due 扫描入队', () => {
+  it('due 行批量入队（幂等入队语义在队列面）', async () => {
+    const enqueued: string[][] = [];
+    const run = createSettlementSweepJob({
+      settlement: { listDueRequestIds: async () => ['r1', 'r2'] },
+      enqueueMany: async (ids) => {
+        enqueued.push([...ids]);
+      },
+      batchSize: 20,
+      onError: () => {},
+    });
+    expect(await run()).toEqual({ due: 2, enqueued: true });
+    expect(enqueued).toEqual([['r1', 'r2']]);
+  });
+
+  it('零 due 不入队；入队失败不致命（onError，PG 真相未动）', async () => {
+    let zeroEnqueue = 0;
+    const errors: unknown[] = [];
+    const runZero = createSettlementSweepJob({
+      settlement: { listDueRequestIds: async () => [] },
+      enqueueMany: async () => {
+        zeroEnqueue += 1;
+      },
+      batchSize: 20,
+      onError: () => {},
+    });
+    await runZero();
+    expect(zeroEnqueue).toBe(0);
+    const runFail = createSettlementSweepJob({
+      settlement: { listDueRequestIds: async () => ['r1'] },
+      enqueueMany: async () => {
+        throw new Error('redis down');
+      },
+      batchSize: 20,
+      onError: (error) => errors.push(error),
+    });
+    await runFail();
+    expect(errors).toHaveLength(1);
+  });
+});
+
+describe('jobs/recovery：恢复 job', () => {
+  it('recover 透传 batchSize', async () => {
     let received: { batchSize: number } | null = null;
     const run = createRecoveryJob({
       settlement: {
@@ -74,7 +200,7 @@ describe('jobs/settlement：结算批次', () => {
           received = input;
           return { released: 2, claimsRequeued: 1 };
         },
-      } as Pick<SettlementApi, 'recover'>,
+      },
       batchSize: 50,
     });
     expect(await run()).toEqual({ released: 2, claimsRequeued: 1 });
@@ -230,44 +356,5 @@ describe('jobs 驱动壳透传（notify/poll/referral）', () => {
       run: async () => ({ credited: 4 }),
     });
     expect(await run()).toEqual({ credited: 4 });
-  });
-});
-
-describe('jobs/settlement：租约保活定时器', () => {
-  it('批次运行期间按 claimLeaseMs/3 续租（失败不杀批次）', async () => {
-    vi.useFakeTimers();
-    try {
-      const renewed: Array<{ tokens: string[]; claimLeaseMs: number }> = [];
-      let releaseBatch!: () => void;
-      const batchGate = new Promise<void>((resolve) => {
-        releaseBatch = resolve;
-      });
-      const run = createSettlementBatchJob({
-        settlement: {
-          claim: async () => [claimOf('r1'), claimOf('r2')],
-          renewClaims: async (input) => {
-            renewed.push({ tokens: [...input.tokens], claimLeaseMs: input.claimLeaseMs });
-            if (renewed.length === 1) throw new Error('renew down'); // 失败不杀批次
-          },
-          processClaim: async () => {
-            await batchGate;
-            return 'settled';
-          },
-        },
-        ownerId: 'w1',
-        batchSize: 10,
-        claimLeaseMs: 3_000, // 续租节奏 = max(1000, 1000) = 1000
-      });
-      const pending = run();
-      await vi.advanceTimersByTimeAsync(1_000); // 首次续租（抛错被吞）
-      await vi.advanceTimersByTimeAsync(1_000); // 第二次续租成功
-      releaseBatch();
-      const result = await pending;
-      expect(result).toMatchObject({ claimed: 2, settled: 2 });
-      expect(renewed.length).toBe(2);
-      expect(defined(renewed[0], 'renewed[0]').tokens).toEqual(['tok-r1', 'tok-r2']);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });
