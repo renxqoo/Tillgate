@@ -86,7 +86,12 @@ export interface SseHandle {
   ready: Promise<{ status: number; headers: Headers }>;
   /** 每帧解析后的 data JSON(非 [DONE]);garbage 帧记为字符串 */
   chunks: any[];
-  done: Promise<'done' | 'aborted' | 'network-error' | 'http-error'>;
+  /**
+   * 流终结判定——必须等 reader 真实收尾,防空断言恒真:
+   * done=干净 EOF;aborted=主动断开;network-error=读失败;http-error=非 200;
+   * stalled=超 stallMs 未收尾(服务端悬挂——用例据此失败而非挂死套件)。
+   */
+  done: Promise<'done' | 'aborted' | 'network-error' | 'http-error' | 'stalled'>;
   text: string;
   firstChunkAt: number | null;
   abort(): void;
@@ -94,7 +99,13 @@ export interface SseHandle {
 }
 
 /** 拉起一条流式请求,后台收集帧;abort() 主动断开 */
-export function sse(url: string, body: unknown, headers: Record<string, string> = {}): SseHandle {
+export function sse(
+  url: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+  opts: { stallMs?: number } = {},
+): SseHandle {
+  const stallMs = opts.stallMs ?? 30_000;
   const ctrl = new AbortController();
   const handle = {
     chunks: [] as any[],
@@ -105,6 +116,10 @@ export function sse(url: string, body: unknown, headers: Record<string, string> 
     ready: null as never,
     done: null as never,
   } as SseHandle;
+  let settle: (v: 'done' | 'aborted' | 'network-error') => void = () => {};
+  const settled = new Promise<'done' | 'aborted' | 'network-error'>((resolve) => {
+    settle = resolve;
+  });
   handle.ready = (async () => {
     const res = await fetch(url, {
       method: 'POST',
@@ -121,9 +136,12 @@ export function sse(url: string, body: unknown, headers: Record<string, string> 
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
-          handle.text += dec.decode(value, { stream: true });
+          // 每个 chunk 只 decode 一次:TextDecoder 的流式状态随调用推进,
+          // 对同一 chunk 二次 decode 会在多字节序列跨 chunk 时损坏 text/buf
+          const piece = dec.decode(value, { stream: true });
           if (handle.firstChunkAt == null) handle.firstChunkAt = Date.now();
-          buf += dec.decode(value, { stream: true });
+          handle.text += piece;
+          buf += piece;
           let idx: number;
           while ((idx = buf.indexOf('\n\n')) >= 0) {
             const frame = buf.slice(0, idx);
@@ -140,20 +158,21 @@ export function sse(url: string, body: unknown, headers: Record<string, string> 
             }
           }
         }
-      } catch {
-        /* abort/network */
+        buf += dec.decode(); // 冲刷尾部悬置字节(多字节序列恰跨最后 chunk)
+        settle('done');
+      } catch (err) {
+        settle((err as { name?: string })?.name === 'AbortError' ? 'aborted' : 'network-error');
       }
     })();
     return { status: res.status, headers: res.headers };
   })();
   handle.done = handle.ready.then(
     async ({ status }) => {
-      if (status !== 200) return 'http-error';
-      // 等 body 流收尾(abort 时 fetch ready 已完成,body reader 抛错 → text 稳定)
-      await sleep(150);
-      return handle.text.includes('[DONE]') || handle.chunks.length > 0 ? 'done' : 'done';
+      if (status !== 200) return 'http-error' as const;
+      // 真实等待流收尾;stall 上限把「永不收尾」从挂死套件变成可失败断言
+      return Promise.race([settled, sleep(stallMs).then(() => 'stalled' as const)]);
     },
-    (err) => (err?.name === 'AbortError' ? ('aborted' as const) : ('network-error' as const)),
+    (err) => ((err as { name?: string })?.name === 'AbortError' ? ('aborted' as const) : ('network-error' as const)),
   );
   return handle;
 }

@@ -9,6 +9,7 @@
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import { Decimal } from '@tillgate/billing';
 import { createDb, closeDb, type Db } from '@tillgate/db';
 import { startStack, stopStack, URLS } from './lib/stack.ts';
 import { seedCatalog, adminLogin, fund, cleanup, usageSum } from './lib/seed.ts';
@@ -155,24 +156,36 @@ async function main() {
   const bad2 = await db.execute(sql`select count(*)::int as n from wallet_accounts ac where ac.balance <> coalesce((select l.balance_after from wallet_legs l where l.account_id = ac.id order by l.id desc limit 1), 0)`);
   const bad3 = await db.execute(sql`select count(*)::int as n from wallet_accounts ac where ac.in_flight <> coalesce((select sum(a.amount) from wallet_authorizations a where a.account_id = ac.id and a.status = 'active'), 0)`);
   const usageN = await db.execute<{ n: number }>(sql`select count(*)::int as n from usage_logs where user_id in (select id from users where issuer = 'rt-load')`);
+  const usageCount = Number(rowsOf<{ n: number }>(usageN)[0]?.n ?? -1);
   const b1 = Number(rowsOf<{ n: number }>(bad1)[0]?.n ?? -1);
   const b2 = Number(rowsOf<{ n: number }>(bad2)[0]?.n ?? -1);
   const b3 = Number(rowsOf<{ n: number }>(bad3)[0]?.n ?? -1);
-  console.log(`[load] 不变量: 腿平衡✗${b1} 余额✗${b2} 在途✗${b3} | usage 行=${Number(rowsOf<{ n: number }>(usageN)[0]?.n ?? -1)}/${TOTAL}`);
+  console.log(`[load] 不变量: 腿平衡✗${b1} 余额✗${b2} 在途✗${b3} | usage 行=${usageCount}/${TOTAL}`);
 
   const sampleIds = fundable.slice(0, 20).map((u) => u.id);
-  const sums = await mapLimit(sampleIds, 8, async (id) => String(await usageSum(db, id)));
+  const sums = await map_limit(sampleIds, 8, async (id) => String(await usageSum(db, id)));
   const uniform = new Set(sums).size === 1;
   console.log(`[load] 抽样 20 用户计费一致: ${uniform ? '✓ 全等(' + sums[0] + ')' : '✗ 不一致: ' + sums.slice(0, 3).join(',')} | 每用户期望 ${PER} 笔`);
   const counts = await db.execute<{ n: number }>(sql`select count(*)::int as n from usage_logs where user_id = ${sampleIds[0]}`);
-  console.log(`[load] 抽样首用户 usage 笔数: ${Number(rowsOf<{ n: number }>(counts)[0]?.n ?? -1)}/${PER}`);
+  const firstUserCount = Number(rowsOf<{ n: number }>(counts)[0]?.n ?? -1);
+  console.log(`[load] 抽样首用户 usage 笔数: ${firstUserCount}/${PER}`);
 
+  // 退出码必须包含精确性不变量:三不变量只验「账自洽」,零计费(如全部 dead-letter
+  // 释放授权)同样自洽——usage 行数=TOTAL、逐户全等、金额非零、首户笔数=PER
+  // 是本 harness 的核心交付,漏判 = 全账单死亡也退出 0。
+  const nonzero = uniform && new Decimal(sums[0] ?? '-1').gt(0);
+  const pass =
+    ok === TOTAL && b1 === 0 && b2 === 0 && b3 === 0 &&
+    usageCount === TOTAL && nonzero && firstUserCount === PER;
+  console.log(
+    `[load] 判定: ${pass ? 'PASS' : 'FAIL'} (http ${ok}/${TOTAL}, 不变量 ${b1}/${b2}/${b3}, usage ${usageCount}/${TOTAL}, 抽样一致 ${uniform}, 首户 ${firstUserCount}/${PER})`,
+  );
   console.log(`[load] 清理 rt-load 数据…`);
   await cleanup(db);
   await closeDb(db).catch(() => {});
   await stopStack();
   console.log(`[load] done`);
-  process.exit(ok === TOTAL && b1 === 0 && b2 === 0 && b3 === 0 ? 0 : 1);
+  process.exit(pass ? 0 : 1);
 }
 
 main().catch((e) => { console.error('[load] FAILED:', e); process.exit(1); });
