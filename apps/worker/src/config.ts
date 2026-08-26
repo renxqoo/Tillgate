@@ -2,8 +2,9 @@
  * worker 配置（v1 apps/worker config.ts 语义迁移）：env schema + 缺省 +
  * fail-closed。铁律 3：一切可变值装配注入且必填/显式缺省——本层是缺省值
  * 唯一真相。环境键名与 v1 保持一致（运维接口连续性）；v2 差异：
- *   - Redis 全退出（BullMQ 唤醒 → PG LISTEN/NOTIFY；TPM 回填归 gateway 不迁；
- *     ai 熔断存储用内存实现）——REDIS_URL 不再是配置项；
+ *   - Redis 曾全退出（TPM 回填归 gateway 不迁；ai 熔断存储用内存实现）；
+ *     2026-08-26 BullMQ 结算调度回归（毒账单进程隔离，见 IMPLEMENTATION 增量节）
+ *     ——WORKER_REDIS_URL（回落 REDIS_URL）必配 fail-closed；
  *   - 新增 WORKER_GENERATION_DEADLINE_MS / WORKER_GENERATION_MAX_RETRIES
  *     （music 代执行的上游预算，v1 藏在 ai 适配器内，v2 显式持有）；
  *   - 新增 WORKER_REFERRAL_BACKFILL_DAYS（v1 写死 BACKFILL_DAYS=7）；
@@ -38,6 +39,12 @@ const envSchema = z
     WORKER_MAX_DELAY_MS: z.coerce.number().int().min(1).default(600_000),
     WORKER_SETTLE_WAKE: strictBooleanSchema(true),
     WORKER_SETTLE_INTERVAL_MS: z.coerce.number().int().min(1).default(30_000),
+    // ---- BullMQ 结算调度(2026-08-26 增量):连接/前缀/并发/保险丝 ----
+    WORKER_REDIS_URL: z.string().min(1).optional(),
+    REDIS_URL: z.string().min(1).optional(),
+    WORKER_BULLMQ_PREFIX: z.string().min(1).default('{bull}'),
+    WORKER_SETTLE_CONCURRENCY: z.coerce.number().int().min(1).default(8),
+    WORKER_SETTLE_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(10),
     WORKER_RECOVER_INTERVAL_MS: z.coerce.number().int().min(1).default(15_000),
     WORKER_RECOVERY_BATCH_SIZE: z.coerce.number().int().min(1).default(50),
 
@@ -120,6 +127,12 @@ export interface WorkerConfig {
     };
     readonly wake: boolean;
     readonly intervalMs: number;
+    readonly bullmq: {
+      readonly redisUrl: string;
+      readonly prefix: string;
+      readonly concurrency: number;
+      readonly maxAttempts: number;
+    };
   };
   readonly recover: { readonly intervalMs: number; readonly batchSize: number };
   readonly generation: {
@@ -174,6 +187,15 @@ const DB_POOL: Omit<DbPoolConfig, 'url'> = {
   maxUses: 1_000,
 };
 
+/** BullMQ 连接串:WORKER_REDIS_URL 优先,回落 REDIS_URL;两者皆缺 = fail-closed(结算调度无队列不可用) */
+function redisUrlOf(parsed: { WORKER_REDIS_URL?: string; REDIS_URL?: string }): string {
+  const url = parsed.WORKER_REDIS_URL ?? parsed.REDIS_URL;
+  if (url == null || url.length === 0) {
+    throw new Error('WORKER_REDIS_URL (or REDIS_URL) is required for BullMQ settlement dispatch');
+  }
+  return url;
+}
+
 // eslint-disable-next-line max-lines-per-function -- env→config 逐字段搬运(zod schema 映射平铺,分支即字段)
 export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
   const parsed = envSchema.parse(env);
@@ -195,6 +217,12 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
       },
       wake: parsed.WORKER_SETTLE_WAKE,
       intervalMs: parsed.WORKER_SETTLE_INTERVAL_MS,
+      bullmq: {
+        redisUrl: redisUrlOf(parsed),
+        prefix: parsed.WORKER_BULLMQ_PREFIX,
+        concurrency: parsed.WORKER_SETTLE_CONCURRENCY,
+        maxAttempts: parsed.WORKER_SETTLE_MAX_ATTEMPTS,
+      },
     },
     recover: {
       intervalMs: parsed.WORKER_RECOVER_INTERVAL_MS,

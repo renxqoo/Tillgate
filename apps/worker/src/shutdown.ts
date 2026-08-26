@@ -14,6 +14,8 @@ export interface WorkerShutdownDeps {
   closeDb: () => Promise<void>;
   scheduler: { stop(): Promise<void> };
   wakeup: { close(): Promise<void> } | null;
+  /** BullMQ 结算队列（停消费端 + 断 Redis 连接；在归还认领之前收口） */
+  settleQueue: { close(): Promise<void> };
   abandonOwnedClaims: () => Promise<number>;
   graceMs: number;
   /** pino 形状（info/error 双参）；注入以统一日志面 */
@@ -32,9 +34,11 @@ export function createWorkerShutdown(deps: WorkerShutdownDeps) {
     redis: null,
     db: { end: () => deps.closeDb() },
     graceMs: deps.graceMs,
-    // 顺序即语义：先停调度（在途宽限）→ 再释放监听 → 最后归还认领（db 之前）
+    // 顺序即语义：先停调度（在途宽限）→ 停 BullMQ 消费端（等在途 job 收口）
+    // → 释放监听 → 最后归还认领（db 之前）
     closeables: [
       { close: () => deps.scheduler.stop() },
+      { close: () => deps.settleQueue.close() },
       ...(wakeup != null ? [{ close: () => wakeup.close() }] : []),
       {
         close: async () => {

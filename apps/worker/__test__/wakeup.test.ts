@@ -1,41 +1,10 @@
 /**
- * 唤醒消费端规格（v1 wakeup.test.ts 的 PG 形态对位）：
- * 合并执行器纯语义（3 次并发唤醒 ≤ 2 次执行）、满批排空（认领计数判定）、
+ * 唤醒消费端规格（2026-08-26 BullMQ 增量改写）：通知 payload 解析
+ * （UUID → 定向 onWake(requestId)；缺失/非 UUID → onWake(null) sweep 兜底）、
  * LISTEN 假连接通知触发、断线重连退避。
  */
 import { describe, expect, it, vi } from 'vitest';
-import { defined } from './defined.js';
-import {
-  createCoalescedRunner,
-  createSettleWakeListener,
-  type ListenConnection,
-} from '../src/wakeup/postgres-notify';
-
-describe('合并执行器（纯语义，v1 平移）', () => {
-  it('3 次并发唤醒 ≤ 2 次执行（一轮在跑 + 一轮 pending 补跑）', async () => {
-    let runs = 0;
-    const coalescedRun = createCoalescedRunner(async () => {
-      runs += 1;
-      // 模拟批次运行期间的并发唤醒：挂起中再次触发三次
-      if (runs === 1) {
-        await Promise.all([coalescedRun(), coalescedRun(), coalescedRun()]);
-      }
-    });
-    await coalescedRun();
-    expect(runs).toBe(2);
-  });
-
-  it('顺序（非并发）唤醒各跑各的', async () => {
-    let runs = 0;
-    const coalescedRun = createCoalescedRunner(async () => {
-      runs += 1;
-    });
-    await coalescedRun();
-    await coalescedRun();
-    await coalescedRun();
-    expect(runs).toBe(3);
-  });
-});
+import { createSettleWakeListener, type ListenConnection } from '../src/wakeup/postgres-notify';
 
 /** LISTEN 假连接：notification 手动注入、error 手动触发 */
 function fakeConnection() {
@@ -56,8 +25,8 @@ function fakeConnection() {
   return {
     connection,
     queries,
-    notify(channel: string): void {
-      for (const listener of listeners.notification) listener({ channel, payload: '' });
+    notify(channel: string, payload = ''): void {
+      for (const listener of listeners.notification) listener({ channel, payload });
     },
     emitError(error: Error): void {
       for (const listener of listeners.error) listener(error);
@@ -65,60 +34,79 @@ function fakeConnection() {
   };
 }
 
-describe('PG LISTEN 消费端', () => {
-  it('启动即 LISTEN 指定通道；通知触发 drain（非满批即停）', async () => {
+const QUIET = (ms: number) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+describe('PG LISTEN 消费端（BullMQ 入队形态）', () => {
+  it('启动即 LISTEN 指定通道；payload=requestId → onWake(requestId) 定向入队', async () => {
     const fake = fakeConnection();
-    const batches: number[] = [];
+    const wakes: Array<string | null> = [];
     const listener = createSettleWakeListener({
       connect: async () => fake.connection,
       channel: 'settle-wake',
-      runBatch: async () => {
-        const claimed = 3; // 非满批（batchSize=5）——一轮即止
-        batches.push(claimed);
-        return claimed;
+      onWake: async (requestId) => {
+        wakes.push(requestId);
       },
-      batchSize: 5,
       logger: { warn: () => {}, error: () => {} },
     });
-    await new Promise((resolve) => {
-      setTimeout(resolve, 5);
-    });
+    await QUIET(5);
     expect(fake.queries).toEqual(['LISTEN "settle-wake"']);
-    fake.notify('settle-wake');
-    await new Promise((resolve) => {
-      setTimeout(resolve, 10);
-    });
-    expect(batches).toEqual([3]);
+    fake.notify('settle-wake', '0b9f6c2e-8d1a-4c3b-9e2f-1a2b3c4d5e6f');
+    await QUIET(10);
+    expect(wakes).toEqual(['0b9f6c2e-8d1a-4c3b-9e2f-1a2b3c4d5e6f']);
     // 其他通道的通知不触发
-    fake.notify('other-channel');
-    await new Promise((resolve) => {
-      setTimeout(resolve, 5);
-    });
-    expect(batches).toEqual([3]);
+    fake.notify('other-channel', '0b9f6c2e-8d1a-4c3b-9e2f-1a2b3c4d5e6f');
+    await QUIET(5);
+    expect(wakes).toHaveLength(1);
     await listener.close();
     expect(fake.connection.release).toHaveBeenCalled();
   });
 
-  it('满批排空：认领满批连跑直到非满批（积压一次抽干）', async () => {
+  it('payload 缺失 → onWake(null)（sweep 兜底）；非 UUID 垃圾 → 同样兜底 + warn', async () => {
     const fake = fakeConnection();
-    const claimCounts = [5, 5, 2];
-    let call = 0;
+    const wakes: Array<string | null> = [];
+    const warns: unknown[] = [];
     const listener = createSettleWakeListener({
       connect: async () => fake.connection,
       channel: 'settle-wake',
-      runBatch: async () =>
-        defined(claimCounts[Math.min(call++, claimCounts.length - 1)], 'claimCounts[call]'),
-      batchSize: 5,
-      logger: { warn: () => {}, error: () => {} },
+      onWake: async (requestId) => {
+        wakes.push(requestId);
+      },
+      logger: {
+        warn: (_o, _m) => void warns.push(1),
+        error: () => {},
+      },
     });
-    await new Promise((resolve) => {
-      setTimeout(resolve, 5);
+    await QUIET(5);
+    fake.notify('settle-wake'); // 空 payload（网关旧形态/纯门铃）
+    fake.notify('settle-wake', 'not-a-uuid');
+    await QUIET(10);
+    expect(wakes).toEqual([null, null]);
+    expect(warns).toHaveLength(1); // 非 UUID 垃圾才 warn；空 payload 是合法旧形态
+    await listener.close();
+  });
+
+  it('onWake 抛错（入队失败）→ error 日志，不影响后续通知', async () => {
+    const fake = fakeConnection();
+    const errors: unknown[] = [];
+    let calls = 0;
+    const listener = createSettleWakeListener({
+      connect: async () => fake.connection,
+      channel: 'settle-wake',
+      onWake: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error('redis down');
+      },
+      logger: {
+        warn: () => {},
+        error: (_o, _m) => void errors.push(1),
+      },
     });
-    fake.notify('settle-wake');
-    await new Promise((resolve) => {
-      setTimeout(resolve, 10);
-    });
-    expect(call).toBe(3); // 5(满) → 5(满) → 2(非满，止)
+    await QUIET(5);
+    fake.notify('settle-wake', '0b9f6c2e-8d1a-4c3b-9e2f-1a2b3c4d5e6f');
+    fake.notify('settle-wake', '0b9f6c2e-8d1a-4c3b-9e2f-1a2b3c4d5e70');
+    await QUIET(10);
+    expect(calls).toBe(2);
+    expect(errors).toHaveLength(1);
     await listener.close();
   });
 
@@ -134,8 +122,7 @@ describe('PG LISTEN 消费端', () => {
           return connectCount === 1 ? first.connection : second.connection;
         },
         channel: 'settle-wake',
-        runBatch: async () => 0,
-        batchSize: 5,
+        onWake: async () => {},
         logger: { warn: () => {}, error: () => {} },
         backoff: { baseMs: 1_000, maxMs: 30_000 },
       });
@@ -150,35 +137,6 @@ describe('PG LISTEN 消费端', () => {
       vi.useRealTimers();
     }
   });
-
-  it('批次运行期间的并发通知折叠为一次补跑（coalescing + drain 组合）', async () => {
-    const fake = fakeConnection();
-    let runs = 0;
-    const listener = createSettleWakeListener({
-      connect: async () => fake.connection,
-      channel: 'settle-wake',
-      runBatch: async () => {
-        runs += 1;
-        if (runs === 1) {
-          // 仅首轮批次运行中敲门铃（自激发会无限递归——真实 NOTIFY 不来自自身批次）
-          fake.notify('settle-wake');
-          fake.notify('settle-wake');
-        }
-        return 0; // 非满批
-      },
-      batchSize: 5,
-      logger: { warn: () => {}, error: () => {} },
-    });
-    await new Promise((resolve) => {
-      setTimeout(resolve, 5);
-    });
-    fake.notify('settle-wake');
-    await new Promise((resolve) => {
-      setTimeout(resolve, 20);
-    });
-    expect(runs).toBe(2); // 一轮 + pending 补跑一轮
-    await listener.close();
-  });
 });
 
 describe('唤醒消费端：连接故障路径', () => {
@@ -186,7 +144,6 @@ describe('唤醒消费端：连接故障路径', () => {
     vi.useFakeTimers();
     try {
       const errors: unknown[] = [];
-      const warns: unknown[] = [];
       let attempts = 0;
       const listener = createSettleWakeListener({
         connect: async () => {
@@ -194,10 +151,9 @@ describe('唤醒消费端：连接故障路径', () => {
           throw new Error('pool down');
         },
         channel: 'settle-wake',
-        runBatch: async () => 0,
-        batchSize: 5,
+        onWake: async () => {},
         logger: {
-          warn: (_o, _m) => void warns.push(1),
+          warn: () => {},
           error: (_o, _m) => void errors.push(1),
         },
       });
@@ -224,15 +180,12 @@ describe('唤醒消费端：连接故障路径', () => {
     const listener = createSettleWakeListener({
       connect: () => pending,
       channel: 'settle-wake',
-      runBatch: async () => 0,
-      batchSize: 5,
+      onWake: async () => {},
       logger: { warn: () => {}, error: () => {} },
     });
     await listener.close();
     resolveConnect(fake.connection);
-    await new Promise((resolve) => {
-      setTimeout(resolve, 5);
-    });
+    await QUIET(5);
     expect(fake.connection.release).toHaveBeenCalled();
   });
 });

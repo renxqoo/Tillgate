@@ -34,9 +34,30 @@ import {
 } from './kit.js';
 import type { WorkerAssembly } from '../../apps/worker/src/assembly.js';
 
-/** env 有值且 PG 可达才跑（不可达优雅 skip——不误报） */
+/** env 有值且 PG/Redis 可达才跑（不可达优雅 skip——不误报;Redis 是 BullMQ 结算调度硬依赖） */
+async function redisReady(): Promise<boolean> {
+  if (process.env.REDIS_URL == null) return false;
+  try {
+    const { default: IORedis } = await import('ioredis');
+    const probe = new IORedis(process.env.REDIS_URL, {
+      maxRetriesPerRequest: 0,
+      connectTimeout: 1_000,
+      lazyConnect: true,
+    });
+    try {
+      await probe.connect();
+      return (await probe.ping()) === 'PONG';
+    } finally {
+      probe.disconnect();
+    }
+  } catch {
+    return false;
+  }
+}
 const hasInfra =
-  (process.env.DB_TEST_URL != null || process.env.DATABASE_URL != null) && (await pgReady());
+  (process.env.DB_TEST_URL != null || process.env.DATABASE_URL != null) &&
+  (await pgReady()) &&
+  (await redisReady());
 
 /** 套件世界（三环共享）——单对象收拢,测试体解构即用（无 shadow） */
 interface Suite {

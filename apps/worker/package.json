@@ -28,6 +28,8 @@
     "@tillgate/notifications": "workspace:*",
     "@tillgate/observability": "workspace:*",
     "@tillgate/runtime": "workspace:*",
+    "bullmq": "^6.2.2",
+    "ioredis": "^6.0.0",
     "nodemailer": "^9.0.5",
     "zod": "^4.4.3"
   },

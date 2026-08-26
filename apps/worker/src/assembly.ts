@@ -61,7 +61,9 @@ import { createPartitionJob } from './jobs/partition';
 import { createPollJob } from './jobs/poll';
 import { createReconcileJob } from './jobs/reconcile';
 import { createReferralJob } from './jobs/referral';
-import { createRecoveryJob, createSettlementBatchJob } from './jobs/settlement';
+import { createRecoveryJob } from './jobs/recovery';
+import { createSettlementDispatch } from './queue/settlement-dispatch';
+import type { createSettlementQueue } from './queue/settlement-queue';
 import { createSettleWakeListener } from './wakeup/postgres-notify';
 import type { SettleWakeListener } from './wakeup/postgres-notify';
 import type { WorkerHealthState } from './health';
@@ -96,6 +98,8 @@ export interface WorkerAssembly {
   healthState: WorkerHealthState;
   /** null = WORKER_SETTLE_WAKE=false（未挂 LISTEN 消费端） */
   wakeup: SettleWakeListener | null;
+  /** BullMQ 结算队列（消费端随装配启动；停机收口用） */
+  settleQueue: ReturnType<typeof createSettlementQueue>;
   /** 停机收口：本副本 processing 认领立即归还 retry_wait（不等租约到期） */
   abandonOwnedClaims: () => Promise<number>;
   jobs: readonly string[];
@@ -342,12 +346,22 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
     requestLogRetentionDays: config.partition.requestLogRetentionDays,
     logger,
   });
-  const runSettlementBatch = createSettlementBatchJob({
+  // ---- BullMQ 结算调度(2026-08-26 增量):processor=处理面唯一真相,queue=触发/隔离面 ----
+  const settlementDispatch = createSettlementDispatch({
     settlement,
-    ownerId: config.ownerId,
-    batchSize: config.settle.batchSize,
-    claimLeaseMs: config.settle.claimLeaseMs,
+    config: {
+      ownerId: config.ownerId,
+      batchSize: config.settle.batchSize,
+      claimLeaseMs: config.settle.claimLeaseMs,
+      backoffBaseMs: config.settle.failurePolicy.baseDelayMs,
+      bullmq: config.settle.bullmq,
+    },
+    onError,
+    logger,
   });
+  const settleQueue = settlementDispatch.queue;
+  const runSettlementSweep = settlementDispatch.sweep;
+  const runSettlementDirect = settlementDispatch.direct;
   const scheduler = createScheduler({
     graceMs: config.shutdownGraceMs,
     onError: (error, name) => logger.error({ err: String(error), job: name }, 'job tick failed'),
@@ -355,7 +369,7 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   });
   /** job 名 → 驱动入口（E2E/运维探测直接驱动；调度循环只是节奏包装） */
   const runners: Record<string, () => Promise<unknown>> = {
-    settle: runSettlementBatch,
+    settle: runSettlementDirect,
     recover: createRecoveryJob({ settlement, batchSize: config.recover.batchSize }),
     generation: createPollJob({ poll: pollGeneration }),
     referral: createReferralJob({ run: runReferralCommission }),
@@ -379,7 +393,12 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
     partitions: config.partition.intervalMs,
     ...(config.notify.enabled ? { notify: config.notify.intervalMs } : {}),
   };
-  for (const [name, run] of Object.entries(runners)) {
+  // settle 的调度 tick = sweep 入队(处理面在 BullMQ worker);其余 job tick=runner 本体
+  const schedulerTicks: Record<string, () => Promise<unknown>> = {
+    ...runners,
+    settle: runSettlementSweep,
+  };
+  for (const [name, run] of Object.entries(schedulerTicks)) {
     // runner 与 interval 表装配期同源声明;缺间隔即装配缺陷,fail-fast 胜过注册 undefined 周期
     const intervalMs = intervals[name];
     if (intervalMs === undefined) {
@@ -393,8 +412,13 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
     ? createSettleWakeListener({
         connect: async () => await db.$client.connect(),
         channel: SETTLE_WAKE_CHANNEL,
-        runBatch: async () => (await runSettlementBatch()).claimed,
-        batchSize: config.settle.batchSize,
+        onWake: async (requestId) => {
+          if (requestId != null) {
+            await settleQueue.enqueueMany([requestId]);
+          } else {
+            await runSettlementSweep();
+          }
+        },
         logger,
       })
     : null;
@@ -418,6 +442,7 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
     scheduler,
     healthState,
     wakeup,
+    settleQueue,
     abandonOwnedClaims: () => settlement.abandonOwnedClaims(config.ownerId),
     jobs: Object.keys(scheduler.snapshots()),
     runners,

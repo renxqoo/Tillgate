@@ -12,6 +12,7 @@ const config = (overrides: Record<string, string | undefined> = {}) =>
   loadWorkerConfig({
     DATABASE_URL: 'postgres://u:p@localhost:5432/unreachable-worker-test',
     CHANNEL_API_KEY_ENCRYPTION: 'wk3y-zx9q'.repeat(4),
+    REDIS_URL: 'redis://u:p@localhost:6399/unreachable-worker-test',
     OTEL_TRACES_MODE: 'off',
     WORKER_SETTLE_WAKE: 'false', // 单测不挂 LISTEN（专用连接会尝试建连）
     ...overrides,
@@ -19,11 +20,17 @@ const config = (overrides: Record<string, string | undefined> = {}) =>
 
 describe('assembleWorker', () => {
   const assemblies: WorkerAssembly[] = [];
-  afterAll(async () => {
-    for (const assembly of assemblies) {
-      await assembly.closeDb().catch(() => {});
-    }
-  });
+  // timeout 放宽:不可达 Redis 的有界收口竞速最多 10s/实例
+  afterAll(
+    async () => {
+      for (const assembly of assemblies) {
+        // BullMQ 消费端先收口(断 ioredis 重连定时器),再收 db 池
+        await assembly.settleQueue.close().catch(() => {});
+        await assembly.closeDb().catch(() => {});
+      }
+    },
+    60_000,
+  );
 
   it('off 模式全链装配：七个 job 注册 + 唤醒关闭 + 健康深度报告形状', () => {
     const assembly = assembleWorker(config());

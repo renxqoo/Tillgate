@@ -1,17 +1,22 @@
 /**
- * worker 真 PG 集成（铁律 14：默认门禁按文件名排除，test:real 显式运行）。
+ * worker 真 PG/Redis 集成（铁律 14：默认门禁按文件名排除，test:real 显式运行）。
  * 覆盖 app 特有的真实面——结算/佣金/对账核验的用例本体已在 billing 包 real 门
  * （settlement-lifecycle / wallet-contract / wallet-invariants）覆盖，此处不重复：
- *   ① 唤醒全链：pg_notify('settle-wake') → 专用连接 LISTEN → 批次触发（真通道）
+ *   ① 唤醒全链：pg_notify('settle-wake') → 专用连接 LISTEN → onWake 触发（真通道）
  *   ② 会话级 advisory try-lock 互斥：他连接持键 → 本连接获锁失败（对账门语义）
- * 环境：DB_TEST_URL / DATABASE_URL（根 .env）；不可达时全组跳过。零业务数据写入。
+ *   ③ BullMQ 结算队列：jobId 去重入队 → worker 消费 → retried 重投（真 Redis；
+ *      毒账单进程隔离的全栈验证归 live-fire P1 用例）
+ * 环境：DB_TEST_URL / DATABASE_URL + REDIS_URL（根 .env）；不可达时对应组跳过。
+ * 零业务数据写入。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { closeDb, createDb, ping } from '@tillgate/db';
 import type { Db } from '@tillgate/db';
 import { SETTLE_WAKE_CHANNEL } from '@tillgate/billing';
+import IORedis from 'ioredis';
 import { createSettleWakeListener } from '../src/wakeup/postgres-notify';
 import type { ListenConnection } from '../src/wakeup/postgres-notify';
+import { createSettlementQueue } from '../src/queue/settlement-queue';
 
 const url = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
 let db: Db | null = null;
@@ -66,11 +71,9 @@ describe('worker 真 PG：结算唤醒全链', () => {
     const listener = createSettleWakeListener({
       connect: async () => (await connected.$client.connect()) as unknown as ListenConnection,
       channel: SETTLE_WAKE_CHANNEL,
-      runBatch: async () => {
+      onWake: async () => {
         runs += 1;
-        return 0; // 非满批
       },
-      batchSize: 5,
       logger: { warn: () => {}, error: () => {} },
     });
     try {
@@ -145,3 +148,64 @@ async function withTryLock<T>(target: Db, key: string, fn: () => Promise<T>): Pr
     client.release();
   }
 }
+
+
+const redisUrl = process.env.WORKER_REDIS_URL ?? process.env.REDIS_URL;
+
+describe('worker 真 Redis：BullMQ 结算队列', () => {
+  /** Redis 可达性探测（不可达整组 skip——与 PG 同口径） */
+  async function redisReachable(): Promise<boolean> {
+    if (!redisUrl) return false;
+    const probe = new IORedis(redisUrl, {
+      maxRetriesPerRequest: 0,
+      connectTimeout: 1_000,
+      lazyConnect: true,
+    });
+    try {
+      await probe.connect();
+      const pong = await probe.ping();
+      return pong === 'PONG';
+    } catch {
+      return false;
+    } finally {
+      probe.disconnect();
+    }
+  }
+
+  it(
+    'jobId 去重入队 → worker 消费（重复 id 只处理一次）;retried 结局重投后完成',
+    async (context) => {
+      if (!(await redisReachable())) return context.skip();
+      const calls: string[] = [];
+      let retryOncePending = true;
+      const face = createSettlementQueue({
+        redisUrl: redisUrl as string,
+        prefix: `{bull}:worker-real-test:${Date.now()}`, // 共享 Redis 隔离前缀
+        concurrency: 2,
+        maxAttempts: 3,
+        backoffBaseMs: 50,
+        process: async (requestId) => {
+          calls.push(requestId);
+          if (requestId === 'retry-once' && retryOncePending) {
+            retryOncePending = false;
+            return 'retried'; // 首次瞬时失败 → BullMQ 退避重投
+          }
+          return 'settled';
+        },
+        logger: { info: () => {}, error: () => {} },
+      });
+      try {
+        await face.enqueueMany(['job-a', 'job-b', 'job-a']); // 重复 id
+        const dedupDone = () =>
+          calls.includes('job-a') && calls.includes('job-b') && calls.filter((c) => c === 'job-a').length === 1;
+        expect(await waitFor(dedupDone, 5_000)).toBe(true);
+        await face.enqueueMany(['retry-once']);
+        const retriedTwice = () => calls.filter((c) => c === 'retry-once').length >= 2;
+        expect(await waitFor(retriedTwice, 5_000)).toBe(true); // retried → 重投 → settled
+      } finally {
+        await face.close();
+      }
+    },
+    15_000,
+  );
+});

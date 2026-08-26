@@ -10,10 +10,22 @@ const base = (overrides: Record<string, string | undefined> = {}) =>
   ({
     DATABASE_URL: 'postgres://u:p@localhost:5432/worker-test',
     CHANNEL_API_KEY_ENCRYPTION: 'wk3y-zx9q'.repeat(4),
+    REDIS_URL: 'redis://:secret@localhost:6379/0',
     ...overrides,
   }) as NodeJS.ProcessEnv;
 
 describe('worker 配置 fail-closed', () => {
+  it('Redis 全缺（WORKER_REDIS_URL/REDIS_URL 皆无）→ fail-closed 抛错（BullMQ 调度无队列不可用）', () => {
+    expect(() => loadWorkerConfig(base({ REDIS_URL: undefined }))).toThrow(/WORKER_REDIS_URL/);
+  });
+
+  it('WORKER_REDIS_URL 优先于 REDIS_URL', () => {
+    const config = loadWorkerConfig(
+      base({ WORKER_REDIS_URL: 'redis://:dedicated@localhost:6380/2' }),
+    );
+    expect(config.settle.bullmq.redisUrl).toBe('redis://:dedicated@localhost:6380/2');
+  });
+
   it('缺省全显式（部署缺省唯一真相在本层）', () => {
     const config = loadWorkerConfig(base());
     expect(config.settle).toMatchObject({
@@ -21,6 +33,13 @@ describe('worker 配置 fail-closed', () => {
       claimLeaseMs: 60_000,
       intervalMs: 30_000,
       wake: true,
+    });
+    // BullMQ 调度旋钮(2026-08-26 增量):缺省值唯一真相在此锁死
+    expect(config.settle.bullmq).toEqual({
+      redisUrl: 'redis://:secret@localhost:6379/0',
+      prefix: '{bull}',
+      concurrency: 8,
+      maxAttempts: 10,
     });
     expect(config.recover).toMatchObject({ intervalMs: 15_000, batchSize: 50 });
     expect(config.generation).toMatchObject({

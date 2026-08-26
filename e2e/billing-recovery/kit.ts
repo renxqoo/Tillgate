@@ -11,8 +11,10 @@
  *   装配完成,只是不经定时器）;停机语义用真 scheduler（start 消费 → stop 停止）。
  * - v1 共享 dev 库 + 预算快照还原/逐表清理 → v2 隔离 schema 世界（drop cascade
  *   自清,v1 ⑯b/⑯c 的手工清理清单消亡）。
- * - v1 worker 必配 REDIS_URL（BullMQ 唤醒）→ v2 worker 无 Redis 配置项
- *   （PG LISTEN/NOTIFY;本装置 WORKER_SETTLE_WAKE=false 不挂消费端）。
+ * - v1 worker 必配 REDIS_URL（BullMQ 唤醒）→ v2 迁移期一度去 Redis →
+ *   2026-08-26 BullMQ 结算调度回归:装置注入独立前缀的 REDIS_URL（队列随
+ *   schema 世界隔离;runners.settle 直驱不经队列,⑯c 真 scheduler tick 走
+ *   sweep 入队 + BullMQ worker 消费）。
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
@@ -128,6 +130,10 @@ export async function assembleWorldWorker(world: E2EWorld): Promise<WorkerAssemb
     OTEL_TRACES_MODE: 'off',
     LOG_LEVEL: 'error',
     WORKER_OWNER_ID: `e2e-br-${randomUUID().slice(0, 8)}`,
+    // BullMQ 结算调度(2026-08-26):共享 Redis 用唯一前缀隔离(并行旅程不互踩;
+    // 前缀含随机段,旅程结束队列残留由 TTL/下次清理吸收——零资金状态在 Redis)
+    REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
+    WORKER_BULLMQ_PREFIX: `{bull}:e2e-br-${randomUUID().slice(0, 8)}`,
     // 隔离世界无他进程——LISTEN 消费端不挂（runner 直驱覆盖数据接收面）
     WORKER_SETTLE_WAKE: 'false',
     // 告警投递静音（e2e 不测 notify;dev 库真实投递会噪）
