@@ -251,3 +251,42 @@ assembly 生产形态给 `createAi` 注入 `guardUrl = assertSafeUrl(url,
       worker 覆盖率 97.14/90.74/97.14/99.13（阈值 90/85 不降）；
       billing 338 用例全绿（含 NaN 防护矩阵回归）
 - [x] DESIGN/IMPLEMENTATION 同步（本节即修订记录；DESIGN §1/§2.2/§2.4/§3.2/§3.3/§4/§6 同步演进）
+
+## 增量：终态残留重投出口（2026-08-26，方案状态：已核销待验收）
+
+> 级别：中。动机 = 红队复审 R-1（`e2e/live-fire/FINDINGS.md`）：BullMQ
+> `removeOnComplete/removeOnFail` 保留集内的旧 job 使同 jobId 的 `addBulk`
+> 被 lua `EXISTS jobIdKey` 恒跳过——「PG 行非终态但 job 已完结」组合下
+> （unknown-failure → 15s 退避重投落 60s 租约内 → claim_lost 正常完结 →
+> recover 归还 retry_wait → sweep 永久 no-op；worker 崩溃 stalled 路径同构），
+> 该请求的结算**确定性停摆**，资金冻结 in_flight，仅一条 failed 事件缺陷信号。
+
+### 契约
+
+- `enqueueMany` 在 `addBulk` 后逐 id 复核 job 状态：state ∈ {completed, failed}
+  且 `finishedOn` 早于本批入队时刻（排除「本批投放被瞬时消费」竞态）→
+  `queue.remove(jobId)` 后按原 jobOptions 重投；活 job（waiting/active/delayed）
+  与缺 job 跳过。bullmq 6.x 去重与新建同返回 jobId，返回值不可分辨，复核是
+  唯一探测面。
+- 处理面单一真相不变（裁决 4/裁决 5 维持）：sweep 仍不直接结算，出口只做
+  队列面的 remove+重投；结算语义全部仍在 processor + BullMQ Worker。
+- 多副本并发同扫：remove 幂等、重投二次被去重，无害；PG claim CAS 兜底
+  重复投递（既有不变量）。
+
+### 裁决
+
+- 【方案比对】否决「sweep 直驱 processor」——违反处理面单一真相（毒账单
+  进程隔离边界）；否决 `removeOnComplete: true`——丢失刻意保留的 Redis
+  审计面且不能自愈已停摆存量；否决「claim_lost 查状态非终态即 throw」——
+  与 settle 重投共享 attempts 预算，耗尽后同样落入本缺陷，只能作后续增强。
+- 修正三处虚假注释（settlement-queue failed 事件、recovery、sweep 头注——
+  「重复触发天然安全」对终态残留不成立）。
+
+### 测试口径
+
+- 单元（worker，mock bullmq）：终态残留 remove+重投形状；活 job/缺 job/
+  竞态完结（finishedOn 晚于入队）不动。
+- real（worker，真 Redis）：job 完结进 completed 保留集后同 jobId 重投必须
+  再次送达 worker（旧形态此处永久 no-op——R-1 队列侧本体回归）。
+- live-fire：B16 用例——真实结算完结 → `pg_notify(settle-wake)` 定向重投 →
+  断言 job 重建（timestamp 更新）且已结算行不被重复计费。

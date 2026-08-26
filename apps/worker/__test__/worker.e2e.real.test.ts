@@ -14,7 +14,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { closeDb, createDb, type Db } from '@tillgate/db';
+import { closeDb, createDb, pgSqlState, type Db } from '@tillgate/db';
 import { defined } from './defined.js';
 import { createBillingApi, createDefaultFundingRegistry, createWalletApi } from '@tillgate/billing';
 import {
@@ -53,12 +53,9 @@ async function query<T extends Record<string, unknown>>(db: Db, text: string, va
 
 /** 42P01 = 跨链引用缺口（迁移链顺序问题——与 billing real 门一致的容错口径） */
 function isMissingTableError(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; current != null && depth < 5; depth += 1) {
-    if ((current as { code?: string }).code === '42P01') return true;
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
+  // pgSqlState 双字段探测(pg=code / Bun SQL=errno)——手写 .code 检查在 Bun SQL
+  // 下恒 false,容错回放失效(首个跨链引用缺口即中止套件)
+  return pgSqlState(error) === '42P01';
 }
 
 function receiptOf(requestId: string, userId: number) {
@@ -93,7 +90,7 @@ interface E2E {
   seedUser: () => Promise<number>;
 }
 
-(url ? describe : describe.skip)('worker 端到端（真实 PG，生产拓扑）', () => {
+(url && process.env.REDIS_URL ? describe : describe.skip)('worker 端到端（真实 PG，生产拓扑）', () => {
   let e2e: E2E | null = null;
 
   beforeAll(async () => {
@@ -136,6 +133,8 @@ interface E2E {
       WORKER_SETTLE_WAKE: 'true',
       WORKER_NOTIFY_ENABLED: 'false',
       WORKER_BALANCE_LOW_THRESHOLD: '100',
+      // BullMQ 结算调度 fail-closed(真实通道口径:REDIS_URL 根 .env 必配)
+      REDIS_URL: defined(process.env.REDIS_URL, 'REDIS_URL'),
     } as unknown as NodeJS.ProcessEnv);
     const worker = assembleWorker(config);
     await pollUntil(async () => {

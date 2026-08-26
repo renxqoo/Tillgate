@@ -6,6 +6,8 @@
  *   ② 会话级 advisory try-lock 互斥：他连接持键 → 本连接获锁失败（对账门语义）
  *   ③ BullMQ 结算队列：jobId 去重入队 → worker 消费 → retried 重投（真 Redis；
  *      毒账单进程隔离的全栈验证归 live-fire P1 用例）
+ *   ④ 终态残留出口：job 完结进 completed 保留集后同 jobId 重投不被去重吞掉
+ *      （F1 回归——队列侧本体；PG 行非终态×job 已完结的全栈形态归 live-fire B15）
  * 环境：DB_TEST_URL / DATABASE_URL + REDIS_URL（根 .env）；不可达时对应组跳过。
  * 零业务数据写入。
  */
@@ -112,11 +114,11 @@ describe('worker 真 PG：对账会话锁门', () => {
         [key],
       );
       expect(locked[0]?.locked).toBe(true);
-      const gateOutcome = await withSessionTryLock(connected, key, async () => 'ran');
+      const gateOutcome = await withSessionTryLock(connected, { key }, async () => 'ran');
       expect(gateOutcome).toBeNull();
       // 释放后可获
       await holder.unsafe('select pg_advisory_unlock(hashtext($1))', [key]);
-      expect(await withSessionTryLock(connected, key, async () => 'ran')).toBe('ran');
+      expect(await withSessionTryLock(connected, { key }, async () => 'ran')).toBe('ran');
     } finally {
       await holder.release();
     }
@@ -177,6 +179,44 @@ describe('worker 真 Redis：BullMQ 结算队列', () => {
         await face.enqueueMany(['retry-once']);
         const retriedTwice = () => calls.filter((c) => c === 'retry-once').length >= 2;
         expect(await waitFor(retriedTwice, 5_000)).toBe(true); // retried → 重投 → settled
+      } finally {
+        await face.close();
+      }
+    },
+    15_000,
+  );
+
+  it(
+    '终态残留出口：job 完结(claim_lost→completed 保留集)后同 jobId 重投不再被去重吞掉',
+    async (context) => {
+      if (!(await redisReachable())) return context.skip();
+      // 场景=F1 链路的队列侧本体:PG 行非终态但 job 已完结时,sweep 的重投必须
+      // 仍能送达 worker——bullmq 对 completed 保留集内的 jobId 恒 EXISTS 跳过,
+      // 出口 = enqueueMany 复核终态后 remove+重投(旧形态此处永久 no-op)。
+      const calls: string[] = [];
+      const face = createSettlementQueue({
+        redisUrl: redisUrl as string,
+        prefix: `{bull}:worker-real-test:${Date.now()}`, // 共享 Redis 隔离前缀
+        concurrency: 1,
+        maxAttempts: 2,
+        backoffBaseMs: 50,
+        process: async (requestId) => {
+          calls.push(requestId);
+          return 'claim_lost'; // 行不在/他方持有 → job 正常完结进 completed 保留集
+        },
+        logger: { info: () => {}, error: () => {} },
+      });
+      const consumedOnce = () => calls.filter((c) => c === 'stuck-1').length === 1;
+      const consumedAgain = () => calls.filter((c) => c === 'stuck-1').length >= 2;
+      try {
+        await face.enqueueMany(['stuck-1']);
+        expect(await waitFor(consumedOnce, 5_000)).toBe(true);
+        // 完结时间必须早于第二次入队(finishedOn 竞态闸):稍候让 completed 定格
+        await new Promise((resolve) => {
+          setTimeout(resolve, 200);
+        });
+        await face.enqueueMany(['stuck-1']); // 旧形态:completed 残留 → 去重 no-op
+        expect(await waitFor(consumedAgain, 5_000)).toBe(true); // 新出口:remove+重投 → 再消费
       } finally {
         await face.close();
       }

@@ -1,7 +1,7 @@
 /**
  * BullMQ 结算队列装配规格（mock bullmq/ioredis——真 Redis 旅程在 real 门）：
  * 构造参数透传、结局→抛错映射（retried/unknown-failure 重投）、jobId 幂等入队
- * 形状、failed 事件缺陷信号、close 收口顺序。
+ * 形状、终态残留 remove+重投出口、failed 事件缺陷信号、close 收口顺序。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defined } from './defined.js';
@@ -11,6 +11,13 @@ const workerClose = vi.fn(async () => {});
 const queueClose = vi.fn(async () => {});
 const disconnect = vi.fn();
 const workerOn = vi.fn();
+/**
+ * jobId → getJob 返回形状：state 'missing'=getJob 返回 null；无登记=缺省活 job
+ * (waiting)。finishedOn 模拟完结时间(终态残留=早于入队;竞态完结=晚于入队)。
+ */
+const jobStates = new Map<string, { state: string; finishedOn?: number }>();
+const queueRemove = vi.fn(async () => {});
+const queueAdd = vi.fn(async () => ({}));
 
 vi.mock('ioredis', () => ({
   default: class FakeIORedis {
@@ -28,6 +35,14 @@ vi.mock('bullmq', () => ({
     const self = this as unknown as Record<string, unknown>;
     self.addBulk = addBulk;
     self.close = queueClose;
+    self.getJob = async (id: string) => {
+      const spec = jobStates.get(id);
+      if (spec == null) return { getState: async () => 'waiting' };
+      if (spec.state === 'missing') return null;
+      return { getState: async () => spec.state, finishedOn: spec.finishedOn };
+    };
+    self.remove = queueRemove;
+    self.add = queueAdd;
   }),
   Worker: vi.fn(function MockWorker(this: never) {
     const self = this as unknown as Record<string, unknown>;
@@ -61,6 +76,7 @@ function harness(process: (id: string) => Promise<string>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  jobStates.clear();
 });
 
 describe('queue/settlement-queue：BullMQ 装配（mock 面）', () => {
@@ -98,6 +114,30 @@ describe('queue/settlement-queue：BullMQ 装配（mock 面）', () => {
     ]);
     await face.enqueueMany([]);
     expect(addBulk).toHaveBeenCalledTimes(1);
+  });
+
+  it('enqueueMany 终态残留出口：completed/failed 旧 job → remove+重投；活 job/缺 job/竞态完结不动', async () => {
+    jobStates.set('r-done', { state: 'completed', finishedOn: Date.now() - 60_000 });
+    jobStates.set('r-failed', { state: 'failed', finishedOn: Date.now() - 60_000 });
+    jobStates.set('r-gone', { state: 'missing' });
+    // 竞态完结:finishedOn 晚于本批入队时刻 → 不算残留
+    jobStates.set('r-race', { state: 'completed', finishedOn: Date.now() + 5_000 });
+    const face = harness(async () => 'settled');
+    await face.enqueueMany(['r-live', 'r-done', 'r-failed', 'r-gone', 'r-race']);
+    expect(queueRemove).toHaveBeenCalledTimes(2);
+    expect(queueRemove).toHaveBeenCalledWith('r-done');
+    expect(queueRemove).toHaveBeenCalledWith('r-failed');
+    expect(queueRemove).not.toHaveBeenCalledWith('r-live');
+    expect(queueRemove).not.toHaveBeenCalledWith('r-gone');
+    expect(queueRemove).not.toHaveBeenCalledWith('r-race');
+    expect(queueAdd).toHaveBeenCalledTimes(2);
+    for (const id of ['r-done', 'r-failed']) {
+      expect(queueAdd).toHaveBeenCalledWith(
+        'settle',
+        { requestId: id },
+        expect.objectContaining({ jobId: id, attempts: 7, backoff: { type: 'exponential', delay: 250 } }),
+      );
+    }
   });
 
   /** Worker 构造第 n 次调用注册的 processor(mock.calls[n][1];describe 外单一定义) */

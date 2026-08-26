@@ -30,7 +30,14 @@ export const SETTLEMENT_QUEUE_NAME = 'settlement';
 const RETRY_OUTCOMES: readonly SettlementProcessOutcome[] = ['retried', 'unknown-failure'];
 
 export interface SettlementQueueFace {
-  /** 幂等入队（jobId=requestId 去重；attempts/backoff 只在首次入队生效） */
+  /**
+   * 幂等入队（jobId=requestId 去重；attempts/backoff 只在首次入队生效）。
+   * 去重对活 job（waiting/active/delayed）天然安全；对 completed/failed 保留集
+   * 内的旧 job 则恒跳过（bullmq addStandardJob lua 对 EXISTS jobIdKey 直接
+   * duplicated 返回）——「PG 行非终态但 job 已完结」的组合若不出口，该
+   * requestId 的重投会被永久吞掉（unknown-failure→claim_lost 完结→recover
+   * 归还→sweep 永久 no-op）。出口 = 终态残留 remove 后重投。
+   */
   enqueueMany(requestIds: readonly string[]): Promise<void>;
   /** 优雅收口：停消费 → 关队列 → 断 Redis 连接 */
   close(): Promise<void>;
@@ -79,10 +86,12 @@ export function createSettlementQueue(env: SettlementQueueEnv): SettlementQueueF
     { connection, prefix: env.prefix, concurrency: env.concurrency },
   );
   worker.on('failed', (job, error) => {
-    // attempts 耗尽 = 保险丝熔断(业务上不该发生:PG 策略先行死信)——缺陷信号
+    // attempts 耗尽 = 保险丝熔断(业务上不该发生:PG 策略先行死信)——缺陷信号;
+    // job 进 failed 保留集后同 jobId 重投同样被去重吞掉,由 enqueueMany 的
+    // 终态残留出口(下方 reenqueueTerminalRetained)恢复重投能力
     env.logger.error(
       { err: String(error), jobId: job?.id, attemptsMade: job?.attemptsMade },
-      'settlement job exhausted attempts (defect signal; sweep/recover will cover)',
+      'settlement job exhausted attempts (defect signal; sweep requeue exit covers)',
     );
   });
   worker.on('error', (error) => {
@@ -92,6 +101,30 @@ export function createSettlementQueue(env: SettlementQueueEnv): SettlementQueueF
     { queue: SETTLEMENT_QUEUE_NAME, prefix: env.prefix, concurrency: env.concurrency },
     'settlement bullmq worker started',
   );
+  /**
+   * 终态残留出口：addBulk 对 completed/failed 保留集内的旧 jobId 静默去重
+   * （bullmq 6.x 去重与新建同返回 jobId，调用方无法从返回值分辨），故逐 id
+   * 复核 job 状态——终态残留先 remove 再重投；活 job 跳过等其自然执行。
+   * finishedOn ≥ 本批入队时刻的完结是「本批投放被瞬时消费」的竞态，不算残留。
+   * 多副本并发同扫时 remove 幂等、重投二次被去重，无害。
+   */
+  const reenqueueTerminalRetained = async (requestIds: readonly string[]): Promise<void> => {
+    const enqueueStartedAt = Date.now();
+    for (const requestId of requestIds) {
+      const job = await queue.getJob(requestId);
+      const state = job == null ? null : await job.getState();
+      if (state !== 'completed' && state !== 'failed') continue;
+      if (job?.finishedOn != null && job.finishedOn >= enqueueStartedAt) continue;
+      await queue.remove(requestId).catch(() => {
+        /* 他人已删(保留集淘汰/并行出口):重投的 add 自会被去重或新建,无害 */
+      });
+      await queue.add('settle', { requestId }, { ...jobOptions, jobId: requestId });
+      env.logger.info(
+        { requestId, state },
+        'settlement job re-queued after terminal-retained duplicate',
+      );
+    }
+  };
   return {
     async enqueueMany(requestIds) {
       if (requestIds.length === 0) return;
@@ -102,6 +135,7 @@ export function createSettlementQueue(env: SettlementQueueEnv): SettlementQueueF
           opts: { ...jobOptions, jobId: requestId },
         })),
       );
+      await reenqueueTerminalRetained(requestIds);
     },
     async close() {
       // 有界收口:Redis 不可达时 BullMQ close 会等重试循环——竞速超时后强制断连

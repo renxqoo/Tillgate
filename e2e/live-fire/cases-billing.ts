@@ -4,7 +4,7 @@
  * 钱的判据:金额按公式精确(Decimal 比较)、in_flight 归零、失败零扣费。
  */
 import { sql } from 'drizzle-orm';
-import { Decimal } from '@tillgate/billing';
+import { Decimal, SETTLE_WAKE_CHANNEL } from '@tillgate/billing';
 import { define, ok, eq, eqDec, http, sse, poll, sleep, between } from './lib/h.ts';
 
 const chat = (model: string, extra: Record<string, unknown> = {}) => ({
@@ -244,4 +244,48 @@ define('B15', '计费·薅羊毛', '上游巨量内容洪流(64KB×2 chunk)→ �
   eq(r.status, 200, 'status');
   const usage = await poll('usage', () => c.seed.usageRow(c.db, r.headers.get('x-request-id')!));
   eqDec(usage.amount, '0.0003108', 'default usage exact');
+});
+
+/** 读 BullMQ job hash 字段(redis-cli 免依赖通道——与 lib/stack.ts 清队同款) */
+function redisField(key: string, field: string): string | null {
+  let pass = 'root123';
+  try {
+    pass = new URL(process.env.REDIS_URL as string).password || pass;
+  } catch {
+    /* 环境无 REDIS_URL 时用本地缺省口令 */
+  }
+  const res = Bun.spawnSync([
+    'bash', '-c',
+    `redis-cli -a ${pass} --no-auth-warning hget '${key}' '${field}' 2>/dev/null`,
+  ]);
+  const out = new TextDecoder().decode(res.stdout).trim();
+  return out.length > 0 ? out : null;
+}
+
+define('B16', '计费·结算恢复', 'job 已完结(completed 残留)×唤醒重投 → 终态残留出口,重投不被去重吞掉', async (c) => {
+  const { u, key } = await setup(c, 'b16');
+  const r = await http(`${c.url.gw}/v1/chat/completions`, { body: chat('rt-base'), headers: auth(key) });
+  eq(r.status, 200, 'status');
+  const reqId = r.headers.get('x-request-id')!;
+  eq((await settleOf(c, reqId)).status, 'settled', 'first settle');
+  // job 完结进 completed 保留集(bullmq removeOnComplete=1000 保留 hash)
+  const jobKey = `{bull}:settlement:${reqId}`;
+  await poll('job completed retained', () => redisField(jobKey, 'finishedOn'), 15000);
+  const oldStamp = redisField(jobKey, 'timestamp');
+  ok(oldStamp != null, 'job timestamp readable');
+  // 唤醒通道定向重投(sweep 同款 enqueueMany 路径):旧形态被 completed 残留
+  // 的 jobId 去重静默吞掉 → 结算恢复链路永久停摆(F1);新出口 remove 后重投
+  await c.db.execute(sql`select pg_notify(${SETTLE_WAKE_CHANNEL}, ${reqId})`);
+  await poll(
+    'job requeued (new timestamp)',
+    () => {
+      const stamp = redisField(jobKey, 'timestamp');
+      return stamp != null && stamp !== oldStamp ? stamp : null;
+    },
+    15000,
+  );
+  // 重投对已结算行无害:claim_lost 幂等完结,绝不重复计费
+  eq((await settleOf(c, reqId)).status, 'settled', 'still settled');
+  const n = await c.db.execute(sql`select count(*)::int as n from usage_logs where user_id = ${u.id}`);
+  eq(Number((n[0] as any).n), 1, 'exactly one usage row (no double charge)');
 });
