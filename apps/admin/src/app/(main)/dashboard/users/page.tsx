@@ -1,9 +1,10 @@
 import { requirePermission } from '@/server/get-admin';
 import { adminApi } from '@/server/admin-api';
+import { fetchRateCardOptions } from '@/server/admin-list';
 import { UsersRound } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError, type AdminRateCardRow, type Paginated } from '@tillgate/api-client';
+import { ApiError, type Paginated } from '@tillgate/api-client';
 import { ListPage } from '@/components/list-page';
 import { firstParam, parseListSearchParams } from '@/lib/list-query';
 
@@ -11,7 +12,7 @@ import { UsersContent } from '@/features/users/users-content';
 import { UsersExport } from '@/features/users/users-export';
 import { UsersStatusFilter } from '@/features/users/users-status-filter';
 import { UsersEnterpriseFilter } from '@/features/users/users-enterprise-filter';
-import type { RateCardOption, AdminUserRow } from '@tillgate/api-client';
+import type { AdminUserRow } from '@tillgate/api-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,21 +52,6 @@ async function fetchUsersPage(filters: {
       failed: true,
       apiError: error instanceof ApiError ? error.message : null,
     };
-  }
-}
-
-/** 费率卡选项拉取：失败降级空列表（不阻塞用户列表） */
-async function fetchRateCardOptions(): Promise<RateCardOption[]> {
-  try {
-    const rc = await adminApi().get<Paginated<AdminRateCardRow>>('/v1/rate-cards');
-    // 修复笔误：原 `rc.rows ?? rc.rows` 两侧同值（nullish 时向 .map 抛异常）；改空数组直取同一降级结果
-    return (rc.rows ?? []).map((r) => ({
-      id: r.id,
-      name: r.name,
-      coefficient: r.coefficient,
-    }));
-  } catch {
-    return [];
   }
 }
 

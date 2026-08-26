@@ -15,7 +15,7 @@ import { createPgUsageStore } from '../src/adapters/postgres/usage-store';
 import { beijingDayStart } from '../src/usage/day-window';
 import { defined } from './defined';
 
-const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
+const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/tillgate';
 const SEED_MODEL = 'zz-usage-real';
 let db: Db | null = null;
 let seedUserId: number | null = null;

@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { FormDialog } from '@/components/form-dialog';
+import { useActionResult } from '@/components/action-toast';
 import type { IntegrationSettingItem } from '@/server/settings-actions';
 import { updateIntegrationAction } from '@/server/settings-actions';
 import { buildConfigPayload, i18nKey, payloadIsEmpty } from './integration-format';
@@ -27,6 +28,7 @@ export function IntegrationFormDialog({
 }) {
   const t = useTranslations('settings.integrations');
   const tc = useTranslations('common');
+  const notify = useActionResult();
   const formId = `integration-form-${item.key}`;
   const fields = Object.keys(item.config);
   const [cleared, setCleared] = useState<ReadonlySet<string>>(new Set());
@@ -59,11 +61,13 @@ export function IntegrationFormDialog({
                 return false;
               }
               const totpCode = String(data.get('totpCode') ?? '');
-              const saved = await updateIntegrationAction(item.key, {
+              const res = await updateIntegrationAction(item.key, {
                 totpCode,
                 ...(!payloadIsEmpty(config) ? { config } : {}),
               });
-              onSaved(saved);
+              // 失败经 notify 出 toast（action 已把 ApiError 翻译成 error 字段）
+              if (!notify(res, tc('saveFailed'), tc('saved'))) return false;
+              if (res.item != null) onSaved(res.item);
               setCleared(new Set());
               return true;
             });

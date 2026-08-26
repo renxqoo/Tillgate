@@ -91,6 +91,9 @@ export function registerRoutes(deps: AuthDeps) {
       affCode: body.aff ?? payload.aff ?? undefined,
     });
     const token = await deps.sign(user.id);
+    // 注册即登录——会话已签发,登录事实同步回写 last_login_at（与密码/邮箱码/OAuth 路径
+    // 同口径,否则用户列表「最近登录」恒显「从未」;best-effort 不阻断注册）
+    await deps.touchLastLogin(user.id).catch(() => {});
     return c.json(
       {
         kind: 'success',

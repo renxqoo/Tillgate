@@ -92,6 +92,7 @@ export function ChannelForm({
                 <Select
                   value={String(field.value ?? 0)}
                   onValueChange={(v) => field.onChange(Number(v))}
+                  items={providers.map((p) => ({ value: String(p.id), label: p.name }))}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder={t('selectProvider')} />
@@ -192,6 +193,12 @@ export function ChannelForm({
                   <Select
                     value={String(field.value ?? 0)}
                     onValueChange={(v) => field.onChange(Number(v))}
+                    items={[
+                      { value: '0', label: tc('enabled') },
+                      { value: '1', label: t('statusDegraded') },
+                      { value: '2', label: tc('disabled') },
+                      { value: '4', label: t('statusDead') },
+                    ]}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue />

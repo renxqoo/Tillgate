@@ -120,3 +120,7 @@ v2 侧增量（非 v1 迁移，随 identity 能力波次）：`schema/identity.t
 - 待核销（非本单元，显式挂账）：provision 三链收口与 worker readyz 差异修正归 P4/P5
   能力波次（C1/C2/C4 的消费侧兑现）；bun.lock 曾因混入并行会话条目未随 P5 提交
   （铁律 15，待协调收口——不阻塞本单元行为等价结论）。
+
+> 2026-08-26 追记：`scripts/seed-dev.ts` 退役删除——职责收敛(管理员 bootstrap →
+> `apps/admin-api/scripts/create-admin.ts`;费率卡 → 管理台创建,无卡系数恒 1 兜底)。
+> 用户/测试 Key/供应商渠道播种此前已分别于 08-24/08-26 瘦身移除,本文历史叙述按当时事实保留。

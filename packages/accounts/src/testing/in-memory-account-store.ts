@@ -25,7 +25,6 @@ interface UserRow {
   rateCardId: number | null;
   dailySpendLimit: string | null;
   status: number;
-  sessionInvalidBefore: Date | null;
   isEnterprise: boolean;
   freezeReason: string | null;
   rpmLimit: number | null;
@@ -282,7 +281,6 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
           rateCardId: null,
           dailySpendLimit: null,
           status: 0,
-          sessionInvalidBefore: null,
           isEnterprise: false,
           freezeReason: null,
           rpmLimit: null,
@@ -445,7 +443,6 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
         rateCardId: null,
         dailySpendLimit: null,
         status: 0,
-        sessionInvalidBefore: null,
         isEnterprise: false,
         freezeReason: null,
         rpmLimit: null,
@@ -474,7 +471,6 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
         rateCardId: null,
         dailySpendLimit: null,
         status: 0,
-        sessionInvalidBefore: null,
         isEnterprise: false,
         freezeReason: null,
         rpmLimit: null,

@@ -6,6 +6,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTestHarness, TEST_CONFIG } from '../src/testing/harness.js';
 import { createIdentity } from '../src/identity.js';
+import { identityErrors } from '../src/domain/errors.js';
 
 const harness = () => createTestHarness();
 const email = (n: number) => `ch${n}@example.com`;
@@ -106,6 +107,34 @@ describe('challenges.begin 发码与投递', () => {
     });
     await expect(
       h.api.challenges.begin({ kind: KIND, target: TARGET(5), delivery: { ip: 'ip' } }),
+    ).resolves.toMatchObject({ channel: 'email' });
+  });
+
+  it('业务错透传:mailer 抛 undeliverable_challenge → 原码出网(503 语义)且挑战作废,不改码 delivery_failed(502)', async () => {
+    const h = harness();
+    const api = createIdentity({
+      db: h.ctx.db,
+      txRetry: h.ctx.txRetry,
+      clock: h.ctx.clock,
+      logger: h.ctx.logger,
+      config: TEST_CONFIG,
+      store: h.store,
+      mailer: {
+        sendLoginCode: async () => {
+          // 动态 mailer 的「SMTP 未配置」路径(dynamic-login-mailer unavailable() 同款)
+          throw identityErrors.business('undeliverable_challenge', { channel: 'email' });
+        },
+        sendPasswordResetLink: async () => {
+          throw identityErrors.business('undeliverable_challenge', { channel: 'email' });
+        },
+      },
+    });
+    await expect(
+      api.challenges.begin({ kind: KIND, target: TARGET(7), delivery: { ip: 'ip' } }),
+    ).rejects.toMatchObject({ code: 'identity.undeliverable_challenge' });
+    // 挑战已作废——同目标立即重发不再撞冷却(可投递 mailer 下次成功)
+    await expect(
+      h.api.challenges.begin({ kind: KIND, target: TARGET(7), delivery: { ip: 'ip' } }),
     ).resolves.toMatchObject({ channel: 'email' });
   });
 

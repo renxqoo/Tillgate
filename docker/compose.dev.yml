@@ -18,13 +18,13 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-ai_gateway}
+      POSTGRES_DB: ${POSTGRES_DB:-tillgate}
     ports:
       - '5432:5432'
     volumes:
       - pg-dev:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ai_gateway}']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-tillgate}']
       interval: 5s
       timeout: 3s
       retries: 10

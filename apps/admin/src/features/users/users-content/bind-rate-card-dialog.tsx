@@ -24,6 +24,7 @@ import { useTranslations } from 'next-intl';
 
 import type { RateCardOption, AdminUserRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
+import { fmtCoefficient } from '@/lib/formatters';
 
 export function BindRateCardDialog({
   user,
@@ -86,7 +87,18 @@ export function BindRateCardDialog({
           <DialogDescription>{t('bindDescription')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          <Select value={value} onValueChange={(v) => setValue(v ?? '')}>
+          {/* items 同源映射：Base UI 无 items 时 Value 回显原始值(id)而非标签 */}
+          <Select
+            value={value}
+            onValueChange={(v) => setValue(v ?? '')}
+            items={[
+              { value: 'none', label: t('unbind') },
+              ...rateCards.map((r) => ({
+                value: String(r.id),
+                label: `${r.name} (x${fmtCoefficient(r.coefficient)})`,
+              })),
+            ]}
+          >
             <SelectTrigger className="w-full">
               <SelectValue placeholder={t('selectRateCard')} />
             </SelectTrigger>
@@ -94,7 +106,7 @@ export function BindRateCardDialog({
               <SelectItem value="none">{t('unbind')}</SelectItem>
               {rateCards.map((r) => (
                 <SelectItem key={r.id} value={String(r.id)}>
-                  {r.name}（×{r.coefficient}）
+                  {r.name} (x{fmtCoefficient(r.coefficient)})
                 </SelectItem>
               ))}
             </SelectContent>

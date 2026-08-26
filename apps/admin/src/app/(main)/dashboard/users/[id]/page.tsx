@@ -1,4 +1,5 @@
 import { requirePermission } from '@/server/get-admin';
+import { fetchRateCardOptions } from '@/server/admin-list';
 import { Button, Card, CardContent, Tabs, TabsList, TabsTrigger } from '@tillgate/ui';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -116,6 +117,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
     );
   }
 
+  const rateCards = await fetchRateCardOptions();
   const txColumns = buildTxColumns(t, tc, locale);
   const auditColumns = buildAuditColumns(t, tc);
 
@@ -132,7 +134,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
         }
       />
 
-      <UserProfileCard user={user} t={t} tc={tc} />
+      <UserProfileCard user={user} rateCards={rateCards} t={t} tc={tc} />
 
       <Tabs defaultValue="tx" className="w-full">
         <TabsList>

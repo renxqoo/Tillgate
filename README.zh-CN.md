@@ -51,14 +51,15 @@ cp .env.example .env               # 只含必填键；其余配置全部有安�
 for k in JWT_SECRET ADMIN_JWT_SECRET ENCRYPTION_KEY IDENTITY_CODE_PEPPER CLIENT_CODE_PEPPER CHANNEL_API_KEY_ENCRYPTION; do
   sed -i.bak -E "s|^#?[[:space:]]?${k}=.*|${k}=$(openssl rand -hex 32)|" .env; done; rm -f .env.bak
 docker compose -f docker/compose.dev.yml up -d   # 起 postgres + redis
-bun run db:migrate                 # 建表（76 个迁移，幂等）
-bun run db:seed                    # 开发种子：管理员 + 用户 + 费率卡 + 渠道 + 模型映射
+bun packages/db/scripts/provision-fresh.ts   # 空库前置建表（幂等；首次迁移前必跑）
+bun run db:migrate                 # 建表（91 个迁移，幂等）
+cd apps/admin-api && bun scripts/create-admin.ts --email=admin@ai-gateway.local --password=admin12345 --apply && cd ../..
 bun dev                            # turbo dev —— 全部七个应用，热重载
 ```
 
-种子脚本会创建开发管理员（`admin@ai-gateway.local` / `admin12345`，仅开发用）、示例用户、
-费率卡；若 `.env` 配了 `DEEPSEEK_API_KEY` 还会建 DeepSeek 渠道与模型映射，
-并打印一把虚拟测试 Key（`sk_…`）。
+引导脚本创建开发管理员（`admin@ai-gateway.local` / `admin12345`，仅开发用；生产用同一脚本
+但不传 `--password`，现场生成一次性强密码）。不再有其他种子数据：用户自助注册，
+渠道/模型映射/费率卡在管理台创建（无费率卡 = 系数 1.0，设计内兜底）。
 
 端口：网关 `8080` · client-api `8081` · admin-api `8082` · trace-receiver `8793` ·
 worker 健康 `8792` · 用户面板 `3001` · 管理后台 `3002`。

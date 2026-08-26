@@ -28,6 +28,8 @@ interface TestState {
   redeems: { failWith?: unknown };
   oauthCallbackState: string | null;
   oauthFindUserAs: number | null;
+  oauthTouched: number[];
+  authTouched: number[];
   oauthUserStatus: number;
   /** 用例旋钮：能力开关 / 登录结果覆写 / keys 失败注入 */
   capabilities: {
@@ -62,6 +64,8 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
     redeems: {},
     oauthCallbackState: 'good-state',
     oauthFindUserAs: null,
+    oauthTouched: [],
+    authTouched: [],
     oauthUserStatus: 0,
     capabilities: { registerEnabled: true, captchaSiteKey: null, emailCodeRequired: false },
     authenticateAs: null,
@@ -201,7 +205,10 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
         if (userId === 43) return Promise.resolve(1);
         return Promise.resolve(null);
       },
-      touchLastLogin: () => Promise.resolve(),
+      touchLastLogin: (userId) => {
+        state.authTouched.push(userId);
+        return Promise.resolve();
+      },
       sign: (userId) => Promise.resolve(`signed:${userId}`),
       logout: () => Promise.resolve(),
     },
@@ -237,7 +244,6 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
             rateCardId: null,
             dailySpendLimit: null,
             status: 0,
-            sessionInvalidBefore: null,
             isEnterprise: false,
             freezeReason: null,
             rpmLimit: null,
@@ -250,6 +256,10 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
         }),
       onboarding: () => Promise.resolve({ gift: { status: 'credited' } }),
       userStatus: () => Promise.resolve(state.oauthUserStatus),
+      touchLastLogin: (userId) => {
+        state.oauthTouched.push(userId);
+        return Promise.resolve();
+      },
       sign: (userId) => Promise.resolve(`signed:${userId}`),
       frontendUrl: 'https://app.example',
       apiBase: 'https://api.example',
@@ -269,7 +279,6 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
           rateCardName: null,
           dailySpendLimit: null,
           status: 0,
-          sessionInvalidBefore: null,
           isEnterprise: false,
           freezeReason: null,
           rpmLimit: null,
@@ -289,7 +298,6 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
           rateCardId: null,
           dailySpendLimit: null,
           status: 0,
-          sessionInvalidBefore: null,
           isEnterprise: false,
           freezeReason: null,
           rpmLimit: null,
@@ -960,6 +968,8 @@ describe('auth 两步制', () => {
     expect(verBody.token).toBe(`signed:${verBody.userId}`);
     expect(verBody.email).toBe('new@x.com');
     expect(verBody.gifted).toBe(true);
+    // 注册即登录:会话签发同时回写登录事实(修复前注册路径恒漏,列表「最近登录」显从未)
+    expect(state.authTouched).toEqual([verBody.userId]);
   });
 
   it('注册关闭 403 register_disabled', async () => {
@@ -1916,13 +1926,15 @@ describe('oauth 社交登录', () => {
       'identity.oauth_state_invalid',
     );
 
-    const { app: app3 } = build();
+    const { app: app3, state: s3 } = build();
     const ok = await app3.request('/v1/oauth/github/callback?code=c&state=good-state', {
       headers: { cookie: 'tl_oauth_state=good-state' },
     });
     expect(ok.status).toBe(302);
     expect(ok.headers.get('location')).toMatch(/#token=signed%3A\d+/);
     expect(ok.headers.get('location')).toContain('https://app.example/dashboard');
+    // 登录事实回写:回调签发会话即 touch(修复前 OAuth 路径恒漏)
+    expect(s3.oauthTouched.length).toBe(1);
   });
 });
 

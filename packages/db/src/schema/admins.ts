@@ -20,7 +20,7 @@ import { roles } from './rbac.js';
  * 这是「严格互斥」设计：一个人要既用网关（充值/调 API）又管后台，需要两个账号、两次登录。
  *
  * 身份：仅本地账号（email + scrypt 密码），邀请制创建，不支持 OIDC。
- *      2FA 字段预留（twoFactorSecret），P1 启用强制两步验证。
+ *      TOTP 单一真相在 identity_totp（2FA 偏好开关见 two_factor_enabled）。
  *
  * audit_logs.admin_id → admins.id（管理员操作审计的操作人）。
  */
@@ -31,10 +31,6 @@ export const admins = pgTable(
     /** 登录账号（唯一，邀请制分配） */
     email: varchar('email', { length: 255 }).notNull(),
     displayName: varchar('display_name', { length: 64 }),
-    /** scrypt 哈希，格式与 users.password_hash 一致（saltHex:hashHex:N:r:p） */
-    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
-    /** 2FA 密钥（TOTP base32）；NULL = 未启用 2FA（P1 将要求非空） */
-    twoFactorSecret: varchar('two_factor_secret', { length: 64 }),
     /** 账号状态：ACCOUNT_STATUS（0 正常 / 1 封禁 / 2 注销）；CHECK admins_status_ck 兜底非法值 */
     status: smallint('status').notNull().default(ACCOUNT_STATUS.ACTIVE),
     /**
@@ -47,8 +43,6 @@ export const admins = pgTable(
       .references(() => roles.id),
     /** 邮箱验证码二次登录开关（默认关；开启后登录需邮箱收码验证。SMTP 未配置时开启失败） */
     twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
-    /** 会话失效线（R5-2）：iat 早于此时间点的管理面会话 JWT 一律拒绝（改密即全网下线） */
-    sessionInvalidBefore: timestamp('session_invalid_before', { withTimezone: true }),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

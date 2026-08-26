@@ -97,4 +97,17 @@ describe('apps/admin 架构边界', () => {
       .map((f) => rel(f));
     expect(violations).toEqual([]);
   });
+
+  it('受控 Select 必带 items（Base UI 无 items 时 Value 回显原始值而非标签——原型级坑，静态锁死）', () => {
+    const violations: string[] = [];
+    for (const f of files.filter((p) => p.endsWith('.tsx'))) {
+      const src = readFileSync(f, 'utf8').replace(/=>/g, '==');
+      for (const m of src.matchAll(/<Select\b[^>]*>/g)) {
+        if (m[0].includes('value=') && !m[0].includes('items=')) {
+          violations.push(`${rel(f)}:${src.slice(0, m.index ?? 0).split('\n').length}`);
+        }
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
 });

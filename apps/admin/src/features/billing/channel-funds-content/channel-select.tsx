@@ -29,7 +29,12 @@ export function ChannelSelect({
   return (
     <FormItem>
       <FieldLabel htmlFor={id}>{t('channel')}</FieldLabel>
-      <Select value={value} onValueChange={(v) => onChange(v ?? '')}>
+      {/* items 同源映射：Value 回显渠道名而非原始 id */}
+      <Select
+        value={value}
+        onValueChange={(v) => onChange(v ?? '')}
+        items={channels.map((c) => ({ value: String(c.id), label: c.name }))}
+      >
         <SelectTrigger id={id} className="w-full">
           <SelectValue placeholder={t('selectChannel')} />
         </SelectTrigger>

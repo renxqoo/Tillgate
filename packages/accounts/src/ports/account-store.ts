@@ -26,7 +26,6 @@ export interface UserRecord {
   readonly rateCardId: number | null;
   readonly dailySpendLimit: string | null;
   readonly status: number;
-  readonly sessionInvalidBefore: Date | null;
   readonly isEnterprise: boolean;
   readonly freezeReason: string | null;
   readonly rpmLimit: number | null;

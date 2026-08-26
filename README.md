@@ -54,14 +54,16 @@ cp .env.example .env               # required keys only; everything else has saf
 for k in JWT_SECRET ADMIN_JWT_SECRET ENCRYPTION_KEY IDENTITY_CODE_PEPPER CLIENT_CODE_PEPPER CHANNEL_API_KEY_ENCRYPTION; do
   sed -i.bak -E "s|^#?[[:space:]]?${k}=.*|${k}=$(openssl rand -hex 32)|" .env; done; rm -f .env.bak
 docker compose -f docker/compose.dev.yml up -d   # postgres + redis
-bun run db:migrate                 # schema (76 migrations, idempotent)
-bun run db:seed                    # dev seed: admin + user + rate card + channel + model mapping
+bun packages/db/scripts/provision-fresh.ts   # fresh-db pre-provision (idempotent; required before first migrate)
+bun run db:migrate                 # schema (91 migrations, idempotent)
+cd apps/admin-api && bun scripts/create-admin.ts --email=admin@ai-gateway.local --password=admin12345 --apply && cd ../..
 bun dev                            # turbo dev — all seven apps, hot reload
 ```
 
-The seed creates a dev admin (`admin@ai-gateway.local` / `admin12345` — dev only), a demo user,
-a rate card, and — if `DEEPSEEK_API_KEY` is set in `.env` — a DeepSeek channel with a model
-mapping, plus a virtual test key (`sk_…`) printed to the console.
+Bootstrap creates a dev admin (`admin@ai-gateway.local` / `admin12345` — dev only; in production
+use the same script without `--password` so a strong one-time password is generated). No other
+seed data exists: users self-register, channels/model mappings/rate cards are created in the
+admin console (no rate card = coefficient 1.0 by design).
 
 Ports: gateway `8080` · client-api `8081` · admin-api `8082` · trace-receiver `8793` ·
 worker health `8792` · client console `3001` · admin console `3002`.

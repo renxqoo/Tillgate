@@ -28,7 +28,7 @@ import { fakeCipher } from './memory';
 import type { NotifyContext } from '../src/application/context';
 import { defined } from './defined';
 
-const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
+const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/tillgate';
 let db: Db | null = null;
 const createdChannels: number[] = [];
 const createdOutbox: number[] = [];

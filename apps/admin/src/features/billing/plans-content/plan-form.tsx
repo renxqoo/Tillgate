@@ -106,6 +106,10 @@ export function PlanForm({
                 value={field.value}
                 onValueChange={(v) => field.onChange(v ?? 'subscription')}
                 disabled={isEdit}
+                items={[
+                  { value: 'subscription', label: t('subscriptionOption') },
+                  { value: 'pack', label: t('packOption') },
+                ]}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />
@@ -150,7 +154,14 @@ export function PlanForm({
             render={({ field }: { field: { value: string; onChange: (v: string) => void } }) => (
               <FormItem>
                 <FieldLabel>{t('period')}</FieldLabel>
-                <Select value={field.value} onValueChange={(v) => v !== null && field.onChange(v)}>
+                <Select
+                  value={field.value}
+                  onValueChange={(v) => v !== null && field.onChange(v)}
+                  items={[
+                    { value: '30', label: t('monthly') },
+                    { value: '365', label: t('yearly') },
+                  ]}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
@@ -181,6 +192,10 @@ export function PlanForm({
                 <Select
                   value={field.value ? '1' : '0'}
                   onValueChange={(v) => field.onChange(v === '1')}
+                  items={[
+                    { value: '0', label: t('personalOption') },
+                    { value: '1', label: t('teamOption') },
+                  ]}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
@@ -204,6 +219,10 @@ export function PlanForm({
                 <Select
                   value={String(field.value ?? 0)}
                   onValueChange={(v) => field.onChange(Number(v))}
+                  items={[
+                    { value: '0', label: t('listed') },
+                    { value: '1', label: t('unlisted') },
+                  ]}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />

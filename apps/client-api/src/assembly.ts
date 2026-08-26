@@ -364,6 +364,7 @@ export async function assembleClientApi(
       provision: accounts.provisionOAuthAccount,
       onboarding: async (userId) => accounts.completeAccountOnboarding({ userId }),
       userStatus: accountRead.activeUserStatus,
+      touchLastLogin: accountRead.touchLastLogin,
       sign: (userId) => identity.sessions.sign({ realm: 'user', subjectId: userId }),
       frontendUrl,
       apiBase,

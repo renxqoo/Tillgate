@@ -139,7 +139,7 @@ function buildHarnessEnv(appUrl: string, githubEndpoints?: GithubEndpoints): Nod
   return {
     NODE_ENV: 'development',
     DATABASE_URL:
-      process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
+      process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/tillgate',
     REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
     JWT_SECRET: process.env.JWT_SECRET ?? 'e2e-jwt-secret-0123456789ab',
     CLIENT_CODE_PEPPER: process.env.CLIENT_CODE_PEPPER ?? 'e2e-pepper-0123456789ab',
@@ -567,7 +567,7 @@ export async function infraReady(): Promise<boolean> {
   try {
     const { createDb, ping, closeDb } = await import('../../packages/db/src/index.js');
     const db = createDb({
-      url: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
+      url: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/tillgate',
       poolMax: 1,
       idleTimeoutMillis: 1_000,
       connectionTimeoutMillis: 3_000,

@@ -1,5 +1,8 @@
 'use server';
 
+import { getTranslations } from 'next-intl/server';
+import { ApiError } from '@tillgate/api-client';
+
 import { adminApi } from './admin-api';
 
 /** 计费时区读（null = 未配置，消费方回落缺省 Asia/Shanghai） */
@@ -14,10 +17,19 @@ export async function getBillingTimezoneAction(): Promise<{
   }
 }
 
-/** 计费时区写（IANA 名；后端域校验 + 审计）；失败抛错由 useActionResult 呈现 */
-export async function updateBillingTimezoneAction(timezone: string): Promise<{ ok: true }> {
-  await adminApi().put('/v1/settings/billing-timezone', { timezone });
-  return { ok: true };
+/** 计费时区写（IANA 名；后端域校验 + 审计）。失败在 action 内翻译成 error 字段——
+ * Server Action 抛错会被 Next 脱敏成「unexpected response」整体弹错，不走此口径 */
+export async function updateBillingTimezoneAction(timezone: string): Promise<{
+  ok?: true;
+  error?: string;
+}> {
+  const tc = await getTranslations('common');
+  try {
+    await adminApi().put('/v1/settings/billing-timezone', { timezone });
+    return { ok: true };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('saveFailed') };
+  }
 }
 
 // ---- 第三方集成动态配置（docs/integration-settings/DESIGN.md §4.1）----
@@ -50,12 +62,23 @@ export async function getIntegrationSettingsAction(): Promise<{
 }
 
 /** 集成更新（字段三态：缺席=保持 / null=清除 / 值=设置）；
- * totpCode = step-up 强制（ADR-0011——服务端验证当前管理员验证器，未绑定者拒绝） */
+ * totpCode = step-up 强制（ADR-0011——服务端验证当前管理员验证器，未绑定者拒绝）。
+ * 失败在 action 内翻译成 error 字段（ApiError.message）——Server Action 直接抛错
+ * 会被 Next 脱敏成「unexpected response」弹错，错误细节到不了 toast */
 export async function updateIntegrationAction(
   key: string,
   body: { totpCode: string; enabled?: boolean; config?: Record<string, string | null> },
-): Promise<IntegrationSettingItem> {
-  return adminApi().put<IntegrationSettingItem>(`/v1/settings/integrations/${key}`, body);
+): Promise<{ item?: IntegrationSettingItem; error?: string }> {
+  const tc = await getTranslations('common');
+  try {
+    const item = await adminApi().put<IntegrationSettingItem>(
+      `/v1/settings/integrations/${key}`,
+      body,
+    );
+    return { item };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('saveFailed') };
+  }
 }
 
 /** 注册送礼金额读（Turnstile 停用联动警告用——DESIGN §5 D11） */

@@ -111,7 +111,7 @@ describe('IntegrationCard 交互', () => {
   });
 
   it('停用动作：先过 stepup 小窗（ADR-0011）——码随 enabled 同传并刷新卡片状态', async () => {
-    updateIntegration.mockResolvedValue({ ...epayItem, enabled: false });
+    updateIntegration.mockResolvedValue({ item: { ...epayItem, enabled: false } });
     renderCard(epayItem);
     await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
     // stepup 小窗：6 位码 + 确认
@@ -132,7 +132,9 @@ describe('IntegrationCard 交互', () => {
   });
 
   it('Turnstile 加固：注册送礼开启时停用出警告 toast（不阻断）；其他集成停用无警告', async () => {
-    updateIntegration.mockResolvedValue({ ...epayItem, key: 'captcha.turnstile', enabled: false });
+    updateIntegration.mockResolvedValue({
+      item: { ...epayItem, key: 'captcha.turnstile', enabled: false },
+    });
     renderCard({ ...epayItem, key: 'captcha.turnstile', config: {} }, { signupGiftOn: true });
     // 启用态下卡片内常驻风险提示（先于停用断言——停用后条件翻转）
     expect(screen.getByText(/disabling captcha removes register anti-abuse/i)).toBeInTheDocument();
@@ -144,7 +146,7 @@ describe('IntegrationCard 交互', () => {
     });
 
     vi.clearAllMocks();
-    updateIntegration.mockResolvedValue({ ...epayItem, enabled: false });
+    updateIntegration.mockResolvedValue({ item: { ...epayItem, enabled: false } });
     cleanup();
     renderCard(epayItem, { signupGiftOn: true });
     await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
@@ -186,7 +188,10 @@ describe('IntegrationCard 交互', () => {
   });
 
   it('无 settings:integrations 权限（D1 裁决）：配置/启停操作位隐藏，状态与警告只读保留', () => {
-    renderCard({ ...epayItem, key: 'captcha.turnstile', config: {} }, { signupGiftOn: true, canManage: false });
+    renderCard(
+      { ...epayItem, key: 'captcha.turnstile', config: {} },
+      { signupGiftOn: true, canManage: false },
+    );
     expect(screen.queryByRole('button', { name: 'Configure' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument();
     // 只读面：状态徽章 + 注册送礼风险提示仍在

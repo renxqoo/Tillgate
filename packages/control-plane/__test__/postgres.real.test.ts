@@ -30,7 +30,7 @@ import { createPostgresAuditSink, postgresAuditStore } from '../src/adapters/pos
 import { createPostgresVoucherStorage } from '../src/adapters/postgres/voucher-storage';
 import { postgresAdminStore } from '../src/adapters/postgres/admin-store';
 
-const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
+const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/tillgate';
 let db: Db | null = null;
 const uid = () => `cp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -44,7 +44,6 @@ async function realAdminId(): Promise<number> {
     .insert(admins)
     .values({
       email: `${uid()}@example.com`,
-      passwordHash: 'x:0:0:0:0',
       roleId: defined(superRole).id,
     })
     .returning({ id: admins.id });

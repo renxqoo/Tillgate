@@ -63,7 +63,15 @@ export function ChannelFundsClient({
     <div className="flex flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Select value={channelFilter} onValueChange={(v) => applyFilter(v ?? '', typeFilter)}>
+          {/* items 同源映射：筛选回显渠道名/类型文案而非原始值 */}
+          <Select
+            value={channelFilter}
+            onValueChange={(v) => applyFilter(v ?? '', typeFilter)}
+            items={[
+              { value: 'all', label: t('allChannels') },
+              ...channels.map((c) => ({ value: String(c.id), label: c.name })),
+            ]}
+          >
             <SelectTrigger className="w-48">
               <SelectValue placeholder={t('allChannels')} />
             </SelectTrigger>
@@ -76,7 +84,15 @@ export function ChannelFundsClient({
               ))}
             </SelectContent>
           </Select>
-          <Select value={typeFilter} onValueChange={(v) => applyFilter(channelFilter, v ?? '')}>
+          <Select
+            value={typeFilter}
+            onValueChange={(v) => applyFilter(channelFilter, v ?? '')}
+            items={[
+              { value: 'all', label: tc('allTypes') },
+              { value: 'recharge', label: t('recharge') },
+              { value: 'adjust', label: t('adjust') },
+            ]}
+          >
             <SelectTrigger className="w-40">
               <SelectValue placeholder={tc('allTypes')} />
             </SelectTrigger>

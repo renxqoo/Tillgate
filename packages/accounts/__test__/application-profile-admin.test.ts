@@ -115,10 +115,8 @@ describe('adminPatchUser', () => {
       adminId: 5,
     });
     expect(updated.email).toBe('new@x.io');
-    // port 恰好被调一次,user realm;不再直写 users.session_invalid_before(列冻结只读)
+    // port 恰好被调一次,user realm(吊销唯一真相 = identity anchors,旧列已随 0090 退役)
     expect(h.sessionInvalidation.calls).toEqual([{ realm: 'user', userId: u.id }]);
-    const reread = await h.store.findUserById(h.ctx.db, u.id);
-    expect(defined(reread, 'reread').sessionInvalidBefore).toBeNull();
   });
 
   it('非 email 变更不触发会话失效', async () => {
