@@ -24,6 +24,7 @@ import { useTranslations } from 'next-intl';
 
 import type { RateCardOption, AdminUserRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
+import { fmtCoefficient } from '@/lib/formatters';
 
 export function BindRateCardDialog({
   user,
@@ -94,7 +95,7 @@ export function BindRateCardDialog({
               <SelectItem value="none">{t('unbind')}</SelectItem>
               {rateCards.map((r) => (
                 <SelectItem key={r.id} value={String(r.id)}>
-                  {r.name}（×{r.coefficient}）
+                  {r.name} (x{fmtCoefficient(r.coefficient)})
                 </SelectItem>
               ))}
             </SelectContent>

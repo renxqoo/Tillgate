@@ -10,6 +10,8 @@ import { useTranslations } from 'next-intl';
 import { fmtDateTime, formatMoney } from '@/lib/formatters';
 
 import type { RateCardOption, AdminUserRow } from '@tillgate/api-client';
+
+import { rateCardLabel } from '../rate-card-label';
 import { useActionResult } from '@/components/action-toast';
 import { UserRowActionCell } from './user-row-action-cell';
 
@@ -92,7 +94,9 @@ export function UserRowItem({
           </StatusPill>
         )}
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground">{user.rateCardName ?? '—'}</TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {rateCardLabel(user, rateCards)}
+      </TableCell>
       <TableCell className="text-right font-medium tabular-nums">
         {formatMoney(user.balance)}
       </TableCell>

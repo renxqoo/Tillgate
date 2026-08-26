@@ -173,3 +173,13 @@ export function unitWord(
     }
   }
 }
+
+/** 费率卡系数展示形："1.000"→"1"、"0.800"→"0.8"、"0.750"→"0.75"；
+ * 整数原样（"10" 不被削尾）；非数值形状原样返回（不抛——后端 numeric 字符串可信但不设防） */
+export function fmtCoefficient(value: string | null | undefined): string {
+  const v = value?.trim() ?? '';
+  if (v === '' || !/^-?\d+(\.\d+)?$/.test(v)) return v;
+  if (!v.includes('.')) return v;
+  const stripped = v.replace(/0+$/, '').replace(/\.$/, '');
+  return stripped === '' || stripped === '-' ? '0' : stripped;
+}

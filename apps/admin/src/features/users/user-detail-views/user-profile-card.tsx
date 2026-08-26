@@ -3,15 +3,18 @@ import type { getTranslations } from 'next-intl/server';
 import type { AdminUserRow } from '@tillgate/api-client';
 
 import { UserActions } from '@/features/users/user-actions';
+import { rateCardLabel, type RateCardOptionLike } from '@/features/users/rate-card-label';
 import { fmtBalance, fmtDateTime } from '@/lib/formatters';
 
 /** 用户资料卡（状态/余额/额度/限流字段平铺；从页面提出，规模与复杂度收敛） */
 export function UserProfileCard({
   user,
+  rateCards,
   t,
   tc,
 }: {
   user: AdminUserRow;
+  rateCards: ReadonlyArray<RateCardOptionLike>;
   t: Awaited<ReturnType<typeof getTranslations<'users'>>>;
   tc: Awaited<ReturnType<typeof getTranslations<'common'>>>;
 }) {
@@ -61,7 +64,7 @@ export function UserProfileCard({
               user.dailySpendLimit === null ? tc('unlimited') : fmtBalance(user.dailySpendLimit)
             }
           />
-          <Field label={t('rateCard')} value={user.rateCardName ?? '—'} />
+          <Field label={t('rateCard')} value={rateCardLabel(user, rateCards)} />
           <Field
             label={t('rpmLimit')}
             value={user.rpmLimit === null ? tc('default') : String(user.rpmLimit)}

@@ -9,7 +9,7 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { AccountUseCases } from '@tillgate/accounts';
-import type { Identity } from '@tillgate/identity';
+import type { Identity, OAuthCallbackResult } from '@tillgate/identity';
 import { OAUTH_STATE_COOKIE, safeNext } from '../contracts/oauth.js';
 
 export interface OAuthDeps {
@@ -31,6 +31,24 @@ export interface OAuthDeps {
   readonly secureCookie: boolean;
   /** state cookie 寿命（秒）——与 identity state TTL 同源注入 */
   readonly stateTtlSeconds: number;
+}
+
+/** 回调后半程的用户解析（v1 G4 find-or-create）：已绑定直用；
+ * 首次社交登录建号 + 建号赠送 best-effort（失败不阻断登录） */
+async function resolveOAuthUserId(
+  deps: Pick<OAuthDeps, 'findUser' | 'provision' | 'onboarding'>,
+  input: { provider: string; result: OAuthCallbackResult },
+): Promise<number> {
+  const bound = await deps.findUser({ provider: input.provider, subject: input.result.subject });
+  if (bound != null) return bound;
+  const created = await deps.provision({
+    issuer: input.provider,
+    subject: input.result.subject,
+    email: input.result.email ?? undefined,
+    displayName: input.result.displayName ?? undefined,
+  });
+  await deps.onboarding(created.user.id).catch(() => {});
+  return created.user.id;
 }
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
@@ -89,17 +107,7 @@ export function oauthRoutes(deps: OAuthDeps) {
     deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/v1/oauth' });
 
     // find-or-create：已绑定直用；首次建号（v1 G4：find-or-create + 建号赠送归 app）
-    let userId = await deps.findUser({ provider, subject: result.subject });
-    if (userId == null) {
-      const created = await deps.provision({
-        issuer: provider,
-        subject: result.subject,
-        email: result.email ?? undefined,
-        displayName: result.displayName ?? undefined,
-      });
-      userId = created.user.id;
-      await deps.onboarding(userId).catch(() => {});
-    }
+    const userId = await resolveOAuthUserId(deps, { provider, result });
     const status = await deps.userStatus(userId);
     if (status !== 0) {
       return c.json(
