@@ -193,8 +193,7 @@ export function RegisterForm({
         <CardDescription>{t('registerDesc')}</CardDescription>
       </CardHeader>
       <CardContent>
-        <form
-          method="post" noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form method="post" noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FieldGroup>
             <Controller
               control={form.control}
