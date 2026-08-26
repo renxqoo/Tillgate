@@ -44,6 +44,13 @@ function toAppDeps(assembly: GatewayAssembly, config: GatewayConfig): GatewayApp
       maxFileBytes: config.uploadLimits.maxFileBytes,
     },
     trustedProxyHops: config.trustedProxyHops,
+    // DB 并发预算门:钳制业务并发在池内(留 32 余量给 fire-and-forget 日志与旁路)。
+    // 万级并发下任何形态都须入口排队(node 池队列塌陷 / Bun SQL 排队楔死,见 FINDINGS F-6)。
+    dbBudget: {
+      limit: Math.max(8, config.dbPoolMax - 32),
+      maxQueue: 20_000,
+      waitTimeoutMs: 120_000,
+    },
     logger: assembly.logger,
   };
 }

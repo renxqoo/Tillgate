@@ -80,7 +80,8 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     url: config.databaseUrl,
     poolMax: config.dbPoolMax,
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
+    // 10k 级负载:检出等待耐心 60s(预算门内的排队请求等待而非 5s 超时失败)
+    connectionTimeoutMillis: 60_000,
   });
   const redis = createRedisClient(config.redisUrl, {
     serviceName: 'gateway',
