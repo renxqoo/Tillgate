@@ -47,6 +47,7 @@ export function settlementMethods(
 ): Pick<
   BillingStore,
   | 'claimPending'
+  | 'listDueSettlementRequests'
   | 'renewClaims'
   | 'findProcessingForClaim'
   | 'casFinalizeSettled'
@@ -118,6 +119,16 @@ export function settlementMethods(
       }));
     },
 
+    async listDueSettlementRequests(conn, input) {
+      const result = await tx(conn).execute<{ request_id: string }>(sql`
+        select request_id from billing_requests
+        where status in ('settlement_pending', 'retry_wait')
+          and (next_settlement_at is null or next_settlement_at <= clock_timestamp())
+        order by next_settlement_at nulls first, created_at
+        limit ${input.limit}`);
+      return result.rows.map((row) => row.request_id);
+    },
+
     async renewClaims(conn, input) {
       if (input.tokens.length === 0) return;
       await tx(conn).execute(sql`
@@ -132,7 +143,6 @@ export function settlementMethods(
           )})
           and claim_until > clock_timestamp()`);
     },
-
     async findProcessingForClaim(conn, claim) {
       const [row] = await tx(conn)
         .select(REQUEST_COLUMNS)

@@ -79,6 +79,11 @@ export interface SettlementApi {
   /** 死信复核（U6） */
   review: SettlementReviewApi;
   claim(input: ClaimInput): Promise<SettlementClaim[]>;
+  /**
+   * due 行只读扫描（不认领，无锁）：sweep 入队（BullMQ）与直驱 runner 的
+   * 触发源共用；认领互斥仍由 claim 承担——多次/并发触发天然幂等。
+   */
+  listDueRequestIds(input: { limit: number }): Promise<string[]>;
   renewClaims(input: {
     ownerId: string;
     tokens: readonly string[];
@@ -137,6 +142,8 @@ export function createSettlementApi(deps: SettlementDeps): SettlementApi {
         ),
     },
     claim: createClaimUseCase({ store: deps.store }),
+    listDueRequestIds: (input) =>
+      deps.store.read((conn) => deps.store.listDueSettlementRequests(conn, input)),
     renewClaims: createRenewClaimsUseCase({ store: deps.store }),
     settleClaim,
     processClaim: createProcessClaimUseCase({ settleClaim, finishFailure }),

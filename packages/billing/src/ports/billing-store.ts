@@ -236,6 +236,15 @@ export interface BillingStore {
       traceParent: string | null;
     }>
   >;
+  /**
+   * due 行只读扫描（不认领）：settlement_pending/retry_wait 且到期（候选口径
+   * 与 claimPending 一致，无锁）——BullMQ sweep 入队与直驱 runner 的触发源
+   * 共用；认领互斥仍由 claimPending 承担，本读不参与资金状态变化。
+   */
+  listDueSettlementRequests(
+    conn: WalletConn,
+    input: { limit: number },
+  ): Promise<string[]>;
   /** 认领租约保活（长结算事务防 recover 误回收 → 双扣防线） */
   renewClaims(
     tx: WalletConn,

@@ -128,6 +128,30 @@ describe('settleFailurePolicy（死信 vs 退避）', () => {
     });
     expect(decision).toMatchObject({ dead: false, retryInMs: 1_000 });
   });
+
+  // F-1 回归(live-fire 红队 F-1):attempt 非有限数值曾产出 NaN 退避 →
+  // casToRetryOrDead 的 interval 乘法 SQL 报错 → 逃逸成 worker 进程级故障。
+  // 防护语义:非法计数一律死信(_invalid_attempt),NaN/Infinity 永不流向 SQL。
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['-Infinity', Number.NEGATIVE_INFINITY],
+    ['0', 0],
+    ['-1', -1],
+  ])('attempt 非法(%s)→ 立即死信 _invalid_attempt,不产 NaN 退避', (_name, attempt) => {
+    const decision = settleFailurePolicy(new Error('ECONNRESET'), { ...config, attempt });
+    expect(decision).toMatchObject({ dead: true, failureClass: 'Error_invalid_attempt' });
+  });
+
+  it('退避参数双非有限(配置腐坏:Math.min 两臂皆 Infinity)→ 死信 _invalid_delay', () => {
+    const decision = settleFailurePolicy(new Error('timeout'), {
+      maxAttempts: 100,
+      baseDelayMs: Number.POSITIVE_INFINITY,
+      maxDelayMs: Number.POSITIVE_INFINITY,
+      attempt: 2,
+    });
+    expect(decision).toMatchObject({ dead: true, failureClass: 'Error_invalid_delay' });
+  });
 });
 
 describe('BillingStatus 状态机', () => {
