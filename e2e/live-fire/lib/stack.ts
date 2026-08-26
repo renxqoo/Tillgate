@@ -127,7 +127,7 @@ export async function startStack() {
       ADMISSION_MAX_OLDEST_MS: '120000',
       BILLING_AUTHORIZATION_TTL_MS: '15000',
       OTEL_TRACES_MODE: 'off',
-      DB_POOL_MAX: '40',
+      DB_POOL_MAX: '210',
     },
   );
   bunApp('client-api', 'apps/client-api', {

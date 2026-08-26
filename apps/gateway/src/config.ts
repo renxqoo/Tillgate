@@ -51,7 +51,7 @@ function createSchema(production: boolean) {
       GATEWAY_PORT: z.coerce.number().int().min(1).max(65_535).default(8_080),
       DATABASE_URL: z.string().url(),
       REDIS_URL: z.string().url(),
-      DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+      DB_POOL_MAX: z.coerce.number().int().min(1).max(300).default(10),
       GATEWAY_CURRENCY: z.string().length(3).default('CNY'),
       ADMISSION_MAX_PENDING: z.coerce.number().int().min(1).default(10_000),
       ADMISSION_MAX_OLDEST_MS: z.coerce.number().int().min(1_000).default(300_000),
