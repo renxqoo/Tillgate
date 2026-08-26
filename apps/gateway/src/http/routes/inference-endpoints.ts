@@ -12,6 +12,7 @@ import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { GatewayErrors } from '../openai-error-face';
 import { encodeDelivered } from '../openai-envelope';
 import type { InferenceEndpoint } from '../contracts/inference-endpoints';
+import { requestSummaryOf } from '../middleware/request-log.js';
 
 /** 路由依赖（装配注入；rateLimit 未装配 = 放行——单副本开发形态） */
 export interface InferenceRouteDeps {
@@ -68,6 +69,8 @@ export function inferenceRoutes(
 ): Hono<AuthEnv> {
   return new Hono<AuthEnv>().post('/', async (c) => {
     const raw = (await c.req.json().catch(() => null)) as unknown;
+  const summary = requestSummaryOf(c.req.method, raw);
+  if (summary != null) c.set('requestLogSummary', summary);
     const parsed = endpoint.schema.safeParse(raw);
     if (!parsed.success) return invalidBody(c.json.bind(c), parsed.error.issues);
 
@@ -116,9 +119,11 @@ export function enginesAliasRoutes(
   endpoint: InferenceEndpoint,
 ): Hono<AuthEnv> {
   return new Hono<AuthEnv>().post('/embeddings', async (c) => {
-    const raw = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    const raw = (await c.req.json().catch(() => null)) as unknown;
+    const aliasSummary = requestSummaryOf(c.req.method, raw);
+    if (aliasSummary != null) c.set('requestLogSummary', aliasSummary);
     const model = c.req.param('model');
-    const merged = { ...raw, model };
+    const merged = { ...(raw as Record<string, unknown> | null), model };
     const parsed = endpoint.schema.safeParse(merged);
     if (!parsed.success) return invalidBody(c.json.bind(c), parsed.error.issues);
     const auth = c.get('auth');

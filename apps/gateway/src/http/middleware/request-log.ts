@@ -14,11 +14,15 @@ export interface RequestLogDeps {
   trustedProxyHops: number;
 }
 
-/** POST 请求的摘要字段（model 截 64 字符；仅 body.model 为 string 时采集） */
-function requestSummaryOf(
-  method: string,
-  body: unknown,
-): { model: string; stream: boolean; max_tokens: number | null } | undefined {
+export interface RequestSummary {
+  model: string;
+  stream: boolean;
+  max_tokens: number | null;
+}
+
+/** POST 请求的摘要（model 截 64 字符；仅 body.model 为 string 时采集）——
+ * 由路由解析 body 后构造放入 context（requestLogSummary），日志面不读 body */
+export function requestSummaryOf(method: string, body: unknown): RequestSummary | undefined {
   if (method !== 'POST' || body == null || typeof body !== 'object') return undefined;
   const record = body as Record<string, unknown>;
   if (typeof record.model !== 'string') return undefined;
@@ -45,19 +49,14 @@ export function requestLogMiddleware(deps: RequestLogDeps): MiddlewareHandler<Au
   return async (c, next) => {
     const startedAt = Date.now();
     const requestId = c.get('requestId');
-    // 摘要嗅探经 raw.clone()——不吞原始流（multipart 路由随后仍可 formData()；
-    // v1 同款：clone 上 json() 失败即无摘要，原始 body 不受影响）
-    let parsedBody: unknown = null;
-    if (c.req.method === 'POST') {
-      parsedBody = await c.req.raw
-        .clone()
-        .json()
-        .catch(() => null);
-    }
+    // 摘要不再经 raw.clone() 嗅探：@hono/node-server 的 clone 未实现 WHATWG tee
+    // 语义，先读 clone 分支会把原始 body 标记已读 → 路由 c.req.json() 抛
+    // "Body has already been read" → 高并发下大面积 400（live-fire X11 实锤）。
+    // 数据流反转：路由是唯一 body 消费者，解析后把摘要放 context，日志只取。
     await next();
     const auth = c.get('auth');
     const errorCode = await sniffErrorCode(c.res);
-    const summary = requestSummaryOf(c.req.method, parsedBody);
+    const summary = c.get('requestLogSummary');
     void deps.store
       .insert({
         requestId,
@@ -68,7 +67,7 @@ export function requestLogMiddleware(deps: RequestLogDeps): MiddlewareHandler<Au
         statusCode: c.res?.status ?? 0,
         errorCode,
         durationMs: Date.now() - startedAt,
-        requestSummary: summary ?? null,
+        requestSummary: (summary ?? null) as unknown as Record<string, unknown> | null,
         sourceIp: trustedClientIp({
           headers: c.req.raw.headers,
           trustedProxyHops: deps.trustedProxyHops,

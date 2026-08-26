@@ -9,6 +9,7 @@ import { HttpErrors } from '@tillgate/http';
 import type { GenerationSubmitOutcome, Inference } from '@tillgate/inference';
 import { conservativeInputTokenUpperBound } from '@tillgate/inference';
 import { videoSchema, musicSchema } from '../contracts/generation';
+import { requestSummaryOf } from '../middleware/request-log.js';
 import type { AuthEnv } from '../middleware/api-key';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { GatewayErrors } from '../openai-error-face';
@@ -77,6 +78,8 @@ function submitHandler(
 ) {
   return async (c: Context<AuthEnv>) => {
     const raw = await c.req.json().catch(() => null);
+    const genSummary = requestSummaryOf(c.req.method, raw);
+    if (genSummary != null) c.set('requestLogSummary', genSummary);
     const parsed = schema.safeParse(raw);
     if (!parsed.success) return invalidBody(c.json.bind(c), parsed.error.issues);
     const auth = c.get('auth');
