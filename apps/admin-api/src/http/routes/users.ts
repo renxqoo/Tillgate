@@ -50,7 +50,7 @@ export function usersRoutes(deps: UsersRoutesDeps) {
     });
     const rows = await Promise.all(
       page.rows.map(async (row) =>
-        toUserWireRow(row, walletEnrichmentOf(await deps.wallet.accounts(row.id))),
+        toUserWireRow(row, walletEnrichmentOf(await deps.wallet.accounts(row.id)), row.rateCardName),
       ),
     );
     return c.json(listEnvelope(rows, page.total, query));

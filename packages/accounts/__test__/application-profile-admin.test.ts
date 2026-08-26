@@ -65,6 +65,19 @@ describe('adminListUsers', () => {
     expect(all.rows.map((r) => r.id)).toEqual([3, 2, 1]);
   });
 
+  it('回归(列表费率卡列显示—):行投影携带绑定费率卡名,与详情同口径', async () => {
+    const h = createTestHarness();
+    const card = h.store.seed.rateCard({ id: 7, name: '企业卡' });
+    h.store.seed.user({ id: 1, subject: 'bound@x.io', rateCardId: card.id });
+    h.store.seed.user({ id: 2, subject: 'free@x.io', rateCardId: null });
+
+    const page = await h.api.adminListUsers({ limit: 10 });
+    const bound = defined(page.rows.find((r) => r.id === 1), 'bound row');
+    const free = defined(page.rows.find((r) => r.id === 2), 'free row');
+    expect(bound.rateCardName).toBe('企业卡');
+    expect(free.rateCardName).toBeNull();
+  });
+
   it('排序白名单外的字段回落默认;非法分页回落缺省(policy 注入)', async () => {
     const h = createTestHarness();
     const r = await h.api.adminListUsers({
