@@ -23,8 +23,9 @@ describe('createMoneyFormatter', () => {
 
   it('formatMinor: 零位小数币种(JPY)不做小数放大', () => {
     const jpy = createMoneyFormatter({ locale: 'ja-JP', currency: 'JPY' });
-    // bun-native 单形态:Intl 为 JSC——JPY 符号是 U+00A5(node ICU 为 U+FFE5)
-    expect(jpy.formatMinor(123456n)).toBe('¥123,456');
+    // JPY 符号随 ICU 平台而异(macOS JSC=U+00A5 ¥,Linux JSC/node ICU=U+FFE5 ￥)——
+    // 本断言的契约是「零位小数币种不放大 + 千分位分组」,符号两种都收
+    expect(jpy.formatMinor(123456n)).toMatch(/^[¥￥]123,456$/);
   });
 
   it('currencyDisplay=code 输出币种代码(Intl 用不换行空格分隔)', () => {
