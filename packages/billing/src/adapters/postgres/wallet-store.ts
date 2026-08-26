@@ -178,6 +178,27 @@ export function createPostgresWalletStore(
         .where(and(eq(walletAccounts.kind, 'user'), eq(walletAccounts.userId, userId)));
       return rows as AccountSnapshot[];
     },
+    async conditionalReserve(conn, input) {
+      // 单语句原子门:守卫进 WHERE(口径单一真相处 domain/exposure GuardKind);
+      // 0 行 = 守卫未过(frozen/可用不足),调用方读快照分类。行锁持有到 commit——
+      // 快路径的串行窗口即本语句,与后续 insertAuthorization 同事务(deferred
+      // coherence 在 commit 统一校验 in_flight == Σ active authorizations)。
+      let guard = sql`(balance + credit_limit - in_flight >= ${input.amount}::numeric)`;
+      if (input.collectOverage) {
+        guard = sql`true`;
+      } else if (input.guardKind === 'cash') {
+        guard = sql`(balance - in_flight >= ${input.amount}::numeric)`;
+      }
+      const rows = await asDb(conn).execute<{ balance: string; credit_limit: string; in_flight: string }>(sql`
+        update wallet_accounts
+        set in_flight = in_flight + ${input.amount}::numeric, updated_at = clock_timestamp()
+        where id = ${input.accountId}::uuid and status = 'active' and ${guard}
+        returning balance::text, credit_limit::text, in_flight::text`);
+      const [row] = rows.rows;
+      if (row == null) return null;
+      return { balance: row.balance, creditLimit: row.credit_limit, inFlight: row.in_flight };
+    },
+
 
     // ---------- 冻结单 ----------
     async findAuthorization(conn, refType, refId) {

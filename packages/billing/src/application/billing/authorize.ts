@@ -117,18 +117,29 @@ export function createAuthorizeUseCase(env: BillingEnv) {
     if (!replayed) await env.assertCapacity?.();
     // eslint-disable-next-line max-lines-per-function -- 计费授权事务体:重放兜底分支,共享 fingerprint/限额中间量
     replayed ??= await store.transaction(async (tx) => {
-      // F4：每日限额是 SUM 口径，READ COMMITTED 看不见并发未提交行——按 user 串行化
-      await store.advisoryLockAuthorizeUser(tx, input.userId);
-
-      // 与并发首请求在 advisory lock 汇合后的唯一冲突兜底重放。
-      const concurrentExisting = await store.findByRequestId(tx, input.requestId);
-      if (replayOf(concurrentExisting)) return true;
-
+      // resolver 是纯配置读（key/用户订阅绑定），不依赖并发互斥——事务首执行，
+      // 移出串行区（快路径的串行窗口只剩 advisory[按需]+insert+资金门）。
       const source = await env.resolver.resolve(tx, {
         userId: input.userId,
         apiKeyId: input.apiKeyId ?? null,
         appId: input.appId ?? null,
       });
+
+      // F4：每日限额是 SUM 口径，READ COMMITTED 看不见并发未提交行——按 user 串行化。
+      // 2026-08-26 快路径增量：串行按需——仅限额配置存在时取 advisory（SUM 口径需要），
+      // 默认路径（限额全 NULL）跳过，同用户并发由钱包原子门（conditionalReserve）
+      // 单语句串行。订阅 reserve（tryReserveQuota）自身条件安全，probe 过期由
+      // 守卫输家干净回滚兜底。限额 NULL→设置 的配置瞬间可能漏判一次（非资损，落档）。
+      const needsSerialization =
+        source.userDailyLimit != null || source.keyDailyLimit != null;
+      if (needsSerialization) {
+        await store.advisoryLockAuthorizeUser(tx, input.userId);
+      }
+
+      // 与并发首请求在 advisory lock 汇合后的唯一冲突兜底重放（快路径无锁，
+      // 由 insertAuthorized 唯一约束兜底——本读退化为便宜的双查）。
+      const concurrentExisting = await store.findByRequestId(tx, input.requestId);
+      if (replayOf(concurrentExisting)) return true;
 
       // ---- 每日限额（已结算 + 在途 + 本次；重放排除自身请求防双计）----
       await assertDailyLimit(store, tx, {

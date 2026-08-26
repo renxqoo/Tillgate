@@ -129,3 +129,16 @@ worker 结算`，授权阶段只冻结不动余额；观察 tap 丢失由结算�
 - U6（管理读侧面）：plans 目录 CRUD/订阅管理列表/兑换批次管理/死信单笔复审——
   admin-api 消费的 facade 组与独立 `createRedeemBatchApi`；明文码生成器注入（不 import http）；
   死信 abandon 三路归还复用 U3 releaseAllReservations；规格见 MIGRATION-U6.md。
+
+## 增量：authorize 快路径（2026-08-26 定稿；F-2 根治——live-fire 红队压测发现）
+
+> 动机与方案全文见 IMPLEMENTATION.md「增量：authorize 快路径」。
+> 契约变化两条：① wallet.authorize 的资金门从「SELECT FOR UPDATE + 内存守卫
+> + 过账」三段改为**单语句原子条件占用**（守卫口径进 WHERE，锁窗口 =
+> UPDATE→commit）；② billing authorize 的 per-user advisory 串行**按需获取**
+> ——仅每日限额（user/key 任一）非 NULL 时取（SUM 口径需要），默认路径跳过。
+> 订阅 reserve（tryReserveQuota）与钱包门自身条件安全，probe 过期由守卫输家
+> 干净回滚兜底（语义等价）。不变量基线零变化：deferred coherence、恰好一次、
+> 幂等三段式、失败零扣费全保留（验收 = wallet-invariants/wallet-contract
+> real 测试 + live-fire 81/81）。
+

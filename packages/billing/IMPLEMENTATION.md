@@ -250,3 +250,77 @@ branches 85.04 / funcs 96.75 / lines 95.61（≥90/85/90/90）。
    / `stripeAmountFromMinorUnits` 取代 ×100/÷100 硬编码对（零小数币种
    amount 即主币种单位——统一 ×100 会实收 100 倍且回调核对对称通过、
    正常入账，账实一致但用户被多收）。providers/parseStripeEvent 同步接线。
+
+## 增量：authorize 快路径（2026-08-26 定稿，状态：已核销；F-2 资金层完成）
+
+> 级别：中（资金域并发一致性）。动机 = live-fire F-2：单用户钱包行串行 ×
+> 每请求持锁窗口 = 全部 authorize 事务（~14 语句）→ 单用户吞吐 ≈8/s，池耗尽
+> 跨用户 500。用户裁决：直接做 C2（原子条件更新），并发准入默认 8 备而不用，
+> 撤销立即生效语义保持（key 缓存方案废弃）。
+
+### 契约
+
+- **wallet 门原子化**（store 新动词 `conditionalReserve`，SQL 住 postgres adapter）：
+  `UPDATE wallet_accounts SET in_flight = in_flight + $amt WHERE id=$id AND status='active' AND <守卫> RETURNING …`
+  守卫三档（与 domain `assertCanDebit` 同口径，可用额表达式单一真相处 domain）：
+  信用 `balance+credit_limit-in_flight >= amt`；现金 `balance-in_flight >= amt`；
+  `collectOverage` 恒真（#over 专属，负余额只经结算补扣——既有限制不动）。
+  0 行 → 读一次分类（frozen/insufficient_balance|insufficient_cash）。
+  `SELECT FOR UPDATE` 与 `setInFlight` 从 authorize 路径消失；行锁窗口 = 门→commit。
+  coherence 全 DEFERRABLE（0059）→ 语句顺序自由，commit 时校验不变。
+- **advisory 按需串行**（billing authorize 事务重排）：
+  `needsSerialization = userDailyLimit != null || keyDailyLimit != null`；
+  true → 现状慢路径（advisory + 锁内 SUM 限额，F4 口径不变）；
+  false（默认）→ 跳过 advisory，resolver 前移事务首，同用户并发仅由钱包原子门
+  串行（2-3 语句窗口）。并发同 requestId 双写由 insertAuthorized 唯一约束兜底
+  （既有）；限额 NULL→设置 的配置瞬间 TOCTOU 漏判一次（非资损，落档接受）。
+- 不处理：settle/release/refund 的 post() 锁链（worker 侧低并发）；
+  #over 的 collectOverage 语义；C 端准入（默认 8 已裁决，如需另行立项）。
+
+### 并发/一致性预算
+
+- 快路径串行窗口：~14 语句 → 2-3 语句；单用户 authorize 吞吐 8/s → 40+/s 预期
+  （live-fire X8 重跑实测为准）。
+- 全部既有不变量测试必须原样通过：wallet-invariants（并发击穿 ≤ 余额/hold）、
+  wallet-contract（幂等三段式）、settlement-lifecycle、live-fire X1/X2/X6/X10。
+
+### 拆分
+
+| 文件 | 动作 |
+| --- | --- |
+| `domain/wallet/exposure.ts` | 可用额表达式单一真相（domain 常量 + 断言复用） |
+| `ports/wallet-store.ts` + postgres/in-memory adapter | `conditionalReserve` 新动词 |
+| `application/wallet/authorize.ts` | 事务体改原子门（幂等/重放/owner 校验不变） |
+| `application/billing/authorize.ts` | 事务重排 + needsSerialization 门 |
+| `__test__/wallet-invariants.real.test.ts` 等 | 适配 + 新增快路径吞吐基准 |
+
+### 裁决（用户裁决/默认裁决）
+
+1. 【用户裁决】直接做 C2；准入默认 8 备用；立即生效语义保持。
+2. 【默认裁决】订阅用户走快路径（tryReserveQuota 条件安全——其注释自证）。
+3. 【默认裁决】settle 侧锁链不动（非瓶颈，控范围）。
+
+### 测试口径
+
+- 单元：conditionalReserve 三档守卫/frozen/0 行分类（表驱动）；
+  needsSerialization 真值矩阵。
+- real：并发击穿（11×authorize(4) 余额 10）≤2 过 + in_flight 精确；**新增快路径
+  吞吐基准**（无限额 50 并发 authorize 总耗时 << 串行预期）；幂等重放全等。
+- live-fire 全量 81 用例回归 + X8 天花板对比数据。
+
+### 验收清单（2026-08-26 核销）
+
+- [x] 既有不变量 real 测试全绿（零语义漂移）——wallet-invariants 5/5（并发
+      击穿 ≤ 余额/hold、守恒、append-only）、wallet-contract 8/8（幂等三段式）、
+      settlement-lifecycle 4/4 + fastpath real 3/3
+- [x] 快路径吞吐基准——50 并发 authorize 墙钟 117ms（旧整事务串行基线
+      ~128ms/事务 → 串行预期 ~6.4s）：**~55×**，远超 4× 目标
+- [x] live-fire 81/81 全绿；X8 分层观测落档：单用户 200 瞬时并发在共享 dev
+      （网关池 40 × 6 实例 × 单 PG）成功数 0~39 随机器负载波动——**全链路
+      天花板已转移到池容量层**（F-2 剩余 = 方案矩阵 A 准入 / B pgbouncer /
+      E 容量，FINDINGS.md 挂账）；X2 预扣击穿防护、X7 积压关闸、X10 三不变量
+      在所有轮次 100% 通过（资金语义零漂移的端到端实证）
+- [x] 四门全绿——根 typecheck/lint/test/build（34/34/34/20 任务）；
+      billing 338 单测 + 20 real；装置修正：C2 后结算信号由长尾变瞬时脉冲，
+      高并发用例前需排空静默（live-fire X2/X8 已内置）
+

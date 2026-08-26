@@ -7,13 +7,13 @@ import { DefectError } from '@tillgate/errors';
 import { assertCommandFingerprint, commandFingerprint } from '../../domain/fingerprint.js';
 import type { FingerprintValue } from '../../domain/fingerprint.js';
 import { normalizeAmount } from '../../domain/money.js';
-import { Decimal, parsePositiveAmount, toStorage } from '../../domain/money.js';
+import { parsePositiveAmount, toStorage } from '../../domain/money.js';
 import { BillingErrors } from '../../domain/errors.js';
-import { assertCanDebit } from '../../domain/wallet/exposure.js';
+import { assertCanDebit, guardKindOf } from '../../domain/wallet/exposure.js';
 import type { AuthorizationSnapshot } from '../../domain/wallet/authorization.js';
 import type { WalletConn, WalletStore } from '../../ports/wallet-store.js';
 import { assertRefKey, resolveCurrency, type TxChannel } from './input.js';
-import { lockActiveAccounts, withTx } from './posting.js';
+import { withTx } from './posting.js';
 import type { WalletEnv } from './wallet.js';
 
 /** billing 授权域（#over 补扣的 refType 前提；U2 计价授权链同域） */
@@ -132,14 +132,8 @@ export function createAuthorizeUseCase(env: WalletEnv) {
     try {
       return await withTx(store, input.tx, async (tx) => {
         const accountId = await store.ensureUserAccount(tx, input.userId, currency);
-        const locked = await lockActiveAccounts(store, tx, [accountId]);
-        const account = locked.get(accountId);
-        if (account === undefined) {
-          throw new DefectError('authorize.account_lock_missing', 'billing.wallet_invariant');
-        }
-        if (input.collectOverage !== true) {
-          assertCanDebit(account, amount, input.userId, { allowCredit: input.allowCredit });
-        }
+        // 先插授权行:唯一约束是幂等的第一道闸(输家在 insert 即炸,事务回滚零副作用
+        // ——in-memory store 无回滚也安全);守卫在后,输了同样整体回滚。
         const authorizationId = await store.insertAuthorization(tx, {
           accountId,
           refType: input.refType,
@@ -149,11 +143,31 @@ export function createAuthorizeUseCase(env: WalletEnv) {
           memo: input.memo ?? null,
           authorizeFingerprint: fingerprint,
         });
-        await store.setInFlight(
-          tx,
+        // 原子资金门(2026-08-26 快路径):守卫(可用额口径/active)进 WHERE 的单语句
+        // 条件占用——行锁窗口 = 本语句→commit,同用户并发由本门串行(替代原
+        // SELECT FOR UPDATE + 内存守卫 + setInFlight 三段);coherence 全 DEFERRED,
+        // in_flight 与授权行的对账在 commit 统一校验,语句顺序自由。
+        const reserved = await store.conditionalReserve(tx, {
           accountId,
-          toStorage(new Decimal(account.inFlight).plus(amount)),
-        );
+          amount: toStorage(amount),
+          guardKind: guardKindOf({ allowCredit: input.allowCredit }),
+          collectOverage: input.collectOverage === true,
+        });
+        if (reserved == null) {
+          // 守卫输:读快照分类报错(冻结/可用不足)——错误口径复用域守卫,单一真相
+          const summaries = await store.userAccountSummaries(tx, input.userId);
+          const account = summaries.find((row) => row.id === accountId);
+          if (account == null) {
+            throw new DefectError('authorize.account_missing', 'billing.wallet_invariant');
+          }
+          if (account.status === 'frozen') {
+            throw BillingErrors.business('account_frozen', { accountId });
+          }
+          if (input.collectOverage !== true) {
+            assertCanDebit(account, amount, input.userId, { allowCredit: input.allowCredit });
+          }
+          throw new DefectError('authorize.gate_unclassified', 'billing.wallet_invariant');
+        }
         return {
           authorizationId,
           amount: normalizeAmount(input.amount),
