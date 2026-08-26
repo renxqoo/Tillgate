@@ -200,8 +200,12 @@ describe('auth-actions', () => {
     await expect(mod.requestTwoFactorCodeAction()).resolves.toEqual({
       challengeId: '11111111-1111-4111-8111-111111111111',
     });
-    await expect(mod.setTwoFactorAction(true, '11111111-1111-4111-8111-111111111111', '123456')).resolves.toEqual({});
-    await expect(mod.setTwoFactorAction(false, '11111111-1111-4111-8111-111111111111', '000000')).resolves.toEqual({ error: 'denied' });
+    await expect(
+      mod.setTwoFactorAction(true, '11111111-1111-4111-8111-111111111111', '123456'),
+    ).resolves.toEqual({});
+    await expect(
+      mod.setTwoFactorAction(false, '11111111-1111-4111-8111-111111111111', '000000'),
+    ).resolves.toEqual({ error: 'denied' });
   });
 
   it('两 FA action 网络失败回落：结构化 error 不崩溃（fetch 抛错路径）', async () => {
@@ -211,7 +215,11 @@ describe('auth-actions', () => {
     ]);
     const sent = await mod.requestTwoFactorCodeAction();
     expect(typeof sent.error).toBe('string');
-    const toggled = await mod.setTwoFactorAction(true, '11111111-1111-4111-8111-111111111111', '123456');
+    const toggled = await mod.setTwoFactorAction(
+      true,
+      '11111111-1111-4111-8111-111111111111',
+      '123456',
+    );
     expect(typeof toggled.error).toBe('string');
   });
 });
@@ -499,5 +507,78 @@ describe('cookies-actions（壳语言/主题 cookie 读写）', () => {
     const { mod } = await loadModule('../src/server/cookies-actions', []);
     await expect(mod.setValueToCookie('k', 'v', { maxAge: 10 })).resolves.toBeUndefined();
     await expect(mod.getValueFromCookie('k')).resolves.toBe('v');
+  });
+
+  describe('settings-actions（错误在 action 内翻译——Server Action 抛错会被 Next 脱敏）', () => {
+    const ITEM = {
+      key: 'smtp',
+      enabled: false,
+      configured: false,
+      config: { host: 'smtp.x' },
+      secretsSet: [],
+      rotatedAt: null,
+      updatedAt: null,
+      updatedByAdminId: null,
+    };
+
+    it('updateIntegrationAction：成功透传 {item} 且 PUT 路径/载荷正确', async () => {
+      const { mod, calls } = await loadModule('../src/server/settings-actions', [
+        { status: 200, body: ITEM },
+      ]);
+      const res = await mod.updateIntegrationAction('smtp', {
+        totpCode: '123456',
+        config: { host: 'smtp.x' },
+      });
+      expect(res).toEqual({ item: ITEM });
+      expect(last(calls)).toMatchObject({
+        method: 'PUT',
+        url: 'http://localhost:8082/v1/settings/integrations/smtp',
+        body: { totpCode: '123456', config: { host: 'smtp.x' } },
+      });
+    });
+
+    it('updateIntegrationAction：非 2xx 错误信封映射为 {error: message}', async () => {
+      const { mod } = await loadModule('../src/server/settings-actions', [
+        {
+          status: 403,
+          body: {
+            error: { code: 'admin.totp_stepup_required', message: 'TOTP verification required' },
+          },
+        },
+      ]);
+      await expect(mod.updateIntegrationAction('smtp', { totpCode: '0' })).resolves.toEqual({
+        error: 'TOTP verification required',
+      });
+    });
+
+    it('updateIntegrationAction：非 ApiError（网络层异常）兜底 saveFailed', async () => {
+      const { mod } = await loadModule('../src/server/settings-actions', [{ throwError: true }]);
+      await expect(mod.updateIntegrationAction('smtp', { totpCode: '0' })).resolves.toEqual({
+        error: 'saveFailed',
+      });
+    });
+
+    it('updateBillingTimezoneAction：成功 {ok:true}；失败 {error: 信封 message}', async () => {
+      const ok = await loadModule('../src/server/settings-actions', [{ status: 200, body: {} }]);
+      await expect(ok.mod.updateBillingTimezoneAction('Asia/Shanghai')).resolves.toEqual({
+        ok: true,
+      });
+      const bad = await loadModule('../src/server/settings-actions', [
+        { status: 422, body: { error: { code: 'x', message: 'bad timezone' } } },
+      ]);
+      await expect(bad.mod.updateBillingTimezoneAction('Mars/Olympus')).resolves.toEqual({
+        error: 'bad timezone',
+      });
+    });
+
+    it('getIntegrationSettingsAction：失败降级空列表不抛', async () => {
+      const { mod } = await loadModule('../src/server/settings-actions', [
+        { status: 503, body: { error: { code: 'x', message: 'down' } } },
+      ]);
+      await expect(mod.getIntegrationSettingsAction()).resolves.toEqual({
+        integrations: [],
+        error: 'unavailable',
+      });
+    });
   });
 });

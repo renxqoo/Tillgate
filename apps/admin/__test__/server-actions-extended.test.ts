@@ -31,6 +31,32 @@ afterEach(() => {
   vi.doUnmock('next-intl/server');
 });
 
+describe('admin-list.fetchRateCardOptions（选项拉取：降级不阻塞页面）', () => {
+  it('成功：行投影映射为 {id,name,coefficient}', async () => {
+    const { mod } = await loadModule('../src/server/admin-list', [
+      {
+        status: 200,
+        body: {
+          rows: [{ id: 1, name: '标准', coefficient: '1.000', description: null, status: 0 }],
+          total: 1,
+        },
+      },
+    ]);
+    await expect(mod.fetchRateCardOptions()).resolves.toEqual([
+      { id: 1, name: '标准', coefficient: '1.000' },
+    ]);
+  });
+
+  it('失败：降级空列表（信封缺失 rows 同样降级）', async () => {
+    const bad = await loadModule('../src/server/admin-list', [
+      { status: 503, body: { error: { code: 'x', message: 'down' } } },
+    ]);
+    await expect(bad.mod.fetchRateCardOptions()).resolves.toEqual([]);
+    const noRows = await loadModule('../src/server/admin-list', [{ status: 200, body: {} }]);
+    await expect(noRows.mod.fetchRateCardOptions()).resolves.toEqual([]);
+  });
+});
+
 describe('models-actions 覆盖面', () => {
   const createInput = {
     externalName: 'gpt-x',
