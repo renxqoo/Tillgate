@@ -110,9 +110,9 @@ function setup(sources: readonly CatalogSource[], fetchRate: number | 'fail' = 7
       fetchTimeoutMs: 10_000,
       fetch:
         fetchRate === 'fail'
-          ? ((async () => new Response('boom', { status: 500 })) as typeof fetch)
+          ? ((async () => new Response('boom', { status: 500 })))
           : ((async () =>
-              new Response(JSON.stringify({ rates: { CNY: fetchRate } }))) as typeof fetch),
+              new Response(JSON.stringify({ rates: { CNY: fetchRate } })))),
     },
   };
   const sourceDeps = { sources, cache, cacheTtlMs: 60_000 };

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 /**
  * inference 配置（机制/预算缺省值，DESIGN §4 词表；装配可整体或分组覆写）。

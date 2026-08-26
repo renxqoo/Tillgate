@@ -287,9 +287,9 @@ async function subscriptionFlow(
     rows: Array<{ quotaAmount: string; remainingAmount: string; renewPrice: string }>;
   };
   // 存储层 numeric 全精度串（v1 同形）——按 Decimal 归一后比较
-  expect(new Decimal(subs.rows[0]?.quotaAmount ?? 'x').toString()).toBe('10');
-  expect(new Decimal(subs.rows[0]?.remainingAmount ?? 'x').toString()).toBe('10');
-  expect(new Decimal(subs.rows[0]?.renewPrice ?? 'x').toString()).toBe('1');
+  expect(new Decimal(subs[0]?.quotaAmount ?? 'x').toString()).toBe('10');
+  expect(new Decimal(subs[0]?.remainingAmount ?? 'x').toString()).toBe('10');
+  expect(new Decimal(subs[0]?.renewPrice ?? 'x').toString()).toBe('1');
 }
 
 /** ── 钱包对账：流水含 gift?/redeem/topup/subscription 四域腿 + 余额分文不差 ── */
@@ -301,7 +301,7 @@ async function walletReconciliation(
   const statement = (await (await client('/v1/wallet/statement?limit=50', { token })).json()) as {
     rows: Array<{ refType: string }>;
   };
-  const refTypes = new Set(statement.rows.map((r) => r.refType));
+  const refTypes = new Set(statement.map((r) => r.refType));
   expect(refTypes.has('redeem')).toBe(true);
   expect(refTypes.has('topup')).toBe(true);
   expect(refTypes.has('subscription')).toBe(true);

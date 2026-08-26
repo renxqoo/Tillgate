@@ -194,7 +194,7 @@ export function createPostgresWalletStore(
         set in_flight = in_flight + ${input.amount}::numeric, updated_at = clock_timestamp()
         where id = ${input.accountId}::uuid and status = 'active' and ${guard}
         returning balance::text, credit_limit::text, in_flight::text`);
-      const [row] = rows.rows;
+      const [row] = rows;
       if (row == null) return null;
       return { balance: row.balance, creditLimit: row.credit_limit, inFlight: row.in_flight };
     },
@@ -331,7 +331,7 @@ export function createPostgresWalletStore(
 
     async databaseNow(conn) {
       const result = await asDb(conn).execute<{ now: string }>(sql`select now() as now`);
-      return new Date(String(result.rows[0]?.now));
+      return new Date(String(result[0]?.now));
     },
 
     // ---------- 流水（读侧） ----------
@@ -406,11 +406,13 @@ export function createPostgresWalletStore(
     isUniqueViolation: (error) => isUniqueViolation(error),
 
     async verifyInvariants(limit) {
-      const result = await db.execute<{
+      // bun-sql 会话的 execute 不透传行类型参数——出口处收窄到端口声明的行形
+      interface InvariantRow {
         kind: 'transaction_balance' | 'account_balance' | 'in_flight';
         key: string;
         detail: string;
-      }>(sql`
+      }
+      const result = await db.execute(sql`
         select * from (
           select 'transaction_balance'::text as kind,
                  t.id::text as key,
@@ -442,7 +444,7 @@ export function createPostgresWalletStore(
             select sum(a.amount) from wallet_authorizations a
             where a.account_id = ac.id and a.status = 'active'), 0)
         ) drifts limit ${limit}`);
-      return result.rows;
+      return result as InvariantRow[];
     },
   };
 }

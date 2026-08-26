@@ -104,6 +104,7 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
       'resolveLocale',
       'searchQuerySchema',
       'securityHeaders',
+    'serveApp',
       'socketAddressFromContext',
       'sortOrderSchema',
       'sortQuerySchema',

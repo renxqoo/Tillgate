@@ -1,7 +1,7 @@
 /**
  * 组织契约：详情/邀请/撤销/接受/成员限额修补（金额与 Key 同口径）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { isValidSpendLimitInput } from './shared.js';
 
 export const orgIdParamSchema = z.object({ id: z.coerce.number().int().positive() });

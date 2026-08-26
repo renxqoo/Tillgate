@@ -17,7 +17,7 @@ import {
 import { NumberField } from '@/components/number-field';
 import { useTranslations } from 'next-intl';
 import { Controller, type UseFormReturn } from 'react-hook-form';
-import { z } from 'zod';
+import * as z from 'zod';
 import { numericText } from '@/lib/forms';
 import type { ProviderOption } from '@tillgate/api-client';
 

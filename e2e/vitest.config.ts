@@ -6,6 +6,14 @@ import { defineConfig } from 'vitest/config';
 // - 从 apps/gateway 目录用其 vitest 执行（根脚本 test:e2e），配置经 -c 指向本文件。
 export default defineConfig({
   test: {
+    // bun-vitest 的 ssrTransform 会丢 zod v4 的 `export { z }` 再导出——
+    // node_modules 全量外部化,由 bun 运行时原生解析(源码转换不受影响)
+    server: {
+      deps: {
+        external: [/node_modules/],
+      },
+    },
+
     root: __dirname,
     include: ['gateway/*.test.ts', 'security/*.test.ts'],
     // *.real.test.ts（真上游，花钱）不进默认门禁——显式 -c vitest.real.config.ts 运行

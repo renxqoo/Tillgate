@@ -22,7 +22,7 @@ async function setup(c: any, tag: string, amount = '20') {
 
 async function zeroBills(c: any, userId: number) {
   const n = await c.db.execute(sql`select count(*)::int as n from billing_requests where user_id = ${userId}`);
-  eq(Number((n.rows[0] as any).n), 0, '零计费请求(未进计费管线)');
+  eq(Number((n[0] as any).n), 0, '零计费请求(未进计费管线)');
 }
 
 define('A1', '网关鉴权', '无 Authorization / Bearer 空 / 纯垃圾 token → 401', async (c) => {
@@ -199,7 +199,7 @@ define('A12', '网关鉴权', '消息数组畸形:空/缺 role/超长 content/10
   // 放行的(宽松 schema 是设计)必须精确计费;拒绝的零扣费——两者都不许悬挂
   await poll('billed count matches', async () => {
     const n = await c.db.execute(sql`select count(*)::int as n from usage_logs where user_id = ${s.u.id}`);
-    return Number((n.rows[0] as any).n) === ok200 ? n : null;
+    return Number((n[0] as any).n) === ok200 ? n : null;
   }, 25000);
   const w = await c.seed.wallet(c.db, s.u.id);
   ok(Number(w.in_flight) === 0, `in_flight ${w.in_flight}`);
@@ -229,7 +229,7 @@ define('A14', '网关鉴权', '伪造重复 x-request-id 两个请求 → 独立
   ok(r1.headers.get('x-request-id') !== r2.headers.get('x-request-id'), 'independent ids');
   await poll('two usage rows', async () => {
     const n = await c.db.execute(sql`select count(*)::int as n from usage_logs where user_id = ${s.u.id}`);
-    return Number((n.rows[0] as any).n) === 2 ? n : null;
+    return Number((n[0] as any).n) === 2 ? n : null;
   }, 20000);
 });
 
@@ -244,7 +244,7 @@ define('A15', '网关鉴权', 'SSRF:严格实例(8812)本地地址渠道必须�
   ok(r.status >= 400, `strict gateway blocks local upstream, got ${r.status}`);
   // 零扣费:guard 拒绝可在 authorize 前(无 billing 行)或 authorize 后(released)——两者皆干净
   const n = await c.db.execute(sql`select count(*)::int as n from usage_logs where user_id = ${s.u.id}`);
-  eq(Number((n.rows[0] as any).n), 0, 'zero usage rows');
+  eq(Number((n[0] as any).n), 0, 'zero usage rows');
   const w = await c.seed.wallet(c.db, s.u.id);
   ok(Number(w.in_flight) === 0, `in_flight ${w.in_flight}`);
 });

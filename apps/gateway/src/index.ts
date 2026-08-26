@@ -3,7 +3,7 @@
  * 信号注册（v1 index.ts 迁移；停机编排归 shutdown.ts + runtime）。
  * 配置快照日志：排查「以为配了其实默认」——密钥类只打长度不打值。
  */
-import { serve } from '@hono/node-server';
+import { serveApp } from '@tillgate/http';
 import { assertRedisReachable } from '@tillgate/runtime';
 import { loadGatewayConfig } from './config';
 import type { GatewayConfig } from './config';
@@ -58,7 +58,7 @@ async function main(): Promise<void> {
 
   const app = createGatewayApp(toAppDeps(assembly, config));
 
-  const server = serve({ fetch: app.fetch, port: config.port }, () => {
+  const server = serveApp(app, { port: config.port }, () => {
     logger.info(
       {
         port: config.port,

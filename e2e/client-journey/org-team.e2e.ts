@@ -117,8 +117,8 @@ async function orgDetailAndInvite(
       remainingAmount: string;
     }>;
   };
-  expect(orgs.rows).toHaveLength(1);
-  const orgRow = defined(orgs.rows[0], 'org row');
+  expect(orgs).toHaveLength(1);
+  const orgRow = defined(orgs[0], 'org row');
   expect(orgRow.orgId).toBe(input.orgId);
   expect(orgRow.role).toBe('owner');
   expect(orgRow.planName).toBe('e2e-team');
@@ -175,8 +175,8 @@ async function memberJoinsAndBindsKey(
   const memberOrgs = (await (await client('/v1/orgs', { token: member.token })).json()) as {
     rows: Array<{ orgId: number; subscriptionId: number | null; role: string }>;
   };
-  expect(memberOrgs.rows[0]?.role).toBe('member');
-  const orgSubId = memberOrgs.rows[0]?.subscriptionId;
+  expect(memberOrgs[0]?.role).toBe('member');
+  const orgSubId = memberOrgs[0]?.subscriptionId;
   expect(orgSubId).not.toBeNull();
   const memberKey = await client('/v1/keys', {
     method: 'POST',

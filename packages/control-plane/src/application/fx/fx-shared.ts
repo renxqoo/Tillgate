@@ -15,6 +15,9 @@ import {
 } from '../../domain/fx/fx-rates';
 import { controlPlaneErrors } from '../../errors';
 
+/** 可注入 fetch(bun 类型加宽了全局 fetch——注入面收窄为可调用视图) */
+export type FetchLike = (...args: Parameters<typeof fetch>) => Promise<Response>;
+
 export interface FxEnv {
   /** ECB/frankfurter 拉取地址（无 key 公共源） */
   readonly sourceUrl: string;
@@ -22,7 +25,7 @@ export interface FxEnv {
   readonly autoTtlMs: number;
   readonly fetchTimeoutMs: number;
   /** fetch 可注入（测试不打真 ECB） */
-  readonly fetch?: typeof fetch;
+  readonly fetch?: FetchLike;
   /** 时钟（测试注入；缺省真实时钟） */
   readonly now?: () => Date;
 }

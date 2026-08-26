@@ -1,4 +1,4 @@
-import { serve } from '@hono/node-server';
+import { serveApp } from '@tillgate/http';
 import { ping } from '@tillgate/db';
 import { loadAdminApiConfig } from './config';
 import { assembleAdminApi } from './assembly';
@@ -54,10 +54,10 @@ const app = createAdminApp({
   now: () => new Date(),
 });
 
-const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
+const server = serveApp(app, { port: config.port }, () => {
   assembly.logger.info(
     {
-      port: info.port,
+      port: config.port,
       auth: 'admin-session',
       cors: config.corsOrigins.length > 0 ? 'allowlist' : 'none',
     },

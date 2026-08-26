@@ -19,7 +19,7 @@ import { CpuIcon, Loader2Icon, PlusCircleIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useForm, type UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import * as z from 'zod';
 
 import { useActionResult } from '@/components/action-toast';
 import { ModelForm, type ModelFormValues, type WithBillingConfig } from './model-form';

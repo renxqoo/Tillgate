@@ -100,7 +100,6 @@ export async function assembleClientApi(
     poolMax: config.DB_POOL_MAX,
     idleTimeoutMillis: config.CLIENT_DB_IDLE_TIMEOUT_MS,
     connectionTimeoutMillis: config.CLIENT_DB_CONNECT_TIMEOUT_MS,
-    maxUses: config.CLIENT_DB_MAX_USES,
   });
 
   const redis = createRedisClient(

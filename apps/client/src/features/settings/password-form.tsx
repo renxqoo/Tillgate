@@ -4,7 +4,7 @@ import { KeyRoundIcon, Loader2Icon } from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
-import { z } from 'zod';
+import * as z from 'zod';
 
 import { Button, Field, FieldError, FieldGroup, FieldLabel, Input } from '@tillgate/ui';
 

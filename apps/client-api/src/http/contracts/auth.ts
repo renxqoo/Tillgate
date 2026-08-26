@@ -2,7 +2,7 @@
  * 认证契约：注册/登录（公开，两步验证码流）/ 验码 / 改密。
  * zod 只做协议形状（长度/格式/上界），密码强度策略在 identity 域单源校验。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const registerSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(255),

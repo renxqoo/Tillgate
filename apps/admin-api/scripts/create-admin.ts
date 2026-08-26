@@ -95,7 +95,6 @@ async function main(): Promise<void> {
     poolMax: 2,
     idleTimeoutMillis: 5_000,
     connectionTimeoutMillis: 5_000,
-    maxUses: 10_000,
   });
   const [roleRow] = await db
     .select({ id: rolesTable.id })

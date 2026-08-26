@@ -74,7 +74,7 @@ function setup() {
       sourceUrl: 'https://fx.example/latest',
       autoTtlMs: 4 * 60 * 60 * 1000,
       fetchTimeoutMs: 1000,
-      fetch: (async () => new Response(JSON.stringify({ rates: { CNY: 7.2 } }))) as typeof fetch,
+      fetch: (async () => new Response(JSON.stringify({ rates: { CNY: 7.2 } }))),
     },
     audit: audit.sink,
     auditTx: audit.txSink,

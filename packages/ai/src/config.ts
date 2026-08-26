@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import type { ProtocolAdapter } from './adapters/protocol-adapter';
 import type { UrlGuard } from './types';
 

@@ -5,13 +5,13 @@ import {
   smallint,
   timestamp,
   bigint,
-  jsonb,
-  text,
+    text,
   numeric,
   index,
   check,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { jsonb } from './jsonb.js';
 import { sql } from 'drizzle-orm';
 import { providers } from './providers.js';
 

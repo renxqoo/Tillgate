@@ -3,7 +3,7 @@
  * 请求 schema 引用 contracts/models.ts;响应 wire 形状在此声明
  * （与 presenters/models.ts 投影逐字段对齐——价格恒十进制字符串）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { modelsContracts } from '../contracts/models';
 import { idPathParam, listQuery, paginatedOf, okTrue, type OpenApiEndpoint } from './shared';
 import { channelTestResultSchema } from './control-plane';

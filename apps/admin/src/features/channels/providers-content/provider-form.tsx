@@ -16,7 +16,7 @@ import {
 } from '@tillgate/ui';
 import { useTranslations } from 'next-intl';
 import { Controller, type UseFormReturn } from 'react-hook-form';
-import { z } from 'zod';
+import * as z from 'zod';
 
 export interface ProviderFormValues {
   name: string;

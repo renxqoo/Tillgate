@@ -1,4 +1,4 @@
-import { serve } from '@hono/node-server';
+import { serveApp } from '@tillgate/http';
 import { closeDb, ping } from '@tillgate/db';
 import { createShutdown } from '@tillgate/runtime';
 import { loadTraceReceiverConfig } from './config';
@@ -22,11 +22,11 @@ const app = createReceiverApp({
   logger,
 });
 
-const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
+const server = serveApp(app, { port: config.port }, () => {
   batcher.start();
   logger.info(
     {
-      port: info.port,
+      port: config.port,
       auth: config.receiverToken ? 'token' : 'open(dev)',
       queueMax: config.queueMax,
       batchMax: config.batchMax,

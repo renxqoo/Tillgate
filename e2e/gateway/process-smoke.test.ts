@@ -1,7 +1,7 @@
 /**
  * 双形态进程冒烟（MIGRATION §7 验收项；trace-receiver 同款手动执行、记录在案；
- * 独立 smoke 配置不进默认门禁——bun 直跑脚本有 pg 预编译语句协议怪癖，vitest/Node 承载）：
- * bun 源码形态（bun src/index.ts）与 node 产物形态（node dist/index.js）各——
+ * 独立 smoke 配置不进默认门禁）：bun-native 单运行时——bun 源码形态（bun src/index.ts）
+ * 与 bun 产物形态（bun dist/index.js，Bun.serve + Bun.sql 不经 node 兼容层）各——
  *   探针 healthz/readyz/livez 200 → 静态 Key 鉴权 /v1/models 200/401 →
  *   一次非流式真请求 200（mock 上游全链计费）→ SIGTERM 优雅退出 → 结算对账。
  * 隔离 schema（世界装置）；结束 drop cascade——冒烟数据自清。
@@ -88,7 +88,7 @@ function findPid(port: number): Promise<number> {
 }
 
 it.skipIf(!hasEnv)(
-  '双形态进程冒烟：bun 源码 / node 产物 → 探针 + 鉴权 + 真请求 + SIGTERM + 对账',
+  '双形态进程冒烟：bun 源码 / bun 产物 → 探针 + 鉴权 + 真请求 + SIGTERM + 对账',
   { timeout: 180_000, sequential: true },
   async () => {
     const world = await setupE2EWorld();
@@ -96,7 +96,7 @@ it.skipIf(!hasEnv)(
     const subject = `smoke-${randomUUID().slice(0, 8)}`;
     const r = await world.db.execute(sql`
       insert into users (issuer, subject, identity_provider) values ('smoke', ${subject}, 'local') returning id`);
-    const userId = Number((r.rows[0] as { id: string | number }).id);
+    const userId = Number((r as unknown as Array<{ id: string | number }>)[0]?.id);
     await world.db.execute(sql`
       insert into api_keys (key_hash, key_preview, user_id, name)
       values (${createHash('sha256').update(raw).digest('hex')}, 'sk_…', ${userId}, 'smoke')`);
@@ -170,8 +170,8 @@ it.skipIf(!hasEnv)(
       const bills = await world.db.execute<{ status: string }>(
         sql`select status from billing_requests where user_id = ${userId}`,
       );
-      console.log(`${form} 冒烟账单：`, bills.rows.map((b) => b.status).join(','));
-      expect(bills.rows.every((b) => b.status === 'settled')).toBe(true);
+      console.log(`${form} 冒烟账单：`, bills.map((b) => b.status).join(','));
+      expect(bills.every((b: { status: string }) => b.status === 'settled')).toBe(true);
     };
 
     try {
@@ -188,8 +188,8 @@ it.skipIf(!hasEnv)(
         );
       });
       await smokeForm({
-        form: 'node 产物形态',
-        command: 'node',
+        form: 'bun 产物形态',
+        command: 'bun',
         args: ['dist/index.js'],
         port: 18_082,
       });

@@ -33,7 +33,7 @@ async function settleOf(c: any, reqId: string) {
 async function latestBill(c: any, userId: number) {
   const r = await c.db.execute(sql`
     select request_id, status from billing_requests where user_id = ${userId} order by created_at desc limit 1`);
-  return (r.rows[0] as any) ?? null;
+  return (r[0] as any) ?? null;
 }
 
 define('B1', '计费·薅羊毛', '上游谎报 usage=0 但内容已交付 → 按估算计费防白嫖,终态干净', async (c) => {
@@ -131,7 +131,7 @@ define('B7', '计费·薅羊毛', '非流式客户端早断 → 至多 1 条账�
     return row != null && ['settled', 'released', 'dead'].includes(row.status) ? row : null;
   }, 25000);
   const n = await c.db.execute(sql`select count(*)::int as n from usage_logs where user_id = ${u.id}`);
-  ok(Number((n.rows[0] as any).n) <= 1, 'at most one usage row');
+  ok(Number((n[0] as any).n) <= 1, 'at most one usage row');
   await poll('in_flight drain', async () => {
     const w = await c.seed.wallet(c.db, u.id);
     return Number(w.in_flight) === 0 ? w : null;
@@ -165,7 +165,7 @@ define('B9', '计费·薅羊毛', '用户日限额小于预扣估算 → 402 整
   });
   eq(r.status, 402, `daily limit reject, got ${r.status} ${r.text.slice(0, 120)}`);
   const n = await c.db.execute(sql`select count(*)::int as n from billing_requests where user_id = ${u.id}`);
-  eq(Number((n.rows[0] as any).n), 0, 'zero billing rows');
+  eq(Number((n[0] as any).n), 0, 'zero billing rows');
   await c.db.execute(sql`update users set daily_spend_limit = null where id = ${u.id}`);
 });
 
@@ -178,7 +178,7 @@ define('B10', '计费·薅羊毛', 'Key 日限额 → 402 整单拒绝零扣费'
   });
   eq(r.status, 402, `key daily limit, got ${r.status}`);
   const n = await c.db.execute(sql`select count(*)::int as n from billing_requests where user_id = ${u.id}`);
-  eq(Number((n.rows[0] as any).n), 0, 'zero billing rows');
+  eq(Number((n[0] as any).n), 0, 'zero billing rows');
 });
 
 define('B11', '计费·薅羊毛', '上游重试幂等:同 idempotency-key 重发不双花,最终失败零扣费', async (c) => {

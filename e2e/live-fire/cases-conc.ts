@@ -39,7 +39,7 @@ async function awaitBacklogClear(c: any, timeoutMs = 45000) {
   await poll('backlog clear', async () => {
     const r = await c.db.execute(sql`
       select count(*)::int as n from billing_requests where status in ('settlement_pending','retry_wait','processing')`);
-    return Number((r.rows[0] as any).n) === 0 ? true : null;
+    return Number((r[0] as any).n) === 0 ? true : null;
   }, timeoutMs, 500);
 }
 
@@ -51,8 +51,8 @@ async function waitUserQuiet(c: any, userId: number, expectUsage: number, timeou
       select count(*)::int as total, count(*) filter (where status in ('settled','released','dead'))::int as terminal
       from billing_requests where user_id = ${userId}`);
     const w = await c.seed.wallet(c.db, userId);
-    const u = usage.rows[0] as any;
-    const b = bills.rows[0] as any;
+    const u = usage[0] as any;
+    const b = bills[0] as any;
     if (Number(u.n) === expectUsage && Number(b.terminal) === Number(b.total) && Number(w.in_flight) === 0) {
       return { usageCount: Number(u.n), usageTotal: String(u.total), billCount: Number(b.total), balance: w.balance };
     }
@@ -64,7 +64,8 @@ define('X11', '超级并发', '多用户高并发基准:40 用户 × 5 = 200 同
   await awaitBacklogClear(c);
   await sleep(500);
   const users: Array<{ u: any; key: string }> = [];
-  for (let i = 0; i < 40; i++) users.push(await setup(c, `x11-${i}`, '5'));
+  const X11_USERS = Number(process.env.LF_X11_USERS ?? 40);
+  for (let i = 0; i < X11_USERS; i++) users.push(await setup(c, `x11-${i}`, '5'));
   const t0 = Date.now();
   const jobs: Promise<number>[] = [];
   for (const s of users) {
@@ -83,8 +84,8 @@ define('X11', '超级并发', '多用户高并发基准:40 用户 × 5 = 200 同
   const ok200 = statuses.filter((x) => x === 200).length;
   const errors: Record<number, number> = {};
   for (const st of statuses) if (st !== 200) errors[st] = (errors[st] ?? 0) + 1;
-  console.log(`    [x11] 200 并发(40用户×5)墙钟 ${wall}ms: 成功 ${ok200}/200,非200=${JSON.stringify(errors)}`);
-  eq(ok200, 200, '多用户 200 并发全部成功(高并发主场景)');
+  console.log(`    [x11] ${X11_USERS * 5} 并发(${X11_USERS}用户×5)墙钟 ${wall}ms: 成功 ${ok200}/${X11_USERS * 5},非200=${JSON.stringify(errors)}`);
+  eq(ok200, X11_USERS * 5, '多用户并发全部成功(高并发主场景)');
   for (const s of users) {
     const q = await waitUserQuiet(c, s.u.id, 5, 90000);
     eq(q.usageCount, 5, 'each user 5 bills');
@@ -268,11 +269,11 @@ define('X7', '超级并发', 'worker 停摆 + SQL 造积压 → 准入关闸(fai
   await poll('settled after resume', async () => {
     const r = await c.db.execute(sql`
       select count(*)::int as n from billing_requests where user_id = ${s.u.id} and status in ('settlement_pending','retry_wait','processing','authorized','in_flight')`);
-    return Number((r.rows[0] as any).n) === 0 ? true : null;
+    return Number((r[0] as any).n) === 0 ? true : null;
   }, 60000, 500);
   const usage = await c.db.execute(sql`
     select count(*)::int as n, coalesce(sum(amount),0)::text as total from usage_logs where user_id = ${s.u.id}`);
-  const u = usage.rows[0] as any;
+  const u = usage[0] as any;
   eqDec(String(u.total), new Decimal('0.000546').times(Number(u.n)).toString(), 'exact per settled');
   const w = await c.seed.wallet(c.db, s.u.id);
   ok(Number(w.in_flight) === 0, 'in_flight drained');
@@ -284,19 +285,19 @@ define('X10', '超级并发', '终极对账:三不变量(腿平衡/余额=末腿
   const bad1 = await c.db.execute(sql`
     select l.transaction_id, sum(l.amount)::text as s from wallet_legs l
     group by l.transaction_id having sum(l.amount) <> 0`);
-  eq(bad1.rows.length, 0, '腿平衡 Σlegs=0 per transaction');
+  eq(bad1.length, 0, '腿平衡 Σlegs=0 per transaction');
   // ② 账户余额 = 最后一条腿 balance_after
   const bad2 = await c.db.execute(sql`
     select a.id, a.balance::text from wallet_accounts a
     join lateral (select balance_after from wallet_legs l where l.account_id = a.id order by l.id desc limit 1) last on true
     where a.balance <> last.balance_after`);
-  eq(bad2.rows.length, 0, 'balance == last leg balance_after');
+  eq(bad2.length, 0, 'balance == last leg balance_after');
   // ③ in_flight = Σ active authorizations
   const bad3 = await c.db.execute(sql`
     select a.id from wallet_accounts a
     left join (select account_id, sum(amount) as s from wallet_authorizations where status = 'active' group by account_id) x on x.account_id = a.id
     where a.in_flight <> coalesce(x.s, 0)`);
-  eq(bad3.rows.length, 0, 'in_flight == Σ active authorizations');
+  eq(bad3.length, 0, 'in_flight == Σ active authorizations');
   // ④ 每个测试用户: balance == credited(topup/gift) − Σusage_logs
   const bad4 = await c.db.execute(sql`
     select u.id,
@@ -305,9 +306,9 @@ define('X10', '超级并发', '终极对账:三不变量(腿平衡/余额=末腿
       (select coalesce(sum(amount),0) from usage_logs where user_id=u.id and status=0)::text as used,
       (select balance from wallet_accounts a3 where a3.user_id=u.id limit 1)::text as bal
     from users u where u.issuer='rt-fire' and exists (select 1 from wallet_accounts a where a.user_id=u.id)`);
-  for (const row of bad4.rows as any[]) {
+  for (const row of bad4 as any[]) {
     const expect = new Decimal(row.credited).minus(row.used);
     ok(new Decimal(row.bal).eq(expect), `user ${row.id}: balance ${row.bal} == credited ${row.credited} − used ${row.used}`);
   }
-  ok(bad4.rows.length >= 10, `核验了 ${bad4.rows.length} 个测试用户钱包`);
+  ok(bad4.length >= 10, `核验了 ${bad4.length} 个测试用户钱包`);
 });

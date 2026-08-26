@@ -3,7 +3,7 @@
  * ops-orders}.ts 契约面）。请求 schema 引用 contracts/{billing-admin,subscriptions}.ts;
  * 响应 wire 形状在此声明（与 presenters/billing.ts 投影逐字段对齐——金额恒十进制字符串）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { plansContracts, redeemContracts, reviewContracts } from '../contracts/billing-admin';
 import { subscriptionsContracts } from '../contracts/subscriptions';
 import {

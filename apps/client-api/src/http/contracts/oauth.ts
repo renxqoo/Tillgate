@@ -1,7 +1,7 @@
 /**
  * OAuth 契约：provider 路径参数词表（github/google）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const providerParamSchema = z.object({
   provider: z.enum(['github', 'google']),

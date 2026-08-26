@@ -176,7 +176,6 @@ function realHarness(db: Db): TestHarness {
       poolMax: 8,
       idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 5_000,
-      maxUses: 10_000,
     });
     // 专用测试库:重建 public schema 后装账号域 fixture
     await db.execute(sql`drop schema public cascade`);

@@ -1,9 +1,9 @@
+import { jsonb } from './jsonb.js';
 import {
   bigint,
   bigserial,
   index,
-  jsonb,
-  numeric,
+    numeric,
   pgTable,
   timestamp,
   varchar,

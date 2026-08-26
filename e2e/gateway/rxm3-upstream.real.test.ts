@@ -88,7 +88,7 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
       select p.base_url, p.protocol, p.vendor, c.api_key_enc
       from channels c join providers p on p.id = c.provider_id
       where c.id = 2`);
-    const channel = defined(row.rows[0], 'dev channel row');
+    const channel = defined(row[0], 'dev channel row');
     await retargetUpstream(world, {
       baseUrl: channel.base_url,
       protocol: channel.protocol,
@@ -209,12 +209,12 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
     const usage = await world.db.execute<{ sum: string | null }>(
       sql`select sum(amount)::text as sum from usage_logs where user_id = ${userId}`,
     );
-    const expectedBalance = new Decimal(FUND).minus(defined(usage.rows[0], 'usage sum').sum ?? '0');
+    const expectedBalance = new Decimal(FUND).minus(defined(usage[0], 'usage sum').sum ?? '0');
     expect(new Decimal(walletState.balance).eq(expectedBalance)).toBe(true);
     expect(new Decimal(walletState.inFlight).eq('0')).toBe(true);
     // 最多亏损边界：余额不为深度负（单请求级 §4 超额以内）
     console.log(
-      `③ 结算后：余额 ${walletState.balance}（亏损深度 ${new Decimal(FUND).minus(walletState.balance).toString()}）在途 ${walletState.inFlight} Σ实扣 ${defined(usage.rows[0], 'usage sum').sum}`,
+      `③ 结算后：余额 ${walletState.balance}（亏损深度 ${new Decimal(FUND).minus(walletState.balance).toString()}）在途 ${walletState.inFlight} Σ实扣 ${defined(usage[0], 'usage sum').sum}`,
     );
     expect(new Decimal(walletState.balance).gte('-0.005')).toBe(true); // 最多亏损 ≤ 单笔级超额
   }, 180_000);
@@ -259,8 +259,8 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
       const usage = await world.db.execute<{ sum: string | null; rows: string }>(
         sql`select sum(amount)::text as sum, count(*)::text as rows from usage_logs where user_id = ${peer.userId}`,
       );
-      const usageRow = defined(usage.rows[0], 'usage row');
-      expect(usageRow.rows).toBe(String(userOk)); // 计量行数与请求一致（不错记他用户）
+      const usageRow = defined(usage[0], 'usage row');
+      expect(usageRow).toBe(String(userOk)); // 计量行数与请求一致（不错记他用户）
       const walletState = await keys.walletOf(peer.userId);
       // 分毫对账：余额 = 充值 − Σ本用户实扣；在途归零
       expect(

@@ -2,7 +2,7 @@
  * 管理员管理契约（动态 RBAC——docs/admin-rbac-dynamic;角色经 roleId FK,词表在 roles 表）。
  * 密码强度策略单源在 identity（credentials.register 内校验,契约层不重复）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const adminsContracts = {
   /** 创建：email + 初始密码 + 角色 FK（邀请制语义——初始密码由超管线下传递） */

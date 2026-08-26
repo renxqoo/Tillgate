@@ -11,7 +11,11 @@
  *     直连配 >0 = 恢复可伪造）属于部署错误，.env.example 有明确注释。
  */
 import type { Context } from 'hono';
-import { getConnInfo } from '@hono/node-server/conninfo';
+
+/** Bun.serve 注入 env.server 的最小结构面（requestIP 取不可伪造的 socket 对端） */
+interface ServeEnv {
+  server?: { requestIP(request: Request): { address: string } | null };
+}
 
 export interface TrustedClientIpInput {
   headers: Headers;
@@ -50,14 +54,15 @@ export function trustedClientIp(input: TrustedClientIpInput): string {
 /** 从请求上下文取不可伪造的 socket 对端地址；无连接信息（app.request 测试等）→ null */
 export function socketAddressFromContext(c: Context): string | null {
   try {
-    return getConnInfo(c).remote?.address ?? null;
+    const server = (c.env as ServeEnv | undefined)?.server;
+    return server?.requestIP(c.req.raw)?.address ?? null;
   } catch {
     return null;
   }
 }
 
 /**
- * 从 Hono 上下文提取客户端 IP（@hono/node-server 部署形态）。
+ * 从 Hono 上下文提取客户端 IP（Bun.serve 部署形态——serveApp 注入 env.server）。
  * config 只需含 trustedProxyHops。
  */
 export function clientIpFromContext(c: Context, config: { trustedProxyHops: number }): string {

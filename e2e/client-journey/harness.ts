@@ -430,7 +430,7 @@ export async function seedPlan(
         values (${name}, 'subscription', 9, '1', 30, '10', ${allowSeats}, 0)
         returning id`,
   );
-  const rows = result.rows as Array<{ id: number | string }>;
+  const rows = result as Array<{ id: number | string }>;
   const id = Number(rows[0]?.id);
   if (!Number.isInteger(id) || id <= 0) throw new Error('plan seed failed');
   return id;

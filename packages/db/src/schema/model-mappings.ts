@@ -6,12 +6,12 @@ import {
   smallint,
   timestamp,
   bigint,
-  jsonb,
-  index,
+    index,
   uniqueIndex,
   numeric,
   boolean,
 } from 'drizzle-orm/pg-core';
+import { jsonb } from './jsonb.js';
 import { sql } from 'drizzle-orm';
 import { channels } from './channels.js';
 

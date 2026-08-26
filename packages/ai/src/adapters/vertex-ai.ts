@@ -11,6 +11,9 @@ import { geminiUpstreamToCanonicalStream } from '../protocol/gemini-stream';
 import { tableOrFallback } from '../errors/fallback';
 import { GEMINI_STATUS_KINDS } from './gemini';
 
+/** 可注入 fetch(bun 类型加宽了全局 fetch——注入面收窄为可调用视图) */
+type FetchLike = (...args: Parameters<typeof fetch>) => Promise<Response>;
+
 /**
  * Google Vertex AI 适配器（protocol='vertex-ai'）。
  *
@@ -38,7 +41,7 @@ export class VertexAiAdapter implements ProtocolAdapter {
   private tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
   /** token 交换的 fetch 注入点（测试替身用；缺省全局 fetch） */
-  constructor(private readonly fetchImpl: typeof fetch = fetch) {}
+  constructor(private readonly fetchImpl: FetchLike = fetch) {}
 
   private parseSa(apiKey: string): ServiceAccountKey | null {
     try {

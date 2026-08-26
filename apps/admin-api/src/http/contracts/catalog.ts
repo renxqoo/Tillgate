@@ -2,7 +2,7 @@
  * 目录域契约（v1 catalog.ts zod 面平移）。
  * 导入价格必填（提交即确认——目录价只展示不自动带入;防 0 卖亏钱）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { nonNegativeMoneyString } from './common';
 import { AdminErrors } from '../error-face';
 

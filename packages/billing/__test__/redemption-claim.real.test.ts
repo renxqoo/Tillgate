@@ -55,7 +55,6 @@ create table redeem_codes (
       poolMax: 3,
       idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 3_000,
-      maxUses: 1_000,
     });
     await db.execute(sql.raw(`drop schema if exists ${schemaName} cascade`));
     await db.execute(sql.raw(`create schema ${schemaName}`));

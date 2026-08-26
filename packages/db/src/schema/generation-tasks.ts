@@ -5,11 +5,11 @@ import {
   timestamp,
   uuid,
   varchar,
-  jsonb,
-  numeric,
+    numeric,
   bigint,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { jsonb } from './jsonb.js';
 import { sql } from 'drizzle-orm';
 import { users } from './users.js';
 import { apiKeys } from './api-keys.js';

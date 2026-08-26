@@ -169,7 +169,6 @@ export async function pgReady(): Promise<boolean> {
     poolMax: 1,
     idleTimeoutMillis: 5_000,
     connectionTimeoutMillis: 3_000,
-    maxUses: 10,
   });
   try {
     await ping(probe);

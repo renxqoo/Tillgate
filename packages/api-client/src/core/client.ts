@@ -12,6 +12,9 @@
 import { ApiError } from './api-error';
 import { buildListQuery, type ListFetchOptions, type Paginated } from './pagination';
 
+/** 可注入 fetch(bun 类型加宽了全局 fetch——注入面收窄为可调用视图) */
+type FetchLike = (...args: Parameters<typeof fetch>) => Promise<Response>;
+
 export interface ApiFetchOptions extends Omit<RequestInit, 'body' | 'headers'> {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT';
   body?: unknown;
@@ -120,8 +123,7 @@ function toApiError(status: number, data: unknown): ApiError {
 
 export function createHttpClient(options: HttpClientOptions): HttpClient {
   const { baseUrl } = options;
-  const doFetch: typeof globalThis.fetch =
-    options.fetch ?? ((input, init) => globalThis.fetch(input, init));
+  const doFetch: FetchLike = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
 
   async function request<T>(path: string, opts: ApiFetchOptions = {}): Promise<T> {
     const { method = 'GET', body, bearerToken, revalidate, headers: extraHeaders, ...rest } = opts;

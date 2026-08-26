@@ -81,7 +81,6 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     poolMax: config.dbPoolMax,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
-    maxUses: 1_000,
   });
   const redis = createRedisClient(config.redisUrl, {
     serviceName: 'gateway',

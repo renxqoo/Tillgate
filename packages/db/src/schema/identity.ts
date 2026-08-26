@@ -1,3 +1,4 @@
+import { jsonb } from './jsonb.js';
 import { sql } from 'drizzle-orm';
 import {
   bigint,
@@ -5,8 +6,7 @@ import {
   check,
   index,
   integer,
-  jsonb,
-  pgTable,
+    pgTable,
   primaryKey,
   text,
   timestamp,

@@ -7,10 +7,10 @@ import {
   uuid,
   varchar,
   numeric,
-  jsonb,
-  bigint,
+    bigint,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { jsonb } from './jsonb.js';
 import { sql } from 'drizzle-orm';
 import { ledgerOperations } from './ledger-operations.js';
 import { users } from './users.js';

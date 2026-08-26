@@ -20,7 +20,6 @@ beforeAll(async () => {
     poolMax: 2,
     idleTimeoutMillis: 5_000,
     connectionTimeoutMillis: 3_000,
-    maxUses: 100,
   });
   try {
     await ping(candidate);

@@ -10,9 +10,9 @@
     "start": "bun x next start -p 3001",
     "typecheck": "bun x tsc --noEmit",
     "lint": "bun x oxlint",
-    "test": "bun x vitest run",
-    "test:watch": "bun x vitest",
-    "test:coverage": "bun x vitest run --coverage"
+    "test": "bun x --bun vitest run",
+    "test:watch": "bun x --bun vitest",
+    "test:coverage": "bun x --bun vitest run --coverage"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.7.1",

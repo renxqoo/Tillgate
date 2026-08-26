@@ -39,7 +39,7 @@ async function waitForListRow(
 ): Promise<TraceListRow[]> {
   const deadline = Date.now() + deadlineMs;
   for (;;) {
-    const rows = (await traces.recent({ limit: 30 })).rows.filter((r) => r.requestId === requestId);
+    const rows = (await traces.recent({ limit: 30 })).filter((r) => r.requestId === requestId);
     if (rows.length > 0 || Date.now() > deadline) return rows;
     await sleep(1_000);
   }
@@ -99,7 +99,7 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
     let row: TraceListRow | undefined;
     for (;;) {
       const recent = await traces.recent({ limit: 20 });
-      row = recent.rows.find((r) => r.requestId === requestId);
+      row = recent.find((r) => r.requestId === requestId);
       if (row || Date.now() > deadline) break;
       await sleep(1_000);
     }

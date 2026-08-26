@@ -13,7 +13,7 @@ import { createWalletApi } from '../src/application/wallet/wallet.js';
 import type { WalletStore } from '../src/ports/wallet-store.js';
 
 const url = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
-const DB_POOL = { poolMax: 20, idleTimeoutMillis: 10_000, connectionTimeoutMillis: 5_000, maxUses: 10_000 };
+const DB_POOL = { poolMax: 20, idleTimeoutMillis: 10_000, connectionTimeoutMillis: 5_000 };
 const RETRY = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 };
 const GUARDS = {
   refTypes: ['billing', 'topup', 'admin', 'test'],

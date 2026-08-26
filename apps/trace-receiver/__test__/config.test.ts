@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
+import * as z from 'zod';
 import { loadTraceReceiverConfig } from '../src/config';
 
 /**
@@ -32,7 +32,6 @@ describe('缺省值(开发内网最小配置)', () => {
         poolMax: 10,
         idleTimeoutMillis: 30_000,
         connectionTimeoutMillis: 5_000,
-        maxUses: 1_000,
       },
     });
   });

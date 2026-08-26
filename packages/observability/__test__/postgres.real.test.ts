@@ -40,7 +40,6 @@ beforeAll(async () => {
       poolMax: 5,
       idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 3_000,
-      maxUses: 10_000,
     });
     await candidate.execute(sql`select 1`);
     db = candidate;
@@ -239,7 +238,7 @@ describe('trace 分区维护(真 PG)', () => {
     const left = await db.execute<{ relname: string }>(
       sql`select relname from pg_class where relname = ${`trace_spans_p${oldDay}`}`,
     );
-    expect(left.rows).toHaveLength(0);
+    expect(left).toHaveLength(0);
     expect((await listTracePartitionDays(db)).length).toBeGreaterThan(0);
   });
 });
@@ -268,7 +267,7 @@ describe('audit(真 PG)', () => {
     const gone = await db.execute<{ n: string }>(
       sql`select count(*)::text as n from audit_logs where action = ${rollbackAction}`,
     );
-    expect(defined(gone.rows[0], 'gone.rows[0]').n).toBe('0');
+    expect(defined(gone[0], 'gone[0]').n).toBe('0');
 
     await runTx(
       db,
@@ -467,7 +466,7 @@ describe('request_logs(真 PG)', () => {
     const current = await db.execute<{ name: string }>(
       sql`select to_char(date_trunc('month', now()), 'YYYY_MM') as name`,
     );
-    const expected = `request_logs_${defined(current.rows[0], 'current.rows[0]').name}`;
+    const expected = `request_logs_${defined(current[0], 'current[0]').name}`;
     expect(result.created.concat(await existingPartitions())).toContain(expected);
     expect(result.dropped).toEqual([]); // 大保留窗:不清理
   });
@@ -481,7 +480,7 @@ async function existingPartitions(): Promise<string[]> {
     join pg_class c on c.oid = i.inhrelid
     where p.relname = 'request_logs'
   `);
-  return result.rows.map((r) => r.relname);
+  return result.map((r) => r.relname);
 }
 
 describe('createObservability facade(真 PG)', () => {

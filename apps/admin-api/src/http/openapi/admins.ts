@@ -2,7 +2,7 @@
  * 管理员管理域 OpenAPI registry（routes/admins.ts 的契约面——RBAC admins 域,
  * super_admin 专属）。请求 schema 引用 contracts/admins.ts;响应 wire 形状在此声明。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { adminsContracts } from '../contracts/admins';
 import { idPathParam, listQuery, paginatedOf, type OpenApiEndpoint } from './shared';
 

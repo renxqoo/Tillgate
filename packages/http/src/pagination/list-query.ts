@@ -3,7 +3,7 @@
  * drizzle 耦合半边（searchCondition/resolveOrderBy/buildList/countAll 及白名单拒绝语义）
  * 不随 http 迁移——归宿由首个列表端点消费者迁移单元裁决（ADR-0002 D2、IMPLEMENTATION C3）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { paginationQuerySchema } from './page';
 
 export const sortOrderSchema = z.enum(['asc', 'desc']).default('desc');

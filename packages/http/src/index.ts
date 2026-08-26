@@ -48,13 +48,14 @@ export {
 // ---- 幂等 ----
 export { operationId } from './idempotency/operation-id';
 
-// ---- 网络：可信代理感知的客户端 IP ----
+// ---- 网络：可信代理感知的客户端 IP + Bun 原生服务适配 ----
 export {
   trustedClientIp,
   socketAddressFromContext,
   clientIpFromContext,
   type TrustedClientIpInput,
 } from './network/trusted-client-ip';
+export { serveApp, type AppServer, type ServeAppOptions } from './network/serve-app';
 
 // ---- 请求上下文 ----
 export { requestIdMiddleware } from './request-context/request-id';

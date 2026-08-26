@@ -23,9 +23,9 @@
     "build": "rm -rf dist && bun build src/index.ts src/next/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
     "typecheck": "bun x tsc --noEmit",
     "lint": "bun x oxlint",
-    "test": "bun x vitest run --passWithNoTests",
-    "test:watch": "bun x vitest",
-    "test:coverage": "bun x vitest run --coverage",
+    "test": "bun x --bun vitest run --passWithNoTests",
+    "test:watch": "bun x --bun vitest",
+    "test:coverage": "bun x --bun vitest run --coverage",
     "generate:dto": "bun scripts/generate-dto.ts"
   },
   "devDependencies": {

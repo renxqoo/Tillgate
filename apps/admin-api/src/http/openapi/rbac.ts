@@ -1,7 +1,7 @@
 /**
  * 动态 RBAC OpenAPI registry（routes/{roles,permissions}.ts 契约面——docs/admin-rbac-dynamic）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { rbacContracts } from '../contracts/rbac';
 import { idPathParam, listQuery, paginatedOf, type OpenApiEndpoint } from './shared';
 

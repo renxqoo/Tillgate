@@ -99,10 +99,12 @@ async function replayMigrations(db: Db, schema: string): Promise<void> {
 }
 
 function pgErrorCode(error: unknown): string | undefined {
+  // pg 在 code、Bun SQL 在 errno——沿 cause 链双字段探测(db 包 pgSqlState 同口径)
   let cur: unknown = error;
   for (let depth = 0; cur != null && depth < 5; depth++) {
-    const { code } = cur as { code?: unknown };
-    if (typeof code === 'string') return code;
+    const { code, errno } = cur as { code?: unknown; errno?: unknown };
+    if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) return code;
+    if (typeof errno === 'string' && /^[0-9A-Z]{5}$/.test(errno)) return errno;
     cur = (cur as { cause?: unknown }).cause;
   }
   return undefined;
@@ -116,7 +118,7 @@ async function seedWorld(
 ): Promise<E2ESeed> {
   const one = async (statement: ReturnType<typeof sql>) => {
     const r = await db.execute(statement);
-    return r.rows[0] as Record<string, unknown>;
+    return r[0] as Record<string, unknown>;
   };
   const provider = await one(sql`
     insert into providers (name, base_url, protocol, vendor)
@@ -293,7 +295,7 @@ export class E2EKeys {
     const subject = `e2e-${randomUUID().slice(0, 8)}`;
     const r = await db.execute(sql`
       insert into users (issuer, subject, identity_provider) values ('e2e', ${subject}, 'local') returning id`);
-    const userId = Number((r.rows[0] as { id: string | number }).id);
+    const userId = Number((r[0] as { id: string | number }).id);
     this.users.push(userId);
     if (new Decimal(amount).gt(0)) {
       await this.billing.wallet.credit({
@@ -327,7 +329,7 @@ export class E2EKeys {
     const rows = await this.world.db.execute(
       sql`select request_id, status, reserved_amount::text, receipt from billing_requests where user_id = ${userId}`,
     );
-    return rows.rows as Array<{
+    return rows as Array<{
       request_id: string;
       status: string;
       reserved_amount: string;
@@ -345,11 +347,11 @@ export class E2EKeys {
       const pending = await this.world.db.execute<{ request_id: string }>(sql`
         select request_id from billing_requests
         where user_id = ${userId} and status = 'settlement_pending' limit 50`);
-      if (pending.rows.length === 0) {
+      if (pending.length === 0) {
         const busy = await this.world.db.execute<{ n: number }>(sql`
           select count(*)::int as n from billing_requests
           where user_id = ${userId} and status = 'processing'`);
-        if (defined(busy.rows[0], 'processing count').n === 0 || Date.now() > deadline) return;
+        if (defined(busy[0], 'processing count').n === 0 || Date.now() > deadline) return;
         await sleep(200);
         continue;
       }
@@ -358,7 +360,7 @@ export class E2EKeys {
         ownerId: `e2e-${randomUUID().slice(0, 8)}`,
         batchSize: 50,
         claimLeaseMs: 60_000,
-        requestIds: pending.rows.map((r) => r.request_id),
+        requestIds: pending.map((r) => r.request_id),
       });
       for (const claim of claims) await this.billing.settlement.processClaim(claim);
       await sleep(100);
@@ -373,7 +375,7 @@ export class E2EKeys {
     const usage = await this.world.db.execute<{ sum: string | null }>(sql`
       select sum(amount)::text as sum from usage_logs where user_id = ${userId}`);
     const walletState = await this.walletOf(userId);
-    const charged = defined(usage.rows[0], 'usage sum').sum ?? '0';
+    const charged = defined(usage[0], 'usage sum').sum ?? '0';
     expectDecimalEq(walletState.balance, new Decimal(funded).minus(charged).toString());
     expectDecimalEq(walletState.inFlight, '0');
     return { balance: walletState.balance, charged };

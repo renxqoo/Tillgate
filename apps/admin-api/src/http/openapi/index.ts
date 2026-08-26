@@ -7,7 +7,7 @@
  * additionalProperties:false 统一剥除（zod 非 strict object 对未知键是静默剥离而非拒绝,
  * closed-world 断言由 contracts 运行时校验承担,不在 schema 里重复）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { plansContracts, redeemContracts, reviewContracts } from '../contracts/billing-admin';
 import { channelsContracts, providersContracts } from '../contracts/control-plane';
 import { keysContracts } from '../contracts/users';

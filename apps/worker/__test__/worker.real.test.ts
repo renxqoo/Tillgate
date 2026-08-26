@@ -10,12 +10,11 @@
  * 零业务数据写入。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { closeDb, createDb, ping } from '@tillgate/db';
+import { closeDb, createDb, ping, withSessionTryLock } from '@tillgate/db';
 import type { Db } from '@tillgate/db';
 import { SETTLE_WAKE_CHANNEL } from '@tillgate/billing';
 import IORedis from 'ioredis';
 import { createSettleWakeListener } from '../src/wakeup/postgres-notify';
-import type { ListenConnection } from '../src/wakeup/postgres-notify';
 import { createSettlementQueue } from '../src/queue/settlement-queue';
 
 const url = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
@@ -29,7 +28,6 @@ beforeAll(async () => {
       poolMax: 5,
       idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 3_000,
-      maxUses: 1_000,
     });
     await ping(candidate);
     db = candidate;
@@ -53,14 +51,9 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<boo
   return predicate();
 }
 
-/** 池化连接发 NOTIFY（经池客户端原生查询——app 不依赖 drizzle 面） */
+/** 池直发 NOTIFY（unsafe 裸文本+参——app 不依赖 drizzle 面） */
 async function notify(target: Db, channel: string, payload: string): Promise<void> {
-  const client = await target.$client.connect();
-  try {
-    await client.query({ text: 'select pg_notify($1, $2)', values: [channel, payload] });
-  } finally {
-    client.release();
-  }
+  await target.$client.unsafe('select pg_notify($1, $2)', [channel, payload]);
 }
 
 describe('worker 真 PG：结算唤醒全链', () => {
@@ -69,7 +62,7 @@ describe('worker 真 PG：结算唤醒全链', () => {
     const connected = db;
     let runs = 0;
     const listener = createSettleWakeListener({
-      connect: async () => (await connected.$client.connect()) as unknown as ListenConnection,
+      listen: (channel, onMessage) => connected.$client.listen(channel, onMessage),
       channel: SETTLE_WAKE_CHANNEL,
       onWake: async () => {
         runs += 1;
@@ -112,42 +105,24 @@ describe('worker 真 PG：对账会话锁门', () => {
     if (!db) return context.skip();
     const connected = db;
     const key = 'tillgate-worker-real-test:reconcile';
-    const holder = await connected.$client.connect();
+    const holder = await connected.$client.reserve();
     try {
-      const locked = await holder.query<{ locked: boolean }>({
-        text: 'select pg_try_advisory_lock(hashtext($1)) as locked',
-        values: [key],
-      });
-      expect(locked.rows[0]?.locked).toBe(true);
-      const gateOutcome = await withTryLock(connected, key, async () => 'ran');
+      const locked = await holder.unsafe<Array<{ locked: boolean }>>(
+        'select pg_try_advisory_lock(hashtext($1)) as locked',
+        [key],
+      );
+      expect(locked[0]?.locked).toBe(true);
+      const gateOutcome = await withSessionTryLock(connected, key, async () => 'ran');
       expect(gateOutcome).toBeNull();
       // 释放后可获
-      await holder.query({ text: 'select pg_advisory_unlock(hashtext($1))', values: [key] });
-      expect(await withTryLock(connected, key, async () => 'ran')).toBe('ran');
+      await holder.unsafe('select pg_advisory_unlock(hashtext($1))', [key]);
+      expect(await withSessionTryLock(connected, key, async () => 'ran')).toBe('ran');
     } finally {
-      holder.release();
+      await holder.release();
     }
   });
 });
 
-/** 与 assembly 同形的会话锁门（真实 PG 语义验证） */
-async function withTryLock<T>(target: Db, key: string, fn: () => Promise<T>): Promise<T | null> {
-  const client = await target.$client.connect();
-  try {
-    const locked = await client.query<{ locked: boolean }>({
-      text: 'select pg_try_advisory_lock(hashtext($1)) as locked',
-      values: [key],
-    });
-    if (locked.rows[0]?.locked !== true) return null;
-    try {
-      return await fn();
-    } finally {
-      await client.query({ text: 'select pg_advisory_unlock(hashtext($1))', values: [key] });
-    }
-  } finally {
-    client.release();
-  }
-}
 
 
 const redisUrl = process.env.WORKER_REDIS_URL ?? process.env.REDIS_URL;

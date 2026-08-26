@@ -39,7 +39,14 @@ import { defined } from './defined.js';
 /** 业务拒绝信息（非业务错误原样抛出——测试不得吞缺陷） */
 function businessOf(error: unknown): { code: string; reason: unknown } {
   if (!isBusinessError(error)) {
-    throw new Error(`expected business rejection, got: ${String(error)}`);
+    const chain: string[] = [];
+    let cur: unknown = error;
+    for (let i = 0; cur != null && i < 5; i += 1) {
+      const e = cur as Record<string, unknown>;
+      chain.push(`${String(e.name)}: code=${String(e.code)} errno=${String(e.errno)} msg=${String(e.message).slice(0, 60)}`);
+      cur = e.cause;
+    }
+    throw new Error(`expected business rejection, got:\n${chain.join('\n')}`);
   }
   return {
     code: error.code,
@@ -74,7 +81,7 @@ function partition<T>(results: PromiseSettledResult<T>[]): {
       insert into users (issuer, subject, identity_provider, email)
       values ('local', ${`subrace-${Date.now()}-${userSeq}@test`}, 'local', ${`subrace-${Date.now()}-${userSeq}@test`})
       returning id`);
-    return Number(defined(row.rows[0]).id);
+    return Number(defined(row[0]).id);
   };
 
   const seedPlan = async (input: {
@@ -87,7 +94,7 @@ function partition<T>(results: PromiseSettledResult<T>[]): {
       insert into plans (name, kind, sort_order, price, period_days, quota_amount, allow_seats, status)
       values (${input.name}, 'subscription', ${input.sortOrder}, ${input.price}, 30, ${input.quota}, false, 0)
       returning id`);
-    return Number(defined(row.rows[0]).id);
+    return Number(defined(row[0]).id);
   };
 
   const balanceOf = async (userId: number): Promise<string> =>
@@ -95,7 +102,7 @@ function partition<T>(results: PromiseSettledResult<T>[]): {
 
   const countInt = async (query: SQL): Promise<number> => {
     const row = await db.execute<{ n: number }>(query);
-    return row.rows[0]?.n ?? -1;
+    return row[0]?.n ?? -1;
   };
 
   let harness: RealFullSchemaHarness | undefined;
@@ -282,8 +289,8 @@ function partition<T>(results: PromiseSettledResult<T>[]): {
     // （bigint 经 pg 驱动返回字符串——Number 收敛）
     const key = await db.execute<{ subscription_id: string | number | null }>(sql`
       select subscription_id from api_keys where key_hash = ${keyHash}`);
-    expect(defined(key.rows[0]).subscription_id).not.toBeNull();
-    expect(Number(defined(key.rows[0]).subscription_id)).toBe(winner.subscriptionId);
+    expect(defined(key[0]).subscription_id).not.toBeNull();
+    expect(Number(defined(key[0]).subscription_id)).toBe(winner.subscriptionId);
     expect(
       await countInt(
         sql`select count(*)::int as n from api_keys where subscription_id = ${purchased.subscriptionId}`,

@@ -1,7 +1,7 @@
 /**
  * 用量契约：明细（时间窗/模型过滤 + 分页）与聚合（时间窗）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { listQuerySchema } from './shared.js';
 
 export const usageListQuerySchema = listQuerySchema.extend({

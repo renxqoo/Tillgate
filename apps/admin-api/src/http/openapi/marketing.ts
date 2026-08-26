@@ -2,7 +2,7 @@
  * 营销/邀请域 OpenAPI registry（routes/{marketing,referrals}.ts 契约面）。
  * 请求 schema 引用 contracts/marketing.ts;响应 wire 形状按 accounts/billing 返回面。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { marketingContracts, referralContracts, REFERRAL_KINDS } from '../contracts/marketing';
 import { idPathParam, listQuery, paginatedOf, type OpenApiEndpoint } from './shared';
 

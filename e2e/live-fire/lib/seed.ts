@@ -62,7 +62,7 @@ export interface Seeded {
 
 async function one<T>(db: Db, q: any): Promise<T> {
   const r = await db.execute(q);
-  return r.rows[0] as T;
+  return r[0] as T;
 }
 
 export async function seedCatalog(): Promise<Seeded> {
@@ -79,8 +79,7 @@ export async function seedCatalog(): Promise<Seeded> {
   await cleanup(db);
 
   // 幂等重种:先清旧 rt- 目录(replica 模式旁路 FK/触发器,残留引用不再卡重跑)
-  await db.execute(sql`
-    set session_replication_role = replica;
+  await execStatements(db, `    set session_replication_role = replica;
     delete from usage_logs where channel_id in (select id from channels where name like 'rt-ch-%')
       or user_id in (select id from users where issuer = 'rt-fire' or email like 'rt-%@fire.test');
     delete from model_channels where channel_id in (select id from channels where name like 'rt-ch-%')
@@ -96,9 +95,9 @@ export async function seedCatalog(): Promise<Seeded> {
   // 4 个 mock 厂商(独立端口=熔断隔离) + 2 个特殊 provider(openmock-rpm 限速渠道 / ssrf 靶子)
   const providerDefs: Array<[string, string]> = [
     ['openmock', `${URLS.mock}/openmock`],
-    ['deepmock', `${URLS.mock.replace(/:\d+$/, ':8791')}/deepmock`],
-    ['moonmock', `${URLS.mock.replace(/:\d+$/, ':8792')}/moonmock`],
-    ['chaosmock', `${URLS.mock.replace(/:\d+$/, ':8793')}/chaosmock`],
+    ['deepmock', `${URLS.mock.replace(/:\d+$/, ':8891')}/deepmock`],
+    ['moonmock', `${URLS.mock.replace(/:\d+$/, ':8892')}/moonmock`],
+    ['chaosmock', `${URLS.mock.replace(/:\d+$/, ':8893')}/chaosmock`],
     ['openmock-rpm', `${URLS.mock}/openmock`],
     ['ssrf', 'http://127.0.0.1:2525'],
   ];
@@ -175,42 +174,42 @@ export async function fund(userId: number, amount: string, opId: string): Promis
 export async function wallet(db: Db, userId: number) {
   const r = await db.execute(sql`
     select balance::text, in_flight::text from wallet_accounts where user_id = ${userId} and kind = 'user'`);
-  const row = r.rows[0] as { balance: string; in_flight: string } | undefined;
+  const row = r[0] as { balance: string; in_flight: string } | undefined;
   return row ?? { balance: '0', in_flight: '0' };
 }
 
 export async function billOf(db: Db, requestId: string) {
   const r = await db.execute(sql`
     select status, reserved_amount::text, receipt from billing_requests where request_id = ${requestId}`);
-  return (r.rows[0] as any) ?? null;
+  return (r[0] as any) ?? null;
 }
 
 export async function usageRow(db: Db, requestId: string) {
   const r = await db.execute(sql`
     select amount::text, payg_amount::text, input_tokens, output_tokens, status
     from usage_logs where request_id = ${requestId}`);
-  return (r.rows[0] as any) ?? null;
+  return (r[0] as any) ?? null;
 }
 
 export async function usageSum(db: Db, userId: number): Promise<string> {
   const r = await db.execute(sql`
     select coalesce(sum(amount), 0)::text as total from usage_logs
     where user_id = ${userId} and status = 0`);
-  return String((r.rows[0] as any).total);
+  return String((r[0] as any).total);
 }
 
 export async function billCount(db: Db, userId: number): Promise<number> {
   const r = await db.execute(sql`select count(*)::int as n from billing_requests where user_id = ${userId}`);
-  return Number((r.rows[0] as any).n);
+  return Number((r[0] as any).n);
 }
 
 // ---- SMTP 集成行:快照 → 换 sink → 还原 ----
 let smtpSnapshot: { key: string; enabled: boolean; config: unknown } | null | undefined;
 
 export async function swapSmtpToSink() {
-  const db = createDb({ url: process.env.DATABASE_URL as string, poolMax: 1 });
+  const db = createDb({ url: process.env.DATABASE_URL as string, poolMax: 1, idleTimeoutMillis: 5_000, connectionTimeoutMillis: 5_000 });
   const prev = await db.execute(sql`select key, enabled, config from integration_settings where key = 'smtp'`);
-  smtpSnapshot = (prev.rows[0] as any) ?? null;
+  smtpSnapshot = (prev[0] as any) ?? null;
   const cipher = createCipher(process.env.ENCRYPTION_KEY as string);
   const config = {
     host: '127.0.0.1',
@@ -219,28 +218,35 @@ export async function swapSmtpToSink() {
     pass: cipher.encrypt('sink-pass'),
   };
   await db.execute(sql`
-    insert into integration_settings (key, enabled, config) values ('smtp', true, ${JSON.stringify(config)}::jsonb)
+    insert into integration_settings (key, enabled, config) values ('smtp', true, ${config}::jsonb)
     on conflict (key) do update set enabled = true, config = excluded.config`);
   await closeDb(db).catch(() => {});
 }
 
 export async function restoreSmtp() {
   if (smtpSnapshot === undefined) return;
-  const db = createDb({ url: process.env.DATABASE_URL as string, poolMax: 1 });
+  const db = createDb({ url: process.env.DATABASE_URL as string, poolMax: 1, idleTimeoutMillis: 5_000, connectionTimeoutMillis: 5_000 });
   if (smtpSnapshot == null) {
     await db.execute(sql`delete from integration_settings where key = 'smtp'`);
   } else {
     await db.execute(sql`
-      update integration_settings set enabled = ${smtpSnapshot.enabled}, config = ${JSON.stringify(smtpSnapshot.config)}::jsonb where key = 'smtp'`);
+      update integration_settings set enabled = ${smtpSnapshot.enabled}, config = ${{ ...(smtpSnapshot.config as object) }}::jsonb where key = 'smtp'`);
   }
   await closeDb(db).catch(() => {});
+}
+
+/** 多语句块逐条执行(Bun SQL 的 unsafe 走扩展协议,不支持 simple 协议多语句;文本内无含 ; 的字面量) */
+async function execStatements(db: Db, text: string): Promise<void> {
+  for (const stmt of text.split(';')) {
+    const trimmed = stmt.trim();
+    if (trimmed) await db.execute(sql.raw(trimmed));
+  }
 }
 
 // ---- 清理:rt- 目录/用户/钱包。session_replication_role=replica 旁路全部触发器
 // (账本不可变/一致性约束会拦带活跃授权的删除——测试数据整体撤离需要无痕通道) ----
 export async function cleanup(db: Db) {
-  await db.execute(sql`
-    set session_replication_role = replica;
+  await execStatements(db, `    set session_replication_role = replica;
     delete from usage_logs where user_id in (select id from users where issuer = 'rt-fire' or email like 'rt-%@fire.test')
       or channel_id in (select id from channels where name like 'rt-ch-%');
     delete from billing_reservations where billing_request_id in (

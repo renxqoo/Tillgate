@@ -47,7 +47,7 @@ export function createPostgresVoucherStorage(db: Db): VoucherStorage {
       const result = await db.execute<{ mime: string; data: Uint8Array }>(
         sql`select mime, "data" from voucher_blobs where "key" = ${key} and mime = ${mimeType}`,
       );
-      const [row] = result.rows;
+      const [row] = result;
       return row ? { data: Uint8Array.from(row.data), mimeType: row.mime } : null;
     },
   };

@@ -2,7 +2,7 @@
 // 仅被表单消费的编辑器构造件（buildTiers/buildWindows 等）随 model-form，不沉本文件。
 
 import type { AdminModelRow } from '@tillgate/api-client';
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const PRICING_UNITS = ['token', 'request', 'image', 'second', 'char'] as const;
 export type PricingUnit = (typeof PRICING_UNITS)[number];

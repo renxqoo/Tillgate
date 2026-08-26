@@ -105,13 +105,13 @@ export function snapshotPlanForQuantity(
   };
 }
 
-/** 「单有效订阅」唯一索引并发兜底（cause 链上找约束名） */
+/** 「单有效订阅」唯一索引并发兜底（cause 链上找约束名;SQLSTATE 双字段:pg 在 code、Bun SQL 在 errno） */
 export function isOneActiveViolation(error: unknown): boolean {
   let current: unknown = error;
   for (let depth = 0; current != null && depth < 5; depth += 1) {
-    const e = current as { code?: string; constraint?: string; cause?: unknown };
+    const e = current as { code?: string; errno?: string; constraint?: string; cause?: unknown };
     if (
-      e.code === '23505' &&
+      (e.code === '23505' || e.errno === '23505') &&
       (e.constraint === 'user_subscriptions_one_active_uq' ||
         e.constraint === 'user_subscriptions_one_org_uq')
     ) {

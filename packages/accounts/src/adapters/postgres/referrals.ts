@@ -140,10 +140,10 @@ export const referralQueries: Pick<
       join users e on e.id = r.invitee_user_id
       ${filter}
     `);
-    const list = (rows.rows as Array<Record<string, unknown>>).map(toRelationView);
+    const list = (rows as unknown as Array<Record<string, unknown>>).map(toRelationView);
     return {
       rows: list,
-      total: (totalRows.rows[0] as { value: number } | undefined)?.value ?? 0,
+      total: (totalRows as unknown as Array<{ value: number }>)[0]?.value ?? 0,
     };
   },
 
@@ -155,7 +155,7 @@ export const referralQueries: Pick<
       .returning({ id: referrals.id });
     if (rows.length === 0) return null;
     const view = await db.execute(sql`${sql.raw(RELATION_VIEW_SQL)} where r.id = ${relationId}`);
-    const r = (view.rows[0] ?? null) as Record<string, unknown> | null;
+    const r = (view as unknown as Array<Record<string, unknown>>)[0] ?? null;
     return r === null ? null : toRelationView(r);
   },
 };

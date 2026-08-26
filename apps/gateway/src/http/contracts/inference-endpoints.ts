@@ -4,7 +4,7 @@
  * （外部协议经 codec 在路由边界翻译为规范形——管线内部恒规范形）+ 模态 JSON 族。
  * codec 翻译函数单一真相在 @tillgate/ai protocol（§3.6 透传例外 1）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import {
   canonicalStreamToClaudeStream,
   canonicalStreamToCompletionsStream,

@@ -5,7 +5,7 @@
  * 路径参数校验（body/query 走 http 包 jsonBody/query 中间件——失败统一
  * http.validation_failed；路径参数无中间件位，此处 safeParse → invalid_path_param）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { HttpErrors } from '@tillgate/http';
 import { Decimal, isValidAmountString, parsePositiveAmount } from '@tillgate/billing';
 

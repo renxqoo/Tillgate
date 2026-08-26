@@ -1,3 +1,4 @@
+import { jsonb } from './jsonb.js';
 /**
  * 幂等操作档案表（自 packages/ledger-core/src/schema.ts 平移——表定义唯一家收敛到本包）：
  *
@@ -9,8 +10,7 @@
 import {
   bigserial,
   index,
-  jsonb,
-  pgTable,
+    pgTable,
   timestamp,
   uniqueIndex,
   varchar,

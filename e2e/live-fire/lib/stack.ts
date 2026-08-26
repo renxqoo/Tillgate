@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { sleep, http } from './h.ts';
 
 export const PORTS = {
-  mock: 8790,
+  mock: 8890,
   smtp: 2525,
   gw: 8810,
   client: 8811,
@@ -54,7 +54,7 @@ function bunApp(name: string, appDir: string, envOverride: Record<string, string
   // 127.0.0.1 显式 IPv4:localhost 在 macOS 下 DNS/IPv6 双栈尝试会把池的新建
   // 连接拖到秒级(高并发建连风暴时打满 connectionTimeout)——经典坑,直连环回
   const dbUrl = process.env.DATABASE_URL?.replace(/\/\/([^:@/]+):([^@/]*)@localhost:/, (m, u, p) => `//${u}:${p}@127.0.0.1:`) ?? process.env.DATABASE_URL;
-  spawn(name, ['bun', '--env-file=../../.env', 'src/index.ts'], join(ROOT, appDir), {
+  spawn(name, ['bun', 'dist/index.js'], join(ROOT, appDir), {
     ...(dbUrl != null ? { DATABASE_URL: dbUrl } : {}),
     ...envOverride,
   });
@@ -90,7 +90,6 @@ function purgeSettlementQueue() {
 }
 
 export async function startStack() {
-  process.env.PG_MODULE_PATH = '/Users/wrr/work/TokenLens-v2/node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/index.js';
   purgeSettlementQueue();
   // 本仓库 apps 的残留实例(相对路径命令行不含仓库名,按 cwd 识别)会分走结算
   // claim/抢端口——测试期独占:杀掉 cwd 在本仓库 apps/* 的 src/index.ts 进程
@@ -111,8 +110,8 @@ export async function startStack() {
   spawn('smtp-sink', ['bun', join(ROOT, 'e2e/live-fire/smtp-sink.ts'), String(PORTS.smtp)], ROOT, {});
 
   spawn(
-    'gateway-node',
-    ['node', 'dist/index.js'],
+    'gateway-bun',
+    ['bun', 'dist/index.js'],
     join(ROOT, 'apps/gateway'),
     {
       ...(process.env.DATABASE_URL?.includes('localhost')
@@ -127,7 +126,9 @@ export async function startStack() {
       ADMISSION_MAX_OLDEST_MS: '120000',
       BILLING_AUTHORIZATION_TTL_MS: '15000',
       OTEL_TRACES_MODE: 'off',
-      DB_POOL_MAX: '40',
+      // bun#38163/#38231 家族 workaround:Bun SQL 池「检出排队」会停摆在途事务
+      // (F-6)——池 ≥ 峰值并发即无排队,200 并发实测 200/200@779ms。
+      DB_POOL_MAX: '210',
     },
   );
   bunApp('client-api', 'apps/client-api', {

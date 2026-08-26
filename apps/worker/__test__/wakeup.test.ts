@@ -1,47 +1,41 @@
 /**
- * 唤醒消费端规格（2026-08-26 BullMQ 增量改写）：通知 payload 解析
+ * 唤醒消费端规格（bun-native sql.listen 形态）：通知 payload 解析
  * （UUID → 定向 onWake(requestId)；缺失/非 UUID → onWake(null) sweep 兜底）、
- * LISTEN 假连接通知触发、断线重连退避。
+ * 假订阅通知触发、启动失败退避重试、close 竞态不泄漏。
  */
 import { describe, expect, it, vi } from 'vitest';
-import { createSettleWakeListener, type ListenConnection } from '../src/wakeup/postgres-notify';
+import { createSettleWakeListener, type WakeSubscription } from '../src/wakeup/postgres-notify';
 
-/** LISTEN 假连接：notification 手动注入、error 手动触发 */
-function fakeConnection() {
-  const listeners = {
-    notification: new Set<(payload: { channel?: string; payload?: string }) => void>(),
-    error: new Set<(error: Error) => void>(),
-  };
-  const queries: string[] = [];
-  const connection: ListenConnection = {
-    async query(text) {
-      queries.push(text);
+/** 假 listen 工厂：记录订阅、可手动注入通知 */
+function fakeListen() {
+  const subscriptions: Array<{
+    channel: string;
+    emit(payload: string): void;
+    unlisten: ReturnType<typeof vi.fn>;
+  }> = [];
+  const listen = vi.fn(
+    (channel: string, onMessage: (payload: string) => void) => {
+      const sub = {
+        channel,
+        emit: onMessage,
+        unlisten: vi.fn(async () => {}),
+      };
+      subscriptions.push(sub);
+      return Promise.resolve(sub as unknown as WakeSubscription);
     },
-    on(event, listener) {
-      (listeners as never as Record<string, Set<never>>)[event]?.add(listener as never);
-    },
-    release: vi.fn(),
-  };
-  return {
-    connection,
-    queries,
-    notify(channel: string, payload = ''): void {
-      for (const listener of listeners.notification) listener({ channel, payload });
-    },
-    emitError(error: Error): void {
-      for (const listener of listeners.error) listener(error);
-    },
-  };
+  );
+  return { listen, subscriptions };
 }
 
 const QUIET = (ms: number) => new Promise((resolve) => { setTimeout(resolve, ms); });
+const UUID = '0b9f6c2e-8d1a-4c3b-9e2f-1a2b3c4d5e6f';
 
-describe('PG LISTEN 消费端（BullMQ 入队形态）', () => {
-  it('启动即 LISTEN 指定通道；payload=requestId → onWake(requestId) 定向入队', async () => {
-    const fake = fakeConnection();
+describe('sql.listen 消费端（BullMQ 入队形态）', () => {
+  it('启动即订阅指定通道；payload=requestId → onWake(requestId) 定向入队', async () => {
+    const fake = fakeListen();
     const wakes: Array<string | null> = [];
     const listener = createSettleWakeListener({
-      connect: async () => fake.connection,
+      listen: fake.listen,
       channel: 'settle-wake',
       onWake: async (requestId) => {
         wakes.push(requestId);
@@ -49,36 +43,32 @@ describe('PG LISTEN 消费端（BullMQ 入队形态）', () => {
       logger: { warn: () => {}, error: () => {} },
     });
     await QUIET(5);
-    expect(fake.queries).toEqual(['LISTEN "settle-wake"']);
-    fake.notify('settle-wake', '0b9f6c2e-8d1a-4c3b-9e2f-1a2b3c4d5e6f');
+    expect(fake.listen).toHaveBeenCalledWith('settle-wake', expect.any(Function));
+    fake.subscriptions[0]?.emit(UUID);
     await QUIET(10);
-    expect(wakes).toEqual(['0b9f6c2e-8d1a-4c3b-9e2f-1a2b3c4d5e6f']);
-    // 其他通道的通知不触发
-    fake.notify('other-channel', '0b9f6c2e-8d1a-4c3b-9e2f-1a2b3c4d5e6f');
-    await QUIET(5);
-    expect(wakes).toHaveLength(1);
+    expect(wakes).toEqual([UUID]);
     await listener.close();
-    expect(fake.connection.release).toHaveBeenCalled();
+    expect(fake.subscriptions[0]?.unlisten).toHaveBeenCalled();
   });
 
   it('payload 缺失 → onWake(null)（sweep 兜底）；非 UUID 垃圾 → 同样兜底 + warn', async () => {
-    const fake = fakeConnection();
+    const fake = fakeListen();
     const wakes: Array<string | null> = [];
     const warns: unknown[] = [];
     const listener = createSettleWakeListener({
-      connect: async () => fake.connection,
+      listen: fake.listen,
       channel: 'settle-wake',
       onWake: async (requestId) => {
         wakes.push(requestId);
       },
       logger: {
-        warn: (_o, _m) => void warns.push(1),
+        warn: () => void warns.push(1),
         error: () => {},
       },
     });
     await QUIET(5);
-    fake.notify('settle-wake'); // 空 payload（网关旧形态/纯门铃）
-    fake.notify('settle-wake', 'not-a-uuid');
+    fake.subscriptions[0]?.emit(''); // 空 payload（网关旧形态/纯门铃）
+    fake.subscriptions[0]?.emit('not-a-uuid');
     await QUIET(10);
     expect(wakes).toEqual([null, null]);
     expect(warns).toHaveLength(1); // 非 UUID 垃圾才 warn；空 payload 是合法旧形态
@@ -86,11 +76,11 @@ describe('PG LISTEN 消费端（BullMQ 入队形态）', () => {
   });
 
   it('onWake 抛错（入队失败）→ error 日志，不影响后续通知', async () => {
-    const fake = fakeConnection();
+    const fake = fakeListen();
     const errors: unknown[] = [];
     let calls = 0;
     const listener = createSettleWakeListener({
-      connect: async () => fake.connection,
+      listen: fake.listen,
       channel: 'settle-wake',
       onWake: async () => {
         calls += 1;
@@ -98,28 +88,29 @@ describe('PG LISTEN 消费端（BullMQ 入队形态）', () => {
       },
       logger: {
         warn: () => {},
-        error: (_o, _m) => void errors.push(1),
+        error: () => void errors.push(1),
       },
     });
     await QUIET(5);
-    fake.notify('settle-wake', '0b9f6c2e-8d1a-4c3b-9e2f-1a2b3c4d5e6f');
-    fake.notify('settle-wake', '0b9f6c2e-8d1a-4c3b-9e2f-1a2b3c4d5e70');
+    fake.subscriptions[0]?.emit(UUID);
+    fake.subscriptions[0]?.emit('0b9f6c2e-8d1a-4c3b-9e2f-1a2b3c4d5e70');
     await QUIET(10);
     expect(calls).toBe(2);
     expect(errors).toHaveLength(1);
     await listener.close();
   });
 
-  it('连接 error → 指数退避重连并重发 LISTEN', async () => {
+  it('listen 启动失败 → 指数退避重试，成功后正常收通知', async () => {
     vi.useFakeTimers();
     try {
-      const first = fakeConnection();
-      const second = fakeConnection();
-      let connectCount = 0;
+      const fake = fakeListen();
+      let attempts = 0;
       const listener = createSettleWakeListener({
-        connect: async () => {
-          connectCount += 1;
-          return connectCount === 1 ? first.connection : second.connection;
+        listen: (channel, onMessage) => {
+          attempts += 1;
+          return attempts === 1
+            ? Promise.reject(new Error('pool down'))
+            : fake.listen(channel, onMessage);
         },
         channel: 'settle-wake',
         onWake: async () => {},
@@ -127,65 +118,58 @@ describe('PG LISTEN 消费端（BullMQ 入队形态）', () => {
         backoff: { baseMs: 1_000, maxMs: 30_000 },
       });
       await vi.advanceTimersByTimeAsync(0);
-      expect(first.queries).toEqual(['LISTEN "settle-wake"']);
-      first.emitError(new Error('connection reset'));
-      await vi.advanceTimersByTimeAsync(1_000); // 首次退避 1s
-      expect(second.queries).toEqual(['LISTEN "settle-wake"']);
+      expect(attempts).toBe(1);
+      await vi.advanceTimersByTimeAsync(1_000); // 首次退避 1s 后重试成功
+      expect(attempts).toBe(2);
+      expect(fake.subscriptions).toHaveLength(1);
       await listener.close();
-      expect(second.connection.release).toHaveBeenCalled();
+      expect(fake.subscriptions[0]?.unlisten).toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
   });
-});
 
-describe('唤醒消费端：连接故障路径', () => {
-  it('初始建连失败 → error 日志 + 重连调度；close 后不再重连', async () => {
+  it('close 后不再重试', async () => {
     vi.useFakeTimers();
     try {
-      const errors: unknown[] = [];
       let attempts = 0;
       const listener = createSettleWakeListener({
-        connect: async () => {
+        listen: () => {
           attempts += 1;
-          throw new Error('pool down');
+          return Promise.reject(new Error('pool down'));
         },
         channel: 'settle-wake',
         onWake: async () => {},
-        logger: {
-          warn: () => {},
-          error: (_o, _m) => void errors.push(1),
-        },
+        logger: { warn: () => {}, error: () => {} },
       });
       await vi.advanceTimersByTimeAsync(0);
       expect(attempts).toBe(1);
-      expect(errors).toHaveLength(1);
-      await vi.advanceTimersByTimeAsync(1_000); // 首次退避重连（再失败再排）
-      expect(attempts).toBe(2);
       await listener.close();
       const frozen = attempts;
       await vi.advanceTimersByTimeAsync(60_000);
-      expect(attempts).toBe(frozen); // close 后重连调度终止
+      expect(attempts).toBe(frozen); // close 后重试调度终止
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('close 时建连在途：晚到的连接被立即释放（不泄漏）', async () => {
-    let resolveConnect!: (connection: ListenConnection) => void;
-    const pending = new Promise<ListenConnection>((resolve) => {
-      resolveConnect = resolve;
+  it('close 时订阅在途：晚到的订阅被立即拆除（不泄漏监听连接）', async () => {
+    let resolveListen!: (sub: WakeSubscription) => void;
+    const pending = new Promise<WakeSubscription>((resolve) => {
+      resolveListen = resolve;
     });
-    const fake = fakeConnection();
+    const fake = fakeListen();
     const listener = createSettleWakeListener({
-      connect: () => pending,
+      listen: () => pending,
       channel: 'settle-wake',
       onWake: async () => {},
       logger: { warn: () => {}, error: () => {} },
     });
     await listener.close();
-    resolveConnect(fake.connection);
+    // 晚到的订阅：close 已置位，start 收到后立即 unlisten
+    fake.listen('settle-wake', () => {});
+    resolveListen(fake.subscriptions[0] as unknown as WakeSubscription);
     await QUIET(5);
-    expect(fake.connection.release).toHaveBeenCalled();
+    expect(fake.subscriptions[0]?.unlisten).toHaveBeenCalled();
   });
 });

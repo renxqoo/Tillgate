@@ -103,3 +103,28 @@
   pgbouncer 前置 + 客户端连接池配置缓解，根因需专项（pg-pool 升级/
   @tillgate/db 池层替换为自管信号量队列候选）。
 
+
+---
+
+## 增补：bun-native 全栈形态实测（2026-08-26，Bun.serve + Bun.sql，未提交试用）
+
+### 迁移内容（工作区未提交，等最终指令）
+- 驱动：pg → Bun SQL（drizzle-orm/bun-sql）；SQLSTATE 在错误的 `errno` 字段（pg 在 `code`）——db 包 pg-error 双字段探测收敛全部本地副本（billing real-pg / 订阅单活索引 / e2e kit）。
+- HTTP：@hono/node-server → Bun.serve（@tillgate/http `serveApp` 单一来源，env.server 注入供 requestIP 取 socket 对端）；client-api/admin-api/trace-receiver/gateway 四入口。
+- worker 唤醒：pg Client 事件机 → `sql.listen/unlisten`（Bun 内建断线重连+重订阅；自留启动失败退避）。
+- jsonb：drizzle 0.45 × Bun SQL 双重编码（drizzle#5139 / bun#28819）——db schema 全量换 customType 透传对象参数。
+- vitest：全仓切 `bun x --bun vitest`（`bun` 内建在 node worker 下不可解析）；zod v4 `export { z }` 命名空间再导出在 vite-node 转换下丢失——200 文件 `import { z }` → `import * as z`。
+- 语义差异（无资金影响）：Bun SQL 对 numeric 零解析为裸 '0'（pg 为定标串）——测试断言 Decimal 化；JSC Intl（¥ 符号、日期 ' at ' 分隔符）成为单形态真相。
+
+### 结果
+- 四门全绿（typecheck/lint/test 34 任务/build 20）；real 套件全绿：db 6、billing 24、worker 3、observability 11、accounts 11、control-plane 9、identity 7、inference 5。
+- process-smoke 双形态（bun 源码/bun dist）通过：探针+鉴权+真实计费+SIGTERM+对账。
+- live-fire **77/80**：鉴权/注册攻击/计费薅羊毛/上游故障/毒账单全绿；**X1/X2/X11（并发三连）被 F-6 阻断**。
+
+### F-6（已解：机制确认 + workaround，2026-08-26 深夜定案）
+- 症状：并发超过池连接数时，网关在途事务全体停在「下一条语句发出前」（PG 侧 idle in transaction/ClientRead，CPU 0% 纯等待），30s idleTimeout 收割转 500。
+- **精确触发条件（阈值扫描实证）：并发请求数 > 池 max 即触发检出排队，排队一旦发生，在途事务停摆；失败数恰好 = 池连接数**。20 并发全过 / 40 并发（池40）全挂 / 60 并发恰好挂 40 过 20。
+- 归因：Bun SQL 池「检出排队」路径丢失在途查询的响应唤醒（bun#38163/#38231 家族，上游 open）。
+- **workaround：池 ≥ 峰值并发（消除检出排队）**。实测：池 210 × 200 同瞬并发 → **200/200 全成功 779ms 零 5xx**；全量 live-fire **80/80**。
+- 部署约束：池上限受 PG max_connections 限制（本机已抬 400；部署形态需配套：独占 PG 预算 / 前置 pgbouncer 需评估 prepared-statement 兼容 / 或应用层准入闸把 in-flight 钳在池内）。上游修复后可撤 workaround。
+- 排除矩阵（均实证）：bun fetch 客户端（curl 同结果）、prepare:true/false、池 20/40/64、fire-and-forget 请求日志、ioredis 内联 multi/exec、bun 1.4.0/canary 1.4.1、src/dist 形态、单进程迷你网关（2/10 语句事务、真 wallet.authorize 链 60 并发均 130-475ms 全过）。

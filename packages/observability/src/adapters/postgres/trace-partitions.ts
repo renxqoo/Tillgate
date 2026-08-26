@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import type { Db } from '@tillgate/db';
+import { withSessionTryLock, type Db } from '@tillgate/db';
 import {
   TRACE_PARTITION_DAY_RE,
   dayKey,
@@ -21,7 +21,7 @@ import { observabilityErrors } from '../../errors';
  */
 
 const PARTITION_PREFIX = 'trace_spans_p';
-const LOCK_KEY = "hashtext('ai-gateway:trace-partition')";
+const LOCK_KEY = 'ai-gateway:trace-partition';
 
 /** 确保某 UTC 日的分区存在(幂等) */
 export async function ensureTracePartition(db: Db, day: string): Promise<void> {
@@ -45,7 +45,7 @@ export async function listTracePartitionDays(db: Db): Promise<string[]> {
     join pg_class p on p.oid = i.inhparent
     where p.relname = 'trace_spans'
   `);
-  return result.rows
+  return result
     .map((r) => r.relname)
     .filter((name) => name.startsWith(PARTITION_PREFIX))
     .map((name) => name.slice(PARTITION_PREFIX.length))
@@ -63,13 +63,9 @@ export async function maintainTracePartitions(
   const today = dayKey(new Date());
   const cutoff = shiftDay(today, -retentionDays);
 
-  const client = await db.$client.connect();
-  try {
-    const lock = await client.query<{ acquired: boolean }>(
-      `select pg_try_advisory_lock(${LOCK_KEY}) as acquired`,
-    );
-    if (!lock.rows[0]?.acquired) return { created: [], dropped: [] };
-    try {
+  // 锁是跨进程互斥(专用连接持有),DDL 走池连接——与 v1 语义等价
+  return (
+    (await withSessionTryLock(db, LOCK_KEY, async () => {
       const created: string[] = [];
       for (let i = 0; i <= lookaheadDays; i++) {
         const day = shiftDay(today, i);
@@ -89,10 +85,6 @@ export async function maintainTracePartitions(
         }
       }
       return { created, dropped };
-    } finally {
-      await client.query(`select pg_advisory_unlock(${LOCK_KEY})`);
-    }
-  } finally {
-    client.release();
-  }
+    })) ?? { created: [], dropped: [] }
+  );
 }

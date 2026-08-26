@@ -2,7 +2,7 @@
  * 控制面域契约（v1 providers/channels/channel-funds zod 面平移）。
  * 数值域铁三角在 zod 层收口：URL 形状/长度上界;协议词表校验在 control-plane。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { nonNegativeMoneyString, positiveMoneyString, signedNonZeroMoneyString } from './common';
 
 export const PROVIDER_SORTS = ['id', 'name', 'status', 'createdAt'] as const;

@@ -3,7 +3,7 @@
  * 请求 schema 引用 contracts/catalog.ts;响应 wire 形状按 control-plane catalog
  * 用例返回面声明（CatalogComparisonPayload/价格溯源/导入回执）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { catalogContracts } from '../contracts/catalog';
 import type { OpenApiEndpoint } from './shared';
 

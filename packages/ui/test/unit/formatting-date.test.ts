@@ -13,7 +13,8 @@ describe('createDateFormatter', () => {
   });
 
   it('formatDateTime: 日期 + 时间', () => {
-    expect(en.formatDateTime(new Date('2026-08-23T12:34:56Z'))).toBe('Aug 23, 2026, 12:34:56 PM');
+    // JSC 的 en-US 日期时间分隔符是 ' at '(node ICU 为 ', ')
+    expect(en.formatDateTime(new Date('2026-08-23T12:34:56Z'))).toBe('Aug 23, 2026 at 12:34:56 PM');
   });
 
   it('timeZone 注入生效', () => {
@@ -21,7 +22,7 @@ describe('createDateFormatter', () => {
       locale: 'en-US',
       timeZone: 'Asia/Shanghai',
     });
-    expect(shanghai.formatDateTime('2026-08-23T12:34:56Z')).toBe('Aug 23, 2026, 8:34:56 PM');
+    expect(shanghai.formatDateTime('2026-08-23T12:34:56Z')).toBe('Aug 23, 2026 at 8:34:56 PM');
   });
 
   it('非法日期输入抛错', () => {

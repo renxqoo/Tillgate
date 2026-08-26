@@ -3,12 +3,12 @@
  * gateway 形状绑定——closeables = inference 退订（ai 事件总线）+ settle-wake。
  * 目标树 §3 指定独立文件（trace-receiver 无此件因其零 closeables）。
  */
-import type { ServerType } from '@hono/node-server';
+import type { AppServer } from '@tillgate/http';
 import type { Redis } from 'ioredis';
 import { createShutdown } from '@tillgate/runtime';
 
 export interface GatewayShutdownDeps {
-  server: ServerType;
+  server: AppServer;
   otel: { shutdown(): Promise<void> };
   redis: Redis;
   closeDb: () => Promise<void>;

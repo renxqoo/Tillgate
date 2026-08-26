@@ -26,7 +26,6 @@ describe.skipIf(url == null)('FundingSourceResolver 桥（真实 PG）', () => {
       poolMax: 5,
       idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 3_000,
-      maxUses: 1_000,
     });
     conn = db as unknown as { readonly connBrand: 'wallet-conn' };
     await db.execute(sql.raw(`create schema ${schema}`));

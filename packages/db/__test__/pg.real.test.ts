@@ -27,7 +27,6 @@ const POOL = {
   poolMax: 5,
   idleTimeoutMillis: 5_000,
   connectionTimeoutMillis: 3_000,
-  maxUses: 1_000,
 } as const;
 
 (url ? describe : describe.skip)('真实 PostgreSQL(db 基础设施)', () => {
@@ -35,7 +34,7 @@ const POOL = {
 
   const countKv = async (k: number): Promise<number> => {
     const r = await db.execute(sql`select count(*)::int as n from ${SCHEMA}.kv where k = ${k}`);
-    return (r.rows[0] as { n: number }).n;
+    return (r[0] as { n: number }).n;
   };
 
   // 内层事务体:插入后抛错——SAVEPOINT 回滚断言的行为载体(作用域级具名函数,压平回调嵌套)
@@ -101,7 +100,7 @@ const POOL = {
         const innerRows = await tx.execute(
           sql`select count(*)::int as n from ${SCHEMA}.kv where k = 3`,
         );
-        expect((innerRows.rows[0] as { n: number }).n).toBe(0); // savepoint 已回滚
+        expect((innerRows[0] as { n: number }).n).toBe(0); // savepoint 已回滚
       },
       { maxAttempts: 2, baseDelayMs: 5, maxJitterMs: 5 },
     );

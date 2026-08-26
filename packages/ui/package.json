@@ -20,9 +20,9 @@
   "scripts": {
     "typecheck": "bun x tsc --noEmit",
     "lint": "bun x oxlint",
-    "test": "bun x vitest run --passWithNoTests",
-    "test:watch": "bun x vitest",
-    "test:coverage": "bun x vitest run --coverage"
+    "test": "bun x --bun vitest run --passWithNoTests",
+    "test:watch": "bun x --bun vitest",
+    "test:coverage": "bun x --bun vitest run --coverage"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

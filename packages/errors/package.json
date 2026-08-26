@@ -17,9 +17,9 @@
     "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
     "typecheck": "bun x tsc --noEmit",
     "lint": "bun x oxlint",
-    "test": "bun x vitest run --passWithNoTests",
-    "test:watch": "bun x vitest",
-    "test:coverage": "bun x vitest run --coverage"
+    "test": "bun x --bun vitest run --passWithNoTests",
+    "test:watch": "bun x --bun vitest",
+    "test:coverage": "bun x --bun vitest run --coverage"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

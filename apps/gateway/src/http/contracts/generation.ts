@@ -2,7 +2,7 @@
  * 异步生成任务契约（v1 routes/generation.ts 的 schema 段迁移）：
  * video（按秒计费；duration 4-15 缺省 6）/ music（同步阻塞型上游，worker 代执行）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const videoSchema = z
   .object({

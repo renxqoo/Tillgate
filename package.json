@@ -21,12 +21,13 @@
     "lint": "bunx turbo lint",
     "lint:fix": "bun x oxlint --fix",
     "test": "bun scripts/check-package-boundaries.ts && bunx turbo test --concurrency=1",
-    "test:e2e": "cd apps/gateway && bun x vitest run -c ../../e2e/vitest.config.ts",
-    "test:e2e:real": "cd apps/gateway && bun x vitest run -c ../../e2e/vitest.real.config.ts",
-    "test:e2e:smoke": "cd apps/gateway && bun x vitest run -c ../../e2e/vitest.smoke.config.ts",
+    "test:e2e": "cd apps/gateway && bun x --bun vitest run -c ../../e2e/vitest.config.ts",
+    "test:e2e:real": "cd apps/gateway && bun x --bun vitest run -c ../../e2e/vitest.real.config.ts",
+    "test:e2e:smoke": "cd apps/gateway && bun x --bun vitest run -c ../../e2e/vitest.smoke.config.ts",
     "typecheck": "bunx turbo typecheck"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.0",
     "oxfmt": "^0.62.0",
     "oxlint": "^1.77.0",
     "turbo": "^2.10.8",

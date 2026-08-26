@@ -27,7 +27,6 @@ beforeAll(async () => {
       poolMax: 5,
       idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 3_000,
-      maxUses: 10_000,
     });
     await candidate.execute(sql`select 1`);
     db = candidate;

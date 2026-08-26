@@ -10,7 +10,7 @@
  *   - 新增 WORKER_REFERRAL_BACKFILL_DAYS（v1 写死 BACKFILL_DAYS=7）；
  *   - 新增 WORKER_NOTIFY_* 投递参数（v1 写死在 notify-dispatch）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
 import type { OtelMode } from '@tillgate/observability';
 import type { DbPoolConfig } from '@tillgate/db';
@@ -184,7 +184,6 @@ const DB_POOL: Omit<DbPoolConfig, 'url'> = {
   poolMax: 20,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
-  maxUses: 1_000,
 };
 
 /** BullMQ 连接串:WORKER_REDIS_URL 优先,回落 REDIS_URL;两者皆缺 = fail-closed(结算调度无队列不可用) */

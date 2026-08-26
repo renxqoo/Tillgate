@@ -107,7 +107,6 @@ beforeAll(async () => {
       poolMax: 5,
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 3_000,
-      maxUses: 10_000,
     });
     await ping(db);
   } catch {

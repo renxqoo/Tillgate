@@ -10,7 +10,7 @@
  */
 const SQLSTATE = /^[0-9A-Z]{5}$/;
 
-/** 沿 cause 链产出各层错误载体(v1 core 全链语义;drizzle 会把 pg 错误包在 cause 里) */
+/** 沿 cause 链产出各层错误载体(v1 core 全链语义;drizzle 会把驱动错误包在 cause 里) */
 function* causeChain(err: unknown): Generator<Record<string, unknown>> {
   let cur: unknown = err;
   while (cur != null && typeof cur === 'object') {
@@ -19,21 +19,29 @@ function* causeChain(err: unknown): Generator<Record<string, unknown>> {
   }
 }
 
+/**
+ * 单层载体上的 SQLSTATE:pg 在 `code`(如 '23505'),Bun SQL 在 `errno`
+ * (其 `code` 是 ERR_POSTGRES_* 前缀的运行时码)——双字段探测,5 位词形即事实。
+ */
+function sqlStateOf(holder: Record<string, unknown>): string | null {
+  const { code, errno } = holder;
+  if (typeof code === 'string' && SQLSTATE.test(code)) return code;
+  if (typeof errno === 'string' && SQLSTATE.test(errno)) return errno;
+  return null;
+}
+
 /** 任意 5 位 PG SQLSTATE(如 '23505');无则 null。参数可选:缺省/undefined 沿链探测即无结果 */
 export function pgSqlState(err?: unknown): string | null {
   for (const holder of causeChain(err)) {
-    const { code } = holder;
-    if (typeof code === 'string' && SQLSTATE.test(code)) return code;
+    const state = sqlStateOf(holder);
+    if (state != null) return state;
   }
   return null;
 }
 
 /** PG 唯一约束冲突(23505)——并发重放双保险的兜底信号 */
 export function isUniqueViolation(err: unknown): boolean {
-  for (const holder of causeChain(err)) {
-    if (holder['code'] === '23505') return true;
-  }
-  return false;
+  return pgSqlState(err) === '23505';
 }
 
 /**
@@ -42,19 +50,15 @@ export function isUniqueViolation(err: unknown): boolean {
  */
 export function uniqueViolationConstraint(err: unknown): string | null {
   for (const holder of causeChain(err)) {
-    if (holder['code'] === '23505') {
-      const { constraint } = holder;
-      return typeof constraint === 'string' ? constraint : null;
-    }
+    if (sqlStateOf(holder) !== '23505') continue;
+    const { constraint } = holder;
+    return typeof constraint === 'string' ? constraint : null;
   }
   return null;
 }
 
 /** 瞬态事务错误(PG 死锁 40P01 / 串行化失败 40001)——幂等动词可安全重试的唯一信号 */
 export function transientTxFailureCode(err: unknown): '40P01' | '40001' | null {
-  for (const holder of causeChain(err)) {
-    const { code } = holder;
-    if (code === '40P01' || code === '40001') return code;
-  }
-  return null;
+  const state = pgSqlState(err);
+  return state === '40P01' || state === '40001' ? state : null;
 }

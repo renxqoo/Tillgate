@@ -26,7 +26,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { z } from 'zod';
+import * as z from 'zod';
 
 import { useActionResult } from '@/components/action-toast';
 import { moneyText } from '@/lib/forms';

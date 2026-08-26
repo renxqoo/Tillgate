@@ -1,8 +1,7 @@
 import {
   check,
   index,
-  jsonb,
-  pgTable,
+    pgTable,
   bigserial,
   varchar,
   smallint,
@@ -10,6 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { jsonb } from './jsonb.js';
 import { sql } from 'drizzle-orm';
 
 /**

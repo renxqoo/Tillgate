@@ -2,7 +2,7 @@
  * 订阅管理动词契约（v1 subscriptions.ts zod 面平移;管理列表 GET /v1/subscriptions 为 P1 pending）。
  * 资金动词幂等键经 operationId（http 货架;idempotency-key 头或服务端 UUID）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 
 const SEATS_MAX = 1000;
 

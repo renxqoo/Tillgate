@@ -44,7 +44,7 @@ async function zeroCharge(c: any, userId: number) {
   const w = await drainWallet(c, userId);
   ok(new (await import('@tillgate/billing')).Decimal(w.balance).gte(0), `balance ${w.balance} >= 0`);
   const n = await c.db.execute(sql`select count(*)::int as n from usage_logs where user_id = ${userId}`);
-  eq(Number((n.rows[0] as any).n), 0, '失败零 usage 行');
+  eq(Number((n[0] as any).n), 0, '失败零 usage 行');
 }
 
 async function healthStillOk(c: any) {
@@ -140,7 +140,7 @@ define('F10', '上游故障', '上游 200+响应体立即死亡 → 空补全按
   ok(r.status === 200 || r.status >= 500, `bounded terminal, got ${r.status}`);
   const w = await drainWallet(c, u.id);
   const usage = await c.db.execute(sql`select count(*)::int as n, coalesce(sum(amount),0)::text as total from usage_logs where user_id = ${u.id}`);
-  const row = usage.rows[0] as any;
+  const row = usage[0] as any;
   eq(Number(row.n), 1, 'exactly one usage row (empty completion billed by estimate)');
   ok(Number(row.total) > 0 && Number(row.total) < 1, `estimated bounded charge ${row.total}`);
   ok(Number(w.balance) < 50 && Number(w.balance) > 49, `conservative charge, balance ${w.balance}`);
@@ -155,7 +155,7 @@ define('F11', '上游故障', '上游吐畸形 SSE(非 JSON 帧)→ 请求终结
   ok(outcome !== 'timeout', `garbage stream terminates (${outcome})`);
   await drainWallet(c, u.id);
   const n = await c.db.execute(sql`select count(*)::int as n from usage_logs where user_id = ${u.id}`);
-  ok(Number((n.rows[0] as any).n) <= 1, '≤1 usage row');
+  ok(Number((n[0] as any).n) <= 1, '≤1 usage row');
   const w = await c.seed.wallet(c.db, u.id);
   ok(Number(w.balance) <= 50 && Number(w.balance) >= 0, `bounded charge, balance ${w.balance}`);
 });

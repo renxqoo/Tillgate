@@ -3,7 +3,7 @@
  * 请求 schema 引用 contracts/notifications.ts（事件词表单一真相在 notifications 包）;
  * 响应 wire 形状按 MaskedChannel（config.secret 已掩码,密文不回显）。
  */
-import { z } from 'zod';
+import * as z from 'zod';
 import { notificationsContracts } from '../contracts/notifications';
 import { idPathParam, okTrue, type OpenApiEndpoint } from './shared';
 

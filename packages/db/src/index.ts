@@ -12,6 +12,7 @@ export type { DbLike } from './context.js';
 
 // ---- 事务 ----
 export { runTx, advisoryLock } from './transaction.js';
+export { withSessionTryLock } from './advisory-try-lock.js';
 export type { TxRetryPolicy, TxRetryHooks } from './transaction.js';
 
 // ---- PG 错误分类 ----

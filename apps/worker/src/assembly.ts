@@ -12,7 +12,7 @@ import { assertSafeUrl, createAi } from '@tillgate/ai';
 import type { Ai } from '@tillgate/ai';
 import { createCipher, createLogger } from '@tillgate/runtime';
 import type { Logger } from '@tillgate/runtime';
-import { closeDb, createDb, ping } from '@tillgate/db';
+import { closeDb, createDb, ping, withSessionTryLock } from '@tillgate/db';
 import type { Db, DbTx } from '@tillgate/db';
 import { initOtel, createObservability } from '@tillgate/observability';
 import type { OtelHandle } from '@tillgate/observability';
@@ -305,23 +305,8 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   const recordDiscrepancies = createRecordDiscrepanciesUseCase({
     store: createPostgresReconcileDiscrepancyStore(db),
   });
-  const withTryLock = async <T>(key: string, fn: () => Promise<T>): Promise<T | null> => {
-    const client = await db.$client.connect();
-    try {
-      const locked = await client.query<{ locked: boolean }>({
-        text: 'select pg_try_advisory_lock(hashtext($1)) as locked',
-        values: [key],
-      });
-      if (locked.rows[0]?.locked !== true) return null;
-      try {
-        return await fn();
-      } finally {
-        await client.query({ text: 'select pg_advisory_unlock(hashtext($1))', values: [key] });
-      }
-    } finally {
-      client.release();
-    }
-  };
+  const withTryLock = async <T>(key: string, fn: () => Promise<T>): Promise<T | null> =>
+    withSessionTryLock(db, key, fn);
   const runReconcile = createReconcileJob({
     settlement,
     lockKey: RECONCILE_LOCK_KEY,
@@ -410,7 +395,7 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   // ---- 唤醒消费端（LISTEN 专用连接；收口挂 shutdown closeables）----
   const wakeup = config.settle.wake
     ? createSettleWakeListener({
-        connect: async () => await db.$client.connect(),
+        listen: (channel, onMessage) => db.$client.listen(channel, onMessage),
         channel: SETTLE_WAKE_CHANNEL,
         onWake: async (requestId) => {
           if (requestId != null) {

@@ -58,7 +58,7 @@ define('P1', '毒账单回归', 'F-1 闭环:usage 插入持续失败(FK)→ work
     const outbox = await c.db.execute(sql`
       select count(*)::int as n from notify_outbox
       where event = 'billing_dead' and payload->>'requestId' = ${reqId}`);
-    return Number((outbox.rows[0] as any).n) >= 1 ? bill : null;
+    return Number((outbox[0] as any).n) >= 1 ? bill : null;
   }, 60_000, 500);
 
   ok(alive(), 'worker ALIVE after poison bill exhausted to dead (F-1 修复闭环)');
@@ -67,5 +67,5 @@ define('P1', '毒账单回归', 'F-1 闭环:usage 插入持续失败(FK)→ work
   ok(Number(bill.receipt ?? 0) === 0 || true, 'receipt shape irrelevant');
   // 钱包不动(毒账单从未成功结算;账户行随用户删除已不可达——零资损)
   const usage = await c.db.execute(sql`select count(*)::int as n from usage_logs where request_id = ${reqId}`);
-  eq(Number((usage.rows[0] as any).n), 0, 'zero usage rows (settle never completed)');
+  eq(Number((usage[0] as any).n), 0, 'zero usage rows (settle never completed)');
 });

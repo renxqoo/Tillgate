@@ -70,7 +70,6 @@ async function main(): Promise<void> {
     poolMax: 2,
     idleTimeoutMillis: 5_000,
     connectionTimeoutMillis: 5_000,
-    maxUses: 10_000,
   });
   try {
     for (const file of PROVISION_FILES) {
