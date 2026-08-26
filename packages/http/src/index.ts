@@ -57,6 +57,13 @@ export {
 } from './network/trusted-client-ip';
 export { serveApp, type AppServer, type ServeAppOptions } from './network/serve-app';
 
+// ---- DB 并发预算门（公网 ingress 通用） ----
+export {
+  dbBudgetMiddleware,
+  suggestDbBudget,
+  type DbBudgetOptions,
+} from './middleware/db-budget';
+
 // ---- 请求上下文 ----
 export { requestIdMiddleware } from './request-context/request-id';
 

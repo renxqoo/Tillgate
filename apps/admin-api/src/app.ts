@@ -7,7 +7,13 @@
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
 import { pgSqlState } from '@tillgate/db'; // 纯 SQLSTATE 分类函数(errorHandler 文档化注入点;非 Db 类型)
-import { errorBody, errorHandler, renderError, HttpErrors } from '@tillgate/http';
+import {
+  errorBody,
+  errorHandler,
+  renderError,
+  HttpErrors,
+  dbBudgetMiddleware,
+} from '@tillgate/http';
 import { localeFromContext } from '@tillgate/http';
 import type { AccountUseCases } from '@tillgate/accounts';
 import type {
@@ -62,6 +68,8 @@ import { meRoutes } from './http/routes/me';
 export interface AdminAppDeps {
   /** DB 探活(healthz/readyz 用;装配绑定 ping(db),app 不接触 Db 类型) */
   pingDb: () => Promise<void>;
+  /** DB 并发预算门(管理面批量脚本/导出的入口排队;缺省关闭——不注入即旁路) */
+  dbBudget?: { limit: number; maxQueue: number; waitTimeoutMs: number };
   /** 5xx 服务端日志出口(pino 结构兼容;缺省静默) */
   logger?: { error(obj: Record<string, unknown>, msg?: string): void };
   /** admin realm 会话验证(identity facade 结构子集)+ 属主回查(P2/D8) */
@@ -136,6 +144,9 @@ export interface AdminAppDeps {
 // eslint-disable-next-line max-lines-per-function, max-statements -- 应用装配:错误处理/中间件栈/路由挂载线性平铺,每条语句即一个挂载步骤(存量棘轮)
 export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
   const app = new Hono<SessionEnv>();
+
+  // DB 并发预算门先行(探针路径在门内旁路):管理端批量操作/导出脚本防打满小池
+  if (deps.dbBudget != null) app.use('*', dbBudgetMiddleware(deps.dbBudget));
 
   // 统一兜底:contracts 层 zod parse 的 ZodError 先行翻译(validation_failed——v1
   // invalid_request 语义);其余流动错误按 v2 目录渲染,PG SQLSTATE 探测注入

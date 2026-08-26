@@ -1,6 +1,6 @@
 import { ENFORCED_CODES } from '@tillgate/control-plane';
 import { createPostgresIntegrationSettingsReader } from '@tillgate/control-plane/composition';
-import { createDb, type Db, type TxRetryPolicy } from '@tillgate/db';
+import { createDb, type Db, type TxRetryPolicy, type DbPoolConfig } from '@tillgate/db';
 import type Redis from 'ioredis';
 import {
   createLogger,
@@ -85,6 +85,8 @@ export interface AdminApiAssembly {
   readonly logger: Logger;
   readonly otel: OtelHandle;
   readonly db: Db;
+  /** 池参数快照(index 侧推导预算门用) */
+  readonly dbPool: Omit<DbPoolConfig, 'url'>;
   readonly identity: Identity;
   readonly billing: Billing;
   readonly accounts: AccountUseCases;
@@ -348,6 +350,7 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     logger,
     otel,
     db,
+    dbPool: config.dbPool,
     identity,
     billing,
     accounts,

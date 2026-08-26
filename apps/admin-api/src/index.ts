@@ -1,4 +1,4 @@
-import { serveApp } from '@tillgate/http';
+import { serveApp, suggestDbBudget } from '@tillgate/http';
 import { ping } from '@tillgate/db';
 import { loadAdminApiConfig } from './config';
 import { assembleAdminApi } from './assembly';
@@ -15,6 +15,8 @@ const assembly = assembleAdminApi(config);
 // ping 绑定在进程装配面:app.ts 不接触 Db 类型(P5:非装配代码只持闭包与纯契约)
 const app = createAdminApp({
   pingDb: () => ping(assembly.db),
+  // DB 并发预算门:管理面批量脚本(调账/导出)入口排队,防打满小池(余量 2 给探针)
+  dbBudget: suggestDbBudget(assembly.dbPool.poolMax, 2),
   logger: assembly.logger,
   // P2:会话验证 + 属主回查（admins 行存在且 status=0——封禁/注销即刻失效,D8/W3）
   sessions: {

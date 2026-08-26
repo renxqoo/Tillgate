@@ -3,11 +3,11 @@
  * 业务一律来自能力 facade——本层零业务规则（错误 face 映射是协议契约，不是规则）。
  * app 非 assembly 代码不引用 Db/DbTx/composition（P5；架构测试机器锁定）。
  */
-import { dbBudgetMiddleware } from './http/middleware/db-budget';
 import { Hono } from 'hono';
 import {
   bodyParserLimit,
   corsPreflight,
+  dbBudgetMiddleware,
   errorHandler,
   securityHeaders,
   requestIdMiddleware,
