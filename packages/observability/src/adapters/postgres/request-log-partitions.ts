@@ -28,7 +28,7 @@ export async function maintainRequestLogPartitions(
   opts: RequestLogPartitionOptions,
 ): Promise<RequestLogPartitionResult> {
   return (
-    (await withSessionTryLock(db, LOCK_KEY, () => runOnReserved(db, opts))) ?? {
+    (await withSessionTryLock(db, { key: LOCK_KEY }, () => runOnReserved(db, opts))) ?? {
       created: [],
       dropped: [],
     }

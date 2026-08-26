@@ -179,31 +179,13 @@ export interface WorkerConfig {
   readonly dbPool: Omit<DbPoolConfig, 'url'>;
 }
 
-/** PG 池部署定值：worker 并发 = 认领批量 + 轮询/维护余量（v1 poolMax 同口径） */
+/** PG 池部署定值：worker 并发 = 认领批量 + 轮询/维护余量（v1 poolMax 同口径）。
+ * 池-并发不变量在 assembly 从 runner 注册表派生断言（单一真相），此处只持定值。 */
 const DB_POOL: Omit<DbPoolConfig, 'url'> = {
   poolMax: 20,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
 };
-
-/**
- * 池-并发不变量（worker 无预算门——它的 DB 并发被结构性钳死,前提是池 ≥ 最大并发）:
- * BullMQ 结算并发 + 定时任务数(6:settle/recover/generation/referral/reconcile/partitions,
- * 调度器同名串行但跨名可重叠) + 余量 2(探针/唤醒入队)。不满足 = 检出排队起点,
- * node 塌吞吐 / Bun SQL 楔死(F-6)——fail-fast 胜过带病运行。
- */
-function assertPoolCoversConcurrency(parsed: { WORKER_SETTLE_CONCURRENCY: number }): void {
-  const RUNNER_COUNT = 6;
-  const margin = 2;
-  const worstCase = parsed.WORKER_SETTLE_CONCURRENCY + RUNNER_COUNT + margin;
-  if (DB_POOL.poolMax < worstCase) {
-    throw new Error(
-      `worker DB pool ${DB_POOL.poolMax} < worst-case DB concurrency ${worstCase} ` +
-        `(settle concurrency ${parsed.WORKER_SETTLE_CONCURRENCY} + ${RUNNER_COUNT} runners + ${margin} margin); ` +
-        'pool checkout queueing wedges/stalls under load — raise poolMax or lower concurrency',
-    );
-  }
-}
 
 /** BullMQ 连接串:WORKER_REDIS_URL 优先,回落 REDIS_URL;两者皆缺 = fail-closed(结算调度无队列不可用) */
 function redisUrlOf(parsed: { WORKER_REDIS_URL?: string; REDIS_URL?: string }): string {
@@ -219,7 +201,6 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
   const parsed = envSchema.parse(env);
   const otelMode: OtelMode =
     parsed.OTEL_TRACES_MODE ?? (parsed.NODE_ENV === 'production' ? 'off' : 'off');
-  assertPoolCoversConcurrency(parsed);
 
   return {
     nodeEnv: parsed.NODE_ENV,

@@ -41,6 +41,7 @@ describe('src 文件集合快照', () => {
       'app.ts',
       'assembly.ts',
       'config.ts',
+      'db-budget.ts',
       'http/contracts/generation.ts',
       'http/contracts/inference-endpoints.ts',
       'http/middleware/api-key.ts',

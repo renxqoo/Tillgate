@@ -65,7 +65,7 @@ export async function maintainTracePartitions(
 
   // 锁是跨进程互斥(专用连接持有),DDL 走池连接——与 v1 语义等价
   return (
-    (await withSessionTryLock(db, LOCK_KEY, async () => {
+    (await withSessionTryLock(db, { key: LOCK_KEY }, async () => {
       const created: string[] = [];
       for (let i = 0; i <= lookaheadDays; i++) {
         const day = shiftDay(today, i);

@@ -61,6 +61,20 @@ describe('assembleWorker', () => {
     expect(assembly.jobs).toHaveLength(6);
   });
 
+  it('池-并发不变量从注册表派生：并发 12 + 7 tick（notify 开，partitions/reconcile 双连接）超池 20 → fail-fast', () => {
+    // 旧手工记账 RUNNER_COUNT=6 会算 12+6+2=20 放行（漏 notify tick 与持锁
+    // 双连接 tick，红队复审 R-2）；注册表派生 = 12 + (1+1+1+1+2+2+1) + 2 = 23 > 20
+    expect(() => assembleWorker(config({ WORKER_SETTLE_CONCURRENCY: '12' }))).toThrow(
+      /worker DB pool 20 < worst-case DB concurrency 23/,
+    );
+    // 静音 notify（6 tick，连接需求 8）+ 并发 10 = 20 恰好覆盖 → 放行
+    const tight = assembleWorker(
+      config({ WORKER_SETTLE_CONCURRENCY: '10', WORKER_NOTIFY_ENABLED: 'false' }),
+    );
+    assemblies.push(tight);
+    expect(tight.jobs).toHaveLength(6);
+  });
+
   it('WORKER_SETTLE_WAKE=true → 唤醒消费端挂载（LISTEN 专用连接尽力建连，失败仅日志）', async () => {
     const assembly = assembleWorker(config({ WORKER_SETTLE_WAKE: 'true' }));
     assemblies.push(assembly);

@@ -7,8 +7,19 @@
  * 统一裁决(B3):v1 四份实现探测深度不一(wallet 3 层 / identity-core 5 层 / core 正则无限),
  * 此处统一为全 cause 链——superset 方向,更深的冲突不再漏检;wallet 路径深度 >3 的唯一
  * 冲突漏检是资金路径兜底信号的真实缺陷,由回归用例锁定。
+ *
+ * 词形收紧(红队复审 R-4):SQLSTATE = 5 位 [0-9A-Z] 且**至少含一位数字**(真实
+ * SQLSTATE 子类恒含数字);系统 errno 串(EPERM/ELOOP/EPIPE/EACCES——pg 的 `code`
+ * 连接层错误与 Bun SQL 的 `errno`)恒为纯字母,曾被 5 位词形误判为 SQLSTATE。
  */
-const SQLSTATE = /^[0-9A-Z]{5}$/;
+
+/** 5 位大写字母数字词形(SQLSTATE 的形状面) */
+const SQLSTATE_SHAPE = /^[0-9A-Z]{5}$/;
+
+/** 词形 + 至少一位数字 = SQLSTATE 事实(errno 假阳性家族被排除) */
+function isSqlState(value: string): boolean {
+  return SQLSTATE_SHAPE.test(value) && /\d/.test(value);
+}
 
 /** 沿 cause 链产出各层错误载体(v1 core 全链语义;drizzle 会把驱动错误包在 cause 里) */
 function* causeChain(err: unknown): Generator<Record<string, unknown>> {
@@ -21,12 +32,12 @@ function* causeChain(err: unknown): Generator<Record<string, unknown>> {
 
 /**
  * 单层载体上的 SQLSTATE:pg 在 `code`(如 '23505'),Bun SQL 在 `errno`
- * (其 `code` 是 ERR_POSTGRES_* 前缀的运行时码)——双字段探测,5 位词形即事实。
+ * (其 `code` 是 ERR_POSTGRES_* 前缀的运行时码)——双字段探测。
  */
 function sqlStateOf(holder: Record<string, unknown>): string | null {
   const { code, errno } = holder;
-  if (typeof code === 'string' && SQLSTATE.test(code)) return code;
-  if (typeof errno === 'string' && SQLSTATE.test(errno)) return errno;
+  if (typeof code === 'string' && isSqlState(code)) return code;
+  if (typeof errno === 'string' && isSqlState(errno)) return errno;
   return null;
 }
 

@@ -13,7 +13,7 @@ import type { Ai } from '@tillgate/ai';
 import { createCipher, createLogger } from '@tillgate/runtime';
 import type { Logger } from '@tillgate/runtime';
 import { closeDb, createDb, ping, withSessionTryLock } from '@tillgate/db';
-import type { Db, DbTx } from '@tillgate/db';
+import type { Db, DbTx, LockDefectHook } from '@tillgate/db';
 import { initOtel, createObservability } from '@tillgate/observability';
 import type { OtelHandle } from '@tillgate/observability';
 import {
@@ -87,6 +87,37 @@ const REFERRAL_GUARDS = {
 
 /** 装配时钟（模块级纯函数——不捕获闭包；测试经 job 用例注入各自时钟） */
 const workerClock = (): Date => new Date();
+
+/**
+ * 每 scheduler tick 的 DB 连接需求记账（红队复审 R-2）：partitions/reconcile
+ * 持会话锁专用连接 + 工作连接（各 2 条）；其余 tick 1 条。新 tick 默认记 1，
+ * 持锁/双连接形态必须在此显式声明——本表是 runner 注册表的伴随事实。
+ */
+const TICK_CONN_DEMAND: Readonly<Record<string, number>> = { partitions: 2, reconcile: 2 };
+/** 探针/唤醒入队等非 tick 需求的余量 */
+const TICK_MARGIN = 2;
+
+/**
+ * 池-并发不变量：从 runner 注册表派生（单一真相，禁手工计数——notify 开关、
+ * 新 job 注册都会使抄写数字漂移）。worker 无预算门，DB 并发被结构性钳死的
+ * 前提是池 ≥ 最大并发；不满足 = 检出排队起点，node 塌吞吐 / Bun SQL 楔死
+ * （F-6）——fail-fast 胜过带病运行。
+ */
+function assertPoolCoversConcurrency(
+  config: WorkerConfig,
+  ticks: readonly string[],
+): void {
+  const tickDemand = ticks.reduce((sum, name) => sum + (TICK_CONN_DEMAND[name] ?? 1), 0);
+  const worstCase = config.settle.bullmq.concurrency + tickDemand + TICK_MARGIN;
+  if (config.dbPool.poolMax < worstCase) {
+    throw new Error(
+      `worker DB pool ${config.dbPool.poolMax} < worst-case DB concurrency ${worstCase} ` +
+        `(settle concurrency ${config.settle.bullmq.concurrency} + ${ticks.length} ticks ` +
+        `(${tickDemand} conns incl. lock-held double-connection ticks) + ${TICK_MARGIN} margin); ` +
+        'pool checkout queueing wedges/stalls under load — raise poolMax or lower concurrency',
+    );
+  }
+}
 
 export interface WorkerAssembly {
   logger: Logger;
@@ -305,8 +336,12 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   const recordDiscrepancies = createRecordDiscrepanciesUseCase({
     store: createPostgresReconcileDiscrepancyStore(db),
   });
+  /** 解锁失败缺陷上报(R-5):连接已销毁(锁随连接释放),缺陷可见性走 error 日志 */
+  const lockDefect: LockDefectHook = (error, key) => {
+    logger.error({ err: String(error), key }, 'advisory unlock failed; lock connection destroyed');
+  };
   const withTryLock = async <T>(key: string, fn: () => Promise<T>): Promise<T | null> =>
-    withSessionTryLock(db, key, fn);
+    withSessionTryLock(db, { key, onDefect: lockDefect }, fn);
   const runReconcile = createReconcileJob({
     settlement,
     lockKey: RECONCILE_LOCK_KEY,
@@ -383,6 +418,8 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
     ...runners,
     settle: runSettlementSweep,
   };
+  // 池不变量断言在注册表既成事实之后（派生计数,装配即锁）
+  assertPoolCoversConcurrency(config, Object.keys(schedulerTicks));
   for (const [name, run] of Object.entries(schedulerTicks)) {
     // runner 与 interval 表装配期同源声明;缺间隔即装配缺陷,fail-fast 胜过注册 undefined 周期
     const intervalMs = intervals[name];
