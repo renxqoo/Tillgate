@@ -24,6 +24,8 @@ export interface OAuthDeps {
   readonly onboarding: (userId: number) => Promise<unknown>;
   readonly userStatus: (userId: number) => Promise<number | null>;
   readonly sign: (userId: number) => Promise<string>;
+  /** 登录事实回写 users.last_login_at（best-effort,失败不阻断会话签发） */
+  readonly touchLastLogin: (userId: number) => Promise<void>;
   readonly frontendUrl: string;
   readonly apiBase: string;
   readonly secureCookie: boolean;
@@ -106,6 +108,8 @@ export function oauthRoutes(deps: OAuthDeps) {
       );
     }
     const token = await deps.sign(userId);
+    // 登录事实回写（与密码/邮箱码/注册即登录路径同口径——四条会话签发路径统一记录）
+    await deps.touchLastLogin(userId).catch(() => {});
     const next = safeNext(result.next);
     return c.redirect(`${deps.frontendUrl}${next}#token=${encodeURIComponent(token)}`);
   });
