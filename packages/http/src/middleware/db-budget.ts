@@ -12,6 +12,7 @@
  * （否则实例被误判死亡摘除）。队列溢出与等待超时 fail-closed 503（客户端重试）。
  */
 import type { MiddlewareHandler } from 'hono';
+import { HttpErrors } from '../errors/catalog.js';
 
 export interface DbBudgetOptions {
   /** 预算上限（同时进入业务链路的请求数,含其全部 DB 工作） */
@@ -39,16 +40,21 @@ export function dbBudgetMiddleware(opts: DbBudgetOptions): MiddlewareHandler {
     if (BYPASS.has(c.req.path)) return next();
     if (inflight >= opts.limit) {
       if (queue.length >= opts.maxQueue) {
-        return c.json(
-          { error: { code: 'db_budget_full', message: 'DB concurrency budget queue full' } },
-          503,
-        );
+        // 统一错误出口:抛目录码(unavailable→503),由各 app 的 errorHandler face
+        // 渲染信封/双语/Retry-After——机制件不自带出站形态(ADR-0001 D1)
+        throw HttpErrors.business('db_budget_full', { queueDepth: queue.length, limit: opts.limit }, {
+          retryAfterMs: opts.waitTimeoutMs,
+        });
       }
       const granted = new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => {
           const i = queue.indexOf(wake);
           if (i >= 0) queue.splice(i, 1);
-          reject(new Error('db budget wait timeout'));
+          reject(
+            HttpErrors.business('db_budget_timeout', { limit: opts.limit }, {
+              retryAfterMs: opts.waitTimeoutMs,
+            }),
+          );
         }, opts.waitTimeoutMs);
         const wake = (): void => {
           clearTimeout(timer);
@@ -56,14 +62,7 @@ export function dbBudgetMiddleware(opts: DbBudgetOptions): MiddlewareHandler {
         };
         queue.push(wake);
       });
-      try {
-        await granted;
-      } catch {
-        return c.json(
-          { error: { code: 'db_budget_timeout', message: 'DB concurrency budget wait timeout' } },
-          503,
-        );
-      }
+      await granted;
     } else {
       inflight += 1;
     }
