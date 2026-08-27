@@ -58,5 +58,9 @@ export function createDynamicLoginMailer(env: DynamicLoginMailerEnv): Mailer {
       if (mailer == null) return unavailable();
       return mailer.sendPasswordResetLink(to, url, ctx);
     },
+    // 管理面能力:用户面不发送管理员邀请——端口合规空实现(永不达)
+    async sendAdminInviteLink() {
+      throw new Error('client mailer does not send admin invites');
+    },
   };
 }

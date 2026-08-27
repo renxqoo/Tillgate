@@ -20,4 +20,11 @@ export interface Mailer {
     url: string,
     ctx: { ip: string; locale?: 'en' | 'zh'; ttlMinutes: number },
   ): Promise<void>;
+  /** 发送管理员邀请链接(新建管理员设置初始密码;触发者是管理端操作而非
+   * 最终用户请求,故不带 ip 来源提示) */
+  sendAdminInviteLink(
+    to: string,
+    url: string,
+    ctx: { locale?: 'en' | 'zh'; ttlMinutes: number },
+  ): Promise<void>;
 }

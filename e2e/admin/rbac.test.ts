@@ -5,8 +5,9 @@
  * 覆盖面：
  *   E viewer 拒绝面（读 200/写 403/me 权限集——拒绝矩阵的真装配抽样）;
  *   F super_admin 回填不变性（既有全权限行为零漂移）;
- *   G admins 管理旅程（创建→凭据可用→降权同令牌即时生效→自改拒绝→
- *      409 冲突 + 凭据被占补偿回滚——不留废号）。
+ *   G admins 管理旅程（邀请制创建（SMTP 未配 inviteSent:false 不回滚）→
+ *      令牌消费激活 → 凭据可用 → 已激活后旧链接作废 → 降权同令牌即时生效 →
+ *      自改拒绝 → 409 冲突 + 凭据被占补偿回滚——不留废号）。
  * journey.test.ts 零改动全绿 = 既有旅程回归锁（同套件运行时验证）。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -147,8 +148,8 @@ describe('F. super_admin 回填不变性（0081 迁移 = 既有行为零漂移�
   });
 });
 
-describe('G. admins 管理旅程（创建→降权即时生效→自改拒绝→冲突补偿）', () => {
-  it('创建 operator（真凭据落库可鉴别）→ 降权 viewer 同令牌写动词翻 403', async () => {
+describe('G. admins 管理旅程（邀请制创建→令牌激活→降权即时生效→自改拒绝→冲突补偿）', () => {
+  it('邀请制创建(SMTP 未配 inviteSent:false 不回滚) → 令牌消费激活 → 凭据可用 → 降权 403', async () => {
     const email = `e2e-rbac-op-${Date.now()}@e2e.invalid`;
     const created = await call(w(), '/v1/admins', {
       method: 'POST',
@@ -156,23 +157,56 @@ describe('G. admins 管理旅程（创建→降权即时生效→自改拒绝→
       body: JSON.stringify({
         email,
         displayName: 'e2e-rbac-op',
-        password: 'e2e-initial-pass-123',
         roleId: await operatorRoleId(),
       }),
     });
     expect(created.status).toBe(201);
-    expect(created.body).toMatchObject({ email, role: 'operator', status: 0 });
+    // e2e 世界 SMTP 未配置——创建成功但邀请邮件未投递(用户裁决:列表重发补救)
+    expect(created.body).toMatchObject({
+      email,
+      role: 'operator',
+      status: 0,
+      hasPassword: false,
+      inviteSent: false,
+    });
     const operatorId = created.body.id as number;
     // id ≥1e9 段（identity_passwords 扁平主键防串号）
     expect(operatorId).toBeGreaterThanOrEqual(1_000_000_000);
     createdAdminIds.push(operatorId);
 
+    // 「邮件链接」替身：生产路径由创建/重发签发,这里经同一 Redis store 取令牌明文
+    const inviteToken = await w().assembly.invites.issue(operatorId);
+    const activated = await call(w(), '/v1/auth/reset-password', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ token: inviteToken, password: 'e2e-invite-pass-123' }),
+    });
+    expect(activated.status).toBe(200);
+    expect(activated.body).toEqual({ ok: true });
+
     // 凭据真实落库：密码鉴别命中新建管理员
     const authed = await w().assembly.identity.passwords.authenticate({
       identifier: { kind: 'email', value: email },
-      password: 'e2e-initial-pass-123',
+      password: 'e2e-invite-pass-123',
     });
     expect(authed.userId).toBe(operatorId);
+
+    // 激活后再持有的邀请令牌（过期邮件里的旧链接）一律作废——泄露不可改密
+    const stale = await w().assembly.invites.issue(operatorId);
+    const replay = await call(w(), '/v1/auth/reset-password', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ token: stale, password: 'hijack-pass-12345' }),
+    });
+    expect(replay.status).toBe(400);
+    expect(replay.body).toMatchObject({ error: { code: 'admin.admin_reset_token_invalid' } });
+
+    // 列表投影：激活后 hasPassword=true（重发按钮显隐的单一事实）
+    const list = await call(w(), '/v1/admins');
+    const row = (list.body.rows as Array<{ id: number; hasPassword: boolean }>).find(
+      (r) => r.id === operatorId,
+    );
+    expect(row?.hasPassword).toBe(true);
 
     // operator 令牌（降权前签发）：settings:write 放行
     const token = await w().assembly.identity.sessions.sign({
@@ -236,7 +270,6 @@ describe('G. admins 管理旅程（创建→降权即时生效→自改拒绝→
       headers: jsonHeaders,
       body: JSON.stringify({
         email,
-        password: 'e2e-pass-123456',
         roleId: await roleIdOf('support'),
       }),
     });
@@ -250,7 +283,6 @@ describe('G. admins 管理旅程（创建→降权即时生效→自改拒绝→
       headers: jsonHeaders,
       body: JSON.stringify({
         email,
-        password: 'e2e-pass-123456',
         roleId: await roleIdOf('viewer'),
       }),
     });
@@ -273,7 +305,6 @@ describe('G. admins 管理旅程（创建→降权即时生效→自改拒绝→
       headers: jsonHeaders,
       body: JSON.stringify({
         email,
-        password: 'e2e-pass-123456',
         roleId: await roleIdOf('viewer'),
       }),
     });

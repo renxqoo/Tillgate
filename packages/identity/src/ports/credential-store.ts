@@ -45,4 +45,7 @@ export interface CredentialStore {
     db: DbLike,
     userId: number,
   ): Promise<{ kind: 'email' | 'phone'; value: string } | null>;
+
+  /** 批量查询已设密码的 userId 子集(列表投影单查防 N+1;空入参返回空) */
+  findPasswordUserIds(db: DbLike, userIds: readonly number[]): Promise<number[]>;
 }

@@ -10,29 +10,45 @@ import {
   RowActions,
 } from '@tillgate/ui';
 import { useState } from 'react';
-import { Loader2Icon, PencilIcon, ShieldBanIcon, ShieldCheckIcon } from 'lucide-react';
+import {
+  Loader2Icon,
+  MailPlusIcon,
+  PencilIcon,
+  ShieldBanIcon,
+  ShieldCheckIcon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { FormDialog } from '@/components/form-dialog';
 import { useActionResult } from '@/components/action-toast';
-import { toggleAdminStatusAction, updateAdminRoleAction } from '@/server/admins-actions';
+import {
+  resendAdminInviteAction,
+  toggleAdminStatusAction,
+  updateAdminRoleAction,
+} from '@/server/admins-actions';
 
 import type { RoleOption } from './admin-create-form';
 
 /**
- * 行操作（统一 RowActions 三点菜单）:变更角色（小弹窗）/ 封禁与恢复。
+ * 行操作（统一 RowActions 三点菜单）:变更角色（小弹窗）/ 封禁与恢复 /
+ * 重发邀请邮件（邀请制——仅「待激活」行:未设密码且账号可用;已激活即隐藏,
+ * 链接唯一用途是设置初始密码。canResend = admins:update,权威判定在后端 ACL）。
  * 「不可改自身 role/status」由后端守卫——此处仅禁用自身行的菜单项（UX 提前）。
  */
 export function AdminRowActions({
   id,
   roleId,
   status,
+  hasPassword,
+  canResend,
   self,
   roles,
 }: {
   id: number;
   roleId: number;
   status: number;
+  hasPassword: boolean;
+  canResend: boolean;
   self: boolean;
   roles: readonly RoleOption[];
 }) {
@@ -50,6 +66,14 @@ export function AdminRowActions({
     const res = await toggleAdminStatusAction(id, status === 0 ? 1 : 0);
     setPending(false);
     notify(res, t('updateFailed'));
+  };
+
+  const [invitePending, setInvitePending] = useState(false);
+  const onResendInvite = async () => {
+    setInvitePending(true);
+    const res = await resendAdminInviteAction(id);
+    setInvitePending(false);
+    notify(res, t('resendFailed'), t('inviteResent'));
   };
 
   return (
@@ -98,6 +122,16 @@ export function AdminRowActions({
           <PencilIcon className="size-4" />
           {t('changeRole')}
         </DropdownMenuItem>
+        {canResend && !hasPassword && status === 0 && (
+          <DropdownMenuItem disabled={invitePending} onClick={onResendInvite}>
+            {invitePending ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <MailPlusIcon className="size-4" />
+            )}
+            {t('resendInvite')}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem disabled={self || pending} onClick={onToggleStatus}>
           {statusIcon}
           {status === 0 ? t('ban') : t('restore')}

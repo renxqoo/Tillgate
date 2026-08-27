@@ -94,6 +94,18 @@ export function createInMemoryMailer(): InMemoryMailer {
         ...(ctx.locale != null ? { locale: ctx.locale } : {}),
       });
     },
+    async sendAdminInviteLink(to, url, ctx) {
+      if (fail) {
+        fail = false;
+        throw new Error('smtp delivery failed');
+      }
+      sent.push({
+        to,
+        code: url,
+        ip: '',
+        ...(ctx.locale != null ? { locale: ctx.locale } : {}),
+      });
+    },
   };
 }
 

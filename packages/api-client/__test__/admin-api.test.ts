@@ -134,12 +134,19 @@ const FACADE_CASES: readonly FacadeCase[] = [
     respond: { rows: [], total: 0 },
   },
   {
-    name: 'createAdmin POST body 原样',
-    invoke: (c) => c.createAdmin({ email: 'a@b.c', password: '12345678', roleId: 1 }),
+    name: 'createAdmin POST body 原样(邀请制——无 password 字段)',
+    invoke: (c) => c.createAdmin({ email: 'a@b.c', roleId: 1 }),
     method: 'POST',
     url: 'http://admin-api/v1/admins',
-    sendBody: { email: 'a@b.c', password: '12345678', roleId: 1 },
-    respond: { id: 1 },
+    sendBody: { email: 'a@b.c', roleId: 1 },
+    respond: { id: 1, inviteSent: true },
+  },
+  {
+    name: 'resendAdminInvite POST 到 :id/resend-invite',
+    invoke: (c) => c.resendAdminInvite(7),
+    method: 'POST',
+    url: 'http://admin-api/v1/admins/7/resend-invite',
+    respond: { ok: true },
   },
   {
     name: 'updateAdmin PATCH 到 :id',

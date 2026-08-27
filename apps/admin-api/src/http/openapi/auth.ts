@@ -82,6 +82,16 @@ export const authEndpoints: readonly OpenApiEndpoint[] = [
   },
   {
     method: 'post',
+    path: '/v1/auth/reset-password',
+    tag: 'auth',
+    summary: '消费邀请令牌设置初始密码（一次性链接;已激活/封禁/失效统一 400 不泄漏原因）',
+    auth: 'public',
+    body: authContracts.resetPassword,
+    response: { schema: okTrue },
+    errors: [400],
+  },
+  {
+    method: 'post',
     path: '/v1/auth/logout',
     tag: 'auth',
     summary: '登出（jti 入吊销面）',

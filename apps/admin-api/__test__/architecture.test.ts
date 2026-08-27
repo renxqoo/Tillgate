@@ -42,6 +42,7 @@ const ASSEMBLY_FACE = new Set([
   // 桥接件(identity 审计桥/SMTP 管理员邮件/jti 吊销表——共享文件代为同步白名单)
   'adapters/identity-audit-bridge.ts',
   'adapters/redis-session-revocation.ts',
+  'adapters/redis-admin-invite.ts',
   'adapters/smtp-admin-mailer.ts',
   'adapters/smtp-probe.ts',
 ]);
@@ -53,6 +54,7 @@ describe('admin-api 架构门禁', () => {
       'adapters/dynamic-admin-mailer.ts',
       'adapters/funding-resolver.ts',
       'adapters/identity-audit-bridge.ts',
+      'adapters/redis-admin-invite.ts',
       'adapters/redis-session-revocation.ts',
       'adapters/smtp-admin-mailer.ts',
       'adapters/smtp-probe.ts',

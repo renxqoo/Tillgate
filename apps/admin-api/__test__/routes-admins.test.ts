@@ -1,14 +1,15 @@
 /**
  * 管理员管理面契约测试（RBAC admins 域）：
- * 列表信封/创建双动词编排（含凭据被占补偿回滚——不留废号）/PATCH 部分更新 +
- * 自改守卫/权限面（非 super_admin 403——admins 域独占）。
+ * 列表信封/邀请制创建（仅挂标识 + 尽力投递邀请邮件,凭据被占补偿回滚——不留废号）/
+ * 重发邀请前置校验矩阵/PATCH 部分更新 + 自改守卫/权限面（非 super_admin 403）。
  * 审计旁路形状由 e2e/admin/rbac 真装配断言（fakeDeps 的 postAudit 缺省不可覆写）。
  */
 import { describe, expect, it, vi } from 'vitest';
 import { identityErrors } from '@tillgate/identity';
 import { controlPlaneErrors } from '@tillgate/control-plane';
 import { createAdminApp } from '../src/app';
-import { ADMIN_ID, authHeader, fakeDeps } from './helpers';
+import type { AdminAppDeps } from '../src/app';
+import { ADMIN_ID, authHeader, fakeDeps, inMemoryInvites } from './helpers';
 import { defined } from './defined.js';
 
 const json = { ...authHeader(), 'content-type': 'application/json' };
@@ -29,6 +30,14 @@ function wire(overrides?: {
   register?: () => Promise<unknown>;
   update?: () => Promise<typeof record | null>;
   list?: () => Promise<{ rows: (typeof record)[]; total: number }>;
+  find?: () => Promise<typeof record | null>;
+  /** passwords.exists 投影(返回已激活 userId 集) */
+  passwordExists?: (userIds: number[]) => number[];
+  /** 替身限内存形态(测试断言需读 tokens/cooldowns 内部态) */
+  invites?: ReturnType<typeof inMemoryInvites>;
+  sendInviteLink?: AdminAppDeps['sendInviteLink'];
+  inviteLinkBase?: string | null;
+  mailerConfigured?: () => boolean;
 }) {
   const create = vi.fn(overrides?.create ?? (async () => record));
   const register = vi.fn(
@@ -37,25 +46,40 @@ function wire(overrides?: {
   const remove = vi.fn(async () => {});
   const update = vi.fn(overrides?.update ?? (async () => record));
   const list = vi.fn(overrides?.list ?? (async () => ({ rows: [record], total: 1 })));
+  const find = vi.fn(overrides?.find ?? (async () => record));
+  const exists = vi.fn(async (input: { userIds: number[] }) =>
+    (overrides?.passwordExists ?? (() => []))(input.userIds),
+  );
+  const invites = overrides?.invites ?? inMemoryInvites();
+  // null 是合法形态(基地未配置)——按 undefined 判缺省,不用 ?? 吞显式 null
+  const inviteLinkBase =
+    overrides?.inviteLinkBase === undefined
+      ? 'https://admin.example.com'
+      : overrides.inviteLinkBase;
+  // 缺省 SMTP 生效(邀请投递可用);「未配置」用例显式覆写
+  const mailerConfigured = overrides?.mailerConfigured ?? (() => true);
   const app = createAdminApp(
     fakeDeps({
-      controlPlane: { admins: { list, create, update, remove } },
-      identity: { credentials: { register } },
+      controlPlane: { admins: { list, create, update, remove, find } },
+      identity: { credentials: { register }, passwords: { exists } },
+      invites,
+      inviteLinkBase,
+      ...(overrides?.sendInviteLink != null ? { sendInviteLink: overrides.sendInviteLink } : {}),
+      mailerConfigured,
     }),
   );
-  return { app, spies: { create, register, remove, update, list } };
+  return { app, spies: { create, register, remove, update, list, find, exists }, invites };
 }
 
 const createBody = {
   email: 'New@Tillgate.dev ',
   displayName: 'New',
-  password: 'initial-pass-123',
   roleId: 2,
 };
 
 describe('GET /v1/admins（统一列表契约）', () => {
-  it('信封 {rows,total,page,pageSize};wire 投影含 role 不含密码列;查询参数透传 store', async () => {
-    const { app, spies } = wire();
+  it('信封 {rows,total,page,pageSize};wire 投影含 role/hasPassword 不含密码列;查询参数透传 store', async () => {
+    const { app, spies } = wire({ passwordExists: () => [record.id] });
     const res = await app.request('/v1/admins?page=2&page_size=5&q=ops&sort_by=email&order=desc', {
       headers: authHeader(),
     });
@@ -68,8 +92,15 @@ describe('GET /v1/admins（统一列表契约）', () => {
     };
     expect(body).toMatchObject({ total: 1, page: 2, pageSize: 5 });
     expect(body.rows).toHaveLength(1);
-    expect(body.rows[0]).toMatchObject({ id: record.id, roleId: 2, status: 0 });
+    expect(body.rows[0]).toMatchObject({
+      id: record.id,
+      roleId: 2,
+      status: 0,
+      hasPassword: true,
+    });
     expect(Object.keys(defined(body.rows[0], 'body.rows[0]'))).not.toContain('passwordHash');
+    // 激活态批量投影:单条 exists 调用(IN 语义,防 N+1)
+    expect(spies.exists).toHaveBeenCalledWith({ userIds: [record.id] });
     expect(spies.list).toHaveBeenCalledWith({
       q: 'ops',
       sortBy: 'email',
@@ -118,26 +149,79 @@ describe('GET /v1/admins（统一列表契约）', () => {
   });
 });
 
-describe('POST /v1/admins（双动词编排）', () => {
-  it('成功:资料行（email 归一）→ 凭据注册 → 201', async () => {
-    const { app, spies } = wire();
+describe('POST /v1/admins（邀请制创建）', () => {
+  it('成功:资料行(email 归一)→ 仅挂凭据标识(无密码) → 邀请邮件投递 → 201 inviteSent', async () => {
+    const sendInviteLink = vi.fn(async () => {});
+    const { app, spies } = wire({ sendInviteLink });
     const res = await app.request('/v1/admins', {
       method: 'POST',
       headers: json,
       body: JSON.stringify(createBody),
     });
     expect(res.status).toBe(201);
-    expect(await res.json()).toMatchObject({ id: record.id, roleId: 2 });
+    expect(await res.json()).toMatchObject({
+      id: record.id,
+      roleId: 2,
+      hasPassword: false,
+      inviteSent: true,
+    });
     expect(spies.create).toHaveBeenCalledWith({
       email: 'new@tillgate.dev',
       displayName: 'New',
       roleId: 2,
     });
+    // 凭据注册不带密码——初始密码由本人经邮件一次性链接设置
     expect(spies.register).toHaveBeenCalledWith({
       userId: record.id,
       identifier: { kind: 'email', value: 'new@tillgate.dev' },
-      password: 'initial-pass-123',
     });
+    expect(sendInviteLink).toHaveBeenCalledWith(
+      'new@tillgate.dev',
+      'https://admin.example.com/reset-password?token=invite-token-1',
+      { locale: 'en' },
+    );
+    expect(spies.remove).not.toHaveBeenCalled();
+  });
+
+  it('SMTP 未配置:创建成功但 inviteSent:false,不投递不回滚(用户裁决:允许创建,列表重发补救)', async () => {
+    const sendInviteLink = vi.fn(async () => {});
+    const { app, spies } = wire({ sendInviteLink, mailerConfigured: () => false });
+    const res = await app.request('/v1/admins', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify(createBody),
+    });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ inviteSent: false });
+    expect(sendInviteLink).not.toHaveBeenCalled();
+    expect(spies.remove).not.toHaveBeenCalled();
+  });
+
+  it('链接基地未配置(ADMIN_FRONTEND_URL 缺失):201 inviteSent:false', async () => {
+    const sendInviteLink = vi.fn(async () => {});
+    const { app } = wire({ sendInviteLink, inviteLinkBase: null });
+    const res = await app.request('/v1/admins', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify(createBody),
+    });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ inviteSent: false });
+    expect(sendInviteLink).not.toHaveBeenCalled();
+  });
+
+  it('投递瞬断(sendMail 抛错):201 inviteSent:false 且不补偿回滚(回滚会留孤儿标识死锁同邮箱)', async () => {
+    const sendInviteLink = vi.fn(async () => {
+      throw new Error('smtp delivery failed');
+    });
+    const { app, spies } = wire({ sendInviteLink });
+    const res = await app.request('/v1/admins', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify(createBody),
+    });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ inviteSent: false });
     expect(spies.remove).not.toHaveBeenCalled();
   });
 
@@ -175,7 +259,7 @@ describe('POST /v1/admins（双动词编排）', () => {
     expect(spies.remove).not.toHaveBeenCalled();
   });
 
-  it('契约面:角色词表外 400;缺 role 400', async () => {
+  it('契约面:角色词表外 400;缺 role 400;password 字段已退役(多余键被剥离不参与语义)', async () => {
     const { app } = wire();
     const badRole = await app.request('/v1/admins', {
       method: 'POST',
@@ -186,9 +270,122 @@ describe('POST /v1/admins（双动词编排）', () => {
     const missing = await app.request('/v1/admins', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ email: 'a@b.dev', password: 'x'.repeat(12) }),
+      body: JSON.stringify({ email: 'a@b.dev' }),
     });
     expect(missing.status).toBe(400);
+    const legacy = await app.request('/v1/admins', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ ...createBody, password: 'initial-pass-123' }),
+    });
+    expect(legacy.status).toBe(201);
+    expect(await legacy.json()).toMatchObject({ inviteSent: true });
+  });
+});
+
+describe('POST /v1/admins/:id/resend-invite（重发邀请）', () => {
+  it('成功:前置通过 → 冷却占用 → 新令牌投递 → 200 {ok:true}', async () => {
+    const sendInviteLink = vi.fn(async () => {});
+    const { app, invites } = wire({ sendInviteLink });
+    const res = await app.request(`/v1/admins/${record.id}/resend-invite`, {
+      method: 'POST',
+      headers: json,
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(sendInviteLink).toHaveBeenCalledWith(
+      'new@tillgate.dev',
+      'https://admin.example.com/reset-password?token=invite-token-1',
+      { locale: 'en' },
+    );
+    expect(invites.cooldowns.has(record.id)).toBe(true);
+  });
+
+  it('资料行缺失 404 admin.admin_not_found', async () => {
+    const { app } = wire({ find: async () => null });
+    const res = await app.request(`/v1/admins/${record.id}/resend-invite`, {
+      method: 'POST',
+      headers: json,
+    });
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'admin.admin_not_found',
+    );
+  });
+
+  it('已设密码(已激活) 409 admin.admin_invite_not_needed——链接唯一用途是设置初始密码', async () => {
+    const sendInviteLink = vi.fn(async () => {});
+    const { app, invites } = wire({
+      sendInviteLink,
+      passwordExists: () => [record.id],
+    });
+    const res = await app.request(`/v1/admins/${record.id}/resend-invite`, {
+      method: 'POST',
+      headers: json,
+    });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'admin.admin_invite_not_needed',
+    );
+    expect(sendInviteLink).not.toHaveBeenCalled();
+    expect(invites.cooldowns.has(record.id)).toBe(false);
+  });
+
+  it('封禁管理员 403 admin.account_unavailable(不给封禁者发激活邮件)', async () => {
+    const sendInviteLink = vi.fn(async () => {});
+    const { app } = wire({
+      sendInviteLink,
+      find: async () => ({ ...record, status: 1 }),
+    });
+    const res = await app.request(`/v1/admins/${record.id}/resend-invite`, {
+      method: 'POST',
+      headers: json,
+    });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'admin.account_unavailable',
+    );
+    expect(sendInviteLink).not.toHaveBeenCalled();
+  });
+
+  it('SMTP 未配置/基地缺失 503 admin.admin_invite_link_unavailable(显式失败不哑成功)', async () => {
+    const sendInviteLink = vi.fn(async () => {});
+    const smtpDown = wire({ sendInviteLink, mailerConfigured: () => false });
+    const res = await smtpDown.app.request(`/v1/admins/${record.id}/resend-invite`, {
+      method: 'POST',
+      headers: json,
+    });
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'admin.admin_invite_link_unavailable',
+    );
+
+    const noBase = wire({ sendInviteLink, inviteLinkBase: null });
+    const res2 = await noBase.app.request(`/v1/admins/${record.id}/resend-invite`, {
+      method: 'POST',
+      headers: json,
+    });
+    expect(res2.status).toBe(503);
+    expect(sendInviteLink).not.toHaveBeenCalled();
+  });
+
+  it('冷却窗口内 429 admin.admin_invite_rate_limited(retry-after 60)', async () => {
+    const sendInviteLink = vi.fn(async () => {});
+    const { app } = wire({ sendInviteLink });
+    const first = await app.request(`/v1/admins/${record.id}/resend-invite`, {
+      method: 'POST',
+      headers: json,
+    });
+    expect(first.status).toBe(200);
+    const second = await app.request(`/v1/admins/${record.id}/resend-invite`, {
+      method: 'POST',
+      headers: json,
+    });
+    expect(second.status).toBe(429);
+    expect(((await second.json()) as { error: { code: string } }).error.code).toBe(
+      'admin.admin_invite_rate_limited',
+    );
+    expect(sendInviteLink).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -35,4 +35,12 @@ export const authContracts = {
   }),
   /** 管理员为本地账号用户重置密码（策略在 identity 单源校验） */
   setPassword: z.object({ password: z.string().min(1).max(256) }),
+  /**
+   * 消费管理员邀请令牌设置初始密码（公开端点;令牌 32B base64url ≥43 字符,
+   * min(20) 与 C 端找回同口径拒垃圾形状;强度策略在 identity 单源校验）
+   */
+  resetPassword: z.object({
+    token: z.string().min(20).max(128),
+    password: z.string().min(1).max(128),
+  }),
 };

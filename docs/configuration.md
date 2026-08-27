@@ -123,6 +123,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | 键 | 默认 | 说明 |
 |---|---|---|
 | `ADMIN_API_PORT` | `8082` | 监听端口 |
+| `ADMIN_FRONTEND_URL` | _(未设)_ | 管理后台前端基地址——新建管理员的「设置初始密码」邀请邮件链接由此拼装（docs/admin-invite/DESIGN.md）。未配置时创建返回 `inviteSent:false`（列表可重发补救）、重发接口 503 fail-closed |
 | `ADMIN_LOGIN_FAILURE_THRESHOLD` / `_WINDOW_S` / `_LOCK_S` | 5 / 3600 / 900 | 管理面 (email,ip) 爆破锁（v2 变化：键名从 v1 的 `LOGIN_*` 加 `ADMIN_` 前缀；Redis 必配——不可达 fail-closed） |
 | `ADMIN_LOGIN_IP_FAILURE_LIMIT` / `_WINDOW_S` | 30 / 3600 | per-IP 鉴权失败锁 |
 | `CHANNEL_IMPORT_MAX` | `1000` | 渠道批量导入单次上限 |

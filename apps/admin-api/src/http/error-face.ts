@@ -112,6 +112,31 @@ export const AdminErrors = defineErrorCatalog('admin', {
     message: 'Password can only be set for local accounts',
     zh: '只能为本地账号设置密码',
   },
+  // ---- 管理员邀请（邮件设置初始密码） ----
+  /** 重发对象已设密码——邀请链接唯一用途是设置初始密码,已激活即无意义 */
+  admin_invite_not_needed: {
+    category: 'conflict',
+    message: 'Admin has already set a password; no invitation needed',
+    zh: '该管理员已设置密码，无需邀请邮件',
+  },
+  /** 重发冷却（60s 固定窗;retryAfterMs 随错误返回） */
+  admin_invite_rate_limited: {
+    category: 'rate_limited',
+    message: 'Invitation email recently sent, please wait before resending',
+    zh: '邀请邮件刚发送过，请稍后再重发',
+  },
+  /** 重发前置:SMTP 未生效或管理后台地址未配置——显式失败不哑成功 */
+  admin_invite_link_unavailable: {
+    category: 'unavailable',
+    message: 'Invitation email is unavailable: SMTP not configured or admin frontend URL missing',
+    zh: '邀请邮件暂不可用：SMTP 未配置或管理后台地址缺失',
+  },
+  /** 邀请令牌无效/过期/已用/目标已激活或封禁——统一口径不泄漏具体原因 */
+  admin_reset_token_invalid: {
+    category: 'invalid_input',
+    message: 'Invalid or expired invitation link',
+    zh: '邀请链接无效或已过期',
+  },
 });
 
 /** 全量目录(app 唯一错误事实源;handler 渲染与测试断言共用) */

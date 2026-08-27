@@ -359,6 +359,7 @@ describe('B-3 规格：mailerOverride 注入时 auto 口径 = mailer 在场（ma
       mailerOverride: {
         sendLoginCode: () => Promise.resolve(),
         sendPasswordResetLink: () => Promise.resolve(),
+        sendAdminInviteLink: () => Promise.resolve(),
       },
     });
     expect(stack.mailer).not.toBeNull();

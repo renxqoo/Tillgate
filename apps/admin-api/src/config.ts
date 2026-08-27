@@ -37,6 +37,11 @@ const envSchema = z
       .default('sk_'),
     /** 会话有效期（秒；identity SESSION_TTL_BOUNDS [60, 2592000]） */
     SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(2_592_000).default(86_400),
+    /**
+     * 管理后台前端基地址（邀请邮件「设置初始密码」链接拼装;未配置 = 创建
+     * inviteSent:false、重发 503 fail-closed——与 C 端 OAUTH_FRONTEND_URL 同语义）
+     */
+    ADMIN_FRONTEND_URL: z.string().url().optional(),
     /** 渠道上游 Key 落库加密密钥（AES-256-GCM enc:v1；runtime.createCipher 消费） */
     ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
     /** identity 挑战/恢复码 HMAC pepper（identity 配置必填 16-512 字符；登录面消费） */
@@ -124,6 +129,8 @@ export interface AdminApiConfig {
   readonly adminJwtSecret: string;
   readonly keyPrefix: string;
   readonly sessionTtlSec: number;
+  /** 管理后台前端基地址（邀请链接拼装;未配置 = 邀请邮件不可用） */
+  readonly adminFrontendUrl: string | undefined;
   readonly encryptionKey: string;
   readonly identityCodePepper: string;
   readonly channelImportMax: number;
@@ -195,6 +202,7 @@ export function loadAdminApiConfig(env: NodeJS.ProcessEnv = process.env): AdminA
     adminJwtSecret: parsed.ADMIN_JWT_SECRET,
     keyPrefix: parsed.KEY_PREFIX,
     sessionTtlSec: parsed.SESSION_TTL_SECONDS,
+    adminFrontendUrl: parsed.ADMIN_FRONTEND_URL,
     encryptionKey: parsed.ENCRYPTION_KEY,
     identityCodePepper: parsed.IDENTITY_CODE_PEPPER,
     channelImportMax: parsed.CHANNEL_IMPORT_MAX,

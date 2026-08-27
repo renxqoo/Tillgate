@@ -127,6 +127,9 @@ describe('challenges.begin 发码与投递', () => {
         sendPasswordResetLink: async () => {
           throw identityErrors.business('undeliverable_challenge', { channel: 'email' });
         },
+        sendAdminInviteLink: async () => {
+          throw identityErrors.business('undeliverable_challenge', { channel: 'email' });
+        },
       },
     });
     await expect(
@@ -158,6 +161,9 @@ describe('challenges.begin 发码与投递', () => {
           throw new Error('smtp down');
         },
         sendPasswordResetLink: async () => {
+          throw new Error('smtp down');
+        },
+        sendAdminInviteLink: async () => {
           throw new Error('smtp down');
         },
       },

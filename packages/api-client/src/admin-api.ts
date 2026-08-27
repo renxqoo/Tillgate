@@ -15,6 +15,7 @@ import {
 import type { Paginated } from './core/pagination';
 import type {
   AdminCreateBody,
+  AdminCreatedRow,
   AdminMeInfo,
   AdminPatchBody,
   AdminRow,
@@ -59,8 +60,11 @@ export interface AdminApiClient extends HttpClient {
   /** 管理员列表（GET /v1/admins;统一列表契约 ?page&page_size&q&sort_by;admins 域——仅 super_admin） */
   listAdmins(params?: AdminListParams): Promise<Paginated<AdminRow>>;
 
-  /** 创建管理员（POST /v1/admins;资料行 + identity 凭据双动词编排） */
-  createAdmin(input: AdminCreateBody): Promise<AdminRow>;
+  /** 创建管理员（POST /v1/admins;邀请制——资料行 + email 凭据 + 邀请邮件,响应含投递结果） */
+  createAdmin(input: AdminCreateBody): Promise<AdminCreatedRow>;
+
+  /** 重发邀请邮件（POST /v1/admins/:id/resend-invite;仅待激活管理员,60s 冷却） */
+  resendAdminInvite(id: number): Promise<{ ok: true }>;
 
   /** 更新管理员（PATCH /v1/admins/:id;roleId/status 不可改自身） */
   updateAdmin(id: number, input: AdminPatchBody): Promise<AdminRow>;
@@ -206,7 +210,10 @@ export function createAdminApiClient(options: AdminApiClientOptions): AdminApiCl
       return http.get<Paginated<AdminRow>>(`/v1/admins${adminListQuery(params)}`);
     },
     async createAdmin(input: AdminCreateBody) {
-      return http.post<AdminRow>('/v1/admins', input);
+      return http.post<AdminCreatedRow>('/v1/admins', input);
+    },
+    async resendAdminInvite(id: number) {
+      return http.post<{ ok: true }>(`/v1/admins/${id}/resend-invite`);
     },
     async updateAdmin(id: number, input: AdminPatchBody) {
       return http.patch<AdminRow>(`/v1/admins/${id}`, input);

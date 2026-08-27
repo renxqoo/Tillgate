@@ -28,6 +28,33 @@ const notWired = async (): Promise<never> => {
   throw new Error('fake not wired');
 };
 
+/** 邀请令牌/冷却内存替身(键值语义与 Redis 适配器一致;无 TTL——过期行为属适配器) */
+export function inMemoryInvites() {
+  const tokens = new Map<string, number>();
+  const cooldowns = new Set<number>();
+  let seq = 0;
+  return {
+    tokens,
+    cooldowns,
+    async issue(adminId: number): Promise<string> {
+      seq += 1;
+      const token = `invite-token-${seq}`;
+      tokens.set(token, adminId);
+      return token;
+    },
+    async consume(token: string): Promise<number | null> {
+      const adminId = tokens.get(token) ?? null;
+      tokens.delete(token);
+      return adminId;
+    },
+    async tryStartCooldown(adminId: number): Promise<boolean> {
+      if (cooldowns.has(adminId)) return false;
+      cooldowns.add(adminId);
+      return true;
+    },
+  };
+}
+
 /** 最小可启动 deps:各域 fake 以 vi.fn 注入,按测试覆写(覆写面松类型——替身处显式收窄) */
 export function fakeDeps(overrides: {
   accounts?: Record<string, unknown>;
@@ -46,6 +73,10 @@ export function fakeDeps(overrides: {
   writeAudit?: AdminAppDeps['writeAudit'];
   pingDb?: () => Promise<void>;
   now?: () => Date;
+  invites?: AdminAppDeps['invites'];
+  sendInviteLink?: AdminAppDeps['sendInviteLink'];
+  inviteLinkBase?: AdminAppDeps['inviteLinkBase'];
+  mailerConfigured?: AdminAppDeps['mailerConfigured'];
 }): AdminAppDeps {
   return {
     pingDb: overrides.pingDb ?? (async () => {}),
@@ -195,7 +226,12 @@ export function fakeDeps(overrides: {
     orderCloseReason: '管理员手动关闭',
     // 登录面:identity 动词 fake(不抛哑错——默认拒绝形态,auth 域测试经独立装配)
     identity: {
-      passwords: { authenticate: notWired, change: notWired, reset: notWired },
+      passwords: {
+        authenticate: notWired,
+        change: notWired,
+        reset: notWired,
+        exists: async () => [],
+      },
       challenges: { begin: notWired, verify: notWired, abort: notWired },
       mfa: mfaStub(),
       credentials: { register: notWired },
@@ -220,7 +256,10 @@ export function fakeDeps(overrides: {
       },
     },
     trustedProxyHops: 0,
-    mailerConfigured: () => false,
+    mailerConfigured: overrides.mailerConfigured ?? (() => false),
+    invites: overrides.invites ?? inMemoryInvites(),
+    sendInviteLink: overrides.sendInviteLink ?? (async () => {}),
+    inviteLinkBase: overrides.inviteLinkBase ?? null,
     loginAudit: async () => {},
     stepupAudit: async () => {},
     twoFactorAudit: async () => {},

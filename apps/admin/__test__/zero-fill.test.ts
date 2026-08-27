@@ -345,21 +345,23 @@ describe('config/lib 纯函数补零', () => {
 });
 
 describe('admins-actions 全分支', () => {
-  it('create:成功;emailTaken 短码文案;他码 ApiError 上浮;网络回落', async () => {
+  it('create:成功(inviteSent 透传);emailTaken 短码文案;他码 ApiError 上浮;网络回落', async () => {
     const { mod } = await loadModule('../src/server/admins-actions', [
+      { status: 201, body: { inviteSent: true } },
       { status: 201, body: {} },
       { status: 409, body: { error: { code: 'control_plane.admin_email_taken', message: 'x' } } },
       { status: 400, body: { error: { code: 'y', message: '参数错' } } },
     ]);
-    expect(
-      await mod.createAdminAction({ email: 'a@b.c', password: '12345678', roleId: 1 }),
-    ).toEqual({});
-    expect(
-      (await mod.createAdminAction({ email: 'a@b.c', password: '12345678', roleId: 1 })).error,
-    ).toBe('emailTaken');
-    expect(
-      (await mod.createAdminAction({ email: 'a@b.c', password: '12345678', roleId: 1 })).error,
-    ).toBe('参数错');
+    // 邀请制:响应 inviteSent 如实透传(前端按其区分成功文案)
+    expect(await mod.createAdminAction({ email: 'a@b.c', roleId: 1 })).toEqual({
+      inviteSent: true,
+    });
+    // 响应缺 inviteSent 字段按 false(SMTP 未投递)
+    expect(await mod.createAdminAction({ email: 'a@b.c', roleId: 1 })).toEqual({
+      inviteSent: false,
+    });
+    expect((await mod.createAdminAction({ email: 'a@b.c', roleId: 1 })).error).toBe('emailTaken');
+    expect((await mod.createAdminAction({ email: 'a@b.c', roleId: 1 })).error).toBe('参数错');
 
     const { mod: net } = await loadModule('../src/server/admins-actions', []);
     vi.stubGlobal(
@@ -368,9 +370,41 @@ describe('admins-actions 全分支', () => {
         throw new TypeError('down');
       }),
     );
-    expect(
-      (await net.createAdminAction({ email: 'a@b.c', password: '12345678', roleId: 1 })).error,
-    ).toBe('createFailed');
+    expect((await net.createAdminAction({ email: 'a@b.c', roleId: 1 })).error).toBe('createFailed');
+  });
+
+  it('resendInvite:成功;短码文案矩阵(冷却/已激活/不可用/未找到);网络回落', async () => {
+    const { mod, calls } = await loadModule('../src/server/admins-actions', [
+      { status: 200, body: { ok: true } },
+      { status: 429, body: { error: { code: 'admin.admin_invite_rate_limited', message: 'x' } } },
+      { status: 409, body: { error: { code: 'admin.admin_invite_not_needed', message: 'x' } } },
+      {
+        status: 503,
+        body: { error: { code: 'admin.admin_invite_link_unavailable', message: 'x' } },
+      },
+      { status: 404, body: { error: { code: 'admin.admin_not_found', message: 'x' } } },
+      { status: 403, body: { error: { code: 'admin.insufficient_permission', message: '无权' } } },
+    ]);
+    expect(await mod.resendAdminInviteAction(7)).toEqual({});
+    expect(last(calls)).toMatchObject({
+      method: 'POST',
+      url: 'http://localhost:8082/v1/admins/7/resend-invite',
+    });
+    expect((await mod.resendAdminInviteAction(7)).error).toBe('resendCooldown');
+    expect((await mod.resendAdminInviteAction(7)).error).toBe('alreadyActivated');
+    expect((await mod.resendAdminInviteAction(7)).error).toBe('inviteUnavailable');
+    expect((await mod.resendAdminInviteAction(7)).error).toBe('adminNotFound');
+    // 词表外错误码上浮 ApiError 原文
+    expect((await mod.resendAdminInviteAction(7)).error).toBe('无权');
+
+    const { mod: net } = await loadModule('../src/server/admins-actions', []);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('down');
+      }),
+    );
+    expect((await net.resendAdminInviteAction(7)).error).toBe('resendFailed');
   });
 
   it('updateRole/toggleStatus:成功 + ApiError 上浮', async () => {

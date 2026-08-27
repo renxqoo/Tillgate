@@ -22,12 +22,14 @@ const ADMIN_ID = 7;
 
 function bare(): Hono<SessionEnv> {
   const app = authRoutes({
+    invites: { consume: async () => null },
     identity: {
       mfa: mfaStub(),
       passwords: {
         authenticate: async () => ({ userId: ADMIN_ID }),
         change: async () => ({ invalidBefore: 'x' }),
         reset: async () => ({ invalidBefore: 'x' }),
+        exists: async () => [],
       },
       challenges: {
         begin: (async () => ({ challengeId: 'c' })) as never,
@@ -222,6 +224,7 @@ describe('auth/me 未走分支', () => {
           authenticate: async () => ({ userId: 0 }),
           change: async () => ({ invalidBefore: 'x' }),
           reset: async () => ({ invalidBefore: 'x' }),
+          exists: async () => [],
         },
         sessions: {
           sign: async () => 't',
@@ -267,12 +270,14 @@ describe('auth/me 未走分支', () => {
   it('登录成功但 touch/审计为 best-effort 分支（audit 拒绝不阻断登录）', async () => {
     const app = authRoutes({
       mailerConfigured: () => false,
+      invites: { consume: async () => null },
       identity: {
         mfa: mfaStub(),
         passwords: {
           authenticate: async () => ({ userId: ADMIN_ID }),
           change: async () => ({ invalidBefore: 'x' }),
           reset: async () => ({ invalidBefore: 'x' }),
+          exists: async () => [],
         },
         challenges: {
           begin: (async () => ({ challengeId: 'c' })) as never,

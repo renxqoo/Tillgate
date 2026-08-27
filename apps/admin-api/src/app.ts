@@ -64,6 +64,7 @@ import { permissionsRoutes } from './http/routes/permissions';
 import { endpointsRoutes } from './http/routes/endpoints';
 import { authRoutes, type AuthGuard, type AuthRoutesDeps } from './http/routes/auth';
 import { meRoutes } from './http/routes/me';
+import type { AdminInvitePort } from './http/routes/admins';
 
 export interface AdminAppDeps {
   /** DB 探活(healthz/readyz 用;装配绑定 ping(db),app 不接触 Db 类型) */
@@ -121,8 +122,14 @@ export interface AdminAppDeps {
   authGuards: { emailIp: AuthGuard; ip: AuthGuard };
   /** 信任代理跳数（守卫键的 IP 提取） */
   trustedProxyHops: number;
-  /** SMTP 是否已配置（2FA fail-closed 前置） */
+  /** SMTP 是否已配置（2FA fail-closed 前置;邀请邮件投递前置同源） */
   mailerConfigured: () => boolean;
+  /** 管理员邀请令牌 + 重发冷却（Redis 适配器形状;admins/auth 路由消费） */
+  invites: AdminInvitePort;
+  /** 邀请邮件投递（ttl 由装配闭包注入;SMTP 未生效抛 undeliverable_challenge） */
+  sendInviteLink: (to: string, url: string, ctx: { locale?: 'en' | 'zh' }) => Promise<void>;
+  /** 管理后台前端基地址（邀请链接拼装;null = ADMIN_FRONTEND_URL 未配置） */
+  inviteLinkBase: string | null;
   /** 登录三审计（后置旁路——提交后记录,失败不阻断） */
   loginAudit: AuthRoutesDeps['loginAudit'];
   /** step-up 失败审计（action 自由词面：settings.stepup.failed 等） */
@@ -294,6 +301,10 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       admins: deps.controlPlane.admins,
       identity: deps.identity,
       postAudit: deps.postAudit,
+      invites: deps.invites,
+      sendInviteLink: deps.sendInviteLink,
+      inviteLinkBase: deps.inviteLinkBase,
+      mailerConfigured: deps.mailerConfigured,
     }),
   );
   app.route('/', rolesRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
@@ -309,6 +320,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       loginAudit: deps.loginAudit,
       trustedProxyHops: deps.trustedProxyHops,
       mailerConfigured: deps.mailerConfigured,
+      invites: deps.invites,
       sessionTtlSec: deps.sessionTtlSec,
     }),
   );

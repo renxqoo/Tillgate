@@ -25,6 +25,7 @@ import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { authContracts } from '../contracts/auth';
+import type { AdminInvitePort } from './admins';
 
 /** 爆破守卫形状（runtime createKeyBruteForceGuard/createAuthFailureGuard 产物;
  * ip 守卫的 recordSuccess 可选——AuthFailureGuard 形态） */
@@ -49,6 +50,8 @@ export interface AuthRoutesDeps {
   readonly trustedProxyHops: number;
   /** SMTP 是否已配置（2FA 开启前置——fail-closed,不静默降级） */
   readonly mailerConfigured: () => boolean;
+  /** 邀请令牌消费面（POST /v1/auth/reset-password——新建管理员设置初始密码） */
+  readonly invites: Pick<AdminInvitePort, 'consume'>;
   readonly sessionTtlSec: number;
 }
 
@@ -56,6 +59,9 @@ export interface AuthRoutesDeps {
 interface LoginPayload {
   adminId: number;
 }
+
+/** 邀请令牌统一拒绝(无效/过期/已用/已激活/封禁——同一口径,不泄漏原因) */
+const invalidResetToken = () => AdminErrors.business('admin_reset_token_invalid', {});
 
 // eslint-disable-next-line max-lines-per-function -- 登录族装配平铺:路由表 + 凭证鉴别/2FA 共享闭包保留存量语义(棘轮)
 export function authRoutes(deps: AuthRoutesDeps) {
@@ -151,6 +157,28 @@ export function authRoutes(deps: AuthRoutesDeps) {
     await deps.identity.sessions.logout(c.get('sessionToken'), 'admin');
     return c.json({ ok: true });
   });
+
+  // 消费邀请令牌设置初始密码(公开端点——ACL PUBLIC_ROUTES 直通):
+  // 校验链任一失败统一 400 admin_reset_token_invalid(不泄漏具体原因——令牌
+  // 无枚举面,但「目标已激活」与「封禁」等状态不外泄);成功不自动登录
+  // (对齐 C 端找回交互,跳登录页手动登录)。旧链接在对方设密后即作废
+  // (消费期「目标无密码」校验——泄露链接改不了已激活账号的密码)。
+  app.post('/v1/auth/reset-password', jsonBody(authContracts.resetPassword), async (c) => {
+    const body = c.req.valid('json');
+    const adminId = await deps.invites.consume(body.token);
+    if (adminId == null) throw invalidResetToken();
+    const account = await deps.admins.find(adminId);
+    if (account == null || account.status !== 0) throw invalidResetToken();
+    const activated = await deps.identity.passwords.exists({ userIds: [adminId] });
+    if (activated.length > 0) throw invalidResetToken();
+    await deps.identity.passwords.reset({
+      userId: adminId,
+      realm: 'admin',
+      newPassword: body.password,
+    });
+    return c.json({ ok: true });
+  });
+
   app.post('/v1/auth/login', async (c) => {
     const body = authContracts.login.parse(await c.req.json());
     const ip = clientIpOf(c);

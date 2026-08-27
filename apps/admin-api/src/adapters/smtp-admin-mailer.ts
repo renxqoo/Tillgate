@@ -5,7 +5,12 @@
  * （2FA 随之不可开启/不可用）。装配面文件:仅 assembly 引用。
  */
 import nodemailer from 'nodemailer';
-import { renderLoginCodeEmail, type MailBrand, type Mailer } from '@tillgate/identity';
+import {
+  renderAdminInviteEmail,
+  renderLoginCodeEmail,
+  type MailBrand,
+  type Mailer,
+} from '@tillgate/identity';
 
 export interface SmtpMailerConfig {
   host: string;
@@ -20,11 +25,12 @@ export interface SmtpAdminMailerEnv {
   readonly config: SmtpMailerConfig;
   readonly brand: MailBrand;
   readonly emailParams: { ttlMinutes: number; maxAttempts: number };
+  readonly inviteParams: { ttlMinutes: number };
   readonly now: () => Date;
 }
 
 export function createSmtpAdminMailer(env: SmtpAdminMailerEnv): Mailer {
-  const { config, brand, emailParams, now } = env;
+  const { config, brand, emailParams, inviteParams, now } = env;
   const transport = nodemailer.createTransport({
     host: config.host,
     port: config.port,
@@ -45,6 +51,19 @@ export function createSmtpAdminMailer(env: SmtpAdminMailerEnv): Mailer {
     // 用户面能力:管理面不发送找回链接——端口合规空实现(永不达)
     async sendPasswordResetLink() {
       throw new Error('admin mailer does not send reset links');
+    },
+    // 管理员邀请(新建管理员设置初始密码);TTL 与 Redis 令牌窗口同源注入
+    async sendAdminInviteLink(to, url, ctx) {
+      const mail = renderAdminInviteEmail(url, { locale: ctx.locale }, brand, {
+        ttlMinutes: inviteParams.ttlMinutes,
+      });
+      await transport.sendMail({
+        from: config.from,
+        to,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+      });
     },
   };
 }

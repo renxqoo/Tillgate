@@ -55,6 +55,7 @@ import { verifyMfa } from './application/verify-mfa';
 import { verifyTotpOnly } from './application/verify-totp-only';
 import { disableTotp } from './application/disable-totp';
 import { findOAuthUser } from './application/find-oauth-user';
+import { findPasswordUserIds } from './application/find-passwords';
 import { linkOAuth, type LinkOAuthResult } from './application/link-oauth';
 import { unlinkOAuth } from './application/unlink-oauth';
 import { oauthAuthorize, type OAuthAuthorizeInput } from './application/oauth-authorize';
@@ -106,6 +107,8 @@ export interface Identity {
     authenticate(input: AuthenticatePasswordInput): Promise<{ userId: number }>;
     change(input: ChangePasswordInput): Promise<{ invalidBefore: string }>;
     reset(input: ResetPasswordInput): Promise<{ invalidBefore: string }>;
+    /** 读面:批量返回已设密码的 userId 子集(邀请激活态投影;空入参返回空) */
+    exists(input: { userIds: readonly number[] }): Promise<number[]>;
   };
   readonly challenges: {
     begin(input: BeginChallengeInput): Promise<BeginChallengeResult>;
@@ -197,6 +200,7 @@ export function buildIdentityContext(params: CreateIdentityParams): IdentityUseC
   };
 }
 
+// eslint-disable-next-line max-lines-per-function -- facade 动词绑定平铺(注册即数据;拆分只会层层透传 ctx)
 export function createIdentity(params: CreateIdentityParams): Identity {
   const ctx = buildIdentityContext(params);
   return {
@@ -207,6 +211,8 @@ export function createIdentity(params: CreateIdentityParams): Identity {
       authenticate: (input) => authenticatePassword(ctx, input),
       change: (input) => changePassword(ctx, input),
       reset: (input) => resetPassword(ctx, input),
+      // 读面:批量返回已设密码的 userId 子集(纯读无临界区)
+      exists: (input) => findPasswordUserIds(ctx, input),
     },
     challenges: {
       begin: (input) => beginChallenge(ctx, input),

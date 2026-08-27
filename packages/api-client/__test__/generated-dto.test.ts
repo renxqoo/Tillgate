@@ -32,6 +32,7 @@ const EXPORTED_NAMES: readonly string[] = [
   'AdminChannelFundRow',
   'AdminChannelRow',
   'AdminCreateBody',
+  'AdminCreatedRow',
   'AdminKeyRow',
   'AdminKeyUpdateBody',
   'AdminMeInfo',

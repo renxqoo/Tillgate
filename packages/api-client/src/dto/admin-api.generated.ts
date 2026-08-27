@@ -41,6 +41,28 @@ export interface AdminRow {
   twoFactorEnabled: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  /** 是否已设置密码(false = 待激活,邀请邮件可发/可重发) */
+  hasPassword: boolean;
+}
+
+/** 创建管理员响应（资料行 + 邀请邮件投递结果） */
+export interface AdminCreatedRow {
+  id: number;
+  email: string;
+  displayName: string | null;
+  /** 角色 FK（roles.id） */
+  roleId: number;
+  /** 角色 code（展示用;名称经 /v1/roles 解析） */
+  role: string;
+  /** 0 正常 / 1 封禁 / 2 注销 */
+  status: number;
+  twoFactorEnabled: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  /** 是否已设置密码(false = 待激活,邀请邮件可发/可重发) */
+  hasPassword: boolean;
+  /** 邀请邮件是否已投递（SMTP/地址未配置或投递失败 = false） */
+  inviteSent: boolean;
 }
 
 // ── settings ─────────────────────────────────────
@@ -106,7 +128,6 @@ export interface PermissionNode {
 export interface AdminCreateBody {
   email: string;
   displayName?: string;
-  password: string;
   roleId: number;
 }
 

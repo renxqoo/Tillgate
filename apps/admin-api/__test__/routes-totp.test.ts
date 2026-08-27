@@ -99,6 +99,7 @@ function baseIdentity(mfaImpl: ReturnType<typeof mfa>): AuthRoutesDeps['identity
       authenticate: async () => ({ userId: ADMIN_ID }),
       change: async () => ({ invalidBefore: '' }),
       reset: async () => ({ invalidBefore: '' }),
+      exists: async () => [],
     },
     challenges: {
       begin: vi.fn(async () => ({ challengeId: 'ch-1' })) as never,
@@ -130,6 +131,7 @@ function authHarness(identity: AuthRoutesDeps['identity']) {
     loginAudit: async () => {},
     trustedProxyHops: 0,
     mailerConfigured: () => false,
+    invites: { consume: async () => null },
     sessionTtlSec: 3600,
   };
   return { app: withErrorFace(authRoutes(deps)), emailIp, ip };

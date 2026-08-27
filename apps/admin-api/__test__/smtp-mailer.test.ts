@@ -32,6 +32,7 @@ describe('smtp-admin-mailer（装配面传输件）', () => {
         brandEn: 'Tillgate Admin',
         brandSub: 'TILLGATE · ADMIN CONSOLE',
       },
+      inviteParams: { ttlMinutes: 30 },
       emailParams: { ttlMinutes: 5, maxAttempts: 5 },
       now: () => new Date(0),
     });
@@ -40,5 +41,13 @@ describe('smtp-admin-mailer（装配面传输件）', () => {
     expect(sent[0]).toMatchObject({ from: 'no-reply@tillgate.dev', to: 'ops@tillgate.dev' });
     expect(String(defined(sent[0], 'sent[0]').subject).length).toBeGreaterThan(0);
     expect(String(defined(sent[0], 'sent[0]').html)).toContain('123456');
+
+    // 邀请邮件:链接模板渲染(设置初始密码 + 30 分钟有效),链接原样承载
+    const url = 'https://admin.example.com/reset-password?token=abc';
+    await mailer.sendAdminInviteLink('new@tillgate.dev', url, { locale: 'zh', ttlMinutes: 30 });
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toMatchObject({ from: 'no-reply@tillgate.dev', to: 'new@tillgate.dev' });
+    expect(String(defined(sent[1], 'sent[1]').subject)).toContain('设置管理后台密码');
+    expect(String(defined(sent[1], 'sent[1]').html)).toContain(url);
   });
 });

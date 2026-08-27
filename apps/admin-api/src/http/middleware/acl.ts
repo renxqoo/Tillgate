@@ -35,6 +35,7 @@ export const PUBLIC_ROUTES: readonly { method: string; path: string }[] = [
   { method: 'POST', path: '/v1/auth/login' },
   { method: 'POST', path: '/v1/auth/login/totp' },
   { method: 'POST', path: '/v1/auth/login/verify' },
+  { method: 'POST', path: '/v1/auth/reset-password' },
 ];
 
 /** 自身白名单:有会话即放行（不做码判定）——me 族 + logout */

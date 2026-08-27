@@ -2,14 +2,14 @@
  * 密码行 store postgres 实现:时间戳一律 SQL now();锁与临界区编排归 application
  * (验旧密必须发生在锁内)。
  */
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import type { DbLike } from '@tillgate/db';
 import { identityPasswords } from '@tillgate/db';
 import type { CredentialStore } from '../../ports/credential-store.js';
 
 export const passwordQueries: Pick<
   CredentialStore,
-  'upsertPassword' | 'updatePassword' | 'resetPassword'
+  'upsertPassword' | 'updatePassword' | 'resetPassword' | 'findPasswordUserIds'
 > = {
   async upsertPassword(db: DbLike, input: { userId: number; passwordHash: string }): Promise<void> {
     await db
@@ -41,5 +41,14 @@ export const passwordQueries: Pick<
         target: identityPasswords.userId,
         set: { passwordHash: input.passwordHash, updatedAt: sql`now()` },
       });
+  },
+
+  async findPasswordUserIds(db: DbLike, userIds: readonly number[]): Promise<number[]> {
+    if (userIds.length === 0) return [];
+    const rows = await db
+      .select({ userId: identityPasswords.userId })
+      .from(identityPasswords)
+      .where(inArray(identityPasswords.userId, [...userIds]));
+    return rows.map((row) => row.userId);
   },
 };

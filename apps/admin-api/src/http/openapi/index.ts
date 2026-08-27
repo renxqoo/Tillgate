@@ -16,7 +16,7 @@ import { rateCardsContracts } from '../contracts/rates';
 import { adminsContracts } from '../contracts/admins';
 import { authEndpoints } from './auth';
 import { usersEndpoints } from './users';
-import { adminsEndpoints, adminRowSchema } from './admins';
+import { adminsEndpoints, adminRowSchema, adminCreatedSchema } from './admins';
 import { rbacEndpoints, roleRowSchema, permissionNodeSchema } from './rbac';
 import { controlPlaneEndpoints } from './control-plane';
 import { modelsEndpoints } from './models';
@@ -88,6 +88,7 @@ export const adminApiEndpoints: readonly OpenApiEndpoint[] = [
 export const adminApiDtoComponents: readonly DtoComponent[] = [
   responseComponent('AdminMeInfo', adminMeInfoSchema, 'me'),
   responseComponent('AdminRow', adminRowSchema, 'admins'),
+  responseComponent('AdminCreatedRow', adminCreatedSchema, 'admins'),
   responseComponent('IntegrationSettingItem', integrationItemSchema, 'settings'),
   responseComponent('RoleRow', roleRowSchema, 'roles'),
   responseComponent('PermissionNode', permissionNodeSchema, 'permissions'),

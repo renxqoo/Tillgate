@@ -188,3 +188,59 @@ describe('lib/utils（cn/getInitials/formatCurrency）', () => {
     expect(formatCurrency(1.5)).toBe('$1.50');
   });
 });
+
+describe('resetPasswordAction（邀请令牌设置初始密码）全分支', () => {
+  const TOKEN = 't'.repeat(43);
+
+  it('成功 → {ok:true};端点与载荷形态', async () => {
+    const { mod, calls } = await loadModule('../src/server/auth-actions', [
+      { status: 200, body: { ok: true } },
+    ]);
+    await expect(mod.resetPasswordAction(TOKEN, 'new-password-1')).resolves.toEqual({ ok: true });
+    expect(calls[0]).toMatchObject({
+      method: 'POST',
+      url: 'http://localhost:8082/v1/auth/reset-password',
+      body: { token: TOKEN, password: 'new-password-1' },
+    });
+  });
+
+  it('弱口令短码 → 密码策略文案;无效令牌/他码/坏体统一 resetTokenInvalid', async () => {
+    const { mod } = await loadModule('../src/server/auth-actions', [
+      { status: 400, body: { error: { code: 'identity.weak_password', message: 'x' } } },
+      { status: 400, body: { error: { code: 'admin.admin_reset_token_invalid' } } },
+      { status: 400, body: { error: { code: 'other.code', message: '原始错误' } } },
+      { status: 200, body: { unexpected: true } },
+      { status: 400, body: {} },
+    ]);
+    await expect(mod.resetPasswordAction(TOKEN, 'short')).resolves.toEqual({
+      error: 'passwordPolicyHint',
+    });
+    await expect(mod.resetPasswordAction(TOKEN, 'p')).resolves.toEqual({
+      error: 'resetTokenInvalid',
+    });
+    // 词表外错误码不透传原始 message——统一按无效令牌口径(不泄漏内部细节)
+    await expect(mod.resetPasswordAction(TOKEN, 'p')).resolves.toEqual({
+      error: 'resetTokenInvalid',
+    });
+    // res.ok 但 body 非 {ok:true}(漂移形态)同口径
+    await expect(mod.resetPasswordAction(TOKEN, 'p')).resolves.toEqual({
+      error: 'resetTokenInvalid',
+    });
+    await expect(mod.resetPasswordAction(TOKEN, 'p')).resolves.toEqual({
+      error: 'resetTokenInvalid',
+    });
+  });
+
+  it('fetch 抛错 → serviceUnavailable', async () => {
+    const { mod: net } = await loadModule('../src/server/auth-actions', []);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('down');
+      }),
+    );
+    await expect(net.resetPasswordAction(TOKEN, 'p')).resolves.toEqual({
+      error: 'serviceUnavailable',
+    });
+  });
+});

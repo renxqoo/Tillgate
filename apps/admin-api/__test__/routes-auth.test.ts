@@ -53,6 +53,11 @@ const json = { 'content-type': 'application/json' };
 const VALID_TOKEN = 'tok';
 const ADMIN_ID = 7;
 
+/** reset-password 挂具的挑战族动词显式失败替身(本端点不可达) */
+const challengeNotUsed = async (): Promise<never> => {
+  throw new Error('unused');
+};
+
 function neverLockedGuard(): AuthGuard & { failures: number; successes: number } {
   let failures = 0;
   let successes = 0;
@@ -98,6 +103,7 @@ function authHarness(overrides?: Partial<AuthRoutesDeps>) {
         authenticate: async () => ({ userId: ADMIN_ID }),
         change: async () => ({ invalidBefore: '2026-08-23T00:00:00Z' }),
         reset: async () => ({ invalidBefore: '2026-08-23T00:00:00Z' }),
+        exists: async () => [],
       },
       challenges: {
         begin: (async () => ({ challengeId: 'ch-1' })) as never,
@@ -122,6 +128,7 @@ function authHarness(overrides?: Partial<AuthRoutesDeps>) {
     loginAudit: audit,
     trustedProxyHops: 0,
     mailerConfigured: () => false,
+    invites: overrides?.invites ?? { consume: async () => null },
     sessionTtlSec: 3600,
     ...overrides,
   };
@@ -155,6 +162,7 @@ describe('auth（P2 登录面）', () => {
           },
           change: async () => ({ invalidBefore: '' }),
           reset: async () => ({ invalidBefore: '' }),
+          exists: async () => [],
         },
         challenges: {
           begin: (async () => ({ challengeId: '' })) as never,
@@ -201,6 +209,7 @@ describe('auth（P2 登录面）', () => {
           },
           change: async () => ({ invalidBefore: '' }),
           reset: async () => ({ invalidBefore: '' }),
+          exists: async () => [],
         },
         challenges: {
           begin: (async () => ({ challengeId: '' })) as never,
@@ -267,6 +276,7 @@ describe('auth（P2 登录面）', () => {
           authenticate: async () => ({ userId: ADMIN_ID }),
           change: async () => ({ invalidBefore: '' }),
           reset: async () => ({ invalidBefore: '' }),
+          exists: async () => [],
         },
         challenges: {
           begin: begin as unknown as AuthRoutesDeps['identity']['challenges']['begin'],
@@ -314,6 +324,7 @@ describe('auth（P2 登录面）', () => {
           authenticate: async () => ({ userId: ADMIN_ID }),
           change: async () => ({ invalidBefore: '' }),
           reset: async () => ({ invalidBefore: '' }),
+          exists: async () => [],
         },
         challenges: {
           begin: (async () => ({ challengeId: '' })) as never,
@@ -403,6 +414,7 @@ describe('me（P2 管理员自身）', () => {
           authenticate: async () => ({ userId: ADMIN_ID }),
           change: async () => ({ invalidBefore: '2026-08-23T00:00:00Z' }),
           reset: async () => ({ invalidBefore: '2026-08-23T00:00:00Z' }),
+          exists: async () => [],
         },
         sessions: {
           sign: async () => 'new-token',
@@ -444,6 +456,7 @@ describe('me（P2 管理员自身）', () => {
           authenticate: async () => ({ userId: 0 }),
           change,
           reset: async () => ({ invalidBefore: '' }),
+          exists: async () => [],
         },
         sessions: {
           sign: async () => 'new-token',
@@ -478,5 +491,156 @@ describe('me（P2 管理员自身）', () => {
     expect(await code.json()).toMatchObject({
       error: { code: 'identity.undeliverable_challenge' },
     });
+  });
+});
+
+describe('POST /v1/auth/reset-password（邀请令牌消费,公开端点）', () => {
+  /** 独立挂具:invite 令牌 + 可断言的 passwords.reset/exists;find 默认活跃资料行 */
+  function resetHarness(over?: {
+    find?: () => Promise<typeof adminRecord | null>;
+    exists?: (userIds: number[]) => number[];
+    reset?: () => Promise<{ invalidBefore: string }>;
+  }) {
+    const invites = {
+      tokens: new Map<string, number>(),
+      async issue(adminId: number) {
+        // ≥20 字符(契约 min 口径);长度不足会被 zod 先拦,测不到消费链
+        const token = `invite-${String(adminId).padStart(8, '0')}-${'t'.repeat(30)}-${invites.tokens.size + 1}`;
+        invites.tokens.set(token, adminId);
+        return token;
+      },
+      async consume(token: string) {
+        const adminId = invites.tokens.get(token) ?? null;
+        invites.tokens.delete(token);
+        return adminId;
+      },
+      async tryStartCooldown() {
+        return true;
+      },
+    };
+    const reset = over?.reset ?? vi.fn(async () => ({ invalidBefore: '2026-08-23T00:00:00Z' }));
+    const resetSpy = vi.fn(reset);
+    const exists = vi.fn(async (input: { userIds: number[] }) =>
+      (over?.exists ?? (() => []))(input.userIds),
+    );
+    const deps: AuthRoutesDeps = {
+      identity: {
+        mfa: mfaStub(),
+        passwords: {
+          authenticate: async () => ({ userId: ADMIN_ID }),
+          change: async () => ({ invalidBefore: '' }),
+          reset: resetSpy as never,
+          exists: exists as never,
+        },
+        challenges: { begin: challengeNotUsed, verify: challengeNotUsed, abort: challengeNotUsed },
+        sessions: {
+          sign: async () => 'signed-token',
+          verify: async () => {
+            throw new Error('unused');
+          },
+          validate: async () => null,
+          logout: async () => ({ ok: true as const }),
+        },
+      },
+      admins: {
+        findByEmail: async () => adminRecord,
+        find: over?.find ?? (async () => adminRecord),
+        touchLastLogin: async () => {},
+      },
+      guards: { emailIp: neverLockedGuard(), ip: neverLockedGuard() },
+      loginAudit: async () => {},
+      trustedProxyHops: 0,
+      mailerConfigured: () => true,
+      invites,
+      sessionTtlSec: 3600,
+    };
+    return { app: withErrorFace(authRoutes(deps)), invites, resetSpy, exists };
+  }
+  const post = (app: Hono<SessionEnv>, body: unknown) =>
+    app.request('/v1/auth/reset-password', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify(body),
+    });
+
+  it('成功:一次性消费 → passwords.reset(realm admin) → {ok:true};不自动登录', async () => {
+    const h = resetHarness();
+    const token = await h.invites.issue(ADMIN_ID);
+    const res = await post(h.app, { token, password: 'new-password-123' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(h.resetSpy).toHaveBeenCalledWith({
+      userId: ADMIN_ID,
+      realm: 'admin',
+      newPassword: 'new-password-123',
+    });
+    // 令牌已消费(GETDEL 语义)
+    expect(h.invites.tokens.has(token)).toBe(false);
+  });
+
+  it('重放/未知令牌统一 400 admin_reset_token_invalid(不泄漏原因)', async () => {
+    const h = resetHarness();
+    const token = await h.invites.issue(ADMIN_ID);
+    expect((await post(h.app, { token, password: 'new-password-123' })).status).toBe(200);
+    const replay = await post(h.app, { token, password: 'new-password-456' });
+    expect(replay.status).toBe(400);
+    expect(((await replay.json()) as { error: { code: string } }).error.code).toBe(
+      'admin.admin_reset_token_invalid',
+    );
+    const unknown = await post(h.app, { token: 'x'.repeat(43), password: 'new-password-456' });
+    expect(unknown.status).toBe(400);
+    expect(((await unknown.json()) as { error: { code: string } }).error.code).toBe(
+      'admin.admin_reset_token_invalid',
+    );
+    expect(h.resetSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('安全回归:对方已设密码后旧邀请链接作废(泄露链接改不了已激活账号的密码)', async () => {
+    const h = resetHarness({ exists: () => [ADMIN_ID] });
+    const token = await h.invites.issue(ADMIN_ID);
+    const res = await post(h.app, { token, password: 'hijack-password-9' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'admin.admin_reset_token_invalid',
+    );
+    expect(h.resetSpy).not.toHaveBeenCalled();
+  });
+
+  it('封禁/资料行缺失同口径 400(封禁者不可经邀请激活)', async () => {
+    const banned = resetHarness({ find: async () => ({ ...adminRecord, status: 1 }) });
+    const t1 = await banned.invites.issue(ADMIN_ID);
+    expect((await post(banned.app, { token: t1, password: 'new-password-123' })).status).toBe(400);
+
+    const missing = resetHarness({ find: async () => null });
+    const t2 = await missing.invites.issue(ADMIN_ID);
+    const res = await post(missing.app, { token: t2, password: 'new-password-123' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'admin.admin_reset_token_invalid',
+    );
+    expect(banned.resetSpy).not.toHaveBeenCalled();
+    expect(missing.resetSpy).not.toHaveBeenCalled();
+  });
+
+  it('弱口令透传 identity.weak_password(策略单源);参数矩阵:token 过短/超长 400', async () => {
+    const h = resetHarness({
+      reset: async () => {
+        throw identityErrors.business('weak_password', { minLength: 8 });
+      },
+    });
+    const token = await h.invites.issue(ADMIN_ID);
+    const weak = await post(h.app, { token, password: 'short' });
+    expect(weak.status).toBe(400);
+    expect(((await weak.json()) as { error: { code: string } }).error.code).toBe(
+      'identity.weak_password',
+    );
+
+    expect(
+      (await post(h.app, { token: 'x'.repeat(19), password: 'new-password-123' })).status,
+    ).toBe(400);
+    expect(
+      (await post(h.app, { token: 'x'.repeat(129), password: 'new-password-123' })).status,
+    ).toBe(400);
+    expect((await post(h.app, { token, password: '' })).status).toBe(400);
   });
 });

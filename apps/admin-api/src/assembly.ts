@@ -51,6 +51,10 @@ import { createSmtpProbe } from './adapters/smtp-probe';
 import { createAdminFundingResolver } from './adapters/funding-resolver';
 import { createIdentityAuditSinkBridge } from './adapters/identity-audit-bridge';
 import { createDynamicAdminMailer } from './adapters/dynamic-admin-mailer.js';
+import {
+  createRedisAdminInviteStore,
+  ADMIN_INVITE_TOKEN_TTL_MINUTES,
+} from './adapters/redis-admin-invite';
 import { createAdminSessionRevocation } from './adapters/redis-session-revocation';
 import {
   createAuditSinkBridge,
@@ -106,6 +110,16 @@ export interface AdminApiAssembly {
   readonly authGuards: { emailIp: AuthGuard; ip: AuthGuard };
   /** SMTP 是否已配置 */
   readonly mailerConfigured: () => boolean;
+  /** 管理员邀请令牌 + 重发冷却（Redis 适配器;admins/auth 路由消费） */
+  readonly invites: ReturnType<typeof createRedisAdminInviteStore>;
+  /** 邀请邮件投递（ttl 由闭包注入;SMTP 未生效抛 undeliverable_challenge） */
+  readonly sendInviteLink: (
+    to: string,
+    url: string,
+    ctx: { locale?: 'en' | 'zh' },
+  ) => Promise<void>;
+  /** 管理后台前端基地址（邀请链接拼装;null = ADMIN_FRONTEND_URL 未配置） */
+  readonly inviteLinkBase: string | null;
   /** 登录三审计（后置旁路,失败不阻断） */
   readonly loginAudit: (entry: {
     action: 'auth.login.invalid_credentials' | 'auth.login.2fa_challenge' | 'auth.login.success';
@@ -199,9 +213,13 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
       brandSub: 'TILLGATE · ADMIN CONSOLE',
     },
     emailParams: { ttlMinutes: 5, maxAttempts: 5 },
+    // 邀请令牌 TTL 同源(Redis 窗口与邮件文案必须一致——单一事实在适配器常量)
+    inviteParams: { ttlMinutes: ADMIN_INVITE_TOKEN_TTL_MINUTES },
     now: () => new Date(),
   });
   const sessionRevocation = createAdminSessionRevocation(redis);
+  // 管理员邀请令牌/重发冷却(与登录守卫、jti 吊销同 Redis 不同前缀)
+  const invites = createRedisAdminInviteStore(redis);
 
   // identity:admin realm 会话/挑战 + user realm 失效线;词表/挑战/TOTP 形状合法即装配
   const identity = createIdentity({
@@ -375,6 +393,13 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     redis,
     authGuards: { emailIp: loginGuard, ip: ipGuard },
     mailerConfigured: () => integrationReader.latest().smtp.effective,
+    invites,
+    sendInviteLink: (to, url, ctx) =>
+      mailer.sendAdminInviteLink(to, url, {
+        ...ctx,
+        ttlMinutes: ADMIN_INVITE_TOKEN_TTL_MINUTES,
+      }),
+    inviteLinkBase: config.adminFrontendUrl ?? null,
     stepupAudit: (entry) =>
       writeAudit(db, {
         actor: 'system',
