@@ -37,20 +37,20 @@ function createSchema(production: boolean) {
     /** 邮箱验证码挑战：有效期/发送冷却/最大尝试次数 */
     CLIENT_CHALLENGE_TTL_MS: z.coerce.number().int().positive().default(600_000),
     CLIENT_CHALLENGE_COOLDOWN_MS: z.coerce.number().int().positive().default(60_000),
-    CLIENT_CHALLENGE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
+    CLIENT_CHALLENGE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(10),
     /** TOTP（MFA 预留词表；用户面暂不开放端点——identity 配置必填项） */
     CLIENT_TOTP_ISSUER: z.string().min(1).max(255).default('Tillgate'),
     /** 邮箱自助注册开关（关闭只留既有账号登录） */
     REGISTER_ENABLED: strictBooleanSchema(true),
     /** 同 IP 注册请求窗口（秒）与上限/窗口（防批量刷号；窗口即 Retry-After 口径） */
     REGISTER_IP_WINDOW_SECONDS: z.coerce.number().int().positive().default(3_600),
-    REGISTER_IP_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(5),
+    REGISTER_IP_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(10),
     /** 兑换频率闸：每用户每分钟兑换尝试上限（防暴力猜码） */
     REDEEM_PER_MINUTE_LIMIT: z.coerce.number().int().positive().default(10),
     /** 充值下单频率闸：每用户每分钟下单上限 */
     CLIENT_TOPUP_ORDERS_PER_MINUTE: z.coerce.number().int().positive().default(10),
     /** 登录爆破防护：per-邮箱+IP 失败阈值/窗口/锁定 + per-IP 失败上限（秒窗口即锁时长） */
-    LOGIN_FAILURE_THRESHOLD: z.coerce.number().int().positive().default(5),
+    LOGIN_FAILURE_THRESHOLD: z.coerce.number().int().positive().default(10),
     LOGIN_FAILURE_WINDOW_S: z.coerce.number().int().positive().default(600),
     LOGIN_LOCK_S: z.coerce.number().int().positive().default(600),
     LOGIN_IP_FAILURE_LIMIT: z.coerce.number().int().positive().default(50),

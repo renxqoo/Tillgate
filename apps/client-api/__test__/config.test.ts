@@ -31,10 +31,11 @@ describe('client-api config', () => {
     expect(c.CLIENT_API_PORT).toBe(8081);
     expect(c.CLIENT_CURRENCY).toBe('CNY');
     expect(c.REGISTER_ENABLED).toBe(true);
-    expect(c.REGISTER_IP_LIMIT_PER_HOUR).toBe(5);
+    expect(c.CLIENT_CHALLENGE_MAX_ATTEMPTS).toBe(10);
+    expect(c.REGISTER_IP_LIMIT_PER_HOUR).toBe(10);
     expect(c.REDEEM_PER_MINUTE_LIMIT).toBe(10);
     expect(c.CLIENT_TOPUP_ORDERS_PER_MINUTE).toBe(10);
-    expect(c.LOGIN_FAILURE_THRESHOLD).toBe(5);
+    expect(c.LOGIN_FAILURE_THRESHOLD).toBe(10);
     expect(c.CLIENT_PASSWORD_MIN_LENGTH).toBe(10);
     expect(c.CLIENT_USAGE_TZ).toBe('Asia/Shanghai');
     expect(c.PRICING_CACHE_TTL_MS).toBe(30_000);
