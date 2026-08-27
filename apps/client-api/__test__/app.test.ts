@@ -1001,6 +1001,30 @@ describe('auth 两步制', () => {
     expect(res.headers.get('retry-after')).toBe('3600');
   });
 
+  it('S5 回归（弱密码差分）：taken+弱密码 与 free+弱密码 同为 400 weak_password（闸序=密码策略先行）', async () => {
+    const { app, state } = build();
+    const taken = await app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'taken@x.com', password: 'a' }),
+    });
+    const free = await app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'brand-new@x.com', password: 'a' }),
+    });
+    // 两分支同码同状态码——弱密码探测不再是枚举 oracle
+    expect(taken.status).toBe(400);
+    expect(free.status).toBe(400);
+    expect(((await taken.json()) as { error: { code: string } }).error.code).toBe(
+      'identity.weak_password',
+    );
+    expect(((await free.json()) as { error: { code: string } }).error.code).toBe(
+      'identity.weak_password',
+    );
+    expect(state.challenges.size).toBe(0);
+  });
+
   it('S5 回归：邮箱已占同款哑口径（200 code_required + 不建挑战不发码——不可枚举）', async () => {
     const { app, state } = build();
     const res = await app.request('/v1/auth/register', {

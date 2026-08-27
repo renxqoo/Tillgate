@@ -297,11 +297,7 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
       });
       // 出站脱敏闭包：只作用于 C 端错误帧 message；事件面保真
       const sanitizeMessage = (message: string): string =>
-        sanitizeUpstreamDetail(message, {
-          maxLen: cfg.errorSanitize.maxLen,
-          redactions: cfg.errorSanitize.redactions,
-          replacement: opts?.model,
-        });
+        sanitizeUpstreamDetail(message, { ...cfg.errorSanitize, replacement: opts?.model });
       if ('error' in assembled) {
         return failEarlyStream(
           bus,
@@ -312,10 +308,14 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
         );
       }
       const { ctx } = assembled;
+      // opts.model = 真实部署模型名 → 并入配置 redactions 后映射对外名 ctx.model（单趟替换去重）
+      const outRedactions = cfg.errorSanitize.redactions.concat(
+        opts?.model != null && opts.model !== ctx.model ? [opts.model] : [],
+      );
       const sanitizeOut = (message: string): string =>
         sanitizeUpstreamDetail(message, {
           maxLen: cfg.errorSanitize.maxLen,
-          redactions: cfg.errorSanitize.redactions,
+          redactions: outRedactions,
           replacement: ctx.model,
         });
       const key = channelKey(channel);
@@ -370,6 +370,8 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
           inactivityTimeoutMs: cfg.stream.inactivityTimeoutMs,
           // 例外 2：响应侧 model 字段替换（默认关；开启时出站帧 model → 对外目录名）
           rewriteModel: cfg.responseModelRewrite ? ctx.model : undefined,
+          // 合成的中段错误帧 message 同一出站脱敏（上游字节透传不变、事件面保真）
+          sanitizeErrorDetail: sanitizeOut,
           signal: ctx.signal,
         });
         attachRelayReporting(handle, {

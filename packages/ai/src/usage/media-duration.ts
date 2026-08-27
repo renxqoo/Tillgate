@@ -1,15 +1,19 @@
 /**
  * 音频时长估算（秒，向上取整）——audio_transcription/translation 按秒计费的计量源。
  *
- * WAV：RIFF 头逐块遍历（data 实际字节 ÷ 字节率）——声明值不可信：
- *   data 尺寸按文件实际字节收敛、字节率按上界钳制（伪造头只能高估不能少计）。
+ * WAV：RIFF 头逐块遍历全链（data 声明尺寸按文件实际字节收敛求和、字节率按上界
+ * 钳制），并以 fileSize ÷ 字节率上界作整个文件的少计下界——伪造头（大/小
+ * chunkSize、超高/超低 byteRate、伪 chunk 链）只能高估不能少计。
  * MP3：前 8KB 内多帧头位率取中位 → 文件大小 ÷ 位率（VBR/伪造首帧不放大偏差；
  *   位率表上界 320kbps 即少计的硬下界）。
  * 其它/无法识别：保守估算（16KB/s，语音电话质量下限）——宁可高估不漏收。
  */
 
-/** WAV 字节率可信上界（4MB/s 覆盖 192kHz/8ch/24bit 专业形态；更高只存在于伪造头） */
-const WAV_BYTE_RATE_CAP = 4 * 1024 * 1024;
+/**
+ * WAV 字节率可信上界（8MB/s 覆盖 192kHz/8ch/24bit ≈ 4.6MB/s 专业形态；更高
+ * 只存在于伪造头——钳制只影响伪造面的少计方向）。
+ */
+const WAV_BYTE_RATE_CAP = 8 * 1024 * 1024;
 
 /** WAV：'RIFF' 头精确时长；非 WAV 或块缺失 → undefined（字节下标越界按 0 参与位运算，与原实现一致） */
 function wavDurationSeconds(bytes: Uint8Array, view: DataView): number | undefined {
@@ -19,7 +23,8 @@ function wavDurationSeconds(bytes: Uint8Array, view: DataView): number | undefin
   ) {
     return undefined;
   }
-  // 逐块找 fmt（字节率 byteRate）与 data（实际字节）
+  // 全链逐块遍历：fmt 取字节率（最后一个生效）；data 求和（声明尺寸按文件剩余收敛
+  // ——声明超出文件的部分截断，伪造大声明不放大；声明偏小由文件级下界兜住）
   let offset = 12;
   let byteRate = 0;
   let dataBytes = 0;
@@ -28,17 +33,17 @@ function wavDurationSeconds(bytes: Uint8Array, view: DataView): number | undefin
     const chunkSize = view.getUint32(offset + 4, true);
     if (chunkId === 0x666d7420) {
       byteRate = view.getUint32(offset + 16, true);
-    } // 'fmt '
-    else if (chunkId === 0x64617461) {
-      // 声明尺寸按文件实际字节收敛（伪造大/小 chunkSize 都不改变计量事实）
-      const actual = Math.min(chunkSize, bytes.byteLength - (offset + 8));
-      dataBytes = Math.max(dataBytes, Math.max(0, actual));
+    } else if (chunkId === 0x64617461) {
+      dataBytes += Math.max(0, Math.min(chunkSize, bytes.byteLength - (offset + 8)));
     } // 'data'
     offset += 8 + chunkSize + (chunkSize % 2);
-    if (byteRate > 0 && dataBytes > 0) break;
   }
   if (byteRate > 0 && dataBytes > 0) {
-    return Math.max(1, Math.ceil(dataBytes / Math.min(byteRate, WAV_BYTE_RATE_CAP)));
+    const rate = Math.min(byteRate, WAV_BYTE_RATE_CAP);
+    // 文件级少计下界：整个文件按字节率上界折秒——伪 chunk 链把音频伪装成「元数据」
+    // 也逃不出 fileSize ÷ CAP（诚实文件的真实速率 ≤ CAP，此下界不抬高计费）
+    const floorSeconds = Math.ceil(bytes.byteLength / WAV_BYTE_RATE_CAP);
+    return Math.max(1, Math.ceil(dataBytes / rate), floorSeconds);
   }
   return undefined;
 }

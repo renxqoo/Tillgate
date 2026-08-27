@@ -23,18 +23,16 @@ export function storedSecret(cipher: SecretCipher | undefined, plain: string): s
   return cipher ? cipher.encrypt(plain) : plain;
 }
 
+/** TOTP 密钥明文形态（base32, RFC 4648——20 字节 → 32 字符）。遗留明文行的判别白名单 */
+const LEGACY_PLAINTEXT_RE = /^[A-Z2-7]{16,}=*$/i;
+
 export function loadedSecret(cipher: SecretCipher | undefined, storedValue: string): string {
   if (!cipher) return storedValue;
-  try {
-    return cipher.decrypt(storedValue);
-  } catch (error) {
-    // 遗留明文行（装配注入 cipher 之前写入）：密文格式校验不符 → 原样返回。
-    // 收敛条件：遗留行经重挂（enroll 换钥）逐个替换为密文，清零后移除本回落。
-    if ((error as { code?: string }).code === 'runtime.cipher.invalid_format') {
-      return storedValue;
-    }
-    throw error;
-  }
+  // 遗留明文行按形态白名单判别（base32 密钥不可能是 enc:v1: 密文形态,无假阳性）:
+  // 比「解密格式错即回落」精确——密文行损坏/密钥轮换(auth_failed)会如实抛 DefectError,
+  // 不会被误当明文。收敛条件:遗留行经重挂(enroll 换钥)逐个替换为密文,清零后移除本回落。
+  if (LEGACY_PLAINTEXT_RE.test(storedValue)) return storedValue;
+  return cipher.decrypt(storedValue);
 }
 
 export async function enrollTotp(

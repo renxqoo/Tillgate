@@ -236,7 +236,7 @@ describe('media-duration：WAV/MP3 头解析分支（秒数向上取整）', () 
     expect(estimateAudioDurationSeconds(new Uint8Array(8))).toBe(1);
   });
 
-  it('B9 回归：伪造 WAV 头（超大 byteRate）不可少计——字节率按上界钳制', () => {
+  it('B9 回归：伪造超大 byteRate 不可少计——字节率按 8MB/s 上界钳制', () => {
     const fmt = new Uint8Array(16);
     new DataView(fmt.buffer).setUint32(8, 0xffff_ffff, true); // 声明字节率 4GB/s（伪造）
     const data = new Uint8Array(10 * 1024 * 1024); // 实际 10MB 音频字节
@@ -246,21 +246,23 @@ describe('media-duration：WAV/MP3 头解析分支（秒数向上取整）', () 
         { id: 'data', body: data },
       ]),
     );
-    // 下界 = 实际字节 ÷ 字节率上界(4MB/s) = 2.5 → 3s；旧实现按伪造头计 1s
-    expect(sec).toBeGreaterThanOrEqual(3);
+    // = ceil(10MB ÷ 8MB/s) = 2s（旧实现按伪造头计 1s）
+    expect(sec).toBe(2);
   });
 
-  it('B9 回归：WAV 声明 data 尺寸按文件实际字节收敛（伪造大 chunkSize 不放大也不会缩小计费）', () => {
+  it('B9 回归：伪造微型 data chunkSize 不可少计——fileSize÷上界的文件级下界兜住', () => {
     const fmt = new Uint8Array(16);
-    new DataView(fmt.buffer).setUint32(8, 32_000, true); // 32KB/s
-    const data = new Uint8Array(32_000);
+    new DataView(fmt.buffer).setUint32(8, 32_000, true); // 字节率诚实 32KB/s
+    const data = new Uint8Array(10 * 1024 * 1024); // 实际 10MB 音频字节
     const wav = mkWav([
       { id: 'fmt ', body: fmt },
       { id: 'data', body: data },
     ]);
-    // 把声明 chunkSize 篡改为 1（伪造微型声明）
-    new DataView(wav.buffer, wav.byteOffset).setUint32(12 + 8 + 16 + 8 + 4, 1, true);
-    expect(estimateAudioDurationSeconds(wav)).toBe(1); // 仍按实际 32000B/32KB/s
+    // data chunkSize 字段 @40（RIFF 12 + fmt 头 8 + fmt 体 16 + data id 4）篡改为 1
+    new DataView(wav.buffer, wav.byteOffset).setUint32(40, 1, true);
+    // 伪造声明只承认 1 字节（dataBytes 路径 1s）；文件级下界 ceil(10MB ÷ 8MB/s)
+    // = 2s 兜底（旧实现无两道防线 → 1s 少计；诚实计费应 ~320s）
+    expect(estimateAudioDurationSeconds(wav)).toBe(2);
   });
 
   it('B9 回归：MP3 多帧取中位位率（伪造首帧高码率声明不放大少计）', () => {

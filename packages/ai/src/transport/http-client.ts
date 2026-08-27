@@ -1,4 +1,5 @@
 import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { UpstreamError } from '../errors/kinds';
 import type { UrlGuard } from '../types';
 
@@ -164,6 +165,9 @@ export function assertSafeUrlSync(url: string, opts: SafeUrlOptions = {}): URL {
  */
 export function assertSafeAddress(address: string, opts: SafeUrlOptions = {}): void {
   if (opts.allowLocal === true) return;
+  // 非 IP 文本直接拒（防御对称；也拦 '0177.0.0.1' 这类非规范 IPv4 形态——
+  // isUnsafeIpv4 的 Number() 会把八进制段误判为公网）
+  if (isIP(address) === 0) throw new Error(`blocked address: ${address}`);
   const unsafe = address.includes(':') ? isUnsafeIpv6(address) : isUnsafeIpv4(address);
   if (unsafe) throw new Error(`blocked address: ${address}`);
 }

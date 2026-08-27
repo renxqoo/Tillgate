@@ -29,6 +29,12 @@ export interface RelayStreamOptions {
    * 逐字节透传。逐事件行改写（不整流缓冲），覆盖同协议中继与跨协议转换出站两条路径。
    */
   rewriteModel?: string;
+  /**
+   * 出站错误帧 message 脱敏（给出即开启）：仅作用于本层**合成**的终态错误帧
+   * （failWithErrorFrame 的 message=frame.detail）——上游原始字节仍逐字节透传、
+   * 事件面（stream_error/done.errorFrame）保真。缺省 = 不脱敏（测试/内部形态）。
+   */
+  sanitizeErrorDetail?: (detail: string) => string;
   checkIntervalMs?: number;
   signal?: AbortSignal;
 }
@@ -149,9 +155,14 @@ export function relayStream(
     emit({ type: 'aborted', reason });
     if (controller) {
       try {
+        // 合成帧是本层自己的出站面（非上游字节透传）——message 过出站脱敏
+        let message: string | undefined = frame.detail;
+        if (frame.detail != null && options.sanitizeErrorDetail != null) {
+          message = options.sanitizeErrorDetail(frame.detail);
+        }
         controller.enqueue(
           enc(
-            `data: ${JSON.stringify({ error: { code: frame.code, type: frame.type, message: frame.detail } })}\n\n`,
+            `data: ${JSON.stringify({ error: { code: frame.code, type: frame.type, message } })}\n\n`,
           ),
         );
         controller.enqueue(enc('data: [DONE]\n\n'));

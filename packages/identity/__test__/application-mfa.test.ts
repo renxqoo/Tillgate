@@ -282,4 +282,37 @@ describe('cipher 密文落库(SecretCipher)', () => {
       upgraded.mfa.verify({ userId: 1, code: currentCode(h, enrolled.secret) }),
     ).resolves.toEqual({ method: 'totp' });
   });
+
+  it('密文行解密失败（auth_failed——密钥轮换/密文损坏）不回落明文：如实抛错', async () => {
+    const h = harness();
+    const { createIdentity } = await import('../src/identity.js');
+    const { TEST_CONFIG } = await import('../src/testing/harness.js');
+    const api = createIdentity({
+      db: h.ctx.db,
+      txRetry: h.ctx.txRetry,
+      clock: h.ctx.clock,
+      logger: { warn: () => {} },
+      config: TEST_CONFIG,
+      store: h.store,
+      cipher: {
+        encrypt: (plain) => `enc:v1:${Buffer.from(plain).toString('base64')}`,
+        decrypt: () => {
+          // 形态是密文（非 base32 白名单）→ 解密路径 → GCM 认证失败语义
+          throw Object.assign(new Error('decryption failed'), {
+            code: 'runtime.cipher.auth_failed',
+          });
+        },
+      },
+    });
+    // 直接植入密文形态行（模拟轮换后旧密钥密文）
+    const secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'; // 32 字符 base32（白名单形态）
+    await h.store.upsertEnrollment(h.ctx.db, {
+      userId: 1,
+      storedSecret: `enc:v1:${Buffer.from(secret).toString('base64')}`,
+    });
+    // confirm 读到 auth_failed → 如实上抛（不回落、不吞）
+    await expect(api.mfa.confirmTotp({ userId: 1, code: '123456' })).rejects.toMatchObject({
+      code: 'runtime.cipher.auth_failed',
+    });
+  });
 });

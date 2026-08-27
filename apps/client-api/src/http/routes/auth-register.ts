@@ -49,13 +49,15 @@ export function registerRoutes(deps: AuthDeps) {
       // 判负/不可达由 identity 翻译为业务错误（captcha_invalid 400 / captcha_unavailable 503）
       await deps.captcha.verify({ token: body.captchaToken, remoteIp: ip ?? undefined });
     }
+    // 密码策略单源校验（identity 域；不满足直接 400）——必须先于 emailTaken 哑口径：
+    // 若哑分支先行，弱密码探测即成枚举 oracle（已占=200 哑、未占=400 weak_password）
+    assertPasswordPolicy(body.password, deps.passwordPolicy);
     if (await deps.emailTaken(body.email)) {
       // 哑口径（S5）：已占邮箱与未占用完全同形状响应，但不建挑战不发码——
-      // 409 email_taken 等于免费枚举探测；哑 challengeId 走 verify 与垃圾 ID 同款失败
+      // 409 email_taken 等于免费枚举探测；哑 challengeId 走 verify 与垃圾 ID 同款失败。
+      // 残余差分：冷却窗（未占路径二发 challenge_cooldown）与计时——已接受为残余并记录
       return c.json({ kind: 'code_required', challengeId: randomUUID() });
     }
-    // 密码策略单源校验（identity 域；不满足直接 400——在发码前拒绝）
-    assertPasswordPolicy(body.password, deps.passwordPolicy);
     const payload: Record<string, unknown> = {
       mail: body.email,
       aff: body.aff ?? null,

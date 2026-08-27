@@ -5,7 +5,10 @@
  * 两次解析窗口结构性消除——fetch 内部独立二次解析不再存在）。
  * 3x 不自动跟随（node 原生不跟 redirect——过审地址可 30x 跳内网，语义与旧
  * fetch redirect:'manual' 一致：3x 即失败，下轮重试）。
- * 网络异常/超时收敛为 { ok:false, status:0 }（deliverer 端口契约：布尔不抛）。
+ * 超时双保险：req.setTimeout 只覆盖「已连接后的 socket 空闲」（Bun 下 DNS/建连
+ * 阶段不触发）；总 deadline 定时器覆盖全程（含解析/建连/慢滴响应），到点销毁请求。
+ * 网络异常/超时收敛为 { ok:false, status:0 }（deliverer 端口契约：布尔不抛）；
+ * resolve 幂等（end/close/error/总超时四路都可能先到）。
  */
 import * as http from 'node:http';
 import * as https from 'node:https';
@@ -24,8 +27,9 @@ export interface GuardedHttpPost {
 
 /**
  * 自定义 lookup 工厂：解析 → 逐地址断言 → 校验过的地址交给连接器。
- * lookup 在连接阶段触发（请求对象已存在,经 pendingRef 引用）——校验拒绝时
- * 显式销毁请求:仅靠 lookup callback 的 err 形参传播在 Bun 不保证（挂起而非报错）。
+ * lookup 在连接阶段触发（请求对象已存在,经 pendingRef 引用）——校验拒绝/解析失败/
+ * 空地址表时显式销毁请求:仅靠 lookup callback 的 err 形参传播在 Bun 不保证。
+ * 成功路径的 callback 在 try 外调用（回调自身抛错不得落入 catch 造成二次回调）。
  */
 function guardedLookupOf(
   guard: UrlGuard,
@@ -38,25 +42,28 @@ function guardedLookupOf(
     callback: (err: Error | null, address: unknown, family?: number) => void,
   ) => {
     void (async () => {
+      let addresses: LookupAddress[];
       try {
-        const addresses = (await lookup(hostname, {
-          all: true,
-          verbatim: true,
-        })) as LookupAddress[];
+        addresses = (await lookup(hostname, { all: true, verbatim: true })) as LookupAddress[];
         for (const entry of addresses) {
           guard.assertAddress(entry.address, { allowLocal });
         }
-        // 回填形态按运行时请求：all:true 数组形（Bun 实测）；否则首地址 + family
-        if (options.all === true) {
-          callback(null, addresses);
-          return;
+        if (addresses.length === 0) {
+          // 空地址表不得回填占位地址（'0.0.0.0' 在 Linux 即回环——绕过守卫）
+          throw new Error(`no addresses resolved for ${hostname}`);
         }
-        const [first] = addresses;
-        callback(null, first?.address ?? '0.0.0.0', first?.family ?? 4);
       } catch (error) {
         pendingRef.current?.destroy(error as Error);
         callback(error as Error, options.all === true ? [] : '');
+        return;
       }
+      // 回填形态按运行时请求：all:true 数组形（Bun 实测）；否则首地址 + family
+      if (options.all === true) {
+        callback(null, addresses);
+        return;
+      }
+      const [first] = addresses;
+      if (first != null) callback(null, first.address, first.family);
     })();
   };
 }
@@ -66,6 +73,13 @@ export function createGuardedNodeTransport(guard: UrlGuard, allowLocal: boolean)
   return (input) =>
     new Promise((resolve) => {
       const lib = input.url.protocol === 'https:' ? https : http;
+      const settled = { done: false };
+      const settle = (value: { ok: boolean; status: number }) => {
+        if (settled.done) return;
+        settled.done = true;
+        clearTimeout(deadline);
+        resolve(value);
+      };
       const pendingRef: { current?: http.ClientRequest } = {};
       const guardedLookup = guardedLookupOf(guard, allowLocal, pendingRef);
       const req = lib.request(
@@ -80,15 +94,24 @@ export function createGuardedNodeTransport(guard: UrlGuard, allowLocal: boolean)
         },
         (res) => {
           const status = res.statusCode ?? 0;
+          const ok = status >= 200 && status < 300;
           res.resume(); // 丢弃响应体（deliverer 只关心 ok）
-          res.on('end', () => resolve({ ok: status >= 200 && status < 300, status }));
+          // end=正常读完；close=异常中断（Bun 下 RST 可能只触发 close 不触发 error）
+          res.on('end', () => settle({ ok, status }));
+          res.on('close', () => settle({ ok, status }));
         },
       );
       pendingRef.current = req;
+      // 总 deadline：覆盖 DNS/建连/慢滴响应全程（req.setTimeout 只是空闲超时）
+      const deadline = setTimeout(() => {
+        req.destroy(new Error('webhook post deadline exceeded'));
+      }, input.timeoutMs);
+      deadline.unref?.();
       req.setTimeout(input.timeoutMs, () => {
         req.destroy(new Error('webhook post timeout'));
       });
-      req.on('error', () => resolve({ ok: false, status: 0 }));
+      req.on('close', () => settle({ ok: false, status: 0 }));
+      req.on('error', () => settle({ ok: false, status: 0 }));
       req.end(input.body);
     });
 }

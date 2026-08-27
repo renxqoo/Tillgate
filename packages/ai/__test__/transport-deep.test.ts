@@ -10,6 +10,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   isUnsafeIpv4,
   isUnsafeIpv6,
+  assertSafeAddress,
   assertSafeUrlSync,
   fetchUpstream,
   readBody,
@@ -376,5 +377,19 @@ describe('relayStream：flush 四种终止与改写尾行', () => {
     const done = events.find((e) => e.type === 'done');
     expect(done).toMatchObject({ terminated: 'client_disconnect' });
     if (done?.type === 'done') expect(done.usage).toEqual({ prompt_tokens: 9 });
+  });
+});
+
+describe('assertSafeAddress（拨号层原语——非 IP 文本防御对称）', () => {
+  it('八进制/十进制/任意文本一律拒绝；规范公网 IP 放行', () => {
+    expect(() => assertSafeAddress('0177.0.0.1')).toThrow(/blocked address/); // Number('0177')=177 误判公网
+    expect(() => assertSafeAddress('2130706433')).toThrow(/blocked address/);
+    expect(() => assertSafeAddress('not-an-ip')).toThrow(/blocked address/);
+    expect(() => assertSafeAddress('10.0.0.5')).toThrow(/blocked address/);
+    expect(() => assertSafeAddress('::ffff:10.0.0.1')).toThrow(/blocked address/);
+    expect(assertSafeAddress('93.184.216.34')).toBeUndefined();
+    expect(assertSafeAddress('2606:4700::1111')).toBeUndefined();
+    // allowLocal = 全放行（测试/本地调试语义）
+    expect(assertSafeAddress('127.0.0.1', { allowLocal: true })).toBeUndefined();
   });
 });

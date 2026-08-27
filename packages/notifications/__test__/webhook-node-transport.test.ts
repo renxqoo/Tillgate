@@ -16,6 +16,7 @@ import type { UrlGuard } from '../src/ports/url-guard';
 vi.mock('node:dns/promises', () => ({
   lookup: vi.fn(async (host: string) => {
     if (host === 'rebind.test') return [{ address: '127.0.0.1', family: 4 }];
+    if (host === 'empty.test') return [];
     if (host === 'rebind-multi.test') {
       return [
         { address: '93.184.216.34', family: 4 },
@@ -25,6 +26,15 @@ vi.mock('node:dns/promises', () => ({
     throw new Error('ENOTFOUND');
   }),
 }));
+
+/** 慢滴响应处理器：每 40ms 一字节、永不结束（socket 永不空闲——总超时的靶子） */
+function drip(res: http.ServerResponse): void {
+  res.writeHead(200, { 'content-type': 'text/plain' });
+  const timer = setInterval(() => {
+    res.write('x');
+  }, 40);
+  res.on('close', () => clearInterval(timer));
+}
 
 /** 本地回声服务:命中即记（证明连接实际到达的是解析钉住的地址） */
 async function echoServer() {
@@ -115,6 +125,66 @@ describe('createGuardedNodeTransport（拨号层 SSRF 钉子）', () => {
       });
       expect(res.ok).toBe(false);
       expect(server.hits).toEqual([]);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('总 deadline：慢滴响应（字节间隔 < timeoutMs）被总超时切断，不挂死', async () => {
+    // 服务端慢滴不结束——socket 永不空闲（req.setTimeout 不触发，靠总 deadline）
+    const server = http.createServer((req, res) => {
+      void req;
+      drip(res);
+    });
+    await new Promise<void>((resolve) => {
+      server.listen(0, '127.0.0.1', () => resolve());
+    });
+    try {
+      const guard = guardOf();
+      const transport = createGuardedNodeTransport(guard, true);
+      const { port } = server.address() as AddressInfo;
+      const startedAt = Date.now();
+      const res = await transport({
+        url: new URL(`http://127.0.0.1:${port}/drip`),
+        headers: {},
+        body: '{}',
+        timeoutMs: 300, // 总 deadline 300ms（若只有空闲超时则永不触发）
+      });
+      expect(res.ok).toBe(false);
+      expect(Date.now() - startedAt).toBeLessThan(2_000);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('空地址表（lookup 返回 []）→ 拒绝并销毁（不回填 0.0.0.0 拨回环）', async () => {
+    const guard = guardOf();
+    const transport = createGuardedNodeTransport(guard, true);
+    const res = await transport({
+      url: new URL('http://empty.test:1/x'),
+      headers: {},
+      body: '{}',
+      timeoutMs: 2_000,
+    });
+    expect(res).toEqual({ ok: false, status: 0 });
+    expect(guard.checked).toEqual([]); // 空表零断言（占位地址未交给连接器）
+  });
+
+  it('https 目标打到明文端口：TLS 握手失败 → fail-closed（ok:false 不放行）', async () => {
+    // 锁「TLS 面故障不放行」；证书校验激活/hostname 锚定已实证（Bun 1.4 自定义
+    // lookup 不旁路 rejectUnauthorized——见脱敏传输设计记录）
+    const server = await echoServer();
+    try {
+      const guard = guardOf();
+      const transport = createGuardedNodeTransport(guard, true);
+      const res = await transport({
+        url: new URL(`https://rebind.test:${server.port}/h`),
+        headers: {},
+        body: '{}',
+        timeoutMs: 2_000,
+      });
+      expect(res).toEqual({ ok: false, status: 0 });
+      expect(server.hits).toEqual([]); // 握手失败，HTTP 层零命中
     } finally {
       server.close();
     }

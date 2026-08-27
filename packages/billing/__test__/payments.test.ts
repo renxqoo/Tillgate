@@ -202,6 +202,19 @@ describe('协议规则', () => {
     // B10：乘积超出落库尺度（>18 位小数）时按落库尺度 floor 收敛——
     // 响应值与 numeric(38,18) 存储/入账值同源（全精度直出有 1e-18 级漂移）
     expect(computeCreditAmount('1.01', '0.123456789012345678')).toBe('0.124691356902469134');
+    // B10 边界：乘积 floor 到 0（< 1e-18）→ 下单即拒（防已付款订单入账永久卡死）
+    expect(() => computeCreditAmount('0.01', '0.000000000000000001')).toThrow(
+      /Top-up amount invalid/,
+    );
+    // 错误 context 携带机器可读 reason
+    try {
+      computeCreditAmount('0.01', '0.000000000000000001');
+      expect.unreachable('must throw');
+    } catch (error) {
+      expect((error as { context?: { reason?: string } }).context?.reason).toBe(
+        'credit_below_representable',
+      );
+    }
     expect(amountsMatch('10.00', '10')).toBe(true);
     expect(amountsMatch('10.01', '10')).toBe(false);
     expect(amountsMatch('abc', '10')).toBe(false);

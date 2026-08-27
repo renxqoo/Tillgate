@@ -37,10 +37,18 @@ export function assertTopupWithinLimit(amount: string, min: string, max: string)
  * 路径一致（派生入账额宁可少不多；差额低于落库尺度不可表示）。
  */
 export function computeCreditAmount(amount: string, rate: string): string {
-  return parsePositiveAmount(amount)
+  const floored = parsePositiveAmount(amount)
     .times(parsePositiveAmount(rate))
-    .toDecimalPlaces(18, Decimal.ROUND_FLOOR)
-    .toString();
+    .toDecimalPlaces(18, Decimal.ROUND_FLOOR);
+  // 乘积 < 1e-18 时 floor 到 0——落库后回调入账会撞 non_positive 永久 retryable
+  // （已付款订单卡死）；下单即拒（渠道会话未建，无资金面影响）
+  if (floored.isZero()) {
+    throw BillingErrors.business('topup_amount_invalid', {
+      reason: 'credit_below_representable',
+      amount,
+    });
+  }
+  return floored.toString();
 }
 
 /** 回调金额核对：渠道实付与订单实付不等即拒（防「签名合法但金额篡改」） */

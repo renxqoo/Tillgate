@@ -37,20 +37,35 @@ const IPV6_RE =
   /(?<![0-9a-fA-F:])(?:[0-9a-fA-F]{1,4}:){3,7}[0-9a-fA-F]{1,4}(?![0-9a-fA-F:])|(?<![0-9a-fA-F:])::1(?![0-9a-fA-F:])/g;
 
 /** 上游错误 message 的出站脱敏（三类处理；空串原样返回） */
+/**
+ * 内部名替换（单趟最长优先）：所有 needle 拼成交替正则一次替换——顺序 split/join
+ * 在 needle 互为子串（gpt-4 / gpt-4o）或 replacement 含其它 needle 时会产生
+ * 杂交名或链式二次替换；单趟按最长优先匹配天然免疫两类形态。
+ */
+function applyRedactions(detail: string, opts: SanitizeDetailOptions): string {
+  const entries = (opts.redactions ?? [])
+    .map((entry) =>
+      typeof entry === 'string'
+        ? { needle: entry, replacement: opts.replacement ?? REDACTED }
+        : entry,
+    )
+    .filter((entry) => entry.needle !== '');
+  if (entries.length === 0) return detail;
+  const byNeedle = new Map(entries.map((entry) => [entry.needle, entry.replacement]));
+  const needles = [...byNeedle.keys()].toSorted((a, b) => b.length - a.length);
+  const pattern = new RegExp(needles.map(escapeRegExp).join('|'), 'g');
+  return detail.replace(pattern, (matched) => byNeedle.get(matched) ?? matched);
+}
+
+/** 正则字面转义（needle 是模型名字面，不是模式） */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export function sanitizeUpstreamDetail(detail: string, opts: SanitizeDetailOptions = {}): string {
   if (detail === '') return detail;
-  let out = detail;
   // 1. 内部名 → 对外名（先于寻址剥除：对外名自身可能含点号，避免被 host 模式误吃）
-  const to = opts.replacement ?? REDACTED;
-  for (const entry of opts.redactions ?? []) {
-    if (typeof entry === 'string') {
-      if (entry === '') continue;
-      out = out.split(entry).join(to);
-      continue;
-    }
-    if (entry.needle === '') continue;
-    out = out.split(entry.needle).join(entry.replacement);
-  }
+  let out = applyRedactions(detail, opts);
   // 2. 剥内部寻址
   out = out
     .replace(URL_RE, REDACTED)
