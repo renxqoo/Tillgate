@@ -1,5 +1,5 @@
 /**
- * 开户赠送(v1 注册链路 best-effort 段):金额取 marketing_settings 现值
+ * 开户赠送:金额取 marketing_settings 现值
  * (0=关闭,不调入账);幂等锚 gift/signup:{userId} 由实现方自然键保证,
  * 重放返回 replayed=true。失败**不回滚建号**——调用方(completeAccountOnboarding
  * 或 identity 桥接)决定吞错语义。

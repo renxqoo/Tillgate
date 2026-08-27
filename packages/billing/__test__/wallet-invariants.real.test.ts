@@ -1,5 +1,5 @@
 /**
- * 账本不变量与并发竞态（真实 PG；引擎不变量清单在新活路径逐项重现——MIGRATION-U1 §1）：
+ * 账本不变量与并发竞态（真实 PG；不变量清单逐项重现）：
  * 不超卖、settle/release 互斥恰好一方、账本 append-only、in_flight 投影、链连续。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

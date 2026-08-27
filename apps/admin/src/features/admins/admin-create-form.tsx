@@ -16,7 +16,7 @@ import { FormDialog } from '@/components/form-dialog';
 import { useActionResult } from '@/components/action-toast';
 import { createAdminAction } from '@/server/admins-actions';
 
-/** 角色清单由页面注入（GET /v1/roles——动态角色,不再静态词表） */
+/** 角色清单由页面注入（GET /v1/roles——动态角色） */
 export interface RoleOption {
   readonly id: number;
   readonly code: string;

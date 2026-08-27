@@ -1,9 +1,9 @@
 import type { HealthStore, Versioned } from '../ports/state';
 
 /**
- * 死凭据计数器（v1 packages/ai dead-credential/tracker.ts 迁移为工厂闭包，语义不变）：
+ * 死凭据计数器（工厂闭包形态）：
  *   - 连续死凭据失败（invalid_api_key/insufficient_permissions 机制位）达阈值 →
- *     标记 invalid + 路由停止放行（DESIGN C3 单阈值——v1 的 DB 即刻拉黑移交 control-plane）
+ *     标记 invalid + 路由停止放行（单阈值判定）
  *   - 成功调用 → 清零计数 / invalid → valid（凭据恢复或人工换 Key 后首个成功）
  *   - 不计熔断（坏 Key 不熔断渠道，与 breaker 职责正交）
  *

@@ -1,7 +1,7 @@
 /**
- * 阶段 span 契约（TracePort 面；v1 管线 withAsyncSpan 断言的 v2 回归）：
- * 一次请求的 span 名称序列、嵌套关系与关键属性——docs/observability.md §3 清单的
- * 行为规格。捕获桩记录进入时刻的父 span（栈快照），等价 OTel active-span 语义。
+ * 阶段 span 契约（TracePort 面）：
+ * 一次请求的 span 名称序列、嵌套关系与关键属性的行为规格。
+ * 捕获桩记录进入时刻的父 span（栈快照），等价 OTel active-span 语义。
  */
 import { describe, expect, it } from 'vitest';
 import {

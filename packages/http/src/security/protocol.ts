@@ -1,8 +1,8 @@
 /**
- * 协议安全三件套（v1 三 app 漂移拷贝合一：D2；修正 B2-B4）：
- *   - securityHeaders：统一 4 头全集（gateway 拷贝缺 Cache-Control 的漂移按收紧方向归一）
- *   - corsPreflight：策略参数化（方法集/允许头/预检缓存）——v1 三面硬编码漂移的结构修复
- *   - bodyParserLimit：maxBytes 必填（v1 gateway 藏 10MiB 默认值是零写死违例）
+ * 协议安全三件套：
+ *   - securityHeaders：统一 4 头全集（含 Cache-Control，按收紧方向归一）
+ *   - corsPreflight：策略参数化（方法集/允许头/预检缓存）——必填注入，无硬编码默认
+ *   - bodyParserLimit：maxBytes 必填（不藏默认上限）
  */
 import { bodyLimit as honoBodyLimit } from 'hono/body-limit';
 import type { MiddlewareHandler } from 'hono';
@@ -21,7 +21,7 @@ export const securityHeaders: MiddlewareHandler = async (c, next) => {
 export interface CorsConfig {
   /** 允许的 Origin 白名单（空表 = 不放行任何跨域） */
   readonly origins: readonly string[];
-  /** 预检允许的方法（v1 三面硬编码漂移的参数化——必填注入，不藏 console 形态默认） */
+  /** 预检允许的方法（必填注入，不藏默认） */
   readonly methods: readonly string[];
   /** 预检允许的请求头（必填注入——部署可变值不藏默认） */
   readonly allowHeaders: readonly string[];

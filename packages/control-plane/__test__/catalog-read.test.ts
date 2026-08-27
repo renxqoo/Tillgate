@@ -1,5 +1,5 @@
 /**
- * 网关热路径读契约（G1，gateway P5 波）：在架映射读（status 过滤 + fallback 列）、
+ * 网关热路径读契约：在架映射读（status 过滤 + fallback 列）、
  * 在架目录、用户费率卡上下文（三层系数）、路由候选行形状（启用过滤 + provider 富化）。
  * SQL 行为等价（join/排序/过滤下推）由 postgres.real.test.ts 承担；此处锁端口语义。
  */

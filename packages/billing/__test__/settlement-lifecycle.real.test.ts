@@ -2,7 +2,7 @@
  * 计费全链真实 PostgreSQL 生命周期（授权 → 渠道认领 → 信号 → 结算 → 恢复）：
  * scratch schema 应用完整迁移链 0000→0075（顺带验证空库升级路径），种子最小 users 行。
  * 验证真实语义：SKIP LOCKED 认领、五元组 CAS、租约、守卫原子 UPDATE、触发器不变量、
- * 并发认领恰好一方结算。默认门禁排除（铁律 14），经 test:real 运行。
+ * 并发认领恰好一方结算。默认门禁排除，经 test:real 运行。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -105,8 +105,8 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
     await db.execute(sql.raw(`drop schema if exists ${schema} cascade`));
     await db.execute(sql.raw(`create schema ${schema}`));
     // 完整迁移链 + 容错应用：db 链存在跨链引用（identity-core provision 等建的表，
-    // 如 identity_session_anchors——P0 审计「四条迁移链叠加」的已知缺口）；
-    // 本测试只容忍 42P01（缺外部链表），其余错误照常失败。缺口清单见 IMPLEMENTATION P3 待办。
+    // 如 identity_session_anchors）；
+    // 本测试只容忍 42P01（缺外部链表），其余错误照常失败。
     const files = readdirSync(MIGRATIONS_DIR)
       .filter((f) => /^\d{4}_.*\.sql$/.test(f))
       .toSorted();

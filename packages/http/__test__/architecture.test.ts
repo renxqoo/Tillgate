@@ -1,8 +1,8 @@
 /**
- * 边界测试（铁律 11：边界必须可执行）——参照 packages/observability 同名文件写法：
- * src import 白名单（仅 @tillgate/errors、hono、zod、@hono/node-server、node:*——
- * 结构方案 §5.1：http → 仅 errors）/ index.ts 导出面快照（新增导出是契约变更）/
- * 断言零 @tillgate/db 与业务包引用（ADR-0001 D1：http 永不认识业务码）。
+ * 边界测试——边界必须可执行：
+ * src import 白名单（仅 @tillgate/errors、hono、zod、@hono/node-server、node:*）/
+ * index.ts 导出面快照（新增导出是契约变更）/
+ * 断言零 @tillgate/db 与业务包引用（http 永不认识业务码）。
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -66,53 +66,53 @@ describe('依赖白名单（§5.1：http 只依赖 @tillgate/errors + hono/zod/@
 describe('出口面快照（有意维护的公共接口——新增导出是契约变更）', () => {
   it('index.ts 值导出集合精确等于下表', () => {
     expect(Object.keys(exports).toSorted()).toEqual([
-    'CATEGORY_STATUS_DEFAULTS',
-    'DEFAULT_LOCALE',
-    'GENERIC_INTERNAL_MESSAGE',
-    'GENERIC_UNAVAILABLE_MESSAGE',
-    'HttpErrors',
-    'LOCALES',
-    'LOCALE_COOKIE',
-    'LOCALE_COOKIE_MAX_AGE',
-    'PAGE_SIZE_DEFAULT',
-    'PAGE_SIZE_MAX',
-    'bodyParserLimit',
-    'clientIpFromContext',
-    'corsPreflight',
-    'dbBudgetMiddleware',
-    'errorBody',
-    'errorHandler',
-    'escapeLike',
-    'generateRedeemCode',
-    'htmlLang',
-    'intParam',
-    'isLocale',
-    'jsonBody',
-    'limitOffset',
-    'listQuerySchema',
-    'localeFromContext',
-    'maskUpstreamKey',
-    'operationId',
-    'paginateQuery',
-    'paginatedResult',
-    'paginationQuerySchema',
-    'parseAcceptLanguage',
-    'parsePagination',
-    'pgRejection',
-    'query',
-    'renderError',
-    'requestIdMiddleware',
-    'resolveLocale',
-    'searchQuerySchema',
-    'securityHeaders',
-    'serveApp',
-    'socketAddressFromContext',
-    'sortOrderSchema',
-    'sortQuerySchema',
-    'suggestDbBudget',
-    'timingSafeTokenEqual',
-    'trustedClientIp',
-  ]);
+      'CATEGORY_STATUS_DEFAULTS',
+      'DEFAULT_LOCALE',
+      'GENERIC_INTERNAL_MESSAGE',
+      'GENERIC_UNAVAILABLE_MESSAGE',
+      'HttpErrors',
+      'LOCALES',
+      'LOCALE_COOKIE',
+      'LOCALE_COOKIE_MAX_AGE',
+      'PAGE_SIZE_DEFAULT',
+      'PAGE_SIZE_MAX',
+      'bodyParserLimit',
+      'clientIpFromContext',
+      'corsPreflight',
+      'dbBudgetMiddleware',
+      'errorBody',
+      'errorHandler',
+      'escapeLike',
+      'generateRedeemCode',
+      'htmlLang',
+      'intParam',
+      'isLocale',
+      'jsonBody',
+      'limitOffset',
+      'listQuerySchema',
+      'localeFromContext',
+      'maskUpstreamKey',
+      'operationId',
+      'paginateQuery',
+      'paginatedResult',
+      'paginationQuerySchema',
+      'parseAcceptLanguage',
+      'parsePagination',
+      'pgRejection',
+      'query',
+      'renderError',
+      'requestIdMiddleware',
+      'resolveLocale',
+      'searchQuerySchema',
+      'securityHeaders',
+      'serveApp',
+      'socketAddressFromContext',
+      'sortOrderSchema',
+      'sortQuerySchema',
+      'suggestDbBudget',
+      'timingSafeTokenEqual',
+      'trustedClientIp',
+    ]);
   });
 
   it('不导出 adapter/供应商类型与业务目录（包内部细节不出公共面）', () => {

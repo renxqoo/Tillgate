@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { loadAdminApiConfig } from '../src/config';
 
 /**
- * 配置契约（DESIGN §2.4）：缺省显式持有;秘密三道门;生产/显式 fail-fast。
+ * 配置契约:缺省显式持有;秘密三道门;生产/显式 fail-fast。
  * 表驱动:BASE 全量合法 → 逐键扰动断言缺省或拒绝。
  */
 

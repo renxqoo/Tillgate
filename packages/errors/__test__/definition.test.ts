@@ -5,11 +5,7 @@ import { isBusinessError, isDefectError } from '../src/guards';
 import { BusinessError, DefectError } from '../src/nature';
 import { ROOT_ERROR_CODES } from '../src/error-record';
 
-/**
- * 错误目录契约（ADR-0001 D1-D3）：能力包自有定义 + face 装配。
- * 回归映射：E2（自由码）/E3（表漂移）/E6（跨包冲突）/E7（大小写双轨）/
- * E8（文案不可本地化）/E9（message 即 code）/E13（隐式默认）。
- */
+/** 错误目录契约：能力包自有定义 + face 装配。 */
 
 const BillingErrors = defineErrorCatalog('billing', {
   insufficient_cash: {

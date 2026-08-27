@@ -1,7 +1,7 @@
 /**
  * 环境配置（zod 解析，装配唯一入口）：部署可变值全在此声明——
- * 业务参数（开关/阈值/密钥）必填或显式默认，代码零写死（铁律 3）。
- * v1 键名全量保留；新增键为 identity 装配面（CODE_PEPPER/挑战参数/密码策略）与
+ * 业务参数（开关/阈值/密钥）必填或显式默认，代码零写死。
+ * 键覆盖 identity 装配面（CODE_PEPPER/挑战参数/密码策略）与
  * 新机制件（EPAY_PAY_TYPE/用量时区/定价缓存）所需。
  */
 import * as z from 'zod';
@@ -32,7 +32,7 @@ function createSchema(production: boolean) {
     SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(2_592_000).default(86_400),
     /** 邮箱验证码 HMAC pepper（identity 挑战域防离线穷举；与 JWT 密钥分离） */
     CLIENT_CODE_PEPPER: secretSchema('CLIENT_CODE_PEPPER', production ? 32 : 16),
-    /** 密码策略下界（v1 口径 10；上界 128 固定——identity 域校验） */
+    /** 密码策略下界（缺省 10；上界 128 固定——identity 域校验） */
     CLIENT_PASSWORD_MIN_LENGTH: z.coerce.number().int().min(6).max(128).default(10),
     /** 邮箱验证码挑战：有效期/发送冷却/最大尝试次数 */
     CLIENT_CHALLENGE_TTL_MS: z.coerce.number().int().positive().default(600_000),
@@ -60,7 +60,7 @@ function createSchema(production: boolean) {
     /** CORS 白名单（逗号分隔；空 = 不放行跨域）与预检缓存秒数 */
     CORS_ORIGINS: z.string().default(''),
     /**
-     * OAuth 基地址（ADR-0012 退回 env——部署拓扑，装配期生效变更需重启）：
+     * OAuth 基地址（env 来源——部署拓扑，装配期生效变更需重启）：
      * API 根地址生产必填（回调白名单由它构建）；前端根地址可选，
      * 未配回落本地缺省、且找回密码链接 fail-closed（不外发错误域名链接）。
      */
@@ -80,11 +80,11 @@ function createSchema(production: boolean) {
     /** 未支付订单超时关单（ms） */
     PAYMENT_ORDER_TTL_MS: z.coerce.number().int().positive().default(1_800_000),
     /** 易支付五件套全配才启用该渠道；PAY_TYPE 从词表校验（不写死 alipay） */
-    // 支付渠道凭据（EPAY/STRIPE）已迁 integration_settings（动态配置——DESIGN §7.3）
+    // 支付渠道凭据（EPAY/STRIPE）在 integration_settings（动态配置）
     /** 邮箱验证码两级登录：auto = smtp 集成行生效即强制 / on 强制 / off 关闭（单密码） */
     EMAIL_CODE_REQUIRED: z.enum(['auto', 'on', 'off']).default('auto'),
-    // SMTP/CAPTCHA/OAuth 凭据与基地址已迁入 integration_settings（动态配置——
-    // docs/integration-settings/DESIGN.md §7.3；本 schema 只留端点覆盖与 TTL）
+    // SMTP/CAPTCHA/OAuth 凭据在 integration_settings（动态配置）；
+    // 本 schema 只留端点覆盖与 TTL
     /** 端点覆盖（JSON：authorizeUrl/tokenUrl/profileUrl/emailsUrl——私有化/测试 mock 用） */
     OAUTH_GITHUB_ENDPOINTS_JSON: z.string().optional(),
     OAUTH_GOOGLE_ENDPOINTS_JSON: z.string().optional(),
@@ -111,7 +111,7 @@ function createSchema(production: boolean) {
     CLIENT_TPM_LIMIT_MAX: z.coerce.number().int().positive().default(100_000_000),
     /** 推荐被邀名单上界（referralOverview invitees 截断） */
     CLIENT_REFERRAL_INVITEE_LIMIT: z.coerce.number().int().positive().default(100),
-    /** 用量日汇总的日界时区（v1 口径北京时间；GROUP BY 需字面量——字符白名单校验防注入） */
+    /** 用量日汇总的日界时区（缺省北京时间；GROUP BY 需字面量——字符白名单校验防注入） */
     CLIENT_USAGE_TZ: z
       .string()
       .regex(/^[A-Za-z0-9_+/-]{1,64}$/, 'invalid IANA timezone shape')
@@ -126,7 +126,7 @@ function createSchema(production: boolean) {
     CLIENT_SETTLE_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(8),
     CLIENT_SETTLE_BASE_DELAY_MS: z.coerce.number().int().positive().default(1_000),
     CLIENT_SETTLE_MAX_DELAY_MS: z.coerce.number().int().positive().default(300_000),
-    /** DB 事务重试（v1 等价口径） */
+    /** DB 事务重试 */
     CLIENT_TX_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(5),
     CLIENT_TX_BASE_DELAY_MS: z.coerce.number().int().min(0).default(15),
     CLIENT_TX_MAX_JITTER_MS: z.coerce.number().int().min(0).default(20),

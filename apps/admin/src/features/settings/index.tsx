@@ -2,9 +2,9 @@
 
 // 设置页组装器（feature 出口：每张卡独立组件一文件，本文件只做编排）：
 // 邮箱验证码二次登录卡（纯个人自助）→ TOTP → 计费时区 → 集成卡区
-// （SMTP 独立卡在卡区，2026-08-25 二次裁决——系统级配置与个人自助分离）。
+// （SMTP 独立卡在卡区——系统级配置与个人自助分离）。
 // 集成列表与注册送礼联动源在此统一加载（单次请求），整表注入 IntegrationCards。
-// 按钮级权限（2026-08-25 用户裁决 D1）：页级 server 端算好布尔下传——
+// 按钮级权限：页级 server 端算好布尔下传——
 // settings:update → 时区可写；settings:integrations → 集成卡区操作位；
 // TOTP/2FA 启停属 SELF 域不挂码。显隐仅 UX，权威判定在 admin-api ACL。
 
@@ -73,7 +73,7 @@ export function SettingsContent({
       <TotpCard totpEnabled={me?.totpEnabled ?? false} />
 
       <BillingTimezoneCard canUpdate={canUpdateTimezone} />
-      {/* 集成卡区按词表渲染（ORDER 含 smtp——独立卡，2026-08-25 二次裁决） */}
+      {/* 集成卡区按词表渲染（ORDER 含 smtp——独立卡） */}
       <IntegrationCards
         items={integrations}
         error={integrationsError}

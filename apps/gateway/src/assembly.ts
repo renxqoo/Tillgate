@@ -2,7 +2,7 @@
  * 装配根：进程级依赖一次组装（db / Redis / billing / inference / 控制面读 / 限流 /
  * 爆破防护 / OTel / 请求日志），请求级上下文由中间件派生。全部可变值来自 config
  * ——本文件零字面量配置（缺省属 config 层）。
- * composition 子入口仅本文件与 src/adapters/* 引用（§5.3 白名单 + 架构测试）。
+ * composition 子入口仅本文件与 src/adapters/* 引用（架构测试锁定）。
  */
 import { closeDb, createDb, ping } from '@tillgate/db';
 import {
@@ -40,10 +40,10 @@ import { otelTracePort } from './adapters/trace-port';
 import { tryChannelRpm, type RateLimitGate } from './http/middleware/rate-limit';
 import { ACCOUNTS_POLICY, BILLING_GUARDS, type GatewayConfig } from './config';
 
-/** 渠道健康 Redis 键前缀（inference B11 机器级前缀纪律：breaker/credential 分键） */
+/** 渠道健康 Redis 键前缀（前缀纪律：breaker/credential 分键） */
 const HEALTH_PREFIX = 'inference:health:';
 
-/** v1 等价重试策略（db 包 transaction 注释口径；生产缺省归 app config） */
+/** 事务重试策略（db 包 transaction 注释口径；生产缺省归 app config） */
 const TX_RETRY = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 } as const;
 
 export interface GatewayAssembly {
@@ -69,7 +69,7 @@ export interface GatewayAssembly {
   settleWake: ReturnType<typeof createSettleWakeProducer>;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 进程级 DI 装配平铺：逐依赖一次构造、顺序即生命周期契约（铁律 22 ①）
+// eslint-disable-next-line max-lines-per-function -- 进程级 DI 装配平铺：逐依赖一次构造、顺序即生命周期契约
 export function assembleGateway(config: GatewayConfig): GatewayAssembly {
   const logger = createLogger({
     level: 'info',
@@ -109,7 +109,7 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     logger,
   });
 
-  // ---- accounts：鉴权读模型 + billing 资金来源解析器（resolver 桥，C-G4） ----
+  // ---- accounts：鉴权读模型 + billing 资金来源解析器（resolver 桥） ----
   const walletCreditUnavailable: WalletCreditPort = {
     // 拒绝桩：网关不消费钱包入账动词（client-api 面装配方注入实现），
     // 误调用即刻显式失败（不静默 undefined 崩溃）
@@ -136,7 +136,7 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
   });
 
   // ---- billing：结算唤醒门铃 + 积压准入 + facade（store 显式直组——admission 需要
-  //      同一 store 实例；一站式便捷件不暴露 store，故走 composition 工厂，R-E4 桥级 admission） ----
+  //      同一 store 实例；一站式便捷件不暴露 store，故走 composition 工厂，桥级 admission） ----
   const settleWake = createSettleWakeProducer(db, logger);
   const billingStore = createPostgresBillingStore(db, { retry: TX_RETRY });
   const walletStore = createPostgresWalletStore(db, { retry: TX_RETRY });
@@ -187,9 +187,9 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     {
       timeout: { connectMs: config.upstreamConnectTimeoutMs, totalMs: config.upstreamDeadlineMs },
     },
-    // SSRF 双门：逃生门仅非生产可用——生产误配 env 也恒关（与 v1 同口径）。
+    // SSRF 双门：逃生门仅非生产可用——生产误配 env 也恒关。
     // 防线 = 机械基线（https-only + 私网/IPv6 解包拒绝 + DNS 逐地址判定）+
-    // 运营面信任（渠道/provider 写入是 admin 域——ADR-0010）
+    // 运营面信任（渠道/provider 写入是 admin 域）
     config.aiAllowLocalUrl && config.nodeEnv !== 'production'
       ? { guardUrl: async () => {} }
       : {
@@ -212,9 +212,9 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     store: createRedisHealthStore(redis, HEALTH_PREFIX),
     decrypt: (enc) => cipher.decrypt(enc),
     tasks: createPostgresGenerationTaskStore(db),
-    // 阶段 span 绑定（inference TracePort → OTel；docs/observability.md §3）
+    // 阶段 span 绑定（inference TracePort → OTel）
     trace: otelTracePort,
-    // 渠道维 RPM 尝试前判定（渠道 TPM 预占缺口 R-E3 在案——钩子无请求作用域生命周期）
+    // 渠道维 RPM 尝试前判定（钩子无请求作用域生命周期，故无渠道 TPM 预占）
     admitChannel: async (channel) =>
       tryChannelRpm(rateLimit, {
         channelId: channel.channelId,

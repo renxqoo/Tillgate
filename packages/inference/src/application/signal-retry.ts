@@ -3,7 +3,7 @@ import type { BillingPort } from '../ports/billing';
 import type { TracePort } from '../ports/trace';
 
 /**
- * 终态 signal 退避重试（v1 settle-retry.ts 迁移；上限参数化，整段包
+ * 终态 signal 退避重试（上限参数化，整段包
  * billing.settle_signal span——耗尽标 ERROR 后如实返回 false）：
  * 结算落账的瞬时 DB 抖动不再把已交付请求漏收——流式路径重试期间续租定时器不停
  * （调用方约定：alive 保持到结算收尾），recover 不会中途误释放；耗尽返回 false

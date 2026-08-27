@@ -1,5 +1,5 @@
 /**
- * 健康端点规格（v1 parity-loops 健康段对位）：livez 存活、readyz 就绪、
+ * 健康端点规格：livez 存活、readyz 就绪、
  * /health 令牌门（无/错 token 403、对 token 200 深度报告）。
  */
 import { afterAll, describe, expect, it } from 'vitest';

@@ -1,6 +1,6 @@
 /**
- * 公开套餐目录读取（订阅页）：B2 修复后的查询形态单点——
- * `?page=1&limit=100`（v1 传 page_size=100 大概率被忽略截断；排序依赖后端默认序 G4）。
+ * 公开套餐目录读取（订阅页）：查询形态单点——
+ * `?page=1&limit=100`（page_size 形态会被忽略截断；排序依赖后端默认序）。
  */
 import { ApiError, type ClientApiClient, type PlanRow, type RowsPage } from '@tillgate/api-client';
 

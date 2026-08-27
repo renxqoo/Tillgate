@@ -1,7 +1,6 @@
 /**
- * redis 家族共享的纯诊断格式化件（单一真相，铁律 3）：
- * create-redis-client（降级日志）与 assert-redis-reachable（启动报错）共用，
- * 拆分自 v2 原 redis-client.ts（一动词一文件，铁律 5）。
+ * redis 家族共享的纯诊断格式化件（单一真相）：
+ * create-redis-client（降级日志）与 assert-redis-reachable（启动报错）共用。
  */
 
 /** 日志脱敏：URL 带认证信息时抹掉（redis://:pass@host → redis://***@host） */

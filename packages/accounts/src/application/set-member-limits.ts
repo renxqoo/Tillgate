@@ -1,6 +1,6 @@
 /**
- * owner 设置成员限额(日限 a / 子配额 b;v1 patchMember)。
- * B5 修复:仅 active 成员可设限(离开成员 → member_not_found,不再静默成功)。
+ * owner 设置成员限额(日限 a / 子配额 b)。
+ * 仅 active 成员可设限(离开成员 → member_not_found,不再静默成功)。
  */
 import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';

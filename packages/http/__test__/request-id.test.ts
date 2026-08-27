@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { requestIdMiddleware } from '../src/request-context/request-id';
 
 /**
- * 请求 ID 中间件（v1 三拷贝无包级测试——D1 合一后新写行为锁）：
+ * 请求 ID 中间件行为锁：
  * requestId 永远服务端生成，不信任客户端头（限流 ZSET member / 计费幂等键安全性）。
  */
 

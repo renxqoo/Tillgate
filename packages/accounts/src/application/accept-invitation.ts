@@ -1,7 +1,7 @@
 /**
- * 接受邀请(v1 org.service accept):快路径分型 → email 匹配 → 权威事务
+ * 接受邀请:快路径分型 → email 匹配 → 权威事务
  * (FOR UPDATE 锁订阅 → 复检席位 → 插入/复活成员 → CAS 翻转,失败即回滚)。
- * 过期判定在读时由存储时钟表达(惰性过期,B8)。
+ * 过期判定在读时由存储时钟表达(惰性过期)。
  */
 import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';

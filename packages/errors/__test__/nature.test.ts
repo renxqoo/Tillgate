@@ -10,9 +10,8 @@ import {
 } from '../src/nature';
 
 /**
- * 三性根类契约——v1 三份 error-contract.test（identity-core/wallet/ledger-core）不变量的
- * 通用化：instanceof 链、name 即子类名、身份/上下文/重试提示字段保留、家谱形态可用。
- * 业务码经目录签发（ADR-0001 D8：品牌 + 绑定构造，自由字符串编译期封闭）。
+ * 三性根类契约：instanceof 链、name 即子类名、身份/上下文/重试提示字段保留、家谱形态可用。
+ * 业务码经目录签发：品牌 + 绑定构造，自由字符串编译期封闭。
  */
 
 const TestErrors = defineErrorCatalog('naturetest', {
@@ -21,7 +20,7 @@ const TestErrors = defineErrorCatalog('naturetest', {
   throttled: { category: 'rate_limited', message: 'slow down', zh: '慢一点' },
 });
 
-/** 家谱形态：高频错误固化类；entry() 绑定定义——类与目录零漂移（DESIGN §2） */
+/** 家谱形态：高频错误固化类；entry() 绑定定义——类与目录零漂移 */
 class InsufficientCashError extends BusinessError {
   constructor(needed: string, available: string) {
     super(TestErrors.entry('quota'), { needed, available });

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { CATEGORY_DEFAULTS, ERROR_CATEGORIES, isErrorCategory } from '../src/category';
 
-/** 词表封闭锁 #1：闭集与文档词表（DESIGN §3.2 / ADR-0001 D4）逐项一致，默认表无缺无余 */
+/** 词表封闭锁：闭集与文档词表逐项一致，默认表无缺无余 */
 describe('category 闭集', () => {
   it('闭集 == 文档词表七项（硬编码对照，增删必须先改 ADR）', () => {
     expect([...ERROR_CATEGORIES]).toEqual([

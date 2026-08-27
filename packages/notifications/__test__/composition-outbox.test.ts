@@ -1,6 +1,6 @@
 /**
  * composition bridge(outboxWithinTx)单元门禁(不依赖 PG——真实事务语义见
- * postgres.real.test.ts「outbox 事务参与(§5.4)」组):
+ * postgres.real.test.ts「outbox 事务参与」组):
  * 入箱 SQL 构造(notify_outbox 表 + values 原样 + onConflictDoNothing 幂等)
  * 与词表/参数域校验(含 payload 拒数组)。
  */

@@ -1,12 +1,12 @@
 /**
- * 错误目录测试:码表封闭快照(与 DESIGN §2.3 表逐项相等)、category 分布、
+ * 错误目录测试:码表封闭快照、category 分布、
  * business() 抛出形状。
  */
 import { describe, expect, it } from 'vitest';
 import { identityErrors } from '../src/domain/errors.js';
 import { defined } from './defined.js';
 
-/** DESIGN §2.3 目录表(单一真相的测试侧快照) */
+/** 错误目录表的测试侧快照 */
 const EXPECTED: Readonly<Record<string, string>> = {
   invalid_input: 'invalid_input',
   unknown_identifier_kind: 'invalid_input',

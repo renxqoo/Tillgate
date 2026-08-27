@@ -1,4 +1,4 @@
-/** 属主 Key 列表(v1 listByUser;投影结构性无 keyHash) */
+/** 属主 Key 列表(投影结构性无 keyHash) */
 import type { ApiKeyRecord, PageResult } from '../ports/account-store.js';
 import { clampListQuery } from './list-query.js';
 import type { UseCaseContext } from './context.js';

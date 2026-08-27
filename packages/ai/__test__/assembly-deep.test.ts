@@ -1,6 +1,6 @@
 /**
  * create-ai 装配壳深支（本地 server 模式，参照 outbound.test.ts）：
- * 注册/校验失败分支、参数抹平事件面、FormData 透传（B-F1 回归：multipart 不得被
+ * 注册/校验失败分支、参数抹平事件面、FormData 透传（multipart 不得被
  * finalizeRequestBody 展开毁掉）、签名钩子、响应翻译/二进制 rawBody、取消分类、
  * 流式首帧错误与首字节超时、tasks 三操作面（minimax + 本地 server）、probe 网络失败。
  * 每条都是此前 lcov 零覆盖的分支，断言锁出站可观察行为。

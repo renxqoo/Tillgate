@@ -1,7 +1,7 @@
 import type { Usage } from '../types';
 
 /**
- * OpenAI 规范形 usage 提取（共享件——v1 在 gemini/anthropic 两处重复实现，D4）。
+ * OpenAI 规范形 usage 提取（共享件）。
  * 双形兜底模式：原生形（协议私有）由各 adapter 先试，本件兜翻译后的 OpenAI 形。
  */
 export function extractOpenAiUsage(res: unknown): Usage | null {

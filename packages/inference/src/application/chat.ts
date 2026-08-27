@@ -70,7 +70,7 @@ async function chatUpstreamWithSpan(
   return { result, durationMs: Date.now() - startedAt };
 }
 
-/** 成功半程：收据装配 → **先结算后交付**（未交付不结算——结算耗尽抛 finalize_unavailable，宁可让用户重试也不白送；预留滞留至租约到期由 recover 兜底，v1 B3 语义保留） */
+/** 成功半程：收据装配 → **先结算后交付**（未交付不结算——结算耗尽抛 finalize_unavailable，宁可让用户重试也不白送；预留滞留至租约到期由 recover 兜底） */
 async function settleChatDelivered(
   deps: ExecutionDeps,
   ctx: AttemptContext,
@@ -123,8 +123,7 @@ async function settleChatDelivered(
 }
 
 /**
- * 非流式尝试（v1 attempt-nonstream.ts 迁移）：同步调上游 → 成功先结算后交付 →
- * 失败走统一分派。
+ * 非流式尝试：同步调上游 → 成功先结算后交付 → 失败走统一分派。
  */
 export function createChatAttempt(deps: ExecutionDeps) {
   return async (ctx: AttemptContext): Promise<AttemptOutcome<ChatDelivered>> => {

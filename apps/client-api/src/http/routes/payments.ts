@@ -11,12 +11,12 @@ import { createOrderSchema, orderIdPattern, ordersListQuerySchema } from '../con
 import type { SessionEnv } from '../middleware/session.js';
 
 export interface PaymentsDeps {
-  /** 回调资金面快照预刷（强制重读——消除 latest 盲窗；review 修复 B-2） */
+  /** 回调资金面快照预刷（强制重读——消除 latest 盲窗） */
   refreshIntegrationSnapshot: () => Promise<void>;
   readonly payments: PaymentsApi;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器平铺
 export function paymentsRoutes(deps: PaymentsDeps, session: MiddlewareHandler<SessionEnv>) {
   const app = new Hono<SessionEnv>();
 
@@ -50,7 +50,7 @@ export function paymentsRoutes(deps: PaymentsDeps, session: MiddlewareHandler<Se
 
   app.post('/v1/payments/notify/:provider', async (c) => {
     const provider = c.req.param('provider');
-    // 资金面预刷缓存（review 修复 B-2 / DESIGN D9 修订）：验签端口是同步签名（latest 面），
+    // 资金面预刷缓存：验签端口是同步签名（latest 面），
     // 路由先强制重读快照，密钥轮换后新签回调零盲窗；读失败 fail-loud（DB 故障时回调 5xx，
     // 渠道按重试语义回放——与旧「验签失败 fail」同向）
     await deps.refreshIntegrationSnapshot();

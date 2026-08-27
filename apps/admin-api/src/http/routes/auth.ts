@@ -1,6 +1,6 @@
 /**
- * 管理员认证路由（P2;v1 routes/auth.ts 平移）：登录（可选 2FA 邮箱码两步流）/验码/登出。
- * 编排语义（v1 auth.service 逐条映射 v2 能力包）：
+ * 管理员认证路由：登录（可选 2FA 邮箱码两步流）/验码/登出。
+ * 编排语义：
  *   - 爆破双闸（(email,ip) 哈希键 + ip）= runtime Redis 守卫;不可达 fail-closed 503;
  *     锁维度 (email,ip) 且正确密码永远放行——纯 email 锁可被匿名者用于锁死管理员（DoS 开关）
  *   - 密码鉴别 = identity.passwords.authenticate（哑哈希防枚举,统一 401）
@@ -38,7 +38,7 @@ export interface AuthRoutesDeps {
   readonly identity: Pick<Identity, 'passwords' | 'challenges' | 'sessions' | 'mfa'>;
   readonly admins: Pick<ControlPlane['admins'], 'findByEmail' | 'find' | 'touchLastLogin'>;
   readonly guards: { emailIp: AuthGuard; ip: AuthGuard };
-  /** 登录三审计（后置旁路,失败不阻断——v1 recordAudit best-effort 语义） */
+  /** 登录三审计（后置旁路,失败不阻断——best-effort） */
   readonly loginAudit: (entry: {
     action: 'auth.login.invalid_credentials' | 'auth.login.2fa_challenge' | 'auth.login.success';
     adminId: number | null;
@@ -57,7 +57,7 @@ interface LoginPayload {
   adminId: number;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 登录族装配平铺:路由表 + 凭证鉴别/2FA 共享闭包为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 登录族装配平铺:路由表 + 凭证鉴别/2FA 共享闭包保留存量语义(棘轮)
 export function authRoutes(deps: AuthRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
@@ -77,7 +77,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
 
   /** 凭证鉴别共享段（login 与 login/totp 同口径）:守卫闸 → 密码 → 资料漂移 →
    *  状态 → 成功清零计数;失败计双闸 + 审计。返回 adminId,拒绝路径统一抛业务错 */
-  // eslint-disable-next-line max-lines-per-function -- 凭证鉴别链(守卫/密码/漂移/状态/计数/审计)语义连续,拆段即互相回读(存量棘轮)
+  // eslint-disable-next-line max-lines-per-function -- 凭证鉴别链(守卫/密码/漂移/状态/计数/审计)语义连续,拆段即互相回读
   const authenticateCredentials = async (
     body: { email: string; password: string },
     ip: string,
@@ -87,7 +87,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
   }> => {
     const guardKey = sha256Hex(`${body.email}:${ip}`);
 
-    // 守卫不可达 fail-closed（Redis 必配,P2 起）
+    // 守卫不可达 fail-closed（Redis 必配）
     let byKey: { locked: boolean; retryAfterSec: number };
     let byIp: { locked: boolean; retryAfterSec: number };
     try {

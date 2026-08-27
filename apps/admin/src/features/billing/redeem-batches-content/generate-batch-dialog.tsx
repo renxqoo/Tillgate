@@ -45,7 +45,7 @@ function buildSchema(
   });
 }
 
-// eslint-disable-next-line max-lines-per-function -- 生成批次弹窗（表单 + 结果码展示两阶段）平铺，拆分需抽结果阶段子组件（存量棘轮，行为等价优先）
+// eslint-disable-next-line max-lines-per-function -- 生成批次弹窗（表单 + 结果码展示两阶段）平铺，拆分需抽结果阶段子组件
 export function GenerateBatchDialog() {
   const t = useTranslations('redeemBatches');
   const tc = useTranslations('common');

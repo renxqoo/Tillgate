@@ -1,5 +1,5 @@
 /**
- * Turnstile 适配器测试(v1 captcha.test 迁移,注入 fetch):请求形状、
+ * Turnstile 适配器测试(注入 fetch):请求形状、
  * 客户端过错/服务端过错分级、网络失败、空 token 本地拒、captcha 用例翻译。
  */
 import { describe, expect, it, vi } from 'vitest';

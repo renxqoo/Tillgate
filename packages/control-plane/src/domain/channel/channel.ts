@@ -8,7 +8,7 @@ import { controlPlaneErrors } from '../../errors';
 import { parseNonNegativeAmount } from '../money';
 
 /**
- * 渠道状态（v1 口径）：
+ * 渠道状态：
  * 0 启用 / 1 禁用（软退役同值）/ 2 维护 / 3 熔断(自动，进货复活) / 4 凭据无效（连续 401/403，换 Key 后恢复）
  */
 export const CHANNEL_STATUSES = [0, 1, 2, 3, 4] as const;
@@ -52,7 +52,7 @@ function assertLimit(name: 'rpmLimit' | 'tpmLimit', value: number): void {
   if (!Number.isInteger(value) || value < 1) invalid({ [name]: value });
 }
 
-/** 创建输入形状（v1 zod 域：name 1-64 / apiKey 1-512 / 覆盖地址 ≤255 / weight·priority 0-1e6 / 限流正整数） */
+/** 创建输入形状（name 1-64 / apiKey 1-512 / 覆盖地址 ≤255 / weight·priority 0-1e6 / 限流正整数） */
 // eslint-disable-next-line complexity -- 渠道创建校验矩阵:平铺守卫,每分支独立错误载荷
 export function validateChannelCreate(input: ChannelCreateInput): ChannelCreateInput {
   if (!Number.isInteger(input.providerId) || input.providerId < 1) {

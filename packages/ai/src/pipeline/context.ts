@@ -19,11 +19,11 @@ export interface CallCtx {
 
 /**
  * 事件分发：同步、逐监听者、异常隔离（观察者异常不反噬数据面）。
- * 快照迭代：分发过程中退订（splice）不跳过后续监听者——修复 v1 竞态。
+ * 快照迭代：分发过程中退订（splice）不跳过后续监听者。
  * 契约：回调必须微秒级、无 IO（重活入队）；fire-and-forget，无背压（保护数据面）。
  */
 export function emitTo(listeners: ReadonlyArray<(e: AiEvent) => void>, e: AiEvent): void {
-  // slice() 快照：分发过程中退订（原数组 splice）不跳过后续监听者——修复 v1 竞态
+  // slice() 快照：分发过程中退订（原数组 splice）不跳过后续监听者
   for (const l of listeners.slice()) {
     try {
       l(e);

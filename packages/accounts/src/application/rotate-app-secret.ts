@@ -1,5 +1,5 @@
 /**
- * 轮换 App 密钥:实现层 FOR UPDATE 行锁防并发轮换孤儿化(v1 rotateSecret);
+ * 轮换 App 密钥:实现层 FOR UPDATE 行锁防并发轮换孤儿化;
  * 新明文仅本用例返回一次。
  */
 import { runTx } from '@tillgate/db';

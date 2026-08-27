@@ -1,5 +1,5 @@
 /**
- * 组织详情(v1 orgDetail):active 成员可看成员列表;待接受邀请仅 owner 可见且
+ * 组织详情:active 成员可看成员列表;待接受邀请仅 owner 可见且
  **永不包含 token**。
  */
 import { AccountsErrors } from '../domain/errors.js';

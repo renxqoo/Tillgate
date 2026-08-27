@@ -1,17 +1,17 @@
 /**
- * 用户资料域规则:显示名兜底派生(local/OAuth 两种,v1 语义)。
+ * 用户资料域规则:显示名兜底派生(local/OAuth 两种)。
  * email 规范化见 fields.ts;状态词汇见 status.ts。
  */
 import { FIELD_LIMITS } from './fields.js';
 
-/** 本地建号显示名兜底:email 本地部分(@ 前)截 64(v1 insertLocalUser) */
+/** 本地建号显示名兜底:email 本地部分(@ 前)截 64 */
 export function localDisplayNameFallback(email: string): string {
   const at = email.indexOf('@');
   const local = at > 0 ? email.slice(0, at) : email;
   return local.slice(0, FIELD_LIMITS.displayName) || email.slice(0, FIELD_LIMITS.displayName);
 }
 
-/** OAuth 建号显示名兜底:「用户{subject 前 6}」截 64(v1 oauth.service) */
+/** OAuth 建号显示名兜底:「用户{subject 前 6}」截 64 */
 export function oauthDisplayNameFallback(subject: string): string {
   return `用户${subject.slice(0, 6)}`.slice(0, FIELD_LIMITS.displayName);
 }

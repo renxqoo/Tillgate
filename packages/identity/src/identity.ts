@@ -1,8 +1,8 @@
 /**
- * createIdentity facade:唯一装配面(总纲 §5.3——app 只见 facade 与稳定契约)。
+ * createIdentity facade:唯一装配面(app 只见 facade 与稳定契约)。
  * 内部组装 postgres store、jose 令牌与内置 OAuth provider 适配器;装配级可覆盖件
  * 显式可选(测试替身注入)。返回面不泄漏 Db/DbTx/drizzle 行类型/供应商 SDK。
- * cipher/logger/clock 经 port 注入——本包不编译依赖 runtime(DESIGN §5)。
+ * cipher/logger/clock 经 port 注入——本包不编译依赖 runtime。
  */
 import type { Db, TxRetryPolicy } from '@tillgate/db';
 import { resolveConfig, validateOauthCreds, type IdentityConfigInput } from './domain/config.js';
@@ -116,7 +116,7 @@ export interface Identity {
     enrollTotp(input: { userId: number; label?: string }): Promise<EnrollTotpResult>;
     confirmTotp(input: { userId: number; code: string }): Promise<{ recoveryCodes: string[] }>;
     verify(input: { userId: number; code: string }): Promise<{ method: 'totp' | 'recovery' }>;
-    /** 仅 TOTP 的 step-up 验证（ADR-0011）——不消费恢复码，重放口径同 verify */
+    /** 仅 TOTP 的 step-up 验证——不消费恢复码，重放口径同 verify */
     verifyTotpOnly(input: { userId: number; code: string }): Promise<void>;
     disableTotp(input: { userId: number; code?: string }): Promise<{ disabled: boolean }>;
     /** 读面:注册状态(pending=已发起未确认,不参与登录验证;confirmed=生效) */

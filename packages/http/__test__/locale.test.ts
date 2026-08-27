@@ -11,7 +11,7 @@ import {
 } from '../src/errors/locale';
 
 /**
- * Accept-Language 协商内核（v1 locale.ts 语义原样；error-locale.test 前半迁移）。
+ * Accept-Language 协商内核。
  * 原则：en|zh 闭集、默认英文；zh 系与 en 系子标签归并；q 值比较；cookie 优先。
  */
 

@@ -1,6 +1,6 @@
 /**
  * 用例上下文(facade 装配产物;一一动词一文件的公共依赖面)。
- * 审计契约(§5.4 事务参与,替代 B03 的提交后 warn 形态):
+ * 审计契约(事务参与):
  * - auditWithinTx:业务事务提交前于同一 tx 内写入(推荐路径)——回滚即无审计行,
  *   record 失败随业务事务回滚,不吞错(安全审计不得降级)。
  * - recordAudit:无业务事务的路径(纯读拒绝/单语句 CAS 后)用独立连接单写,失败抛错。
@@ -55,7 +55,7 @@ export async function auditWithinTx(
   event: IdentityAuditEvent,
 ): Promise<void> {
   if (ctx.auditSink == null) return;
-  // 不吞错:审计写失败 → 业务事务回滚(§5.4 安全审计不降级)
+  // 不吞错:审计写失败 → 业务事务回滚(安全审计不降级)
   await ctx.auditSink.record(tx, event);
 }
 

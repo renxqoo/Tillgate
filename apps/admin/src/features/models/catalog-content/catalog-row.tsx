@@ -8,7 +8,7 @@ import { useTranslations } from 'next-intl';
 
 import { DIFF_BADGE_CLASS, DIFF_BADGE_KEY, type CatalogItem, type Draft } from './catalog-filter';
 
-// eslint-disable-next-line max-lines-per-function -- 一行十列草稿编辑格 + 徽章组是内聚行单元，再拆即「左半行/右半行」碎片（存量棘轮，行为等价优先）
+// eslint-disable-next-line max-lines-per-function -- 一行十列草稿编辑格 + 徽章组是内聚行单元，再拆即「左半行/右半行」碎片
 export function CatalogRow({
   item,
   draft,

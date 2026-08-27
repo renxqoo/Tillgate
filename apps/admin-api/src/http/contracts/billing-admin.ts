@@ -1,7 +1,7 @@
 /**
- * billing 管理域契约（U6/P1;v1 plans.ts/redeem.ts/billing-operations.ts zod 面平移）。
- * 价格/额度仅精确十进制字符串;kind 不可变 = .strictObject 拒未知键（v1 语义）。
- * P4 增补:payment-orders 列表排序白名单（单一真相 = billing 包词表,不复制）。
+ * billing 管理域契约。
+ * 价格/额度仅精确十进制字符串;kind 不可变 = .strictObject 拒未知键。
+ * payment-orders 列表排序白名单（单一真相 = billing 包词表,不复制）。
  */
 import * as z from 'zod';
 import { PAYMENT_ORDER_SORT_FIELDS } from '@tillgate/billing';
@@ -48,7 +48,7 @@ const codesQueryExtra = z.object({
   status: z.coerce.number().int().min(0).max(2).optional(),
 });
 
-/** 死单复核面只看 dead（其余状态走正常结算管线——v1 语义） */
+/** 死单复核面只看 dead（其余状态走正常结算管线） */
 const deadListQuery = z.object({ status: z.literal('dead') });
 
 const decisionSchema = z.object({

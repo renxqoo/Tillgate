@@ -1,5 +1,5 @@
 /**
- * 进程健康端点（v1 health.ts 对位 + per-job 快照增强——DESIGN §5）：
+ * 进程健康端点（含 per-job 快照）：
  *   /livez          进程 running 标志
  *   /readyz         scheduler + PG + BullMQ Redis 就绪状态
  *   /health         x-health-token 守卫（timingSafeEqual）的深度报告

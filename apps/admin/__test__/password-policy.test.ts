@@ -1,5 +1,5 @@
 /**
- * 管理员改密表单校验行为规格（§10.1.3 边界：空值/长度界/一致性/新旧相同）。
+ * 管理员改密表单校验行为规格（边界：空值/长度界/一致性/新旧相同）。
  * 键值与 messages 的 changePassword.errors.* 一一对应（i18n parity 由 zh/en 同步约定）。
  */
 import { describe, expect, it } from 'vitest';

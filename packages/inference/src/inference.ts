@@ -39,10 +39,10 @@ import type { RequestAuth } from './domain/model/types';
 
 /**
  * createInference facade（装配消费面 = apps/gateway assembly；billing/control-plane
- * 建包前经 port 注入实现）。职责：缺省解析、健康订阅挂接（装配处只挂一次）、
+ * 经 port 注入实现）。职责：缺省解析、健康订阅挂接（装配处只挂一次）、
  * 上游/任务适配器组装、预检 → authorize → 候选循环的编排。
- * 业务拒绝经 InferenceErrors 直抛（§11）；成功/透传结果判别联合返回。
- * 阶段 span 经 trace port（装配绑 OTel；缺省 no-op 零开销——docs/observability.md §3）。
+ * 业务拒绝经 InferenceErrors 直抛；成功/透传结果判别联合返回。
+ * 阶段 span 经 trace port（装配绑 OTel；缺省 no-op 零开销）。
  */
 export interface ChatInput {
   requestId?: string;
@@ -53,7 +53,7 @@ export interface ChatInput {
 }
 
 export interface InferenceEnv {
-  /** 装配传入的 @tillgate/ai 实例（inference 是其唯一运行时消费方，§3.6） */
+  /** 装配传入的 @tillgate/ai 实例（inference 是其唯一运行时消费方） */
   ai: Ai;
   catalog: CatalogPort;
   billing: BillingPort;
@@ -79,7 +79,7 @@ export interface Inference {
   generation: {
     submit(input: GenerationSubmitInput): Promise<GenerationSubmitOutcome>;
     query(userId: number, taskId: string): Promise<GenerationTaskView>;
-    /** 管理面全量列表（admin-api P4;任务存储读侧,不属主隔离） */
+    /** 管理面全量列表（任务存储读侧,不属主隔离） */
     adminList(input: GenerationTaskAdminListInput): Promise<{
       rows: Array<GenerationTaskAdminRow>;
       total: number;
@@ -245,7 +245,7 @@ export function createInference(env: InferenceEnv): Inference {
     generation: {
       submit: generation.submit,
       query: generation.query,
-      // 管理读侧直通任务存储(admin-api P4 消费;单副本内存形态账本列恒空)
+      // 管理读侧直通任务存储(admin-api 消费;单副本内存形态账本列恒空)
       adminList: (input) => tasks.adminList(input),
       settledAmounts: (taskIds) => tasks.settledAmounts(taskIds),
     },

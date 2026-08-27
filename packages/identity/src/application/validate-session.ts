@@ -1,7 +1,7 @@
 /**
  * 会话校验链(silent null 面,app 中间件消费):验签 → jti 黑名单(读故障
- * fail-open + warn,B06)→ 锚点线(iatMs < invalid_before 即失效;无锚点全有效)。
- * 属主回查 + status 检查不在本包(DESIGN §1,归 accounts 经 app 编排)。
+ * fail-open + warn)→ 锚点线(iatMs < invalid_before 即失效;无锚点全有效)。
+ * 属主回查 + status 检查不在本包(归 accounts 经 app 编排)。
  */
 import { iatMsOf, type SessionPayload } from '../domain/session.js';
 import { guardRealm } from '../domain/identifier.js';
@@ -21,7 +21,7 @@ export async function validateSession(
     try {
       revoked = await ctx.sessionRevocation.isRevoked(payload.jti);
     } catch (error) {
-      // B06 口径:读故障 fail-open + warn(吊销是增强层,主防线是属主回查与锚点线)
+      // 读故障 fail-open + warn(吊销是增强层,主防线是属主回查与锚点线)
       ctx.logger.warn(
         { err: (error as Error).message, jti: payload.jti },
         'session revocation lookup failed (fail-open; owner checks and anchor line remain authoritative)',

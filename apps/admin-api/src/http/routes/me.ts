@@ -1,13 +1,18 @@
 /**
- * 管理员自身路由（P2;v1 routes/me.ts 平移,会话组）：资料/改密/2FA 开关/TOTP。
- * v2（ADR-0008）：/v1/me 增 role 对象与 DB 授权码集合;新增 /v1/me/menus——
+ * 管理员自身路由（会话组）：资料/改密/2FA 开关/TOTP。
+ * /v1/me 含 role 对象与授权码集合;/v1/me/menus 返回
  * 按本人授权过滤的 group+page 两级树（sidebar 数据源,前端完全后端驱动）。
- * 2FA 开关改邮箱码自证（admin-email-2fa,2026-08-25 D2=A）：发码 → 验码开关,
+ * 2FA 开关为邮箱码自证：发码 → 验码开关,
  * 取消 TOTP 前置与 step-up;SMTP 可用性由发送路径 fail-closed。
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
-import { jsonBody, socketAddressFromContext, trustedClientIp, parseAcceptLanguage } from '@tillgate/http';
+import {
+  jsonBody,
+  socketAddressFromContext,
+  trustedClientIp,
+  parseAcceptLanguage,
+} from '@tillgate/http';
 import type { ControlPlane, PermissionNode } from '@tillgate/control-plane';
 import { ENFORCED_CODES, granted } from '@tillgate/control-plane';
 import type { Identity } from '@tillgate/identity';
@@ -63,7 +68,7 @@ function menuTreeOf(
     .filter((group) => group.items.length > 0);
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function meRoutes(deps: MeRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
@@ -78,7 +83,7 @@ export function meRoutes(deps: MeRoutesDeps) {
     const adminId = c.get('adminId');
     const me = await deps.admins.find(adminId);
     if (me == null) {
-      // 会话有效但资料行缺失（迁移不完整）——与 v1 同口径 401,不泄漏状态
+      // 会话有效但资料行缺失——一律 401,不泄漏状态
       throw AdminErrors.business('admin_not_found', {});
     }
     const role = await deps.rbac.roles.find(me.roleId);
@@ -126,7 +131,7 @@ export function meRoutes(deps: MeRoutesDeps) {
     });
   });
 
-  // 发码（admin-email-2fa DESIGN §2.1）：向本人邮箱发确认码;60s 冷却/TTL/错次
+  // 发码：向本人邮箱发确认码;60s 冷却/TTL/错次
   // 上限复用挑战层内建;SMTP 未生效在发送路径 fail-closed（undeliverable,503）。
   app.post('/v1/me/two-factor/code', async (c) => {
     const adminId = c.get('adminId');
@@ -147,7 +152,7 @@ export function meRoutes(deps: MeRoutesDeps) {
     return c.json({ challengeId });
   });
 
-  // 开关确认（DESIGN §2.2）：邮箱码自证——expect 主体绑定（跨主体 challengeId
+  // 开关确认：邮箱码自证——expect 主体绑定（跨主体 challengeId
   // 按挑战无效拒）;验过即落库,成功审计恰好一次（后置旁路）。
   app.post('/v1/me/two-factor', jsonBody(authContracts.twoFactor), async (c) => {
     const body = c.req.valid('json');

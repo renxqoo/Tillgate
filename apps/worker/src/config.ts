@@ -1,14 +1,11 @@
 /**
- * worker 配置（v1 apps/worker config.ts 语义迁移）：env schema + 缺省 +
- * fail-closed。铁律 3：一切可变值装配注入且必填/显式缺省——本层是缺省值
- * 唯一真相。环境键名与 v1 保持一致（运维接口连续性）；v2 差异：
- *   - Redis 曾全退出（TPM 回填归 gateway 不迁；ai 熔断存储用内存实现）；
- *     2026-08-26 BullMQ 结算调度回归（毒账单进程隔离，见 IMPLEMENTATION 增量节）
- *     ——WORKER_REDIS_URL（回落 REDIS_URL）必配 fail-closed；
- *   - 新增 WORKER_GENERATION_DEADLINE_MS / WORKER_GENERATION_MAX_RETRIES
- *     （music 代执行的上游预算，v1 藏在 ai 适配器内，v2 显式持有）；
- *   - 新增 WORKER_REFERRAL_BACKFILL_DAYS（v1 写死 BACKFILL_DAYS=7）；
- *   - 新增 WORKER_NOTIFY_* 投递参数（v1 写死在 notify-dispatch）。
+ * worker 配置：env schema + 缺省 + fail-closed。一切可变值装配注入且必填/显式
+ * 缺省——本层是缺省值唯一真相。环境键名保持稳定（运维接口连续性）：
+ *   - WORKER_REDIS_URL（回落 REDIS_URL）必配 fail-closed——BullMQ 结算调度
+ *     以队列做毒账单进程隔离；
+ *   - WORKER_GENERATION_DEADLINE_MS / WORKER_GENERATION_MAX_RETRIES：
+ *     music 代执行的上游预算；
+ *   - WORKER_REFERRAL_BACKFILL_DAYS / WORKER_NOTIFY_* 投递参数。
  */
 import * as z from 'zod';
 import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
@@ -18,7 +15,7 @@ import type { DbPoolConfig } from '@tillgate/db';
 
 const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
 
-/** 非负十进制金额串（v1 balance 阈值同形） */
+/** 非负十进制金额串 */
 const nonNegativeDecimal = z
   .string()
   .regex(/^\d{1,20}(\.\d{1,18})?$/, 'must be a non-negative decimal string');
@@ -34,7 +31,7 @@ const envSchema = z
     // ---- 结算 ----
     WORKER_BATCH_SIZE: z.coerce.number().int().min(1).default(20),
     WORKER_CLAIM_LEASE_MS: z.coerce.number().int().min(1).default(60_000),
-    /** 10 次 × 分钟级退避 ≈ 85 分钟耐受（v1 注释口径） */
+    /** 10 次 × 分钟级退避 ≈ 85 分钟耐受 */
     WORKER_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(10),
     WORKER_BASE_DELAY_MS: z.coerce.number().int().min(1).default(15_000),
     WORKER_MAX_DELAY_MS: z.coerce.number().int().min(1).default(600_000),
@@ -55,7 +52,7 @@ const envSchema = z
     // ---- 生成任务轮询 ----
     WORKER_GENERATION_INTERVAL_MS: z.coerce.number().int().min(1).default(5_000),
     WORKER_GENERATION_BATCH_SIZE: z.coerce.number().int().min(1).default(20),
-    /** 须 ≥ 2× 轮询间隔（v1 注释口径） */
+    /** 须 ≥ 2× 轮询间隔 */
     WORKER_GENERATION_LEASE_MS: z.coerce.number().int().min(1).default(30_000),
     WORKER_GENERATION_EXPIRE_REASON: z.string().default('任务超时（TTL 到期）'),
     WORKER_GENERATION_DEADLINE_MS: z.coerce.number().int().min(1_000).default(300_000),
@@ -68,7 +65,7 @@ const envSchema = z
     // ---- 告警投递 ----
     WORKER_NOTIFY_ENABLED: strictBooleanSchema(true),
     WORKER_NOTIFY_INTERVAL_MS: z.coerce.number().int().min(1).default(15_000),
-    /** 须覆盖 webhook 超时与 SMTP 上界（v1 注释口径） */
+    /** 须覆盖 webhook 超时与 SMTP 上界 */
     WORKER_NOTIFY_CLAIM_LEASE_MS: z.coerce.number().int().min(15_000).default(60_000),
     WORKER_NOTIFY_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(3),
     WORKER_NOTIFY_LOOP_BATCH_LIMIT: z.coerce.number().int().min(1).default(50),
@@ -96,7 +93,7 @@ const envSchema = z
     WORKER_AI_ALLOW_LOCAL_URL: strictBooleanSchema(false),
     WORKER_WEBHOOK_ALLOW_LOCAL_URL: strictBooleanSchema(false),
 
-    // ---- 邮件渠道（三要素缺一 = 不装配，email 渠道 fail-closed——v1 mailerFromEnv）----
+    // ---- 邮件渠道（三要素缺一 = 不装配，email 渠道 fail-closed）----
 
     // ---- 观测 ----
     OTEL_TRACES_MODE: z.enum(['off', 'memory', 'console', 'otlp']).optional(),
@@ -192,7 +189,7 @@ export interface WorkerConfig {
   readonly dbPool: Omit<DbPoolConfig, 'url'>;
 }
 
-/** PG 池部署定值：worker 并发 = 认领批量 + 轮询/维护余量（v1 poolMax 同口径）。
+/** PG 池部署定值：worker 并发 = 认领批量 + 轮询/维护余量。
  * 池-并发不变量在 assembly 从 runner 注册表派生断言（单一真相），此处只持定值。 */
 const DB_POOL: Omit<DbPoolConfig, 'url'> = {
   poolMax: 20,

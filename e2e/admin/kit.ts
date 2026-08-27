@@ -1,11 +1,11 @@
 /**
- * admin 旅程 e2e 装置（重构方案 §9/P5：跨进程旅程归仓根 e2e/）。
+ * admin 旅程 e2e 装置。
  * 形态与 e2e/gateway/kit 同院：进程内全真装配（真实 PG 池 + 真实秘密键 + identity
  * 签发真 admin-realm 令牌）+ @hono/node-server 真监听——断言打真实 HTTP 面。
  * 差异（vs app 包内 real 冒烟）：本 kit 只组装配与属主事实,旅程断言全在测试文件；
  * 依赖闭包经 apps/admin-api（含 identity——gateway 闭包没有）。
  * 数据卫生：旅程专属行以 e2e- 前缀命名并就地退役;e2e 专属用户经 accounts facade
- * provision（真实账本行保留——v1 e2e-money 同口径,审计可追溯）。
+ * provision（真实账本行保留,审计可追溯）。
  */
 import { serve, type ServerType } from '@hono/node-server';
 import { asc } from 'drizzle-orm';
@@ -111,7 +111,7 @@ function buildAdminAppOptions(
   };
 }
 
-/** admin 旅程专用 env 布置（密钥/日志口径；P2 后 JWT_SECRET 是词表一致性的
+/** admin 旅程专用 env 布置（密钥/日志口径；JWT_SECRET 是词表一致性的
  *  必填键——client 同钥签用户会话，REDIS_URL 同为必填（爆破双闸）——外部注入,不在此造默认 */
 function applyAdminJourneyEnv(): void {
   process.env.ADMIN_JWT_SECRET = E2E_SECRET;

@@ -1,10 +1,10 @@
 /**
- * 生成 DTO 门禁（总纲 P6/api-client 侧换轨）：
+ * 生成 DTO 门禁：
  *   1. 文件头「GENERATED——禁止手改」标记在位;
  *   2. 入库 dto/admin-api.generated.ts 与「openapi.json → renderAdminApiDto」重生成逐字节相等
  *      （生成物唯一写入方 = bun run generate:dto,产物来源 = admin-api generated/openapi.json
- *      入库交付物——api-client 不 import admin-api 源码,DESIGN §3.4）;
- *   3. 导出集合快照（保名兼容的封闭词表——与换轨前手写版完全一致,消费方零改动）。
+ *      入库交付物——api-client 不 import admin-api 源码）;
+ *   3. 导出集合快照（保名兼容的封闭词表——与原手写版完全一致,消费方零改动）。
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -26,7 +26,7 @@ const OPENAPI_ARTIFACT = join(
   'openapi.json',
 );
 
-/** 导出类型封闭词表（与换轨前手写版逐名相等——增删即消费方破坏性变更） */
+/** 导出类型封闭词表（增删即消费方破坏性变更） */
 const EXPORTED_NAMES: readonly string[] = [
   'AdminBatchRow',
   'AdminChannelFundRow',

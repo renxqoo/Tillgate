@@ -1,6 +1,6 @@
 /**
- * 推荐概览(v1 referral.service overview):开关/aff 码/邀请链接/被邀名单;
- * totalCommission 拆归 app 组合(G2,billing facade)。
+ * 推荐概览:开关/aff 码/邀请链接/被邀名单;
+ * totalCommission 拆归 app 组合(billing facade)。
  */
 import { encodeAffCode, inviteUrl } from '../domain/referral.js';
 import { referralProgramEnabled } from '../domain/marketing.js';

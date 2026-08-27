@@ -1,6 +1,6 @@
 /**
  * 领域纯规则：定价一致性 / 资金数值域 / 系数域 / fx 域 / 幂等键与指纹 /
- * 渠道校验与凭证解析 / 供应商词表校验（v1 对应测试组等价迁移）。
+ * 渠道校验与凭证解析 / 供应商词表校验。
  */
 import { describe, expect, it } from 'vitest';
 import { defined } from './defined';

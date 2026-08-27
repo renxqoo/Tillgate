@@ -1,5 +1,5 @@
 /**
- * worker 配置规格（v1 config/config-resolve 双测试文件合一——v2 单入口）：
+ * worker 配置规格：
  * 缺省全显式、布尔双形态、非法 fail-closed、必填缺失 fail-closed、
  * 静音开关、SMTP 三要素缺一不装配。
  */

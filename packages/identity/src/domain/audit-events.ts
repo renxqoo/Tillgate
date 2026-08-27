@@ -1,6 +1,6 @@
 /**
  * 审计事件词表与构造(封闭;持久化归 observability,本包经 AuditPort 发射)。
- * 发射时机契约(B03 修复):自有事务用例在提交后发射;composition bridge 的
+ * 发射时机契约:自有事务用例在提交后发射;composition bridge 的
  * 事件由调用方事务提交后冲洗。事件是观察事实,不承载资金/安全最终性。
  */
 export const AUDIT_ACTIONS = [

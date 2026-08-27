@@ -1,7 +1,7 @@
 /**
  * FxStore port：目录汇率的持久化边界。
  * 真相在 fx_rates 追加表（只增不改）；system_configs['catalog_fx'] 只是运行态缓存视图。
- * 进程内 TTL 缓存不在此（v1 只服务网关热路径——B4；admin 语义恒 force 读）。
+ * 进程内 TTL 缓存不在此（只服务网关热路径；admin 语义恒 force 读）。
  */
 import type { DbLike } from '@tillgate/db';
 

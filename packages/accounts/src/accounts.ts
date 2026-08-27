@@ -1,6 +1,6 @@
 /**
- * createAccounts facade(DESIGN §2.2):唯一公共装配入口。
- * db/walletCredit/policy/txRetry/now 必填(零隐藏默认,铁律 3);store/auditSink
+ * createAccounts facade:唯一公共装配入口。
+ * db/walletCredit/policy/txRetry/now 必填(零隐藏默认);store/auditSink
  * 是测试缝——省略时内部装配 postgres 适配器(生产单一路径)。
  */
 import type { Db, TxRetryPolicy } from '@tillgate/db';
@@ -17,11 +17,11 @@ import type { AccountsPolicy, UseCaseContext } from './application/context.js';
 export interface AccountsEnv {
   readonly db: Db;
   readonly walletCredit: WalletCreditPort;
-  /** 会话失效 bridge(§3.4 唯一所有者 = identity;必填——生产由 assembly 桥接 anchor advance) */
+  /** 会话失效 bridge(唯一所有者 = identity;必填——生产由 assembly 桥接 anchor advance) */
   readonly sessionInvalidation: SessionInvalidationPort;
   readonly policy: AccountsPolicy;
   readonly txRetry: TxRetryPolicy;
-  /** 输入预检时钟(创建前 expiresAt 未来性等);落库时间一律存储时钟(DESIGN §5) */
+  /** 输入预检时钟(创建前 expiresAt 未来性等);落库时间一律存储时钟 */
   readonly now: () => Date;
   /** 测试缝:持久化替身;省略时装配 postgres 适配器 */
   readonly store?: AccountStorePort;
@@ -29,7 +29,7 @@ export interface AccountsEnv {
   readonly auditSink?: AuditPort;
 }
 
-/** 装配期 policy fail-fast(铁律 3:必填且形状合法——非法 keyPrefix 会产出网关不可分派的 Key) */
+/** 装配期 policy fail-fast(必填且形状合法——非法 keyPrefix 会产出网关不可分派的 Key) */
 function assertPolicyShape(policy: AccountsPolicy): void {
   if (policy == null || typeof policy !== 'object') {
     throw new Error('accounts policy invalid: policy object is required');

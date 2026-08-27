@@ -1,14 +1,12 @@
 /**
- * admin 管理面旅程 e2e（v1 五个 e2e 的 admin 侧合并旅程;真实 PG + 真监听 + 真 admin 令牌）。
+ * admin 管理面旅程 e2e（真实 PG + 真监听 + 真 admin 令牌）。
  *
- * v1 e2e 覆盖矩阵（P5 搬迁对照——断言语义不改,装置差异见 kit 头）：
- *   e2e-crud-sweep → §B 全量 CRUD 扫（providers/channels/models/rate-cards/plans/redeem/订阅列表/
- *                     目录源面/rate-card 绑用户删除守卫链/换 Key/改价回显）
- *   e2e-money     → §C 资金（渠道进货幂等/调账 + 用户调账±/赠送/流水/审计——旅程专属用户）
- *   e2e-ops       → §D 观测面（audit/logs/tracing/billing-operations）——stats/usage 族 = P4 pending
- *   e2e-login     → P2 pending（登录面未迁移;会话门以 §A 401/放行断言锁死）
- *   e2e-cross-app → P7 pending（billing-recovery 旅程需 worker;跨 app 归 e2e/billing-recovery）
- * 已知缺口即上列 P2/P4/P7 三项,其余 admin 可观察行为全覆盖。
+ * 覆盖面（装置差异见 kit 头）：
+ *   B 全量 CRUD 扫（providers/channels/models/rate-cards/plans/redeem/订阅列表/
+ *     目录源面/rate-card 绑用户删除守卫链/换 Key/改价回显）
+ *   C 资金（渠道进货幂等/调账 + 用户调账±/赠送/流水/审计——旅程专属用户）
+ *   D 观测面（audit/logs/tracing/billing-operations）——stats/usage 族端点未覆盖
+ * 会话门以 A 段 401/放行断言锁死；跨 app 生效链归 e2e/billing-recovery。
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
@@ -164,7 +162,7 @@ describe('B. CRUD 全量扫（e2e-crud-sweep）', () => {
         .status,
     ).toBe(404);
 
-    // rate-card 绑用户守卫链（v1 crud-sweep:绑用户 → 删除被拒 409 → 解绑 → 删除）
+    // rate-card 绑用户守卫链:绑用户 → 删除被拒 409 → 解绑 → 删除
     const guardUser = await w().provisionUser();
     const bound1 = await call(w(), `/v1/users/${guardUser.id}`, {
       method: 'PATCH',
@@ -183,7 +181,7 @@ describe('B. CRUD 全量扫（e2e-crud-sweep）', () => {
     }).then((res) => expect(res.status).toBe(200));
     expect((await call(w(), `/v1/rate-cards/${cardId}`, { method: 'DELETE' })).status).toBe(200);
 
-    // 目录面:sources 200;未知源 404（vendor-catalog = P6 pending）
+    // 目录面:sources 200;未知源 404
     const sources = await call(w(), '/v1/model-catalog/sources');
     expect(sources.status).toBe(200);
     expect((sources.body.sources as unknown[]).length).toBeGreaterThanOrEqual(1);
@@ -329,7 +327,7 @@ describe('C. 资金旅程（e2e-money;旅程专属用户——真实账本,零�
       body: JSON.stringify({ channelId, amount: '-3' }),
     });
     expect(adjusted.body).toMatchObject({ balanceAfter: '7' });
-    // 超扣守卫(v1 e2e-money:负调账超余额被拒——预算不穿底)
+    // 超扣守卫:负调账超余额被拒——预算不穿底
     const overdraft = await call(w(), '/v1/channel-funds/adjust', {
       method: 'POST',
       headers: jsonHeaders,
@@ -382,7 +380,7 @@ describe('C. 资金旅程（e2e-money;旅程专属用户——真实账本,零�
     expect(txRows.length).toBeGreaterThanOrEqual(3);
     expect(txRows.every((r) => r.userId === user.id)).toBe(true);
 
-    // 用户审计行:资金动作同事务落 audit_logs(G1 桥)
+    // 用户审计行:资金动作同事务落 audit_logs
     await vi.waitFor(
       async () => {
         const audit = await call(w(), `/v1/users/${user.id}/audit-logs`);
@@ -397,7 +395,7 @@ describe('C. 资金旅程（e2e-money;旅程专属用户——真实账本,零�
 
 describe('D. 观测面（e2e-ops 的现存子集;stats/usage 族 = P4 pending）', () => {
   it('审计列表命中旅程动作;请求日志/链路信封;死信面空态口径', async () => {
-    // q 定向(并发会话的审计行会挤出首页——v1 统一列表契约的 q 命中 action ilike)
+    // q 定向(并发会话的审计行会挤出首页——q 命中 action ilike)
     for (const action of [
       'provider.create',
       'channel.create',
@@ -417,7 +415,7 @@ describe('D. 观测面（e2e-ops 的现存子集;stats/usage 族 = P4 pending）
     const logs = await call(w(), '/v1/logs?page_size=5');
     expect(logs.status).toBe(200);
     expect(logs.body).toMatchObject({ page: 1, pageSize: 5 });
-    // tracing 五端点全 200（v1 e2e-ops 断言面;detail 用未知 id = 空详情兜底形态）
+    // tracing 五端点全 200（detail 用未知 id = 空详情兜底形态）
     expect((await call(w(), '/v1/tracing/recent?page_size=5')).body).toMatchObject({
       page: 1,
       pageSize: 5,

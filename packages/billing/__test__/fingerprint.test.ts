@@ -1,13 +1,12 @@
 /**
- * canonical 指纹行为规格（迁移自旧仓 ledger-core/__tests__/fingerprint.test.ts，14 用例
- * 全保留；InvalidInputError 断言换 DefectError 码断言；新增 B4 回归与 commandFingerprint 契约）。
+ * canonical 指纹行为规格（DefectError 码断言;含 commandFingerprint 契约）。
  */
 import { describe, expect, it } from 'vitest';
 import { isDefectError } from '@tillgate/errors';
 import { canonicalJson, commandFingerprint, fingerprintOf } from '../src/domain/fingerprint.js';
 import type { FingerprintValue } from '../src/domain/fingerprint.js';
 
-/** 断言缺陷拒绝并核对码（指纹载荷构造缺陷分类，DESIGN §2.3） */
+/** 断言缺陷拒绝并核对码（指纹载荷构造缺陷分类） */
 function expectDefect(fn: () => unknown): void {
   let caught: unknown;
   try {

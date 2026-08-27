@@ -1,4 +1,4 @@
-/** 套餐创建（U6;kind×周期一致性;审计后置归 app 装配层——MIGRATION-U6 §2） */
+/** 套餐创建（kind×周期一致性;审计后置归 app 装配层） */
 import type { BillingStore, PlanRecord } from '../../ports/billing-store.js';
 import { assertKindPeriodConsistency } from './plan-rules.js';
 

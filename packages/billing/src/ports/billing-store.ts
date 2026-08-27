@@ -2,7 +2,7 @@
  * 计费账单存储 port（billing_requests + billing_reservations + usage_logs 读侧——
  * billing 自有三表的聚合契约）。事务句柄复用钱包 port 的 WalletTx/WalletConn：
  * 同一 Db 上的两个 adapter 把同一底层 DbTx 铸成同形句柄——计费事务内可把句柄
- * 直接注入钱包动词（TxChannel），跨 store 编排单事务（DESIGN §2.1）。
+ * 直接注入钱包动词（TxChannel），跨 store 编排单事务。
  */
 import type { WalletConn, WalletTx } from './wallet-store.js';
 
@@ -62,7 +62,7 @@ export interface BillingReservationRow {
   status: string;
 }
 
-/** 套餐目录行（U6 管理面;金额为存储精度字符串,出站点归一归 app） */
+/** 套餐目录行（管理面;金额为存储精度字符串,出站点归一归 app） */
 export interface PlanRecord {
   id: number;
   name: string;
@@ -216,7 +216,7 @@ export interface BillingStore {
   markReservationReleased(tx: WalletConn, id: number, now: Date): Promise<boolean>;
   markReservationSettled(tx: WalletConn, id: number, now: Date): Promise<boolean>;
 
-  // ---- 结算（U3：认领 / CAS 终态 / 恢复三路径 / usage 投影） ----
+  // ---- 结算（认领 / CAS 终态 / 恢复三路径 / usage 投影） ----
   /** 认领 pending/retry → processing（CTE + FOR UPDATE SKIP LOCKED；发 claim 三元组） */
   claimPending(
     tx: WalletConn,
@@ -241,10 +241,7 @@ export interface BillingStore {
    * 与 claimPending 一致，无锁）——BullMQ sweep 入队与直驱 runner 的触发源
    * 共用；认领互斥仍由 claimPending 承担，本读不参与资金状态变化。
    */
-  listDueSettlementRequests(
-    conn: WalletConn,
-    input: { limit: number },
-  ): Promise<string[]>;
+  listDueSettlementRequests(conn: WalletConn, input: { limit: number }): Promise<string[]>;
   /** 认领租约保活（长结算事务防 recover 误回收 → 双扣防线） */
   renewClaims(
     tx: WalletConn,
@@ -292,7 +289,7 @@ export interface BillingStore {
 
   isUniqueViolation(error: unknown): boolean;
 
-  // ---- 订阅生命周期（U4：plans 目录 + user_subscriptions 行操作 + ledger_operations 档案） ----
+  // ---- 订阅生命周期（plans 目录 + user_subscriptions 行操作 + ledger_operations 档案） ----
   findPlan(
     conn: WalletConn,
     planId: number,
@@ -338,7 +335,7 @@ export interface BillingStore {
   /** quota += amount（status=0 守卫）；0 行 = 并发取消 */
   tryAddQuota(tx: WalletConn, input: { subscriptionId: number; quota: string }): Promise<boolean>;
 
-  // ---- 管理读侧面（U6：plans 目录 / 订阅管理列表 / 死信复审——admin-api P1 消费） ----
+  // ---- 管理读侧面（plans 目录 / 订阅管理列表 / 死信复审——admin-api 消费） ----
   listAdminPlans(
     conn: WalletConn,
     query: {
@@ -412,7 +409,7 @@ export interface BillingStore {
     channelReservedAmount: string | null;
   } | null>;
 
-  // ---- 幂等操作档案（U4：ledger_operations——占位/回执同事务） ----
+  // ---- 幂等操作档案（ledger_operations——占位/回执同事务） ----
   insertOperationPlaceholder(
     tx: WalletConn,
     input: { operationId: string; kind: string; fingerprint: string },

@@ -1,5 +1,5 @@
 /**
- * 限流闸策略契约（v1 production-hardening/final-hardening 的策略段迁移；机制段在
+ * 限流闸策略契约（机制段在
  * runtime 包 rate-limiter.test）：
  * 并罚制（key+user+global RPM 原子；TPM 预占）/ 维度串不外泄 / Retry-After 上下文 /
  * 未装配放行 / TPM 失败释放 / 渠道维 RPM 尝试前判定。limiter 为可编程替身。

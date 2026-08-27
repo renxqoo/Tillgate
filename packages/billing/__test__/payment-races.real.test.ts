@@ -1,6 +1,5 @@
 /**
- * 支付回调真实 PG 竞态套件（U5 遗留补齐——MIGRATION-U5 §5「payment_orders 唯一约束
- * 竞态随收口真 PG 套件验证」兑现）：并发用例打真实 PostgreSQL 的订单状态机 CAS
+ * 支付回调真实 PG 竞态套件：并发用例打真实 PostgreSQL 的订单状态机 CAS
  * （markPaid 0→1 / markCredited 1→2 / closeOrder 0→4 / revive 4→1 单语句条件 UPDATE）
  * 与入账幂等锚（wallet_transactions (ref_type,ref_id,kind) 唯一）。装置复用
  * real-pg.ts setupRealFullSchema（隔离 schema + 完整迁移链 + 42P01 容错）。
@@ -8,12 +7,12 @@
  * 竞态矩阵（每例 Promise.allSettled 收两路）：
  *   1. 并发同 orderId 回调两次（同金额同签名面）→ 恰一入账：输家 markPaid 0 行后
  *      重读终态幂等返回；wallet 流水恰一笔；后续顺序重放仍幂等（不双记）。
- *   2. 并发回调 vs 手动 close（admin-api P4 closeOrder 原语直接复用）→
+ *   2. 并发回调 vs 手动 close（admin-api closeOrder 原语直接复用）→
  *      状态机 CAS 单赢家：关单赢则已付款单经复活（4→1）收尾入账（关单不吞款）；
  *      回调赢则 close 0 行（order_state_conflict 语义面）。终态资金事实唯一。
  *
  * 断言口径：金额 Decimal 精确比较；账本不变量复用 real-pg.assertLedgerCoherent。
- * 默认门禁排除（铁律 14），经 test:real（DB_TEST_URL / DATABASE_URL）显式运行。
+ * 默认门禁排除，经 test:real（DB_TEST_URL / DATABASE_URL）显式运行。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql, type SQL } from 'drizzle-orm';
@@ -58,7 +57,7 @@ const stubProvider: PaymentProviderPort = {
   let wallet: WalletApi;
   let payments: PaymentsApi;
   let orders: PaymentOrderStore;
-  /** closeOrder 走 billingStore 事务壳（与生产 admin-api P4 同一原语） */
+  /** closeOrder 走 billingStore 事务壳（与生产 admin-api 同一原语） */
   let withBillingTx: <T>(
     fn: (tx: Parameters<PaymentOrderStore['closeOrder']>[0]) => Promise<T>,
   ) => Promise<T>;

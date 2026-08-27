@@ -1,7 +1,7 @@
 /**
  * 渠道进货（幂等）：budget += amount（正数）；熔断(3)自动复活为启用(0)。
  * 凭证字节先行落存储（事务外——字节不进指纹，重放不重传）；操作行+余额+流水+审计同事务
- * （§5.4/G3：资金审计与业务同事务——审计写失败随事务回滚）。
+ * （资金审计与业务同事务——审计写失败随事务回滚）。
  */
 import type { Db } from '@tillgate/db';
 import type { AuditTxSink } from '../../ports/audit-sink';
@@ -24,7 +24,7 @@ export interface RechargeChannelDeps extends RunOperationDeps {
   readonly voucherStorage: VoucherStorage;
   /** 凭证大小上限（字节；装配注入） */
   readonly voucherMaxBytes: number;
-  /** 资金审计（事务参与 port，§5.4/G3——写失败随业务事务回滚） */
+  /** 资金审计（事务参与 port——写失败随业务事务回滚） */
   readonly auditTx: AuditTxSink;
 }
 
@@ -101,7 +101,7 @@ export async function rechargeChannel(
         remark,
         adminId,
       });
-      // 审计与业务同事务提交前落（§5.4/G3）：只在首次执行写——重放命中同操作
+      // 审计与业务同事务提交前落：只在首次执行写——重放命中同操作
       // 不产生第二条审计（dedupe 后只有一个事实）
       await emitAuditWithinTx(deps.auditTx, tx, {
         actor: 'admin',

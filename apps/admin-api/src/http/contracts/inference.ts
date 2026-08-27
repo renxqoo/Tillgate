@@ -1,5 +1,5 @@
 /**
- * 推理域契约（P4;v1 ops.ts generation-tasks zod 面平移）。
+ * 推理域契约。
  * kind/status 词表单一真相 = inference 包 GENERATION_TASK_KINDS/STATUSES（不复制）。
  */
 import * as z from 'zod';

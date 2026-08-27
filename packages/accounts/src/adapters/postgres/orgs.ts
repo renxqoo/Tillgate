@@ -1,6 +1,6 @@
 /**
  * 组织/成员/邀请聚合 SQL:席位不变量编排件(CAS/FOR UPDATE/复活)、
- * 订阅绑定守卫(G8:user_subscriptions 只读最小投影)。
+ * 订阅绑定守卫(user_subscriptions 只读最小投影)。
  */
 import { and, asc, count, desc, eq, gt, sql } from 'drizzle-orm';
 import { orgInvitations, orgMembers, organizations, userSubscriptions, users } from '@tillgate/db';
@@ -199,7 +199,7 @@ export const orgQueries: Pick<
   },
 
   async insertOrReviveMember(db, { orgId, userId, role }) {
-    // setWhere status=1:被移除成员经新邀请复活(v1 语义);active 行冲突为无害幂等
+    // setWhere status=1:被移除成员经新邀请复活;active 行冲突为无害幂等
     await db
       .insert(orgMembers)
       .values({ orgId, userId, role })
@@ -249,7 +249,7 @@ export const orgQueries: Pick<
     const set: Record<string, unknown> = { updatedAt: nowSql };
     if (patch.dailySpendLimit !== undefined) set.dailySpendLimit = patch.dailySpendLimit;
     if (patch.monthlyQuota !== undefined) set.monthlyQuota = patch.monthlyQuota;
-    // B5 修复:仅 active 成员可设限(v1 不过滤 status,已离开成员仍可被设限)
+    // 仅 active 成员可设限(已离开成员不可被设限)
     const rows = await db
       .update(orgMembers)
       .set(set)
@@ -286,7 +286,7 @@ export const orgQueries: Pick<
     const [sub] = rows;
     if (sub === undefined) return null;
     if (sub.userId === userId) return { userId: sub.userId, orgId: sub.orgId };
-    // 组织订阅:须为该组织 active 成员(v1 守卫口径)
+    // 组织订阅:须为该组织 active 成员
     if (sub.orgId === null) return null;
     const member = await db
       .select({ id: orgMembers.id })

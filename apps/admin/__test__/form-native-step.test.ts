@@ -1,5 +1,5 @@
 /**
- * 回归：费率卡系数字段的原生 number 校验必须覆盖 zod 域（§10 每个 bug 一个回归用例）。
+ * 回归：费率卡系数字段的原生 number 校验必须覆盖 zod 域。
  *
  * bug：NumberField 曾配 step="0.05" + min={0.001}，而 <form> 无 noValidate——
  * 浏览器原生 stepMismatch 先于 zod 拦截提交，合法值序列仅 0.001+0.05n（0.051、0.101…），

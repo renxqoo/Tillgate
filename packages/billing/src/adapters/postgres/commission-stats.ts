@@ -1,6 +1,6 @@
 /**
- * CommissionStatsStore 生产适配器（usage_logs × referrals × users 只读聚合；
- * v1 referral.repo 同语义）。SQL 只住本目录（AGENT.md §0.2）。
+ * CommissionStatsStore 生产适配器（usage_logs × referrals × users 只读聚合）。
+ * SQL 只住本目录。
  */
 import { and, eq, gte, lt, sql } from 'drizzle-orm';
 import type { Db } from '@tillgate/db';

@@ -2,7 +2,7 @@
  * 真实 PG + Redis 全链冒烟（test:real 通道；默认门禁按文件名排除）。
  * 覆盖默认门禁不触的装配根与 adapters SQL：启动装配 fail-closed、healthz 双检、
  * 公开端点目录查询、无 SMTP 注册 503（两级登录 fail-closed）、未知凭据 401。
- * 完整用户旅程（注册→登录→Key→支付回调→对账）归根 e2e/（MIGRATION §1 暂缓项）。
+ * 完整用户旅程（注册→登录→Key→支付回调→对账）归根 e2e/。
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { ping, closeDb } from '@tillgate/db';
@@ -12,8 +12,7 @@ import { createClientApiApp } from '../src/app.js';
 
 const env: NodeJS.ProcessEnv = {
   NODE_ENV: 'development',
-  DATABASE_URL:
-    process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/tillgate',
+  DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/tillgate',
   REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
   JWT_SECRET: process.env.JWT_SECRET ?? 'real-test-jwt-secret-0123456789ab',
   CLIENT_CODE_PEPPER: process.env.CLIENT_CODE_PEPPER ?? 'real-test-pepper-0123456789abcd',

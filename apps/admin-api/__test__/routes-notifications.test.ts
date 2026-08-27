@@ -1,6 +1,6 @@
 /**
- * P5 契约测试：通知渠道 CRUD/test 五动词 wire 形状与编排透传（ctx actor=admin）、
- * v1 zod 语义（webhook url+secret / email recipients 互斥 refine、events 词表封闭、
+ * 契约测试：通知渠道 CRUD/test 五动词 wire 形状与编排透传（ctx actor=admin）、
+ * zod 语义（webhook url+secret / email recipients 互斥 refine、events 词表封闭、
  * type 不可改、非法 id 400）+ 凭证回读（200 字节流原样 content-type / 404 词表码）。
  * 业务语义本体在 notifications/control-plane 包测试;此处锁 wire 面。
  */

@@ -10,13 +10,13 @@ export default defineConfig({
       },
     },
 
-    // 铁律 14:包根 __test__/ 平铺(目标树 test/{core,next,pack}/ 的分组按铁律 14 与既有包先例不做)
+    // 包根 __test__/ 平铺(不按 test/{core,next,pack}/ 分组,沿用既有包先例)
     include: ['__test__/*.test.ts'],
     environment: 'node',
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      // 口径(IMPLEMENTATION §4 如实申报):
+      // 口径:
       // - src/index.ts / src/next/index.ts:纯再导出桶,零自有逻辑
       // - src/dto/**:纯类型声明文件,零运行时语句(v8 会把模块装载计为未覆盖函数)
       exclude: ['src/index.ts', 'src/next/index.ts', 'src/dto/**'],

@@ -1,5 +1,5 @@
 /**
- * 内存 store stand-in(§5.6 类型 2:PostgreSQL 的行为等价替身)——默认门禁专用。
+ * 内存 store stand-in(PostgreSQL 的行为等价替身)——默认门禁专用。
  * 与 adapters/postgres 同契约实现;关键语义模拟:
  * - 认领单赢家(检查与置位之间无 await——内存天然原子);
  * - 租约 fencing(complete/fail/record 校验 owner+token+claimUntil>now);
@@ -74,7 +74,7 @@ export interface MemoryNotifyStoreState {
 export interface MemoryNotifyStore {
   store: NotifyStore;
   state: MemoryNotifyStoreState;
-  /** 直插 outbox(合成事件/绕过词表——与 v1 测试直插 DB 同能力) */
+  /** 直插 outbox(合成事件/绕过词表) */
   seedOutbox(row: {
     event: string;
     payload?: Record<string, unknown>;

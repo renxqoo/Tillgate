@@ -1,6 +1,6 @@
 /**
- * OAuth 用例测试(v1 oauth.test + oauth.service 语义迁移):绑定/幂等/冲突分类、
- * 最后凭据守卫、state 签发消费、provider 未配置、上游 profile 映射(B27)。
+ * OAuth 用例测试:绑定/幂等/冲突分类、
+ * 最后凭据守卫、state 签发消费、provider 未配置、上游 profile 映射。
  */
 import { describe, expect, it } from 'vitest';
 import { createTestHarness } from '../src/testing/harness.js';

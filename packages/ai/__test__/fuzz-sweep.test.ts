@@ -48,7 +48,7 @@ import { resolveVendorProfile } from '../src/registry/vendor-profiles.js';
 import { joinUrl } from '../src/join-url.js';
 import { estimateTextTokens } from '../src/usage/token-estimate.js';
 
-/** 垃圾输入语料（§10.1-3：零值/空/垃圾形状/类型错位不崩） */
+/** 垃圾输入语料（零值/空/垃圾形状/类型错位不崩） */
 const CORPUS: unknown[] = [
   null,
   undefined,

@@ -1,5 +1,5 @@
 /**
- * 属主修改 Key(name/remark/限额/过期;v1 patchKey)。
+ * 属主修改 Key(name/remark/限额/过期)。
  * 越权与不存在统一 not_found;已吊销冲突;CAS 0 行竞态按已吊销判别。
  */
 import { runTx } from '@tillgate/db';
@@ -28,7 +28,7 @@ export async function patchKey(
         patch,
       });
       if (updated === null) {
-        // CAS 0 行:与吊销并发——按已吊销语义表达(v1 409)
+        // CAS 0 行:与吊销并发——按已吊销语义表达
         throw AccountsErrors.business('key_already_revoked', { keyId: input.keyId });
       }
       return updated;

@@ -1,10 +1,10 @@
 /**
- * 邀请佣金日结用例（v1 apps/worker tasks/referral-commission.ts 迁移，语义不变）：
+ * 邀请佣金日结用例：
  * 被邀请人已结算消费按邀请人求和 × 比例 → wallet.credit。
  *
  * 幂等 = wallet 自然键（refType 'referral' + refId referral-commission:{inviter}:{yyyyMMdd}
  * + kind credit 唯一）——多副本并发/同日重跑结构性只入一次，无需分布式锁。
- * 金额 = floor(合计 × rate, 18 位小数)（DESIGN §2.2 第 6 条：派生支付额跨落库
+ * 金额 = floor(合计 × rate, 18 位小数)（派生支付额跨落库
  * 边界显式收敛——全精度乘积超 18 位小数会被 out_of_scale 永久拒绝）。
  *
  * 窗口回补：每轮跑最近 backfillDays 个「完整结束的 UTC 自然日」（缺勤补算——
@@ -35,9 +35,9 @@ export interface ReferralCommissionDeps {
   rate: () => Promise<string>;
   /** 幂等键（accounts commissionRefId 词表——(inviterId, yyyyMMdd) → refId） */
   refIdOf: (inviterId: number, utcDayKey: string) => string;
-  /** 回补窗口（完整 UTC 自然日数；v1 BACKFILL_DAYS=7 的装配注入形态） */
+  /** 回补窗口（完整 UTC 自然日数） */
   backfillDays: number;
-  /** 时钟（装配必填——窗口计算不读系统时钟，铁律 3） */
+  /** 时钟（装配必填——窗口计算不读系统时钟） */
   clock: () => Date;
   /** 单行入账异常的记录口（跳过不中断——下一轮/他副本按同一自然键收敛） */
   onError: (error: unknown, context: string) => void;

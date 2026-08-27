@@ -10,7 +10,7 @@ import {
 } from '../src/adapters/accounts-bridges';
 
 /**
- * 装配面桥接件单测(DESIGN §5 D9/D10/G1 裁决的行为锁)。
+ * 装配面桥接件单测(锁定桥接行为)。
  */
 const fakeUpstreamError = (vendorCode?: string) =>
   ({

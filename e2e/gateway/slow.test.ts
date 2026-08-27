@@ -1,10 +1,9 @@
 /**
- * E2E ⑮ 慢上游三形态实测（v1 e2e-slow 迁移）：慢生成非流式（响应头晚到）/
+ * E2E ⑮ 慢上游三形态实测：慢生成非流式（响应头晚到）/
  * 慢生成流式（首字节后长流）/ 计费租约 vs 长流时长。回答「上游本身很慢会有问题吗」。
  *
- * v1 用真 MiniMax 22s 生成 + connect 旋钮放宽验证；v2 语义映射（kit 头注释同源）：
  * connectMs 只覆盖建连，慢响应归 GATEWAY_UPSTREAM_DEADLINE_MS（totalMs）支配——
- * mock 上游以确定性延迟等价复现「慢生成」，预算两分支（紧→502 释放 / 宽→200 计费）。
+ * mock 上游以确定性延迟复现「慢生成」，预算两分支（紧→502 释放 / 宽→200 计费）。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -25,7 +24,7 @@ describe.skipIf(!hasEnv)('E2E ⑮ 慢上游三形态', () => {
   let world: E2EWorld;
   /** 紧预算网关（deadline 2s——慢于它的上游 502 释放） */
   let tightGateway: E2EGateway;
-  /** 宽预算网关（v1 connect=60s 放宽形态的 v2 等价：deadline 30s） */
+  /** 宽预算网关（deadline 30s） */
   let relaxedGateway: E2EGateway;
   let keys: E2EKeys;
 

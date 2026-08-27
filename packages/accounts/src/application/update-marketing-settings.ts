@@ -1,6 +1,6 @@
 /**
- * 拉新参数写(管理面唯一入口;v1 PUT /v1/marketing/settings):域校验
- * (非负/比例 ≤1/精度)→ 单语句 upsert returning(B7 修复两往返)→ 同事务审计。
+ * 拉新参数写(管理面唯一入口;PUT /v1/marketing/settings):域校验
+ * (非负/比例 ≤1/精度)→ 单语句 upsert returning(避免两往返)→ 同事务审计。
  * 生效语义:下一动作生效、历史不重算。
  */
 import { runTx } from '@tillgate/db';

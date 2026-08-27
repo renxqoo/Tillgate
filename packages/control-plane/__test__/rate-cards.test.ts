@@ -1,7 +1,7 @@
 /**
- * 费率卡用例（v1 rate-cards.test.ts 等价迁移，含 M1 回归）：
+ * 费率卡用例：
  * 建卡同拍全局系数 / PATCH 只碰 global 行 / 删除绑定守卫 / 健康自检 / 列表兜底回显。
- * 审计与变更同事务（§5.4/G3）：before/after 都进审计、写失败回滚变更。
+ * 审计与变更同事务：before/after 都进审计、写失败回滚变更。
  */
 import { describe, expect, it } from 'vitest';
 import { defined } from './defined';
@@ -175,7 +175,7 @@ describe('费率审计事务参与（§5.4/G3：费率变更必须产生可审�
       name: 'rollback',
       coefficient: '1.5',
     });
-    // 换回滚语义 db（§5.6 类型 2：内存替身的 PG ROLLBACK 等价）
+    // 换回滚语义 db（内存替身的 PG ROLLBACK 等价）
     const snapshot = () => {
       const cards = new Map([...world.rateCards.cards].map(([k, v]) => [k, { ...v }]));
       const coefficients = world.rateCards.coefficients.map((c) => ({ ...c }));

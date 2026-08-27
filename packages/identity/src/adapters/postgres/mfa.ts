@@ -1,6 +1,6 @@
 /**
  * MFA store postgres 实现:TOTP 挂起/确认(锁内 CAS)+ 步进单调 CAS + 恢复码
- * 单次消费/整组重签(onConflictDoNothing 防同批碰撞,B19)。SQL 与 v1 mfa.ts 对齐。
+ * 单次消费/整组重签(onConflictDoNothing 防同批碰撞)。
  */
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { DbLike } from '@tillgate/db';
@@ -78,7 +78,7 @@ export const mfaQueries: MfaStore = {
       }
       return { status: 'not_enrolled' };
     }
-    // 恢复码整组重签(旧组全作废——重新注册场景不残留旧码);同批哈希碰撞静默去重(B19)
+    // 恢复码整组重签(旧组全作废——重新注册场景不残留旧码);同批哈希碰撞静默去重
     await db.delete(identityRecoveryCodes).where(eq(identityRecoveryCodes.userId, input.userId));
     if (input.recoveryCodeHashes.length > 0) {
       await db

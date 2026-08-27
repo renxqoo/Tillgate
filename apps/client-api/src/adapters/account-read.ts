@@ -1,5 +1,5 @@
 /**
- * accounts 表只读面（app-face join；MIGRATION §8 待办——后迁 accounts facade 动词）：
+ * accounts 表只读面（app-face join）：
  * 注册期邮箱占用预检 / 会话与登录链的账户状态读 / 最近登录时间落库。
  */
 import { and, eq } from 'drizzle-orm';

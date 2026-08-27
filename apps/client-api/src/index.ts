@@ -21,8 +21,8 @@ const server = serveApp(app, { port: config.CLIENT_API_PORT }, () => {
       registerEnabled: config.REGISTER_ENABLED,
       emailCodeRequired: config.EMAIL_CODE_REQUIRED,
       topup: `${config.TOPUP_MIN}~${config.TOPUP_MAX} @${config.TOPUP_EXCHANGE_RATE}`,
-      // 支付渠道已迁 integration_settings（动态面经 /v1/payments/channels 报真相）
-      // oauth 凭据已迁 integration_settings（快照驱动）;启动日志只报静态面
+      // 支付渠道在 integration_settings（动态面经 /v1/payments/channels 报真相）
+      // oauth 凭据在 integration_settings（快照驱动）;启动日志只报静态面
 
       trustedProxyHops: config.TRUSTED_PROXY_HOPS,
       secureCookie: config.SECURE_COOKIE,

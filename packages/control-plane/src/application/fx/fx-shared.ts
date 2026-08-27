@@ -1,5 +1,5 @@
 /**
- * fx 单元共享内部：配置读写、生效态计算、ECB 拉取与懒刷新（v1 fx.service 内部函数等价迁移）。
+ * fx 单元共享内部：配置读写、生效态计算、ECB 拉取与懒刷新。
  * 真相在 fx_rates 追加表与审计；system_configs 只是缓存视图。
  * 写路径唯一入口 = 本单元五个用例（state/refresh/setOverride/clearOverride/setBuffer）。
  */
@@ -21,7 +21,7 @@ export type FetchLike = (...args: Parameters<typeof fetch>) => Promise<Response>
 export interface FxEnv {
   /** ECB/frankfurter 拉取地址（无 key 公共源） */
   readonly sourceUrl: string;
-  /** auto 行拉取节奏（ECB 每工作日一发，4h 懒检查足够新鲜——v1 同值） */
+  /** auto 行拉取节奏（ECB 每工作日一发，4h 懒检查足够新鲜） */
   readonly autoTtlMs: number;
   readonly fetchTimeoutMs: number;
   /** fetch 可注入（测试不打真 ECB） */

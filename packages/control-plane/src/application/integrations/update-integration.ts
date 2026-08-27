@@ -1,7 +1,7 @@
 /**
- * 集成设置写（DESIGN §4.1/§5 D5-D6）：字段三态合并（缺席=保持 / null=清除 / 值=设置）
+ * 集成设置写：字段三态合并（缺席=保持 / null=清除 / 值=设置）
  * → secret 加密、rotatable 旧值入双读窗 → enabled⇒完整性不变量 → 事务落库 +
- * 同事务审计（凭据属安全类变更，§5.4 强制形态）。
+ * 同事务审计（凭据属安全类变更，强制同事务形态）。
  *
  * 双视图纪律：merge 阶段全部用明文视图（已有 secret 先解密）；落库前一次性
  * 加密成存储视图——避免二次加密；返回的掩码项只从明文视图生成。
@@ -49,7 +49,7 @@ export async function updateIntegration(
   const { key, spec, existing } = await loadIntegrationRow(deps, input.key);
 
   // 明文视图：已有 secret 解密回明文，后续合并/校验/掩码/加密全部基于它；
-  // 解密失败的存量密文保持密文形态并记入 undecryptable（原样回写、不二次加密——review 修复 A-3）
+  // 解密失败的存量密文保持密文形态并记入 undecryptable（原样回写、不二次加密）
   const { merged, undecryptable } = mergePlaintext(deps, spec, {
     stored: existing?.config ?? {},
     submitted: input.config ?? {},
@@ -110,7 +110,7 @@ function maskedResult(
     key,
     enabled: state.enabled,
     configured: isConfigComplete(spec, merged),
-    // 不可解密的存量密文全遮（不回显密文尾 4——review 修复 R5）
+    // 不可解密的存量密文全遮（不回显密文尾 4）
     config: maskIntegrationConfig(spec, merged, (field, value) =>
       state.undecryptable.has(field) ? null : value,
     ),
@@ -139,7 +139,7 @@ async function loadIntegrationRow(
   return { key: rawKey, spec: specOf(rawKey), existing: rows.find((row) => row.key === rawKey) };
 }
 
-/** 事务落库 + 同事务审计（凭据属安全类变更——§5.4 强制形态） */
+/** 事务落库 + 同事务审计（凭据属安全类变更，强制同事务形态） */
 async function persistIntegration(
   deps: UpdateIntegrationDeps,
   row: {
@@ -172,7 +172,7 @@ async function persistIntegration(
   });
 }
 
-/** 审计 detail 构造（Turnstile 停用/出网点变更高亮——DESIGN §5 D11/§6 修订） */
+/** 审计 detail 构造（Turnstile 停用/出网点变更高亮） */
 function auditDetail(
   key: IntegrationKey,
   spec: ReturnType<typeof specOf>,
@@ -201,7 +201,7 @@ function auditDetail(
 
 /**
  * 明文视图合并：存量装载（secret 解密，失败记入 undecryptable 保持密文形态）
- * + 提交应用（三态校验）。review 修复 A-3/R5：不可解密密文原样回写、回显全遮。
+ * + 提交应用（三态校验）。不可解密密文原样回写、回显全遮。
  */
 function mergePlaintext(
   deps: UpdateIntegrationDeps,
@@ -272,15 +272,15 @@ function applySubmitted(
   }
 }
 
-/** enc: 伪装密文判定（前导空白与大小写变体同拒——review 修复 R4） */
+/** enc: 伪装密文判定（前导空白与大小写变体同拒） */
 function isCiphertextLookalike(value: string): boolean {
   return value.trimStart().toLowerCase().startsWith(CIPHERTEXT_PREFIX);
 }
 
 /**
- * 轮换入窗（DESIGN §5 D6）：rotatable secret 字段值变更且旧值在场 → 旧密文进
- * previous_secrets 并刷新 rotatedAt。**非轮换写入不得退出窗口**（review 修复 A-1：
- * 退出条件 = 时间到期）；已过期窗口随下一次写入清空（存储自愈）。
+ * 轮换入窗：rotatable secret 字段值变更且旧值在场 → 旧密文进
+ * previous_secrets 并刷新 rotatedAt。**非轮换写入不得退出窗口**
+ * （退出条件 = 时间到期）；已过期窗口随下一次写入清空（存储自愈）。
  * 窗口只追踪最近一次轮换（多字段同轮变更共用时刻；连续两次轮换覆盖上一代——显式接受）。
  */
 function rotateSecrets(

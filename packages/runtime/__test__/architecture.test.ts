@@ -1,8 +1,8 @@
 /**
- * 边界测试（铁律 11：边界必须可执行）——参照 packages/observability 同名文件写法：
+ * 边界测试（边界必须可执行）——参照 packages/observability 同名文件写法：
  * src import 白名单（仅 @tillgate/errors、ioredis、pino、pino-pretty、zod、node:*——
- * 结构方案 §5.1：runtime 只可依赖 errors，不反向依赖 observability）/ 双入口导出面快照 /
- * testing 子入口不进主入口（vitest 语义不得混入生产 bundle，IMPLEMENTATION §3.1）。
+ * runtime 只可依赖 errors，不反向依赖 observability）/ 双入口导出面快照 /
+ * testing 子入口不进主入口（vitest 语义不得混入生产 bundle）。
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';

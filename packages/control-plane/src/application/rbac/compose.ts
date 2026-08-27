@@ -1,4 +1,4 @@
-/** facade rbac 面装配（ADR-0008）——从 control-plane.ts 抽出以守 500 行指引 */
+/** facade rbac 面装配 */
 import type { Db } from '@tillgate/db';
 import type {
   CreatePermissionRow,

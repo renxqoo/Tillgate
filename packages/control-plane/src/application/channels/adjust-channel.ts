@@ -1,7 +1,7 @@
 /**
  * 渠道调账（幂等）：budget += amount（可负）；守卫 = 调后不得为负。
  * 0 行二义（渠道不存在 vs 守卫未过）在事务内二次读消解。
- * 审计与业务同事务（§5.4/G3）：写失败随事务回滚。
+ * 审计与业务同事务：写失败随事务回滚。
  */
 import type { Db } from '@tillgate/db';
 import type { AuditTxSink } from '../../ports/audit-sink';
@@ -19,7 +19,7 @@ export interface AdjustChannelDeps extends RunOperationDeps {
     readonly channel: ChannelStore;
     readonly operations: OperationsStore;
   };
-  /** 资金审计（事务参与 port，§5.4/G3——写失败随业务事务回滚） */
+  /** 资金审计（事务参与 port——写失败随业务事务回滚） */
   readonly auditTx: AuditTxSink;
 }
 
@@ -90,7 +90,7 @@ export async function adjustChannel(
         remark,
         adminId,
       });
-      // 审计与业务同事务提交前落（§5.4/G3）：重放不产生第二条审计（dedupe）
+      // 审计与业务同事务提交前落：重放不产生第二条审计（dedupe）
       await emitAuditWithinTx(deps.auditTx, tx, {
         actor: 'admin',
         adminId,

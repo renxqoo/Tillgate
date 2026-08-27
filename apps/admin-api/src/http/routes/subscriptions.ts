@@ -1,7 +1,7 @@
 /**
- * 订阅管理动词路由（v1 routes/subscriptions.ts 动词面平移）：续费/变更/取消/加油包
- * 发放。资金动词幂等键经 operationId（http 货架）;管理面 userId:null 直续免属主检查
- * （billing 语义）。GET /v1/subscriptions（管理列表）为 P1 pending（DESIGN §5 D7）。
+ * 订阅管理路由：续费/变更/取消/加油包
+ * 发放与管理列表。资金动词幂等键经 operationId（http 货架）;管理面 userId:null 直续免属主检查
+ * （billing 语义）。
  */
 import { Hono } from 'hono';
 import type { SubscriptionsApi } from '@tillgate/billing';
@@ -15,7 +15,7 @@ export interface SubscriptionsRoutesDeps {
   readonly subscriptions: SubscriptionsApi;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function subscriptionsRoutes(deps: SubscriptionsRoutesDeps) {
   const app = new Hono<SessionEnv>();
 

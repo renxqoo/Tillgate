@@ -6,7 +6,7 @@ import { identityErrors } from './errors.js';
 
 export type IdentifierKind = 'email' | 'phone' | 'username';
 
-/** 内置标识词表(闭集;扩展 = 契约变更,须同步 DESIGN §2.2) */
+/** 内置标识词表(闭集;扩展 = 契约变更) */
 export const BUILTIN_IDENTIFIER_KINDS: readonly IdentifierKind[] = ['email', 'phone', 'username'];
 
 /** 词表符号(provider / challenge kind / realm 共用):小写 snake/kebab,2-32 位 */
@@ -73,7 +73,7 @@ export function guardChallengeKind(kind: string, guards: ValidationGuards): stri
   return kind;
 }
 
-/** realm 双用途守卫:格式 + 白名单(写读双路径同口径,B08 修复) */
+/** realm 双用途守卫:格式 + 白名单(写读双路径同口径) */
 export function guardRealm(realm: string, guards: ValidationGuards): string {
   if (!VOCAB_RE.test(realm)) {
     throw identityErrors.business('invalid_input', { field: 'realm', pattern: VOCAB_RE.source });

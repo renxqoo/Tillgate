@@ -1,6 +1,6 @@
 /**
- * 账号能力错误目录(DESIGN §4):码的唯一登记处,随包分发;face 装配期合成。
- * status 映射归 app face(category 默认 + 按码覆盖,如 invitation_expired 在 v1 是 410)。
+ * 账号能力错误目录:码的唯一登记处,随包分发;face 装配期合成。
+ * status 映射归 app face(category 默认 + 按码覆盖,如 invitation_expired 是 410)。
  */
 import { defineErrorCatalog } from '@tillgate/errors';
 

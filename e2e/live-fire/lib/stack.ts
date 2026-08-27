@@ -53,7 +53,11 @@ function spawn(name: string, args: string[], cwd: string, envOverride: Record<st
 function bunApp(name: string, appDir: string, envOverride: Record<string, string>) {
   // 127.0.0.1 显式 IPv4:localhost 在 macOS 下 DNS/IPv6 双栈尝试会把池的新建
   // 连接拖到秒级(高并发建连风暴时打满 connectionTimeout)——经典坑,直连环回
-  const dbUrl = process.env.DATABASE_URL?.replace(/\/\/([^:@/]+):([^@/]*)@localhost:/, (m, u, p) => `//${u}:${p}@127.0.0.1:`) ?? process.env.DATABASE_URL;
+  const dbUrl =
+    process.env.DATABASE_URL?.replace(
+      /\/\/([^:@/]+):([^@/]*)@localhost:/,
+      (m, u, p) => `//${u}:${p}@127.0.0.1:`,
+    ) ?? process.env.DATABASE_URL;
   spawn(name, ['bun', 'dist/index.js'], join(ROOT, appDir), {
     ...(dbUrl != null ? { DATABASE_URL: dbUrl } : {}),
     ...envOverride,
@@ -84,7 +88,8 @@ function purgeSettlementQueue() {
     }
   })();
   Bun.spawnSync([
-    'bash', '-c',
+    'bash',
+    '-c',
     `redis-cli -a ${pass} --scan --pattern '{bull}:settlement*' 2>/dev/null | xargs -r redis-cli -a ${pass} del >/dev/null 2>&1`,
   ]);
 }
@@ -98,7 +103,11 @@ export async function startStack() {
     '-c',
     `for p in \$(pgrep -f 'src/index.ts'); do d=\$(lsof -p \$p 2>/dev/null | awk '/cwd/{print \$NF}'); case \$d in ${ROOT}/apps/*) echo \$p;; esac; done`,
   ]);
-  const pids = existing.stdout.toString().trim().split('\n').filter((p) => p !== '' && p !== String(process.pid));
+  const pids = existing.stdout
+    .toString()
+    .trim()
+    .split('\n')
+    .filter((p) => p !== '' && p !== String(process.pid));
   for (const pid of pids) {
     try {
       process.kill(Number(pid), 'SIGKILL');
@@ -107,30 +116,30 @@ export async function startStack() {
   }
 
   spawn('mock-llm', ['bun', join(ROOT, 'e2e/live-fire/mock-llm.ts'), String(PORTS.mock)], ROOT, {});
-  spawn('smtp-sink', ['bun', join(ROOT, 'e2e/live-fire/smtp-sink.ts'), String(PORTS.smtp)], ROOT, {});
-
   spawn(
-    'gateway-bun',
-    ['bun', 'dist/index.js'],
-    join(ROOT, 'apps/gateway'),
-    {
-      ...(process.env.DATABASE_URL?.includes('localhost')
-        ? { DATABASE_URL: process.env.DATABASE_URL.replace('@localhost:', '@127.0.0.1:') }
-        : {}),
-      GATEWAY_PORT: String(PORTS.gw),
-      GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS: '2500',
-      GATEWAY_UPSTREAM_DEADLINE_MS: '20000',
-      AUTH_KEY_FAILURE_THRESHOLD: '1000',
-      AUTH_IP_FAILURE_LIMIT: '10000',
-      ADMISSION_MAX_PENDING: '10000',
-      ADMISSION_MAX_OLDEST_MS: '120000',
-      BILLING_AUTHORIZATION_TTL_MS: '15000',
-      OTEL_TRACES_MODE: 'off',
-      // bun#38163/#38231 家族 workaround:Bun SQL 池「检出排队」会停摆在途事务
-      // (F-6)——池 ≥ 峰值并发即无排队,200 并发实测 200/200@779ms。
-      DB_POOL_MAX: '210',
-    },
+    'smtp-sink',
+    ['bun', join(ROOT, 'e2e/live-fire/smtp-sink.ts'), String(PORTS.smtp)],
+    ROOT,
+    {},
   );
+
+  spawn('gateway-bun', ['bun', 'dist/index.js'], join(ROOT, 'apps/gateway'), {
+    ...(process.env.DATABASE_URL?.includes('localhost')
+      ? { DATABASE_URL: process.env.DATABASE_URL.replace('@localhost:', '@127.0.0.1:') }
+      : {}),
+    GATEWAY_PORT: String(PORTS.gw),
+    GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS: '2500',
+    GATEWAY_UPSTREAM_DEADLINE_MS: '20000',
+    AUTH_KEY_FAILURE_THRESHOLD: '1000',
+    AUTH_IP_FAILURE_LIMIT: '10000',
+    ADMISSION_MAX_PENDING: '10000',
+    ADMISSION_MAX_OLDEST_MS: '120000',
+    BILLING_AUTHORIZATION_TTL_MS: '15000',
+    OTEL_TRACES_MODE: 'off',
+    // bun#38163/#38231 家族 workaround:Bun SQL 池「检出排队」会停摆在途事务
+    // (F-6)——池 ≥ 峰值并发即无排队,200 并发实测 200/200@779ms。
+    DB_POOL_MAX: '210',
+  });
   bunApp('client-api', 'apps/client-api', {
     CLIENT_API_PORT: String(PORTS.client),
     EMAIL_CODE_REQUIRED: 'off',

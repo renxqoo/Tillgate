@@ -1,6 +1,6 @@
 /**
- * Key 字段域解析(create/patch/rotate/admin-patch 共用,D 类收敛;
- * v1 路由 zod 的领域化形态——拒绝即抛 key_patch_invalid,事实进 context)。
+ * Key 字段域解析(create/patch/rotate/admin-patch 共用)。
+ * 拒绝即抛 key_patch_invalid,事实进 context。
  */
 import { AccountsErrors } from '../domain/errors.js';
 import { clampOptionalText, normalizeName } from '../domain/fields.js';

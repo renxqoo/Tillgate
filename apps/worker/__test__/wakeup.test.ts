@@ -13,21 +13,22 @@ function fakeListen() {
     emit(payload: string): void;
     unlisten: ReturnType<typeof vi.fn>;
   }> = [];
-  const listen = vi.fn(
-    (channel: string, onMessage: (payload: string) => void) => {
-      const sub = {
-        channel,
-        emit: onMessage,
-        unlisten: vi.fn(async () => {}),
-      };
-      subscriptions.push(sub);
-      return Promise.resolve(sub as unknown as WakeSubscription);
-    },
-  );
+  const listen = vi.fn((channel: string, onMessage: (payload: string) => void) => {
+    const sub = {
+      channel,
+      emit: onMessage,
+      unlisten: vi.fn(async () => {}),
+    };
+    subscriptions.push(sub);
+    return Promise.resolve(sub as unknown as WakeSubscription);
+  });
   return { listen, subscriptions };
 }
 
-const QUIET = (ms: number) => new Promise((resolve) => { setTimeout(resolve, ms); });
+const QUIET = (ms: number) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 const UUID = '0b9f6c2e-8d1a-4c3b-9e2f-1a2b3c4d5e6f';
 
 describe('sql.listen 消费端（BullMQ 入队形态）', () => {

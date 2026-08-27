@@ -1,5 +1,5 @@
 /**
- * 并发语义测试(v1 challenge-concurrency.test 内存复演;真实 PG 门禁在
+ * 并发语义测试(内存复演;真实 PG 门禁在
  * postgres.real.test.ts 复验):单赢家 CAS、attempts 不越界、cooldown=0 并发替换、
  * 冷却期并发单赢家、异目标互不干扰。
  */

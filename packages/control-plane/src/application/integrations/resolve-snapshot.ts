@@ -1,10 +1,10 @@
 /**
- * 行集 → 运行时快照（DESIGN §5 D4）：解密 secret、按完整性/开关归一为消费面形状。
+ * 行集 → 运行时快照：解密 secret、按完整性/开关归一为消费面形状。
  * 纯依赖注入（cipher/now），reader 与测试共用；掩码管理面（list）不走这里。
  *
  * 语义要点：
  * - config 在 configured（必填齐全）时非 null——**与 enabled 无关**（支付「停用不停
- *   验签」：回调面按 config 工作，下单面按 effective 工作，DESIGN §5 D6）；
+ *   验签」：回调面按 config 工作，下单面按 effective 工作）；
  * - effective = enabled && configured（OAuth provider 额外要求 oauth.base 生效）；
  * - required 字段解密失败 → 整行 config 降级 null（单字段脏值不外泄半成品凭据）。
  */
@@ -223,7 +223,7 @@ function resolveStripe(
   };
 }
 
-/** 双读窗密钥序列：[当前, 窗口内旧值]（DESIGN §5 D6——先新后旧） */
+/** 双读窗密钥序列：[当前, 窗口内旧值]（先新后旧） */
 function verifyKeysOf(
   deps: ResolveDeps,
   row: IntegrationSettingsRow,

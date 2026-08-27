@@ -1,6 +1,6 @@
 /**
- * http 自有错误目录（http.* 命名空间）——本包机制件的唯一抛出口（ADR-0001 D1、DESIGN §3）。
- * 只登记有机制抛点的边界码（铁律 4：无抛点不登记）；业务码归能力包目录，
+ * http 自有错误目录（http.* 命名空间）——本包机制件的唯一抛出口。
+ * 只登记有机制抛点的边界码（无抛点不登记）；业务码归能力包目录，
  * 由 app face 装配期合成全量目录（composeErrorCatalogs）。
  */
 import { defineErrorCatalog } from '@tillgate/errors';
@@ -66,7 +66,7 @@ export const HttpErrors = defineErrorCatalog('http', {
     zh: '数据库并发预算排队超时，请稍后重试',
   },
 
-  // ── PG SQLSTATE 边界翻译族（ADR-0002：翻译表归 http，探测函数由 db 注入）──
+  // ── PG SQLSTATE 边界翻译族（翻译表归 http，探测函数由 db 注入）──
   pg_unique_violation: {
     category: 'conflict',
     message: 'Record already exists (unique constraint conflict)',

@@ -49,7 +49,7 @@ const allowedDevOrigins = [
 const nextConfig = {
   output: 'standalone',
   allowedDevOrigins,
-  // workspace 源码包由 Next 直接编译（ui/api-client exports 指 src；v1 同款配方）
+  // workspace 源码包由 Next 直接编译（ui/api-client exports 指 src）
   transpilePackages: ['@tillgate/ui', '@tillgate/api-client'],
   logging: {
     // dev 下框架会把 Server Action 入参原样打进终端（登录表单的口令会明文出现，框架无脱敏），
@@ -59,7 +59,7 @@ const nextConfig = {
   // 操练场 BYOK 直连网关（同域推理端点）：生产由 nginx 分流（请求不达 Next，
   // 此规则不生效）；dev 无 nginx 时兜底转发本地网关。
   // ！！只转发推理端点——/v1/pricing 等属 client-api（server 侧走 CLIENT_API_BASE
-  // 直连），通配整个 /v1 会劫持它们且网关未启动时全部 500（v1 曾发生，不重演）
+  // 直连），通配整个 /v1 会劫持它们且网关未启动时全部 500
   async rewrites() {
     const gateway = process.env.GATEWAY_BASE ?? 'http://localhost:8080';
     return [

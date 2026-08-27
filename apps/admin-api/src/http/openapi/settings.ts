@@ -1,6 +1,6 @@
 /**
  * 运营系统设置 OpenAPI registry（routes/settings.ts 契约面）：
- * 计费时区 + 第三方集成动态配置（docs/integration-settings/DESIGN.md §4）。
+ * 计费时区 + 第三方集成动态配置。
  */
 import * as z from 'zod';
 import { settingsContracts } from '../contracts/settings';

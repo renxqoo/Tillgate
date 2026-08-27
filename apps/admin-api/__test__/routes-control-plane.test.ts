@@ -5,8 +5,7 @@ import { AdminErrors } from '../src/http/error-face';
 import { authHeader, fakeDeps } from './helpers';
 
 /**
- * 控制面域契约（v1 providers/channels/channel-funds/models/rate-cards/fx/catalog
- * 测试行为规格子集）:CRUD 状态码 / 词表 4xx 命名空间码 / 列表白名单 / 幂等键透传。
+ * 控制面域契约:CRUD 状态码 / 词表 4xx 命名空间码 / 列表白名单 / 幂等键透传。
  */
 
 const providerRow = {
@@ -553,7 +552,7 @@ describe('models + rate-cards + fx + catalog', () => {
     });
     const sources = await app.request('/v1/model-catalog/sources', { headers: authHeader() });
     expect(await sources.json()).toMatchObject({ sources: [{ id: 'models-dev' }] });
-    // P6/D1:词表端点 = 装配注入面原样透传(fakeDeps 默认词表;真源封闭性锁在 ai 包)
+    // 词表端点 = 装配注入面原样透传(fakeDeps 默认词表;真源封闭性锁在 ai 包)
     const words = await app.request('/v1/vendor-catalog', { headers: authHeader() });
     expect(words.status).toBe(200);
     expect(await words.json()).toEqual({

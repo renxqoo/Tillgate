@@ -1,11 +1,11 @@
 /**
- * worker 全链 e2e（v1 gateway e2e-worker ⑯ 搬迁——P7;断言语义逐条随迁）：
+ * worker 全链 e2e：
  *   ⑯a 结算环：chat → settlement_pending → worker settle runner 结算 →
  *        usage_logs/钱包腿/渠道预算扣减三处落账（数据接收正确性）
  *   ⑯b 生成环：mock MiniMax 视频上游（提交→running×2→Success→file 换 url）
  *        → 网关提交 201 → worker generation runner 轮询终态 → 结算实扣
  *   ⑯c 停机语义：scheduler.stop() 后不再消费（新 pending 停留）
- * v1→v2 驱动差异（kit 头在案）：定时器自驱 → runners 直驱;⑯c 用真 scheduler
+ * 驱动形态（装置见 kit 头）：结算/生成环 runners 直驱;⑯c 用真 scheduler
  * 先证「定时器活着会消费」再 stop 证「停机不再消费」。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -219,8 +219,8 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
     expect(submit.status).toBe(201);
     const submitted = (await submit.json()) as { id: string; status: string };
     expect(submitted.status).toBe('queued');
-    // v1 断言「响应 task_id = 上游任务号」——v2 提交响应不含上游号（new-api 形状只有内部 id）,
-    // 落点改为 DB 行的 upstream_task_id（同一事实:提交真实到达上游并被登记）
+    // 提交响应不含上游任务号（new-api 形状只有内部 id）,上游号落点为 DB 行的
+    // upstream_task_id（同一事实:提交真实到达上游并被登记）
     const taskRow = await world.db.execute<{ upstream_task_id: string; status: string }>(
       sql`select upstream_task_id, status from generation_tasks where id = ${submitted.id}`,
     );
@@ -245,8 +245,8 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
     const finalTask = defined(task[0], 'final task row');
     expect((finalTask.result as { url?: string }).url).toBe('https://cdn.mock/video.mp4');
 
-    // 结算：6s × 0.5 = 3 元实扣（v2 提交响应 id = taskId,billing request_id 与其
-    // 分离——经任务行 join 定位账单;v1 两者同值直接查,语义同为「该任务的账单」）
+    // 结算：6s × 0.5 = 3 元实扣（提交响应 id = taskId,billing request_id 与其
+    // 分离——经任务行 join 定位账单）
     await waitFor(
       async () => {
         await defined(worker.runners.settle, 'runners.settle')();
@@ -296,8 +296,7 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
     expect(res2.status).toBe(200);
     await res2.text();
     await sleep(1_200);
-    // v1 对共享 dev 库保留了「外部活 worker 合法抢领」的 settled 容忍;v2 隔离
-    // schema 无外部竞态——收紧为精确断言「停留不被消费」
+    // 隔离 schema 无外部 worker 竞态——精确断言「停留不被消费」
     expect(await billStatusOf(second.userId)).toBe('settlement_pending');
   }, 60_000);
 });

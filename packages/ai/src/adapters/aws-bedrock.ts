@@ -272,7 +272,7 @@ export class AwsBedrockAdapter implements ProtocolAdapter {
     return claudeResponseToChat(body);
   }
 
-  /** model 参数不参与 claude 族转换：真实模型名从 message_start 提取（v1 同语义） */
+  /** model 参数不参与 claude 族转换：真实模型名从 message_start 提取 */
   translateUpstreamStream(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
     return claudeUpstreamToCanonicalStream(eventstreamToClaudeSse(stream));
   }

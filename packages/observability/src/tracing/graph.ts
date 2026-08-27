@@ -12,7 +12,7 @@ import type { SpanRow } from './types';
  *     (next 边)——流程按「第一步→第二步」叙事展开,而非并列铺开;
  *     相邻 upstream 兄弟之间的边是渠道重试(fallback,虚线动画在展示层)
  *
- * 消费方:管理面 trace 详情(admin-api 服务端组装,G8——前端不直依赖本包)。
+ * 消费方:管理面 trace 详情(admin-api 服务端组装,前端不直依赖本包)。
  */
 
 export type GraphNodeKind = 'http' | 'upstream' | 'stream' | 'billing' | 'settle' | 'generic';

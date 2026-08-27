@@ -23,8 +23,8 @@ export function assertRefKey(guards: WalletGuards, refType: string, refId: strin
 }
 
 /**
- * 包内上层用例共享事务的内部通道（如 U2 计费授权在同一事务内编排钱包动词）。
- * WalletTx 仅在包内流动；root index 不导出其类型与构造途径（DESIGN §2.1）。
+ * 包内上层用例共享事务的内部通道（如计费授权在同一事务内编排钱包动词）。
+ * WalletTx 仅在包内流动；root index 不导出其类型与构造途径。
  */
 export interface TxChannel {
   tx?: WalletTx;

@@ -1,5 +1,5 @@
 /**
- * §5.4 可靠通知边界测试（fake outbox + 内存回滚模拟事务壳）：
+ * 可靠通知边界测试（fake outbox + 内存回滚模拟事务壳）：
  *   ①业务回滚 → 无事件；②入箱抛错 → 业务回滚（余额/状态不变）；
  *   ③同 requestId 并发/重试 → dedupe 后单一事件。
  *
@@ -33,7 +33,7 @@ const nextRequestId = () => {
   return `00000000-0000-4000-8000-${hex}${'0'.repeat(12 - hex.length)}`.slice(0, 36);
 };
 
-/** §5.4 边界测试专用：双 store 深快照 + 异常还原（模拟 PG 整事务回滚） */
+/** 边界测试专用：双 store 深快照 + 异常还原（模拟 PG 整事务回滚） */
 function rollbackableStore(
   world: InMemoryBillingWorld,
   walletMemory: ReturnType<typeof createInMemoryWalletStore>,

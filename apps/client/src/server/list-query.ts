@@ -4,8 +4,8 @@
  * 统一约定（与 client-api 用户面列表契约对应）：
  *   - 分页 ?page=&limit=（出站经 api-client buildListQuery 构造）
  *   - 搜索/筛选保留各自业务参数（q、model、from/to…）
- *   - 排序 ?sort_by=&order=asc|desc（当前用户面 strict 契约不收排序——
- *     G1 缺口；工具保留构造能力，后端扩展后无需改动调用方）
+ *   - 排序 ?sort_by=&order=asc|desc（当前用户面 strict 契约不收排序；
+ *     工具保留构造能力，后端扩展后无需改动调用方）
  * 翻页/排序/筛选全部走 URL 参数（GET 可分享、可刷新），组件无本地状态。
  */
 export type SearchParamsInput = Record<string, string | string[] | undefined>;

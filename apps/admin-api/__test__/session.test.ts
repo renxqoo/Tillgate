@@ -3,7 +3,7 @@ import { createAdminApp } from '../src/app';
 import { fakeDeps } from './helpers';
 
 /**
- * 会话中间件契约（v1 security.test.ts 行为规格子集）:Bearer 缺失/无效 → 401
+ * 会话中间件契约:Bearer 缺失/无效 → 401
  * 统一口径(不区分原因);有效 admin realm 会话放行;探针豁免。
  */
 

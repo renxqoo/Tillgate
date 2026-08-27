@@ -1,8 +1,8 @@
 /**
- * 审计词表:audit_logs 的写入原语与通用查询形态(§3.4:存储/查询/保留归本包;
- * audit action 与 payload 语义归各业务能力,经其自有 port 发出,P5 由 apps assembly 桥接本包原语)。
+ * 审计词表:audit_logs 的写入原语与通用查询形态(存储/查询/保留归本包;
+ * audit action 与 payload 语义归各业务能力,经其自有 port 发出,由 apps assembly 桥接本包原语)。
  *
- * 写入双语义(G1):
+ * 写入双语义:
  *   - writeAudit:同事务参与——失败随业务事务回滚,不吞(资金/安全/权限审计);
  *   - createBestEffortAuditSink(adapters):提交后旁路——不抛、失败记日志(低价值运营审计)。
  */

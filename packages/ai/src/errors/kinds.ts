@@ -1,11 +1,11 @@
 /**
- * 错误归一单一真相（IMPLEMENTATION.md §3.2）：
- *   - ErrorKind 封闭词表——adapter 只翻译不发明，新增 kind 走 ADR；
+ * 错误归一单一真相：
+ *   - ErrorKind 封闭词表——adapter 只翻译不发明；
  *   - 机制位（retryable/circuitTrip/deadCredential）由派生表单点派生，
  *     构造入口不收机制位参数——结构上杜绝「kind 与机制位自相矛盾」。
  */
 
-/** 上游传输域错误语义分类（封闭词表；与仓库级 errors 根契约的映射见 ADR） */
+/** 上游传输域错误语义分类（封闭词表） */
 export type ErrorKind =
   // ---- 传输类（http-client 生成，无厂商参与）----
   | 'network' // 连接/DNS/断流

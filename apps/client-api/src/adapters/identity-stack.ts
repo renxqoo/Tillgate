@@ -1,9 +1,9 @@
 /**
- * identity 装配栈（从 assembly.ts 拆出——铁律 5 max-lines 收口；装配面桥接件，
- * 仅 assembly.ts 引用）：OAuth 凭证/SMTP 邮件/人机验证全部由集成设置 reader
- * 动态驱动（docs/integration-settings/DESIGN.md §5 D7）——快照 getter 喂 identity、
+ * identity 装配栈（装配面桥接件，仅 assembly.ts 引用）：
+ * OAuth 凭证/SMTP 邮件/人机验证全部由集成设置 reader
+ * 动态驱动——快照 getter 喂 identity、
  * 动态 mailer/captcha 包装，emailCodeRequired 的 auto 口径每请求求值。
- * apiBase/frontendUrl 为装配期 boot 解析（DESIGN D9 收窄：回调白名单是装配期契约）。
+ * apiBase/frontendUrl 为装配期 boot 解析（回调白名单是装配期契约）。
  */
 import type { Db, TxRetryPolicy } from '@tillgate/db';
 import type { IntegrationSettingsReader } from '@tillgate/control-plane';
@@ -37,7 +37,7 @@ export interface IdentityStack {
   readonly mailer: Mailer | null;
   readonly captcha: Captcha;
   readonly resetTokens: ResetTokenStore;
-  /** auto 口径每请求求值：on→true / off→false / auto→SMTP 生效（v1 语义动态化） */
+  /** auto 口径每请求求值：on→true / off→false / auto→SMTP 生效 */
   readonly emailCodeRequired: () => boolean;
   /** 最新快照 effective 的 provider 键集（providers 端点/路由词表共用） */
   readonly oauthProviderNames: () => readonly string[];
@@ -45,7 +45,7 @@ export interface IdentityStack {
   readonly frontendUrl: string;
 }
 
-// eslint-disable-next-line max-lines-per-function -- identity 装配根:oauth/mailer/captcha 动态化线性组装,分支即词表与开关判空(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- identity 装配根:oauth/mailer/captcha 动态化线性组装,分支即词表与开关判空
 export function createIdentityStack(args: {
   config: ClientApiConfig;
   db: Db;
@@ -54,7 +54,7 @@ export function createIdentityStack(args: {
   logger: Logger;
   clock: () => Date;
   reader: IntegrationSettingsReader;
-  /** 装配期 boot 解析的 OAuth 基地址（DESIGN D9：变更需重启） */
+  /** 装配期 boot 解析的 OAuth 基地址（变更需重启） */
   apiBase: string;
   frontendUrl: string;
   mailerOverride?: Mailer | null;
@@ -62,7 +62,7 @@ export function createIdentityStack(args: {
   const { config, db, redis, txRetry, logger, clock, reader, apiBase } = args;
 
   // OAuth 凭证快照 getter（identity 同步契约→latest 面，stale-OK + 后台刷新）：
-  // DB 凭据 + env 端点覆盖合并（ENDPOINTS_JSON 保持 env 专属——DESIGN §5 D10）
+  // DB 凭据 + env 端点覆盖合并（ENDPOINTS_JSON 保持 env 专属）
   const oauthProviders = (): Record<string, OAuthProviderCredentials> => {
     const snapshot = reader.latest();
     const map: Record<string, OAuthProviderCredentials> = {};
@@ -102,8 +102,8 @@ export function createIdentityStack(args: {
   const emailCodeRequired = (): boolean => {
     if (config.EMAIL_CODE_REQUIRED === 'on') return true;
     if (config.EMAIL_CODE_REQUIRED === 'off') return false;
-    // auto（v1 口径逐字对应——review 修复 B-3）：覆盖缝注入时以 mailer 在场为准
-    // （main 基线 emailCodeRequired = mailer != null），缺省读快照 SMTP 生效
+    // auto：覆盖缝注入时以 mailer 在场为准
+    // （emailCodeRequired = mailer != null），缺省读快照 SMTP 生效
     if (args.mailerOverride !== undefined) return args.mailerOverride != null;
     return reader.latest().smtp.effective;
   };

@@ -1,9 +1,9 @@
 /**
- * 周期对账 job（v1 tasks/reconcile.ts 语义平移）：
- * 会话级 advisory try-lock（专用连接，锁键保留 v1——重叠部署互斥）→
+ * 周期对账 job：
+ * 会话级 advisory try-lock（专用连接，重叠部署互斥）→
  * verifyInvariants（只读哨兵）→ violations 落 reconcile_discrepancies 表
  * （billing 用例）+ 告警入箱（notifications enqueue，小时级 dedupe——
- * fire-and-forget，告警不反杀对账）。哨兵自身异常只 warn（不算差异，v1 同）。
+ * fire-and-forget，告警不反杀对账）。哨兵自身异常只 warn（不算差异）。
  */
 import type { ReconcileReport, SettlementApi } from '@tillgate/billing';
 
@@ -37,7 +37,7 @@ export function createReconcileJob(deps: {
           return { ran: true as const, violations: 0, inserted: 0, alerted: false };
         }
         const inserted = await deps.recordDiscrepancies(report);
-        // 小时级去重（v1 dedupeKey 口径）：同一小时内的重复告警由唯一键吸收
+        // 小时级去重：同一小时内的重复告警由唯一键吸收
         const hourKey = deps.clock().toISOString().slice(0, 13);
         let alerted = false;
         try {
@@ -64,7 +64,7 @@ export function createReconcileJob(deps: {
       }
       return outcome;
     } catch (error) {
-      // 哨兵失败不算差异（v1 同口径）：记 warn，下一轮自愈
+      // 哨兵失败不算差异：记 warn，下一轮自愈
       deps.logger.warn({ err: String(error) }, 'reconcile failed');
       return { ran: false, violations: 0, inserted: 0, alerted: false };
     }

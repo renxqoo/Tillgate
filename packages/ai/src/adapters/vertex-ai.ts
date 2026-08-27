@@ -165,8 +165,8 @@ export class VertexAiAdapter implements ProtocolAdapter {
   }
 
   extractUsage(res: unknown): Usage | null {
-    // B4 修复：管线先 translateResponseBody，翻译后 usage 是 OpenAI 形——
-    // 原生形优先、OpenAI 形兜底（与 gemini.ts 同模式；v1 漏抄致恒 null 退估算计费）
+    // 管线先 translateResponseBody，翻译后 usage 是 OpenAI 形——
+    // 原生形优先、OpenAI 形兜底（与 gemini.ts 同模式）
     const j = res as Record<string, unknown> | null;
     const u = geminiUsageToUsage(j?.usageMetadata);
     if (u) {

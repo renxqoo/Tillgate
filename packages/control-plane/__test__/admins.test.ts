@@ -1,8 +1,8 @@
 /**
- * 管理员资料用例族（G2）契约测试：按 id/邮箱查（命中/未命中/邮箱归一）、
+ * 管理员资料用例族契约测试：按 id/邮箱查（命中/未命中/邮箱归一）、
  * 最近登录推进、2FA 开关翻转、RBAC 管理面三动词（列表/建行/更新——词表守卫、
  * 重名 23505 翻译、未命中 404）——经内存 store 替身（SQL 行为等价由 postgres.real 承担）。
- * 投影封闭性：AdminRecord 不含密码/2FA 密钥列（identity 七表单一真相,G1/G2）。
+ * 投影封闭性：AdminRecord 不含密码/2FA 密钥列（identity 七表单一真相）。
  */
 import { describe, expect, it } from 'vitest';
 import { defined } from './defined';

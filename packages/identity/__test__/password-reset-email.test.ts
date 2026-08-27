@@ -1,5 +1,5 @@
 /**
- * 找回密码邮件渲染双语锁定（覆盖率门禁补测，铁律 16 只补测试）：
+ * 找回密码邮件渲染双语锁定：
  * 中英两 locale 的 subject/text/html 关键片段与安全口径（链接承载、无凭据旁泄）逐项断言。
  */
 import { describe, expect, it } from 'vitest';

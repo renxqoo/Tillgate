@@ -1,7 +1,7 @@
 /**
- * 邀请成员(v1 org.service invite):owner-only → 有效订阅 → 席位闸 → 待接受上限
+ * 邀请成员:owner-only → 有效订阅 → 席位闸 → 待接受上限
  * (min(max(剩余,1)×factor, cap),显式注入)→ 建 token(32hex,响应一次下发)。
- * 检查与插入非事务(竞态由 accept 端权威复检兜底,v1 语义);TTL 落库用存储时钟。
+ * 检查与插入非事务(竞态由 accept 端权威复检兜底);TTL 落库用存储时钟。
  */
 import { AccountsErrors } from '../domain/errors.js';
 import { normalizeValidEmail } from '../domain/fields.js';

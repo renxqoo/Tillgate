@@ -1,5 +1,5 @@
 /**
- * 内存版 WalletStore stand-in（§5.6 类别 2「行为等价 stand-in」）：
+ * 内存版 WalletStore stand-in（行为等价替身）：
  * 供 application 动词在无 PG 环境下的契约测试（默认门禁）；真实 PostgreSQL 语义
  * （行锁并发、触发器不变量、SQLSTATE）由 adapters/postgres + *.real.test.ts 验证。
  *
@@ -74,12 +74,12 @@ export interface InMemoryWalletStore {
   suppressNextFindTransaction(): void;
   /** 跳过一次冻结单快速路径查询 */
   suppressNextFindAuthorization(): void;
-  /** 模拟风控冻结（活路径无 freeze 动词，状态由管理面置位——B9/MIGRATION-U1） */
+  /** 模拟风控冻结（活路径无 freeze 动词，状态由管理面置位） */
   freezeUserAccount(userId: number, currency: string): void;
   /** 对账测试专用：绕过动词直改余额制造漂移（运维事故模拟） */
   defaceBalanceForTest(userId: number, currency: string, balance: string): void;
   /**
-   * 事务回滚模拟（§5.4 边界测试）：四集合深快照。与 BillingStore 快照配对使用，
+   * 事务回滚模拟（边界测试）：四集合深快照。与 BillingStore 快照配对使用，
    * 由测试的 rollbackable 事务壳在异常时一并还原——模拟 PG 的整事务回滚
    * （内存 stand-in 本身无回滚语义，PG 语义在 *.real.test.ts 验证）。
    */
@@ -364,7 +364,11 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
         if (available.lt(new Decimal(input.amount))) return null;
       }
       account.inFlight = new Decimal(account.inFlight).plus(new Decimal(input.amount)).toString();
-      return { balance: account.balance, creditLimit: account.creditLimit, inFlight: account.inFlight };
+      return {
+        balance: account.balance,
+        creditLimit: account.creditLimit,
+        inFlight: account.inFlight,
+      };
     },
 
     setInFlight(_conn, accountId, value) {

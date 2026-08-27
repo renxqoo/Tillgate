@@ -1,6 +1,5 @@
 /**
- * 出账口径守卫行为规格（迁移自旧仓 domain/wallet/__tests__/posting.test.ts 敞口部分；
- * 错误断言从类 instanceof 换为目录码——D5 收敛）。
+ * 出账口径守卫行为规格（错误断言按目录码判定）。
  */
 import { describe, expect, it } from 'vitest';
 import { isBusinessError } from '@tillgate/errors';

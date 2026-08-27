@@ -1,7 +1,7 @@
 /**
- * 套餐路由（P1;v1 routes/plans.ts 平移）：列表/创建/补丁（kind 不可变——
+ * 套餐路由：列表/创建/补丁（kind 不可变——
  * strictObject 拒未知键）/删除（含历史订阅引用守卫 409 billing.plan_in_use）。
- * plans 域审计后置（v1 recordAudit 同为提交后旁路——writeAudit 装配闭包）。
+ * plans 域审计后置（提交后旁路——writeAudit 装配闭包）。
  */
 import { Hono } from 'hono';
 import type { PlansApi } from '@tillgate/billing';
@@ -13,11 +13,11 @@ import type { PostAudit } from './redeem';
 
 export interface PlansRoutesDeps {
   readonly plans: PlansApi;
-  /** 后置审计闭包（v1 recordAudit 语义——提交后旁路,失败不阻断） */
+  /** 后置审计闭包（提交后旁路,失败不阻断） */
   readonly postAudit: PostAudit;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function plansRoutes(deps: PlansRoutesDeps) {
   const app = new Hono<SessionEnv>();
 

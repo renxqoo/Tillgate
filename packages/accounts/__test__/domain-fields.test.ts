@@ -1,6 +1,6 @@
 /**
- * 字段域与限额域:表驱动边界矩阵(§10.1-4)。
- * v1 语义锚:金额结构性拒绝科学计数法/22 位整数/负数/NaN/超 1e12 上界。
+ * 字段域与限额域:表驱动边界矩阵。
+ * 金额结构性拒绝科学计数法/22 位整数/负数/NaN/超 1e12 上界。
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -23,7 +23,7 @@ import {
   clampDisplayName,
 } from '../src/domain/user.js';
 
-const UPPER = '1000000000000'; // v1 等价上界
+const UPPER = '1000000000000'; // 金额上界 1e12
 
 describe('email 规范化与校验', () => {
   it('trim + 小写(v1 大小写归一口径)', () => {

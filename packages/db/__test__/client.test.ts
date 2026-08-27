@@ -1,5 +1,5 @@
 /**
- * 连接与生命周期(IMPLEMENTATION.md §4):池参数逐字段透传、无默认、closeDb 收口。
+ * 连接与生命周期:池参数逐字段透传、无默认、closeDb 收口。
  * bun-native:Bun SQL 构造惰性(不触网),参数经 $client.options 回读断言;
  * ping 需真实连接,由 __test__/pg.real.test.ts 覆盖。
  */

@@ -34,7 +34,7 @@ export interface MfaStore {
 
   /**
    * 确认注册(CAS 仅挂起可置 confirmed + lastUsedStep=step)+ 恢复码整组重签
-   * (旧组全作废;onConflictDoNothing 阻断同批哈希碰撞,B19)。契约:调用方持锁。
+   * (旧组全作废;onConflictDoNothing 阻断同批哈希碰撞)。契约:调用方持锁。
    */
   confirmEnrollment(
     db: DbLike,

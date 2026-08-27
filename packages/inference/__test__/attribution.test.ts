@@ -8,7 +8,7 @@ import {
 
 describe('domain/usage/attribution：估算归属词表与流式归属单一真相', () => {
   it('词表封闭性：用户侧取消两态（ai TerminationReason 子集）+ 完成缺 usage + 部分交付细分', () => {
-    // B14 词表对齐：v1 的 'aborted' 是旧事件名残留，ai TerminationReason 词表无此值
+    // 词表对齐：'aborted' 是旧事件名残留，ai TerminationReason 词表无此值
     expect([...ESTIMATE_ATTRIBUTIONS]).toEqual([
       'client_disconnect',
       'request_cancelled',

@@ -1,5 +1,5 @@
 /**
- * 订阅链路的账户侧协作 port（总纲 §5.2 跨能力事实）：用户存在性/企业标记（users）、
+ * 订阅链路的账户侧协作 port（跨能力事实）：用户存在性/企业标记（users）、
  * 团队套餐组织创建（organizations）、凭证改绑（api_keys.subscription_id）。
  * 生产由 app assembly 桥接 accounts 能力或由本包 postgres adapter 直读实现；
  * billing 只消费这些事实，不拥有 accounts 语义。

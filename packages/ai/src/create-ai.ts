@@ -1,8 +1,8 @@
 /**
- * createAi 装配壳（v2 平参数 API）：
+ * createAi 装配壳（平参数 API）：
  *   chat(channel, request, opts) / chatStream / use / subscribe / probe / tasks
  * 机制链：参数抹平 → 单次尝试体（withRetry 包裹）→ relay 透传 + 事件观察面。
- * 单渠道内重试；换渠道候选循环是 inference 的职责（§3.6 零运维状态）。
+ * 单渠道内重试；换渠道候选循环是 inference 的职责。
  * 尝试执行体（chat/stream）与任务操作组住在 pipeline/attempt-*.ts、pipeline/tasks.ts。
  */
 import type {
@@ -61,7 +61,7 @@ const defaultAdapters: ProtocolAdapter[] = [
 
 export const SUPPORTED_PROTOCOLS: readonly string[] = defaultAdapters.map((a) => a.protocol);
 
-// eslint-disable-next-line max-lines-per-function -- 装配根（create-ai 拆出 attempt-chat/attempt-stream/tasks/stream-report 后的剩余装配 + 两个 API 动词），拆分需跨闭包线程化十余项装配状态，存量棘轮（铁律 22⑥）
+// eslint-disable-next-line max-lines-per-function -- 装配根（create-ai 拆出 attempt-chat/attempt-stream/tasks/stream-report 后的剩余装配 + 两个 API 动词），拆分需跨闭包线程化十余项装配状态
 export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?: AiOptions): Ai {
   const cfg: AiDefaults = aiDefaultsSchema.parse(defaults ?? {});
   const log = deps.logger ?? { info: (): void => {}, warn: (): void => {}, error: (): void => {} };
@@ -81,7 +81,7 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
     adapters.get(channel.protocol) ??
     unsupportedProtocolError(channel.protocol, [...adapters.keys()]);
 
-  // eslint-disable-next-line complexity -- 请求装配校验（渠道/模型/ctx 平铺），分支为显式校验矩阵，存量棘轮（铁律 22⑥）
+  // eslint-disable-next-line complexity -- 请求装配校验（渠道/模型/ctx 平铺），分支为显式校验矩阵
   const assembleCtx = (
     channel: ChannelDesc,
     request: unknown,
@@ -159,8 +159,8 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
       typeof body === 'object' && body !== null && !Array.isArray(body)
         ? (body as Record<string, unknown>)
         : null;
-    // B-F1 修复：裸 FormData 请求（normalizeRequest 的直通契约）此前落入
-    // finalizeRequestBody 的 {...form} 展开——multipart 字节被静默毁成 {model}。
+    // 裸 FormData 请求（normalizeRequest 的直通契约）不能落入
+    // finalizeRequestBody 的 {...form} 展开——multipart 字节会被静默毁成 {model}；
     // FormData 终态与 upstreamForm 包装形同语义：原样透传，仅重写 model 字段。
     const bareForm =
       typeof FormData !== 'undefined' && body instanceof FormData ? (body as FormData) : null;
@@ -191,7 +191,7 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
   const ai: Ai = {
     SUPPORTED_PROTOCOLS,
 
-    // eslint-disable-next-line max-lines-per-function -- API 动词：装配 → 重试编排 → 结果归一的直线流程，拆分需传递十余项闭包装配态，存量棘轮（铁律 22⑥）
+    // eslint-disable-next-line max-lines-per-function -- API 动词：装配 → 重试编排 → 结果归一的直线流程，拆分需传递十余项闭包装配态
     async chat(channel, request, opts): Promise<ChatResult> {
       const start = Date.now();
       const assembled = assembleCtx(channel, request, opts);
@@ -269,8 +269,8 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
           attempt: attempts,
         });
       } else emit({ type: 'failed', requestId: ctx.requestId, channelKey: key, error });
-      // 出站错误脱敏（§3.6 例外 3 内容层）：返回值的 message 脱敏、rawBody 保真——
-      // 事件面（上方 emit）与日志携带原始错误，细节层只进日志关联 requestId
+      // 出站错误脱敏：返回值的 message 脱敏、rawBody 保真——
+      // 事件面（上方 emit）与日志携带原始错误，原始细节只进日志并关联 requestId
       const outbound = new UE({
         kind: error.kind,
         message: sanitizeUpstreamDetail(error.message, {
@@ -287,7 +287,7 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
       return { ok: false, error: outbound, durationMs, empty };
     },
 
-    // eslint-disable-next-line max-lines-per-function -- API 动词：装配 → 首帧探测重试 → relay 交接的直线流程，拆分需传递十余项闭包装配态，存量棘轮（铁律 22⑥）
+    // eslint-disable-next-line max-lines-per-function -- API 动词：装配 → 首帧探测重试 → relay 交接的直线流程，拆分需传递十余项闭包装配态
     async chatStream(channel, request, opts): Promise<ChatStreamResult> {
       const start = Date.now();
       const assembled = assembleCtx(channel, request, opts);
@@ -295,7 +295,7 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
         providerName: opts?.providerName,
         model: opts?.model,
       });
-      // 出站脱敏闭包（§3.6 例外 3 内容层）：只作用于 C 端错误帧 message；事件面保真
+      // 出站脱敏闭包：只作用于 C 端错误帧 message；事件面保真
       const sanitizeMessage = (message: string): string =>
         sanitizeUpstreamDetail(message, {
           maxLen: cfg.errorSanitize.maxLen,

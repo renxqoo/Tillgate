@@ -1,7 +1,7 @@
 /**
- * 密码用例测试(v1 authenticate.test + passwords-change.test 迁移):
+ * 密码用例测试:
  * 防枚举统一口径、改密正确流(吊销线推进)、旧密错不动、reset 免旧密、
- * B04 回归(锁内验旧密——并发 reset 不被覆盖)。
+ * 锁内验旧密——并发 reset 不被覆盖的回归。
  */
 import { describe, expect, it } from 'vitest';
 import { createTestHarness } from '../src/testing/harness.js';

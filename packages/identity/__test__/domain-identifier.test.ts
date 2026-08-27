@@ -1,6 +1,6 @@
 /**
- * 标识域测试(v1 validation.test 迁移):归一化矩阵、词表白名单、
- * userId/subject 断言、注入片段与控制字符拒绝(v1 security 用例随迁)。
+ * 标识域测试:归一化矩阵、词表白名单、
+ * userId/subject 断言、注入片段与控制字符拒绝。
  */
 import { describe, expect, it } from 'vitest';
 import {

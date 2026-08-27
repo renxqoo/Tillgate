@@ -1,7 +1,7 @@
 /**
- * chat 非流式单次尝试执行体（withRetry 的 fn，从 create-ai 拆出——动词一文件）。
+ * chat 非流式单次尝试执行体（withRetry 的 fn；重试编排在 create-ai）。
  * 只做一次上游 POST 的完整机制：签名 → 传输 → 错误映射 → 响应体/usage 提取。
- * 重试编排（withRetry）仍在 create-ai；换渠道候选循环是 inference 的职责（§3.6）。
+ * 换渠道候选循环是 inference 的职责。
  */
 import type { ChannelDesc, UpstreamError, Usage } from '../types';
 import type { AiDefaults, AiDeps } from '../config';
@@ -44,9 +44,8 @@ function serializeBody(finalBody: unknown): string | undefined {
 }
 
 /**
- * 非流式签名（B-F2 修复）：签名钩子此前仅在 finalBody 已是 string 时触发——
- * JSON 对象体（一切常规路径）永不签名，vertex/bedrock 等签名协议静默裸奔。
- * 先序列化再签（SigV4 需要 payload hash，必须用最终字节串）；FormData 体不签。
+ * 非流式签名：先序列化再签（SigV4 需要 payload hash，必须用最终字节串）；
+ * FormData 体不签。
  */
 async function signChatHeaders(input: {
   adapter: ProtocolAdapter;
@@ -67,7 +66,7 @@ async function signChatHeaders(input: {
 }
 
 /**
- * B-F1 配套：FormData 不带 content-type——multipart boundary 由 fetch 按表单
+ * FormData 不带 content-type——multipart boundary 由 fetch 按表单
  * 边界生成；强设 application/json 会把 multipart 体误标成 JSON（解析侧全毁）。
  */
 function buildRequestHeaders(

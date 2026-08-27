@@ -1,5 +1,5 @@
 /**
- * 建号用例行为规格(MIGRATION §1.1-1/2):
+ * 建号用例行为规格:
  * 本地建号(规范化/兜底显示名/占用冲突)、OAuth find-or-create 幂等与竞态回查。
  */
 import { describe, expect, it } from 'vitest';

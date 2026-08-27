@@ -7,7 +7,7 @@ import {
 } from '../src/domain/routing/switchable';
 
 describe('domain/routing/switchable：ErrorKind 全矩阵（词表封闭性表驱动）', () => {
-  // 可换渠 kind：渠道/凭据/传输问题（v1 词表 + v2 新 kind 裁决）
+  // 可换渠 kind：渠道/凭据/传输问题
   const switchable: string[] = [
     'network',
     'timeout',
@@ -76,7 +76,7 @@ describe('domain/routing/switchable：ErrorKind 全矩阵（词表封闭性表�
   });
 
   it('B13 回归：全渠道熔断/死凭据竭尽归渠道面（no_available_channel 503，非 upstream_failed 502）', () => {
-    // v2 行为改进（v1 同形缺陷）：health.admit 拒绝码 circuit_open/dead_credential
+    // health.admit 拒绝码 circuit_open/dead_credential
     // 是网关侧保护动作（未发出上游请求），全败时不得误归上游故障 502
     expect(isChannelExhausted('circuit_open')).toBe(true);
     expect(isChannelExhausted('dead_credential')).toBe(true);

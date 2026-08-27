@@ -1,6 +1,4 @@
-/**
- * 请求 ID 中间件（v1 三 app 拷贝合一：D1；注释取 gateway 全集——安全语义最详）。
- */
+/** 请求 ID 中间件 */
 import { randomUUID } from 'node:crypto';
 import type { MiddlewareHandler } from 'hono';
 

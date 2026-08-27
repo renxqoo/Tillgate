@@ -27,8 +27,8 @@ describe('health/channel-health：AiEvent 订阅者（§3.6 零运维状态的 i
   });
 
   it('B11 回归（v2 实施期缺陷）：同渠道键下熔断与死凭据状态互不踩踏', async () => {
-    // 初版两台状态机共用同一存储键，BreakerState/DeadCredentialState 两种 JSON 形状
-    // 相互覆盖（v1 以双前缀规避的坑在重写中复现）——机器级键前缀是结构性修复。
+    // 两台状态机若共用同一存储键，BreakerState/DeadCredentialState 两种 JSON 形状
+    // 会相互覆盖——机器级键前缀是结构性修复。
     const store = createMemoryHealthStore();
     const health = createChannelHealth({ store, config });
     const { ai, emit } = fakeAi();
@@ -157,7 +157,7 @@ describe('health/channel-health：AiEvent 订阅者（§3.6 零运维状态的 i
     });
     await flush();
     expect(await health.admit('ks')).toEqual({ ok: false, reason: 'circuit_open' });
-    // 用户取消/停机不进熔断状态机（v1 B6：client_disconnect/server_draining 非渠道问题）
+    // 用户取消/停机不进熔断状态机（client_disconnect/server_draining 非渠道问题）
     emit({ type: 'aborted', requestId: 'r4', reason: 'client_disconnect' });
     expect(await health.admit('other')).toEqual({ ok: true });
   });

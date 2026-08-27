@@ -39,11 +39,11 @@ interface GenerationHit {
 }
 
 /**
- * 生成任务用例（v1 generation/submit.ts 迁移，限流剥离）：
+ * 生成任务用例：
  * 白名单 → 目录候选链 → authorize（TTL = 任务 TTL + 租约宽限）→ 候选×渠道循环
  * （task_poll 经上游提交任务号；task_execute 仅登记，worker 代执行）→ 收据模板
  * 持久化。持久化失败 → billing_receipt_unavailable 且**预留保留**（上游可能已受理，
- * 退款属 billing recover 语义——与 v1 同）。轮询推进归 worker 波次（MIGRATION 待办）。
+ * 退款属 billing recover 语义）。轮询推进归 worker 驱动的 generation-poll 用例。
  */
 /** 提交前段入参装配产物（请求标识 + kind 描述符 + 对外模型名 + 预检） */
 interface GenerationSubmitPrepared {
@@ -181,7 +181,7 @@ export function createGenerationUseCase(deps: ExecutionDeps & { tasks: Generatio
         (ctx) => generationAttempt(deps, { input, requestId, externalModel, descriptor }, ctx),
       );
 
-      // 上游 4xx 透传（v1 提交路径同款）：客户端问题原码返回，不走收据持久化
+      // 上游 4xx 透传：客户端问题原码返回，不走收据持久化
       if ('passthrough' in hit) return hit;
       return persistGenerationHit(deps, { input, requestId, descriptor, externalModel, hit });
     },
@@ -237,7 +237,7 @@ async function persistGenerationHit(
       expiresAt,
     });
   } catch (error) {
-    // 上游可能已受理：预留保留交 recover 兜底（不退款——v1 语义）
+    // 上游可能已受理：预留保留交 recover 兜底（不退款）
     deps.onError?.(error, `generation task persist request=${requestId}`);
     throw InferenceErrors.business('billing_receipt_unavailable', { request_id: requestId });
   }

@@ -63,17 +63,15 @@ describe('dbBudgetMiddleware', () => {
     const holder = mw(fakeContext('/hold'), gate.next);
     const queuedPromise = mw(fakeContext('/queued'), queued.next);
     void queuedPromise;
-    await expect(mw(fakeContext('/overflow'), overflow.next)).rejects.toSatisfy(
-      (err: unknown) => {
-        const e = err as BusinessError & CatalogErrorShape;
-        return (
-          e instanceof BusinessError &&
-          e.code === 'http.db_budget_full' &&
-          e.category === 'unavailable' &&
-          e.context?.queueDepth === 1
-        );
-      },
-    );
+    await expect(mw(fakeContext('/overflow'), overflow.next)).rejects.toSatisfy((err: unknown) => {
+      const e = err as BusinessError & CatalogErrorShape;
+      return (
+        e instanceof BusinessError &&
+        e.code === 'http.db_budget_full' &&
+        e.category === 'unavailable' &&
+        e.context?.queueDepth === 1
+      );
+    });
     expect(overflow.spy).not.toHaveBeenCalled();
     gate.open();
     await holder;
@@ -119,7 +117,11 @@ describe('dbBudgetMiddleware', () => {
   });
 
   it('suggestDbBudget:limit=池−余量(下限 1),queue/timeout 定值', () => {
-    expect(suggestDbBudget(210, 32)).toEqual({ limit: 178, maxQueue: 20_000, waitTimeoutMs: 120_000 });
+    expect(suggestDbBudget(210, 32)).toEqual({
+      limit: 178,
+      maxQueue: 20_000,
+      waitTimeoutMs: 120_000,
+    });
     expect(suggestDbBudget(10)).toEqual({ limit: 8, maxQueue: 20_000, waitTimeoutMs: 120_000 });
     expect(suggestDbBudget(2)).toEqual({ limit: 1, maxQueue: 20_000, waitTimeoutMs: 120_000 });
     expect(suggestDbBudget(1)).toEqual({ limit: 1, maxQueue: 20_000, waitTimeoutMs: 120_000 });

@@ -92,7 +92,7 @@ export function chatResponseToResponses(res: unknown): Json {
   };
 }
 
-// eslint-disable-next-line max-lines-per-function -- 双向 codec 外壳（装配 + 终态收尾），存量棘轮（铁律 22⑥）
+// eslint-disable-next-line max-lines-per-function -- 双向 codec 外壳（装配 + 终态收尾）
 export function canonicalStreamToResponsesStream(
   upstream: ReadableStream<Uint8Array>,
 ): ReadableStream<Uint8Array> {
@@ -107,7 +107,7 @@ export function canonicalStreamToResponsesStream(
 
   return sseToSseStream(
     upstream,
-    // eslint-disable-next-line complexity, max-lines-per-function -- 逐事件类型翻译的单闭包状态机（responses 事件词表穷举），存量棘轮（铁律 22⑥）
+    // eslint-disable-next-line complexity, max-lines-per-function -- 逐事件类型翻译的单闭包状态机（responses 事件词表穷举）
     (sse: SseEvent, emit) => {
       if (sse.data === '[DONE]') {
         if (!created) return;

@@ -4,7 +4,7 @@ import { createAdminApp } from '../src/app';
 import { authHeader, fakeDeps } from './helpers';
 
 /**
- * app 骨架契约（v1 app.test.ts 行为规格子集）:探针豁免鉴权 / livez 纯 200 /
+ * app 骨架契约:探针豁免鉴权 / livez 纯 200 /
  * 未知路径 404 信封 / 命名空间错误码渲染。
  */
 

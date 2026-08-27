@@ -1,5 +1,5 @@
 /**
- * 快照解析与 reader（docs/integration-settings/DESIGN.md §5 D4/D6、§8）：
+ * 快照解析与 reader：
  * effective 语义（OAuth 需 base、支付停用不停验签）、缺省归一、双读窗密钥序列、
  * TTL 缓存/单飞/失效/fail-loud。
  */
@@ -281,7 +281,7 @@ describe('review 修复规格：invalidate 竞态与观测出口', () => {
     });
     // t0：首个严格读挂起（快照固定为 enabled=true）
     const first = reader.resolve();
-    // 写路径提交 + 用例完成即失效（DESIGN §5 D4 机制）
+    // 写路径提交 + 用例完成即失效
     await gated.memory.store.upsert(createMemoryDb(), {
       key: 'oauth.github',
       enabled: false,

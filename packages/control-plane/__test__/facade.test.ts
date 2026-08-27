@@ -74,7 +74,7 @@ function setup() {
       sourceUrl: 'https://fx.example/latest',
       autoTtlMs: 4 * 60 * 60 * 1000,
       fetchTimeoutMs: 1000,
-      fetch: (async () => new Response(JSON.stringify({ rates: { CNY: 7.2 } }))),
+      fetch: async () => new Response(JSON.stringify({ rates: { CNY: 7.2 } })),
     },
     audit: audit.sink,
     auditTx: audit.txSink,
@@ -111,7 +111,7 @@ describe('createControlPlane facade', () => {
       'rbac',
       'settings',
     ]);
-    // 动态 RBAC 面（ADR-0008）
+    // 动态 RBAC 面
     for (const verb of ['list', 'create', 'update', 'remove'] as const) {
       expect(typeof controlPlane.rbac.roles[verb]).toBe('function');
       expect(typeof controlPlane.rbac.permissions[verb === 'list' ? 'tree' : verb]).toBe(

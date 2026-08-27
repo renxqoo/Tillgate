@@ -28,7 +28,7 @@ function loadRootDotEnv(): Record<string, string> {
   return filled;
 }
 
-// e2e/cross-app 归组运行装置（P7：v1 e2e-cross-app 搬迁）：client-api 真进程
+// e2e/cross-app 归组运行装置：client-api 真进程
 // （client-journey harness）+ admin-api 进程内全真装配（e2e/admin/kit）共库,
 // 双面真 HTTP。文件级串行（旅程共享同一对 app 实例）。
 export default defineConfig({

@@ -1,5 +1,5 @@
 /**
- * 鉴权中间件契约（v1 app.test 鉴权全路径 + A8 爆破维度语义迁移）：
+ * 鉴权中间件契约：
  * 双形态分派 / Key 分支守卫 / JWT 分支（app_jwt 载荷、scope 白名单、退役形态 401）/
  * 爆破计数维度（Key 双计 / JWT 只计 IP）/ 锁定拒绝。
  * 鉴权读模型与 guards 全替身（SQL/Redis 语义归各包 real 测试）。
@@ -9,7 +9,7 @@ import { Hono } from 'hono';
 import { errorHandler } from '@tillgate/http';
 import { GATEWAY_FACE_OVERRIDES, gatewayErrorCatalog } from '../src/http/openai-error-face';
 
-/** 测试壳挂生产同款错误面（v1 测试直连 app 同语义） */
+/** 测试壳挂生产同款错误面 */
 function withErrorFace<E extends AuthEnv>(hono: Hono<E>): Hono<E> {
   hono.onError(errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
   return hono;

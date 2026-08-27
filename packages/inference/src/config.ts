@@ -1,12 +1,12 @@
 import * as z from 'zod';
 
 /**
- * inference 配置（机制/预算缺省值，DESIGN §4 词表；装配可整体或分组覆写）。
+ * inference 配置（机制/预算缺省值；装配可整体或分组覆写）。
  * 注：zod 4 的 .default() 默认值需为完整输出形状，故显式写出（与 ai 包同形态）。
  * 金额、费率、目录等策略数据一律不经配置——目录快照来自 CatalogPort，资金归 BillingPort。
  */
 export const inferenceDefaultsSchema = z.object({
-  /** 渠道熔断（v1 ai 包缺省迁移；计数依据 = ai 错误 circuitTrip 机制位） */
+  /** 渠道熔断（计数依据 = ai 错误 circuitTrip 机制位） */
   breaker: z
     .object({
       windowMs: z.number().int().min(1).default(60_000),
@@ -15,7 +15,7 @@ export const inferenceDefaultsSchema = z.object({
       halfOpenProbe: z.boolean().default(true),
     })
     .default({ windowMs: 60_000, failureThreshold: 5, cooldownMs: 300_000, halfOpenProbe: true }),
-  /** 死凭据连续计数（C3 单阈值；成功自愈） */
+  /** 死凭据连续计数（单阈值；成功自愈） */
   deadCredential: z
     .object({
       failureThreshold: z.number().int().min(1).default(3),
@@ -57,7 +57,7 @@ export const inferenceDefaultsSchema = z.object({
       leaseGraceMs: z.number().int().min(0).default(30_000),
     })
     .default({ taskTtlMs: 3_600_000, leaseGraceMs: 30_000 }),
-  /** 缺 usage 的实扣估算校准系数（C1：v1 校准缺省迁移，装配可调） */
+  /** 缺 usage 的实扣估算校准系数（装配可调） */
   estimate: z
     .object({
       cjkTokensPerChar: z.number().min(0).default(0.7),

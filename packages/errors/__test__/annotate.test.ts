@@ -5,7 +5,7 @@ import { recordOf } from '../src/error-record';
 import { annotate, annotationsOf, BusinessError, type TillgateError } from '../src/nature';
 
 /**
- * 传播注记（ADR-0001 D9b）：错误上浮途中实例稳定地累积语境。
+ * 传播注记：错误上浮途中实例稳定地累积语境。
  * 合同：同一实例返回（instanceof/分类不动）；构造上下文为底、注记按时间序合并、
  * 后写胜出；符号键非枚举（序列化不被污染）。
  */

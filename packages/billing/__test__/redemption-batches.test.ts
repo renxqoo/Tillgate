@@ -1,5 +1,5 @@
 /**
- * 兑换批次管理契约测试（U6;内存 stand-in;v1 redeem.test.ts 行为规格）：
+ * 兑换批次管理契约测试（内存 stand-in）：
  * 明文码仅创建一次返回（库内只落哈希）/ 批次列表详情 / 批内码列表 / 单码作废 CAS 统一 404。
  */
 import { describe, expect, it } from 'vitest';

@@ -1,4 +1,4 @@
-/** 订阅管理列表（U6;users/plans 富化与剩余额度投影在 store 物理层完成） */
+/** 订阅管理列表（users/plans 富化与剩余额度投影在 store 物理层完成） */
 import type { AdminSubscriptionRow, BillingStore } from '../../ports/billing-store.js';
 
 export interface AdminListSubscriptionsInput {

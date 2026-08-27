@@ -1,6 +1,6 @@
 /**
- * 接口绑定管理路由（ADR-0009:执行面数据化——本路由自身也被绑定表守护,
- * 种子 = 0084 的 admins 域四码）。审计:binding.created/updated/deleted。
+ * 接口绑定管理路由：本路由自身也被绑定表守护。
+ * 审计:binding.created/updated/deleted。
  * PATCH 为部分更新（method/path/permissionId 至少一项）。
  */
 import { Hono } from 'hono';
@@ -38,7 +38,7 @@ const endpointContracts = {
     ),
 } as const;
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function endpointsRoutes(deps: EndpointsRoutesDeps) {
   const app = new Hono<SessionEnv>();
 

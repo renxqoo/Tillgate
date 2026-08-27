@@ -77,7 +77,7 @@ export function createAclMiddleware(
     const method = c.req.method === 'HEAD' ? 'GET' : c.req.method;
     const { path } = c.req;
 
-    // 只守护 /v1/* 管理面:非 v1 未知路径放行走 404（不泄漏路由清单——v1 语义保留）
+    // 只守护 /v1/* 管理面:其余前缀的未知路径放行走 404（不泄漏路由清单）
     if (!path.startsWith('/v1/')) {
       await next();
       return;

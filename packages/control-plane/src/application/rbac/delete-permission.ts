@@ -1,7 +1,7 @@
 /**
- * 删除资源节点（全节点可删——用户裁决放开 enforced 锁;角色绑定随 FK 级联消失=
- * 该码对全部非超管角色即刻撤权）。唯一残留守卫:有子节点拒删（parent RESTRICT,
- * 自底向上删除;删 enforced 码后路由 guard 仍查代码注册表,超管 isSuper 免疫可恢复）。
+ * 删除资源节点（全节点可删;角色绑定随 FK 级联消失=该码对全部非超管角色即刻撤权）。
+ * 残留守卫:有子节点拒删（parent RESTRICT,自底向上删除）;节点仍守护接口拒删
+ * （先解绑/换绑）。删 enforced 码后路由 guard 仍查代码注册表,超管 isSuper 免疫可恢复。
  */
 import { controlPlaneErrors } from '../../errors';
 import type { RbacDeps } from './rbac-shared';

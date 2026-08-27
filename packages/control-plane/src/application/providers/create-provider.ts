@@ -15,7 +15,7 @@ export interface CreateProviderDeps {
   readonly db: Db;
   readonly stores: { readonly provider: ProviderStore };
   readonly capabilities: ProviderCapabilities;
-  /** 协议缺省（装配注入——铁律 3，不藏全局默认） */
+  /** 协议缺省（装配注入，不藏全局默认） */
   readonly defaultProtocol: string;
   readonly audit: AuditSink;
 }

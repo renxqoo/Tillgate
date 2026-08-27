@@ -10,8 +10,7 @@ import type {
 } from './types';
 
 /**
- * usage 运维查询信封(v1 ops-logs.service 的 statsUsage/statsTrends/statsOverview
- * 口径层逐语义迁入):日界计算、failedCount/successRate 派生、pg bigint 字符串
+ * usage 运维查询信封:日界计算、failedCount/successRate 派生、pg bigint 字符串
  * → number 映射全部在此;store 原语保持纯 SQL 语义。now 由调用方注入
  * (requestLogs.list 的 input.now 同构——facade 不持时钟)。
  */
@@ -54,7 +53,7 @@ export interface UsageQueries {
   channelTtft(input: { hours: number; now: Date }): Promise<{ rows: ChannelTtftRow[] }>;
 }
 
-/** 概览组装:今日(北京日界)+ 累计 + 渠道状态分组;successRate 一位小数(v1 舍入口径,零请求恒 0) */
+/** 概览组装:今日(北京日界)+ 累计 + 渠道状态分组;successRate 一位小数(舍入口径,零请求恒 0) */
 async function overviewEnvelope(store: UsageStatsStore, now: Date) {
   // 「今日」按北京时间零点切日(面板/计价面向中国时区;day-window 单一口径)
   const since = beijingDayStart(now);

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * 计费异常复核弹窗交互规格（IMPLEMENTATION §11）：
+ * 计费异常复核弹窗交互规格：
  * 操作按钮打开模态层，理由输入可编辑；空理由不出站；retry/abandon 参数保真；
  * 成功关闭并清空，失败保留上下文，pending 防止重复决策。
  */

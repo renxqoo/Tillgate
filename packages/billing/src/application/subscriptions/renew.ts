@@ -14,7 +14,7 @@ import {
   type SubscriptionAssembly,
 } from './subscription-shared.js';
 
-// eslint-disable-next-line max-lines-per-function -- 存量棘轮(铁律22⑥):顺序编排/契约签名,拆分需独立契约裁决
+// eslint-disable-next-line max-lines-per-function -- 顺序编排/契约签名,拆分需独立契约设计
 export async function renew(
   assembly: SubscriptionAssembly,
   input: RenewInput,
@@ -24,7 +24,7 @@ export async function renew(
     operationId: input.operationId,
     kind: 'subscription.renew',
     payload: { userId: input.userId, subscriptionId: input.subscriptionId },
-    // eslint-disable-next-line max-lines-per-function, max-statements -- 存量棘轮(铁律22⑥):顺序编排/契约签名,拆分需独立契约裁决
+    // eslint-disable-next-line max-lines-per-function, max-statements -- 顺序编排/契约签名,拆分需独立契约设计
     execute: async (tx) => {
       const now = clock();
       const sub = await store.lockActiveSubscription(tx, input.subscriptionId);

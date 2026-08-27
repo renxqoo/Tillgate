@@ -1,5 +1,5 @@
 /**
- * 渠道路由（v1 routes/channels.ts 平移 + 逻辑删除回收站）：列表（富化 / view=deleted
+ * 渠道路由（含逻辑删除回收站）：列表（富化 / view=deleted
  * 回收站）/创建/更新（换 Key 复位运行态）/逻辑删除（在册绑定守卫）/恢复记录/
  * 批量导入（best-effort）/连通性探针。apiKey 加密落库（control-plane cipher）。
  */
@@ -15,7 +15,7 @@ export interface ChannelsRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'channels'>;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器保留存量语义(棘轮)
 export function channelsRoutes(deps: ChannelsRoutesDeps) {
   const app = new Hono<SessionEnv>();
   const { channels } = deps.controlPlane;

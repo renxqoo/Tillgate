@@ -7,9 +7,8 @@ import type { BillingStore } from '../src/ports/billing-store';
 import { defined } from './defined.js';
 
 /**
- * 支付订单管理面用例(admin-api P4):管理列表(q 双锚/排序/分页/total)+
+ * 支付订单管理面用例(admin-api):管理列表(q 双锚/排序/分页/total)+
  * 手动关单 CAS 0→4(幂等语义——非 created 状态与重复关单一律 order_state_conflict)。
- * 行为规格 = v1 payment-order.repo listAdminOrders/closeOrder + ops-logs.service。
  */
 
 /** read/transaction 直通内存 store(会话语义在 PG 形态才存在) */
@@ -115,7 +114,7 @@ describe('payment admin:close(手动关单语义)', () => {
     const { stores, api } = setup();
     const created = await seedOrder(stores);
     await api.close({ orderId: created, reason: 'x' });
-    // 第二次关单:状态已是 4 → 拒绝(v1 409 语义逐条保留)
+    // 第二次关单:状态已是 4 → 拒绝(409 语义)
     await expect(api.close({ orderId: created, reason: 'x' })).rejects.toSatisfy(
       (e: unknown) => isBusinessError(e) && e.code === 'billing.order_state_conflict',
     );

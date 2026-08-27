@@ -1,6 +1,6 @@
 /**
- * 密码行 store postgres 实现。时间戳一律 SQL now()(B17);upsert/update 语义与
- * v1 逐字对齐。锁与临界区编排归 application(B04:验旧密必须发生在锁内)。
+ * 密码行 store postgres 实现:时间戳一律 SQL now();锁与临界区编排归 application
+ * (验旧密必须发生在锁内)。
  */
 import { eq, sql } from 'drizzle-orm';
 import type { DbLike } from '@tillgate/db';

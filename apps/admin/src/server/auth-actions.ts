@@ -167,7 +167,7 @@ export async function verifyLoginAction(
   redirect('/dashboard');
 }
 
-/** 2FA 开关确认码发送（admin-email-2fa D2=A：向本人邮箱发码,60s 冷却） */
+/** 2FA 开关确认码发送（向本人邮箱发码,60s 冷却） */
 export async function requestTwoFactorCodeAction(): Promise<{
   challengeId?: string;
   error?: string;

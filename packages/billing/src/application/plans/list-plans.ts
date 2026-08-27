@@ -1,4 +1,4 @@
-/** 套餐目录管理列表（U6;q 过滤 + 白名单排序 + 分页——口径由调用方收口） */
+/** 套餐目录管理列表（q 过滤 + 白名单排序 + 分页——口径由调用方收口） */
 import type { BillingStore, PlanRecord } from '../../ports/billing-store.js';
 
 export interface ListPlansQuery {

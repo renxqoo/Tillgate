@@ -1,6 +1,6 @@
 /**
- * fx_rates 目录汇率 postgres 适配器（v1 fx.repo 等价迁移，减 TTL 缓存——B4：
- * admin 语义恒直读追加表；进程内缓存只服务网关热路径，归 inference 波次）。
+ * fx_rates 目录汇率 postgres 适配器：admin 语义恒直读追加表，不做进程内缓存
+ * （缓存只可能服务网关热路径，不在本适配器）。
  */
 import { and, desc, eq } from 'drizzle-orm';
 import type { DbLike } from '@tillgate/db';

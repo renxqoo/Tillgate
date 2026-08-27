@@ -5,7 +5,7 @@ import { ApiError } from '@tillgate/api-client';
 import { adminApi } from './admin-api';
 import { getTranslations } from 'next-intl/server';
 
-/** 接口绑定管理动作（ADR-0009;守卫与审计全在后端） */
+/** 接口绑定管理动作（守卫与审计全在后端） */
 
 export async function createBindingAction(input: {
   method: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';

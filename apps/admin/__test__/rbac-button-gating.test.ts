@@ -2,7 +2,7 @@
  * RBAC 行操作按钮显隐契约（源码静态断言,与本目录既有源码断言用例同款装置）：
  * 编辑/删除入口必须挂按钮权限（admins:update / admins:delete——与 endpoint_bindings
  * 绑定码同源,前端藏掉的后端必 403,前端放行的后端必过）。
- * 覆盖五页：角色管理 / 权限资源 / 接口绑定 / 设置（2026-08-25 D1 裁决：
+ * 覆盖五页：角色管理 / 权限资源 / 接口绑定 / 设置（
  * settings:update 时区写、settings:integrations 集成卡区操作位——SMTP 独立卡
  * 亦在其中）/ 营销（growth:update 保存钮）。显隐仅 UX,权威判定在 admin-api ACL。
  */
@@ -61,7 +61,7 @@ describe('RBAC 行操作按钮权限显隐', () => {
     const assembler = src(settingsFeature('index.tsx'));
     expect(assembler).toContain('canUpdate={canUpdateTimezone}');
     expect(assembler).toContain('canManage={canManageIntegrations}');
-    // 2FA/TOTP 卡属 SELF 域不挂码——组装器不向其传任何权限布尔（二次裁决后亦无 SMTP 入口）
+    // 2FA/TOTP 卡属 SELF 域不挂码——组装器不向其传任何权限布尔（SMTP 入口在独立集成卡）
     expect(assembler).toContain('<EmailTwoFactorCard me={me} />');
     const timezone = src(settingsFeature('billing-timezone-card.tsx'));
     expect(timezone).toContain('{canUpdate ? ('); // 无权 → 只读展示,无选择器/保存钮

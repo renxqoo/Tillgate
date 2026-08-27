@@ -1,7 +1,7 @@
 /**
  * 登录验证码邮件（identity Mailer port 的 SMTP/nodemailer 实现）。
  * 模板归 identity（renderLoginCodeEmail 单源）；本适配器只做传输。
- * 三要素不齐返回 null = 邮件通道 fail-closed（两级登录随之关闭，v1 语义）。
+ * 三要素不齐返回 null = 邮件通道 fail-closed（两级登录随之关闭）。
  */
 import nodemailer from 'nodemailer';
 import {

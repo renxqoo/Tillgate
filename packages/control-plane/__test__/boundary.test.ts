@@ -1,7 +1,7 @@
 /**
- * 边界测试（铁律 11/16：边界必须可执行）：
+ * 边界测试（边界必须可执行）：
  * 出口面快照（有意维护的公共接口）/ 依赖方向（禁 http/ai/runtime/app、domain 禁 db）/
- * 错误目录码表封闭（== DESIGN §2.3）。
+ * 错误目录码表封闭。
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';

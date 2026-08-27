@@ -1,5 +1,5 @@
 /**
- * 接口绑定管理路由契约（ADR-0009）:信封/守卫透传（endpoint_bound/permission_not_found/
+ * 接口绑定管理路由契约:信封/守卫透传（endpoint_bound/permission_not_found/
  * endpoint_not_found）/审计旁路。绑定判定本身由 acl.test 覆盖。
  */
 import { describe, expect, it, vi } from 'vitest';

@@ -6,7 +6,7 @@ import {
   check,
   index,
   integer,
-    pgTable,
+  pgTable,
   primaryKey,
   text,
   timestamp,
@@ -16,7 +16,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 /**
- * 身份内核七表（v1 identity-core 迁入，DDL 单一真相收敛本包——迁移 0076）：
+ * 身份内核七表（DDL 单一真相在本包——迁移 0076）：
  * 业务无关、不 FK 到消费方 users/admins 表——userId 由消费方（accounts）分配。
  *
  *   identity_credentials      标识 ↔ userId（谁是谁）：UNIQUE(kind, value) = 一个标识一个账号
@@ -83,7 +83,7 @@ export const identityChallenges = pgTable(
     userId: bigint('user_id', { mode: 'number' }),
     /** HMAC-SHA256(pepper, code:challengeId)——码本身不出库 */
     codeHash: varchar('code_hash', { length: 64 }).notNull(),
-    /** 业务 payload + 投递上下文（deliveryIp/deliveryLocale 随行，v1 模块级 Map 根治） */
+    /** 业务 payload + 投递上下文（deliveryIp/deliveryLocale 随 payload 落库） */
     payload: jsonb('payload'),
     attempts: integer('attempts').notNull().default(0),
     maxAttempts: integer('max_attempts').notNull(),
@@ -152,7 +152,7 @@ export const identityRecoveryCodes = pgTable(
 export const identitySessionAnchors = pgTable(
   'identity_session_anchors',
   {
-    /** 身份域（v1 消费面 'user'/'admin'；词表符号正则约束，白名单在 identity 包装配声明） */
+    /** 身份域（取值 'user'/'admin'；词表符号正则约束，白名单在 identity 包装配声明） */
     realm: varchar('realm', { length: 32 }).notNull().default('user'),
     userId: bigint('user_id', { mode: 'number' }).notNull(),
     invalidBefore: timestamp('invalid_before', { withTimezone: true }).notNull(),

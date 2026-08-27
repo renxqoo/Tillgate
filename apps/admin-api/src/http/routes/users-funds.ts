@@ -1,7 +1,7 @@
 /**
- * 用户资金路由（v1 funds.service 编排的 app 组合面）：调账（可负）/赠送/
+ * 用户资金路由（app 组合编排面）：调账（可负）/赠送/
  * 钱包流水/用户审计。幂等走 billing operations 用例（同键同参重放回执、异参 409）;
- * 资金审计与业务同事务（writeAudit 装配闭包——G1 桥,tx 由 operations 注入）。
+ * 资金审计与业务同事务（writeAudit 装配闭包,tx 由 operations 注入）。
  * 负数调账 = 扣款到外部世界镜像（allowCredit:true——授信地板内可负,地板由 wallet 守卫）。
  */
 import { Hono } from 'hono';
@@ -50,7 +50,7 @@ export interface UsersFundsRoutesDeps {
   readonly audit: Pick<Observability['audit'], 'listByTarget'>;
 }
 
-/** v1 FundsReceipt wire 形状 */
+/** FundsReceipt wire 形状 */
 interface FundsReceipt {
   ok: true;
   balanceBefore: string;
@@ -58,7 +58,7 @@ interface FundsReceipt {
   replayed: boolean;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
@@ -68,7 +68,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
     }
   }
 
-  // eslint-disable-next-line max-lines-per-function -- 管理员调账(资金域):事务内双侧转账与回执构造语义连续,lint 清零期不动资金逻辑(存量棘轮)
+  // eslint-disable-next-line max-lines-per-function -- 管理员调账(资金域):事务内双侧转账与回执构造语义连续,lint 清零期不动资金逻辑
   app.post('/v1/users/:id/adjust', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = usersContracts.adjust.parse(await c.req.json());
@@ -173,12 +173,12 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
 
   app.get('/v1/users/:id/transactions', async (c) => {
     const id = idParam(c.req.param('id'));
-    // from/to 校验但忽略（日期过滤未启用;非法日期仍 400——v1 语义）
+    // from/to 校验但忽略（日期过滤未启用;非法日期仍 400）
     usersContracts.transactionsQuery.parse(c.req.query());
     const query = parseListQuery(c.req.query(), ['id'], 'id');
     const items = await deps.wallet.statement({ userId: id, limit: query.limit });
     const rows = items.map((item) => toTransactionWireRow(id, item));
-    // D4(MIGRATION §4):statement 无计数动词,total = offset + rows.length（末页精确）
+    // statement 无计数动词,total = offset + rows.length（末页精确）
     return c.json(listEnvelope(rows, query.offset + rows.length, query));
   });
 

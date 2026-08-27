@@ -1,14 +1,14 @@
 /**
- * AccountStorePort:账号事实持久化端口(DESIGN §6)。
+ * AccountStorePort:账号事实持久化端口。
  *
  * 契约要点:
  * - 行投影**结构性排除秘密**(无 passwordHash/keyHash/clientSecretHash);
  * - 全部写方法的时间语义(createdAt/updatedAt/revokedAt/rotatedAt/expiresAt/过期判定)
- *   由实现方用存储时钟表达(DESIGN §5;postgres=clock_timestamp(),替身=注入时钟);
+ *   由实现方用存储时钟表达(postgres=clock_timestamp(),替身=注入时钟);
  * - 状态翻转一律 CAS,0 行以 null/false/判别结果表达;
  * - 冲突可能的方法返回判别结果(port 返回事实,错误翻译归 application);
- * - `db` 首参参与调用方事务(§5.4 事务参与 port);席位/订阅守卫对 user_subscriptions
- *   只取最小投影 {id, quantity} 并与 billing 侧同锁互斥(G8)。
+ * - `db` 首参参与调用方事务;席位/订阅守卫对 user_subscriptions
+ *   只取最小投影 {id, quantity} 并与 billing 侧同锁互斥。
  */
 import type { DbLike } from '@tillgate/db';
 import type { AppScope } from '../domain/app.js';
@@ -58,7 +58,7 @@ export interface ApiKeyRecord {
   readonly createdAt: Date;
 }
 
-/** 网关鉴权投影:一次查询取回鉴权与限额全集(含属主状态守卫与过期判定,v1 语义) */
+/** 网关鉴权投影:一次查询取回鉴权与限额全集(含属主状态守卫与过期判定) */
 export interface ActiveKeyRecord {
   readonly keyId: number;
   readonly userId: number;
@@ -146,7 +146,7 @@ export interface InvitationWithToken extends InvitationRecord {
   readonly token: string;
 }
 
-/** token 定位快照:过期为读时判定(存储时钟;status=3 不写入,B8 惰性过期) */
+/** token 定位快照:过期为读时判定(存储时钟;status=3 不写入,惰性过期) */
 export interface InvitationSnapshot extends InvitationWithToken {
   readonly expired: boolean;
 }
@@ -171,7 +171,7 @@ export interface RelationView {
   readonly createdAt: Date;
 }
 
-/** 管理面读形状:三参数 + 操作人(v1 GET /marketing/settings 断言含 updatedBy) */
+/** 管理面读形状:三参数 + 操作人(GET /v1/marketing/settings 返回含 updatedBy) */
 export interface MarketingSettingsRecord extends MarketingSettings {
   readonly updatedBy: number | null;
   readonly updatedAt: Date;
@@ -378,7 +378,7 @@ export interface AccountStorePort {
     db: DbLike,
     orgId: number,
   ): Promise<{ id: number; quantity: number } | null>;
-  /** FOR UPDATE 行锁——只可在事务内调用(席位串行化,G8) */
+  /** FOR UPDATE 行锁——只可在事务内调用(席位串行化) */
   lockActiveOrgSubscription(
     db: DbLike,
     orgId: number,

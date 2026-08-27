@@ -1,7 +1,7 @@
 /**
  * 竞态与清理分支(CAS 0 行的事务内判别、null 清空、异常形状):
  * 用 store 包装器强制触发内存替身正常路径到不了的 0 行分支——
- * 每个断言对应一个真实并发窗口(v1 语义:0 行 = 状态已变,按冲突表达)。
+ * 每个断言对应一个真实并发窗口(0 行 = 状态已变,按冲突表达)。
  */
 import { describe, expect, it } from 'vitest';
 import { defined } from './defined.js';

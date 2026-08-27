@@ -34,8 +34,8 @@ describe.skipIf(url == null)('生成任务 postgres 存储（真实 PG）', () =
     const { readdirSync } = await import('node:fs');
     await db.execute(sql.raw(`create schema ${schema}`));
     try {
-      // 空库可推进范围 = 0000–0054（db IMPLEMENTATION §6 探针结论：0055 起依赖
-      // identity-core provision 链先建 identity_session_anchors）；generation_tasks
+      // 空库可推进范围 = 0000–0054（0055 起依赖 identity-core provision
+      // 链先建 identity_session_anchors）；generation_tasks
       // 在 0053/0054 落库，FK 祖先全部 ≤0054——回放子链即覆盖本测试所需全部 DDL
       for (const file of readdirSync(migrationsDir)
         .filter((f) => /^\d{4}_.*\.sql$/.test(f) && Number(f.slice(0, 4)) <= 54)

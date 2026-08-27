@@ -1,6 +1,6 @@
 /**
- * 订阅生命周期与幂等操作档案契约测试（内存 stand-in；迁移自旧仓 service/__tests__/
- * subscription 主干 + operations.test；真实 PG 的唯一索引/行锁竞态在 U5 收口真 PG 套件）。
+ * 订阅生命周期与幂等操作档案契约测试（内存 stand-in；
+ * 真实 PG 的唯一索引/行锁竞态在真 PG 套件覆盖）。
  */
 import { describe, expect, it } from 'vitest';
 import { isBusinessError } from '@tillgate/errors';

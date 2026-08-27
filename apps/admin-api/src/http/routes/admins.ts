@@ -1,15 +1,15 @@
 /**
- * 管理员管理路由（RBAC admins 域——super_admin 专属;docs/admin-rbac/DESIGN §2.5）。
+ * 管理员管理路由（RBAC admins 域——super_admin 专属）。
  *
  * 创建 = 双动词编排（两包无共享事务边界,失败补偿）：
  *   1. control-plane 建资料行（admin id ≥1e9 段分配 + role 落库）
  *   2. identity 注册 email 凭据 + 初始密码（策略单源校验在此）
  *   3. 凭据被占（identifier_taken——邮箱被任何身份占用）→ 补偿删资料行 → 409 同码
- *      （绝不留「创建成功但永远登不上」的废号——create-admin 脚本同裁决）
+ *      （绝不留「创建成功但永远登不上」的废号;create-admin 脚本同口径）
  *   4. 双动词全部成功才旁路审计（postAudit——两步全成才算「创建」）
  *
  * 更新 = role/status/displayName 部分更新;「不可改自身 role/status」守卫在此
- * （会话身份是路由的知识——防最后一个超管自锁,DESIGN D6）。
+ * （会话身份是路由的知识——防最后一个超管自锁）。
  */
 import { Hono } from 'hono';
 import { isBusinessError } from '@tillgate/errors';
@@ -47,7 +47,7 @@ function adminRowOf(record: AdminRecord) {
   };
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器保留存量语义(棘轮)
 export function adminsRoutes(deps: AdminsRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
@@ -101,7 +101,7 @@ export function adminsRoutes(deps: AdminsRoutesDeps) {
   app.patch('/v1/admins/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = adminsContracts.patch.parse(await c.req.json());
-    // 自改守卫：roleId/status 不可改自身（displayName 可改——无权限面影响,D6）
+    // 自改守卫：roleId/status 不可改自身（displayName 可改——无权限面影响）
     if (id === c.get('adminId') && (body.roleId !== undefined || body.status !== undefined)) {
       throw AdminErrors.business('cannot_modify_self', {});
     }

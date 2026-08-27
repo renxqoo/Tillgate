@@ -1,8 +1,6 @@
 /**
  * client-api(用户面)wire DTO 手写快照。
  *
- * 过渡态(DESIGN §3.4):OpenAPI 生成链(总纲 P3)落地后本目录整体被 generated/client-api
- * 替换并同提交删除;生成链建立前手写 DTO 是唯一事实源,禁止双轨(总纲 §2.2)。
  * 对齐后端真实字段名,全 camelCase;后端唯一蛇形字段:分页 envelope 的 page_size。
  */
 
@@ -323,7 +321,7 @@ export interface PricingModel {
   personalized?: boolean;
   rateCardStatus?: number | null;
 }
-/** 定价目录页(q/free 过滤在服务端目录内做;envelope 键为 models——v1 形态保留) */
+/** 定价目录页(q/free 过滤在服务端目录内做;envelope 键为 models) */
 export interface PricingPage {
   models: PricingModel[];
   total: number;
@@ -338,7 +336,7 @@ export interface PricingPage {
 export interface UsageByModelPage {
   rows: UsageByModelItem[];
 }
-/** GET /v1/usage/summary(envelope 键为 list——v1 形态保留) */
+/** GET /v1/usage/summary(envelope 键为 list) */
 export interface UsageSummaryPage {
   list: UsageDayRow[];
 }
@@ -376,7 +374,7 @@ export interface PaymentOrderRow {
   status: number;
   createdAt: string;
 }
-/** 订单列表(信封只 rows 无 total——契约缺口 G3,UI 按「加载更多」消费) */
+/** 订单列表(信封只 rows 无 total,UI 按「加载更多」消费) */
 export interface PaymentOrdersPage {
   rows: PaymentOrderRow[];
 }

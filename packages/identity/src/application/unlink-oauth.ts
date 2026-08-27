@@ -1,4 +1,4 @@
-/** OAuth 解绑:锁内最后凭据守卫(删后必须仍留登录方式);审计 targetId = linkId(B20) */
+/** OAuth 解绑:锁内最后凭据守卫(删后必须仍留登录方式);审计 targetId = linkId */
 import { advisoryLock, runTx } from '@tillgate/db';
 import { auditEvent } from '../domain/audit-events.js';
 import { credentialSetLockKey } from '../domain/locks.js';

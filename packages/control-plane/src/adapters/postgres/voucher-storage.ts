@@ -1,6 +1,6 @@
 /**
- * 渠道进货凭证存储 postgres 适配器（voucher_blobs bytea；v1 voucher-storage 等价迁移）。
- * voucher_blobs 是 raw-SQL 表（drizzle schema 两仓均未建模，DDL 在 db 迁移 0066）——
+ * 渠道进货凭证存储 postgres 适配器（voucher_blobs bytea）。
+ * voucher_blobs 是 raw-SQL 表（drizzle schema 未建模，DDL 在 db 迁移 0066）——
  * 经 drizzle sql 模板参数化执行，不引入表建模双轨。
  * 只服务凭证截图的回读：≤2MB 白名单小图 + 低频回看——不引入对象存储。
  */

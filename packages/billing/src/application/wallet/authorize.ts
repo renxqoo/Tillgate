@@ -1,7 +1,7 @@
 /**
  * authorize 动词：冻结/预占——可用口径守卫（信用/现金双档）+ inFlight 占用。
  * 幂等快速路径在守卫之前（重放不该被余额守卫误伤）；跨用户键劫持 → ref_key_conflict。
- * 重放回执金额恒 normalizeAmount（B5 锁死：首调与重放的字符串形态全等）。
+ * 重放回执金额恒 normalizeAmount（首调与重放的字符串形态全等）。
  */
 import { DefectError } from '@tillgate/errors';
 import { assertCommandFingerprint, commandFingerprint } from '../../domain/fingerprint.js';
@@ -16,7 +16,7 @@ import { assertRefKey, resolveCurrency, type TxChannel } from './input.js';
 import { withTx } from './posting.js';
 import type { WalletEnv } from './wallet.js';
 
-/** billing 授权域（#over 补扣的 refType 前提；U2 计价授权链同域） */
+/** billing 授权域（#over 补扣的 refType 前提） */
 export const BILLING_REF_TYPE = 'billing';
 
 export interface AuthorizeInput extends TxChannel {

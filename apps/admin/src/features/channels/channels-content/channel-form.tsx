@@ -57,7 +57,7 @@ export interface ChannelFormValues {
   upstreamThreshold?: string;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 渠道表单全字段平铺（凭据/限流/重试参数逐项 UI 声明），拆分收益为负（存量棘轮）
+// eslint-disable-next-line max-lines-per-function -- 渠道表单全字段平铺（凭据/限流/重试参数逐项 UI 声明），拆分收益为负
 export function ChannelForm({
   form,
   onSubmit,

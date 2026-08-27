@@ -169,7 +169,7 @@ export const keyQueries: Pick<
   },
 
   async findActiveKeyByKeyHash(db, keyHash) {
-    // 单查询守卫:key 在用 + 属主在用 + 未过期(clock),一次取回鉴权与限额全集(v1 语义)
+    // 单查询守卫:key 在用 + 属主在用 + 未过期(clock),一次取回鉴权与限额全集
     const rows = await db
       .select({
         keyId: apiKeys.id,

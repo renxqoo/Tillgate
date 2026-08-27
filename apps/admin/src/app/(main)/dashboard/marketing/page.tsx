@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function MarketingPage() {
   const me = await requirePermission('growth:read');
-  // 无 growth:update：保存钮隐藏、输入禁用（2026-08-25 用户裁决 D1/D2；权威判定在 ACL）
+  // 无 growth:update：保存钮隐藏、输入禁用（权限判定权威在后端 ACL）
   const canUpdate = hasPerm(me, 'growth:update');
   const t = await getTranslations('marketing');
   const tc = await getTranslations('common');

@@ -1,7 +1,7 @@
 /**
- * control-plane 错误目录（AGENT.md §11：能力包自有目录，码带命名空间）。
- * 身份码 = `control_plane.<key>`；message 英文、zh 中文，face 按码双语渲染（铁律 18）。
- * 码表封闭性由 __test__/boundary.test.ts 快照锁死；新增码 = 契约变更，须同步 DESIGN §2.3。
+ * control-plane 错误目录（能力包自有目录，码带命名空间）。
+ * 身份码 = `control_plane.<key>`；message 英文、zh 中文，face 按码双语渲染。
+ * 码表封闭性由 __test__/boundary.test.ts 快照锁死；新增码 = 契约变更。
  */
 import { defineErrorCatalog } from '@tillgate/errors';
 
@@ -110,7 +110,7 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     zh: '计费时区必须是合法的 IANA 时区名',
   },
 
-  // ── integrations（第三方集成动态配置——docs/integration-settings/DESIGN.md §4.5） ──
+  // ── integrations（第三方集成动态配置） ──
   integration_unknown: {
     category: 'not_found',
     message: 'Unknown integration key',
@@ -138,7 +138,7 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     message: 'Coefficient must be a decimal string in (0, 9.999] with at most 3 decimals',
     zh: '系数须为 0.001–9.999 的十进制字符串且最多 3 位小数',
   },
-  /** 绑定卡停用：网关报价读拒绝新请求（v1 403 语义；热路径消费方抛出） */
+  /** 绑定卡停用：网关报价读拒绝新请求（403 语义；热路径消费方抛出） */
   rate_card_disabled: {
     category: 'forbidden',
     message: 'The rate card bound to this account is disabled, please contact the administrator',
@@ -199,7 +199,7 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     zh: '对外模型名已被其他真实模型占用',
   },
 
-  // ── admins（RBAC——docs/admin-rbac/DESIGN.md §2.5）────────────────────────
+  // ── admins（RBAC）────────────────────────
   /** 管理员邮箱已被占用（admins_email_uq 兜底,23505 翻译;identity 凭据冲突同码） */
   admin_email_taken: {
     category: 'conflict',
@@ -213,7 +213,7 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     zh: '角色不在词表内（super_admin/operator/finance/support/viewer）',
   },
 
-  // ── 动态 RBAC（ADR-0008:动态角色 + 权限树）─────────────────────────────────
+  // ── 动态 RBAC（动态角色 + 权限树）─────────────────────────────────
   /** 角色 code 已被占用 */
   role_exists: {
     category: 'conflict',

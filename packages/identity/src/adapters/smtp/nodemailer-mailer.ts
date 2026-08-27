@@ -23,7 +23,7 @@ export interface SmtpMailerConfig {
   readonly from: string;
 }
 
-/** 装配参数(SMTP 连接 + 品牌口径 + 邮件参数 + 时钟,全部显式注入,铁律 3) */
+/** 装配参数(SMTP 连接 + 品牌口径 + 邮件参数 + 时钟,全部显式注入) */
 export interface SmtpMailerOptions {
   readonly config: SmtpMailerConfig;
   readonly brand: MailBrand;

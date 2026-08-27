@@ -1,7 +1,7 @@
 /**
- * 注册归因(v1 referral.service applyReferral):畸形码/自邀/邀请人不可用(含封禁,
+ * 注册归因:畸形码/自邀/邀请人不可用(含封禁,
  * 防枚举)先行拒绝;单事务内「关系 + 双方注册奖励」同生共死(broken wallet 注入
- * 验证回滚,v1 测试锁定);重复归因由唯一索引兜底;bonus=0 建关系零入账。
+ * 验证回滚);重复归因由唯一索引兜底;bonus=0 建关系零入账。
  */
 import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';

@@ -1,9 +1,9 @@
 /**
- * 停机编排（v1 §1.6 语义；收口顺序归 runtime createShutdown 契约）：
+ * 停机编排（收口顺序归 runtime createShutdown 契约）：
  * healthServer.close → otel flush → closeables（scheduler 停收+宽限 →
  * wakeup 释放 LISTEN 连接 → abandonOwnedClaims 归还本副本 processing 认领）
  * → db 收口 → exit。abandon 在 db 收口之前是账务关键步（不等 60s 租约自然
- * 到期，本副本认领立即归还 retry_wait——v1 同款）。
+ * 到期，本副本认领立即归还 retry_wait）。
  */
 import { createShutdown } from '@tillgate/runtime';
 

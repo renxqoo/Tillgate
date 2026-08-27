@@ -1,8 +1,8 @@
 /**
- * createNotifications facade:唯一装配面(总纲 §5.3——app 只见 facade 与稳定契约)。
+ * createNotifications facade:唯一装配面(app 只见 facade 与稳定契约)。
  * 内部组装 postgres store 与 http webhook deliverer;装配级可覆盖件(store/deliverer,
  * 测试替身注入)显式可选。返回面不泄漏 Db/DbTx/drizzle 行类型/供应商 SDK。
- * SSRF/cipher 经注入 port(UrlGuard/SecretCipher)——本包不编译依赖 ai/runtime(DESIGN §5)。
+ * SSRF/cipher 经注入 port(UrlGuard/SecretCipher)——本包不编译依赖 ai/runtime。
  */
 import type { Db } from '@tillgate/db';
 import { postgresNotifyStore } from './adapters/postgres/notify-store';

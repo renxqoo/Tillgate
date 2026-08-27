@@ -1,6 +1,6 @@
 /**
  * 订阅额度守卫三原语 + 快照/成员限额的 PostgreSQL adapter（user_subscriptions/org_members）。
- * 从 billing-store 拆出（聚合边界：订阅行操作独立成文件——铁律 5）。
+ * 从 billing-store 拆出（聚合边界：订阅行操作独立成文件）。
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { orgMembers, userSubscriptions, type Db, type DbTx } from '@tillgate/db';

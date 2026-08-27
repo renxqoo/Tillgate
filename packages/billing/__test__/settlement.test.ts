@@ -1,6 +1,6 @@
 /**
- * 结算管线契约测试（内存 stand-in；迁移自旧仓 service/__tests__/settlement*.test.ts
- * 主干；真实 PG 的 SKIP LOCKED/租约/五元组竞态在 settlement-lifecycle.real.test.ts）。
+ * 结算管线契约测试（内存 stand-in；真实 PG 的 SKIP LOCKED/租约/五元组竞态在
+ * settlement-lifecycle.real.test.ts）。
  */
 import { describe, expect, it } from 'vitest';
 import { createWalletApi } from '../src/application/wallet/wallet.js';

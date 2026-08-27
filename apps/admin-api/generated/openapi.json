@@ -736,7 +736,7 @@
           },
           "type": {
             "type": "string",
-            "description": "交易类型(v2 wire:billing statement transactionKind)"
+            "description": "交易类型(billing statement transactionKind)"
           },
           "amount": {
             "type": "string"
@@ -786,7 +786,7 @@
                 "type": "null"
               }
             ],
-            "description": "操作管理员(v2 presenter 恒 null——无来源列)"
+            "description": "操作管理员(恒 null——无来源列)"
           }
         },
         "required": [
@@ -835,7 +835,7 @@
                 "type": "null"
               }
             ],
-            "description": "模型白名单(DB jsonb 数组;DTO 面沿 v1 快照口径 string | null——数组线上形态在 admin 表单边界转换)"
+            "description": "模型白名单(DB jsonb 数组;DTO 面为 string | null——数组线上形态在 admin 表单边界转换)"
           },
           "weight": {
             "type": "number"
@@ -869,7 +869,7 @@
                 "type": "null"
               }
             ],
-            "description": "冷却截止(v2 无列来源,恒 null)"
+            "description": "冷却截止(无列来源,恒 null)"
           },
           "rpmLimit": {
             "anyOf": [
@@ -919,14 +919,14 @@
           },
           "updatedAt": {
             "type": "string",
-            "description": "更新时间(v2 无列来源,恒 null)"
+            "description": "更新时间(无列来源,恒 null)"
           },
           "providerName": {
             "type": "string"
           },
           "providerBaseUrl": {
             "type": "string",
-            "description": "供应商 baseUrl(v2 无列来源,恒 null)"
+            "description": "供应商 baseUrl(无列来源,恒 null)"
           },
           "boundModels": {
             "type": "array",
@@ -1386,7 +1386,7 @@
                 "type": "null"
               }
             ],
-            "description": "兜底模型清单(v2 无来源,恒 null)"
+            "description": "兜底模型清单(无来源,恒 null)"
           },
           "paramRules": {
             "anyOf": [
@@ -1397,7 +1397,7 @@
                 "type": "null"
               }
             ],
-            "description": "参数规则(v2 无来源,恒 null)"
+            "description": "参数规则(无来源,恒 null)"
           },
           "billingPolicy": {
             "anyOf": [
@@ -2082,7 +2082,7 @@
                 "type": "null"
               }
             ],
-            "description": "用户邮箱(v2 accounts 行无用户 join,恒 null)"
+            "description": "用户邮箱(accounts 行无用户 join,恒 null)"
           },
           "userDisplayName": {
             "anyOf": [
@@ -2093,7 +2093,7 @@
                 "type": "null"
               }
             ],
-            "description": "用户展示名(v2 accounts 行无用户 join,恒 null)"
+            "description": "用户展示名(accounts 行无用户 join,恒 null)"
           },
           "rpmLimit": {
             "anyOf": [
@@ -2457,7 +2457,7 @@
           },
           "createdBy": {
             "type": "string",
-            "description": "创建管理员 id 的字符串投影(v1 wire 形状)"
+            "description": "创建管理员 id 的字符串投影"
           },
           "createdAt": {
             "type": "string"
@@ -2808,7 +2808,7 @@
                 "type": "null"
               }
             ],
-            "description": "v2 无来源列,恒 null"
+            "description": "无来源列,恒 null"
           },
           "method": {
             "type": "string"
@@ -2864,7 +2864,7 @@
           },
           "attempts": {
             "type": "number",
-            "description": "重试次数(v1 快照口径;v2 presenter 暂不输出——展示兜底为 1 次)"
+            "description": "重试次数(快照口径;presenter 暂不输出——展示兜底为 1 次)"
           },
           "sourceIp": {
             "anyOf": [
@@ -3092,7 +3092,7 @@
                 "type": "null"
               }
             ],
-            "description": "管理员标识(v2 无 join 来源,恒 null)"
+            "description": "管理员标识(无 join 来源,恒 null)"
           },
           "action": {
             "type": "string"

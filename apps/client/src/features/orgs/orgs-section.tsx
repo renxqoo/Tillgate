@@ -9,8 +9,8 @@ import { fmtYuan, usagePercent, type OrgWithMembers } from './orgs-shared';
 import { MemberList } from './orgs-members';
 import { InviteButton, PendingInvitations } from './orgs-invite';
 
-// 组织区块：所有者/成员双角色 × 成员/邀请/订阅多维分支交织，拆分子组件需独立 UI 契约裁决
-// eslint-disable-next-line complexity -- 存量棘轮（铁律 22⑥）：超限源于角色×区块的组合分支，触碰不新增
+// 组织区块：所有者/成员双角色 × 成员/邀请/订阅多维分支交织，拆分子组件需各自独立 UI 契约
+// eslint-disable-next-line complexity -- 超限源于角色×区块的组合分支，触碰不新增
 export function OrgSection({ org, members, invitations }: OrgWithMembers) {
   const t = useTranslations('orgs');
   const locale = useLocale();

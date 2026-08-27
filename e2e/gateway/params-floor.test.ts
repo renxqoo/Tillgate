@@ -1,11 +1,11 @@
 /**
- * E2E ⑬ 用户参数异常值全家族 + ⑭ fixed 预扣策略并发击穿（v1 e2e-params-floor 迁移）：
+ * E2E ⑬ 用户参数异常值全家族 + ⑭ fixed 预扣策略并发击穿：
  *   ⑬ 计费预算参数（超大/负/非整数/Infinity 形态的 max_tokens、n 越界）、
  *      结构数量上界（空/超多 messages、embed 批 2049）、边界内超大内容
  *      （9MiB prompt、1e308 采样参数透传）——要么 400 拒绝，要么安全放行且资金一致。
  *   ⑭ 配置「余额 ≥0.1 即放行」的模型上并发 8 路：advice 串行授权 + hold 封顶
- *      实筹 → 击穿不可能；单请求大输出验证最多负债 ≤ 单笔真实用量（§4 上界）。
- * 断言语义与 v1 逐条等价；floor 模型种子挂本世界 mock 渠道（v1 挂 dev 库渠道 2）。
+ *      实筹 → 击穿不可能；单请求大输出验证最多负债 ≤ 单笔真实用量（单笔上界）。
+ * floor 模型种子挂本世界 mock 渠道。
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -37,7 +37,7 @@ const statusText = (r: Response): string => String(r.status);
 const swallow = (): void => {};
 /** 网络层失败折叠标记（⑬ 大内容向量的合法终态之一） */
 const networkError = (): string => 'network-error';
-/** 超量 messages/embed 批的占位条目（数量上界向量——形状与 v1 一致） */
+/** 超量 messages/embed 批的占位条目（数量上界向量） */
 const userMsg = (): { role: string; content: string } => ({ role: 'user', content: 'x' });
 const xChar = (): string => 'x';
 const is400 = (s: number): boolean => s === 400;
@@ -207,7 +207,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
       console.log(
         `⑭ 大输出结算后余额 ${balance}（负债 ${new Decimal(FUND).minus(balance).abs().toString()}）`,
       );
-      expect(new Decimal(balance).gte('-0.18')).toBe(true); // 单笔 §4 上界（20000 token 封顶）
+      expect(new Decimal(balance).gte('-0.18')).toBe(true); // 单笔上界（20000 token 封顶）
       const bills14 = await keys.billsOf(userId);
       expect(bills14.length).toBe(1);
       expect(['settled', 'released']).toContain(defined(bills14[0], 'bills14[0]').status);

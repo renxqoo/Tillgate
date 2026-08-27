@@ -1,9 +1,9 @@
 /**
- * 钱包存储 port（application ↔ adapters 的唯一契约；总纲 §5「真实 I/O 走 ports ← adapters」）。
+ * 钱包存储 port（application ↔ adapters 的唯一契约；真实 I/O 走 ports ← adapters）。
  *
- * 事务模型：事务边界属于发起状态变化的动词（DESIGN §2.1）——
+ * 事务模型：事务边界属于发起状态变化的动词——
  *   - `transaction(fn)`：动词自开事务（40P01/40001 自动重试，策略由装配注入 adapters）；
- *   - `tx` 参数形态：包内 application 上层用例（如 U2 计费授权）在同一事务内编排钱包动词，
+ *   - `tx` 参数形态：包内 application 上层用例（如计费授权）在同一事务内编排钱包动词，
  *     句柄仅在包内流动，root index 不导出其构造途径。
  * 表族 = 聚合：accounts/transactions/legs/authorizations 四表是复式记账的不可分单元
  * （腿链跨表恒等 + Σ=0 由提交期触发器在四表间联查）。
@@ -46,7 +46,7 @@ export interface StatementItemRow {
 /** 返利流水分类（管理面 wire 词表;物理投影 = refType + refId 前缀,postgres adapter 单点） */
 export type ReferralPayoutKind = 'commission' | 'referral_signup' | 'gift';
 
-/** 返利流水行（管理读侧投影;v1 marketing.repo listPayouts 同视图——交易级,非腿级） */
+/** 返利流水行（管理读侧投影——交易级,非腿级） */
 export interface ReferralPayoutRow {
   id: number;
   kind: string;
@@ -64,14 +64,14 @@ export interface WalletStore {
   transaction<T>(fn: (tx: WalletTx) => Promise<T>): Promise<T>;
   /**
    * 加入上层用例的既有事务：SAVEPOINT 隔离 + 瞬态重试——失败只回滚到保存点，
-   * 外层事务不受损（修复旧仓注入路径 23505 毒化外层事务的隐患，见 MIGRATION-U1 §4）。
+   * 外层事务不受损（注入路径的 23505 不毒化外层事务）。
    */
   joinTransaction<T>(tx: WalletTx, fn: (tx: WalletTx) => Promise<T>): Promise<T>;
 
   // ---------- 账户 ----------
   /** 解析用户账户（无则建）；返回账户 id */
   ensureUserAccount(conn: WalletConn, userId: number, currency: string): Promise<string>;
-  /** 解析内部科目账户（无则建；shard 恒 0——B9：分片保留位未启用，活路径语义唯一） */
+  /** 解析内部科目账户（无则建；shard 恒 0——分片保留位未启用，活路径语义唯一） */
   ensureInternalAccount(conn: WalletConn, code: string, currency: string): Promise<string>;
   /** 只读定位用户账户（幂等重放路径禁止建空账户） */
   findUserAccountId(conn: WalletConn, userId: number, currency: string): Promise<string | null>;
@@ -169,7 +169,7 @@ export interface WalletStore {
   /** 账户在途敞口绝对值设置（authorize/settle/release 专用；账户行必须已锁） */
   setInFlight(tx: WalletConn, accountId: string, value: string): Promise<void>;
   /**
-   * 原子资金门（2026-08-26 快路径增量；**必须事务内调用**——deferred
+   * 原子资金门（**必须事务内调用**——deferred
    * coherence 在 commit 校验，autocommit 直调立即检查必炸）：单语句条件占用
    * in_flight——守卫（可用额口径 guardKind / 账户 active）进 WHERE，
    * 成功即「守卫过 + 占用
@@ -205,7 +205,7 @@ export interface WalletStore {
 
   /**
    * 返利流水页（管理读侧;交易级 id 倒序 + 分页;三类投影条件在 adapter 单点——
-   * accounts G3 裁决落位:payouts 是 wallet 流水投影,资金单一真相在本包）。
+   * payouts 是 wallet 流水投影,资金单一真相在本包）。
    */
   listReferralPayouts(
     conn: WalletConn,
@@ -216,7 +216,7 @@ export interface WalletStore {
   isUniqueViolation(error: unknown): boolean;
 
   /**
-   * 对账核验（只读哨兵，U3）：三类漂移（transaction_balance / account_balance /
+   * 对账核验（只读哨兵）：三类漂移（transaction_balance / account_balance /
    * in_flight），limit 上限 10000。消费方 = settlement 对账用例。
    */
   verifyInvariants(limit: number): Promise<

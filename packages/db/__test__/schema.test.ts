@@ -1,6 +1,6 @@
 /**
- * schema 面结构断言(IMPLEMENTATION.md §4):表清单封闭、词表收敛(B4)、
- * payments 解除 ledger-core 反向依赖(B1)、词表谓词行为。
+ * schema 面结构断言:表清单封闭、词表收敛、
+ * payments 解除 ledger-core 反向依赖、词表谓词行为。
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +10,7 @@ import { getTableConfig, PgTable } from 'drizzle-orm/pg-core';
 import * as schema from '../src/schema/index.js';
 import * as rootExports from '../src/index.js';
 
-/** 物理表清单(46 张 = v1 基线 39 + identity 波次七表,迁移 0076)——新增/删除表必须先改本清单 */
+/** 物理表清单(46 张 = 基线 39 + identity 七表,迁移 0076)——新增/删除表必须先改本清单 */
 const EXPECTED_TABLES = new Set([
   'users',
   'admins',

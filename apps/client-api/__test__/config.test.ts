@@ -78,8 +78,8 @@ describe('client-api config', () => {
   });
 
   describe('组配置全-or-无', () => {
-    // CAPTCHA/SMTP/OAuth/EPAY/STRIPE 凭据组校验已随 env 迁移迁入 integration_settings
-    // 写入侧（control-plane update/import 用例——docs/integration-settings/DESIGN.md §5 D5）
+    // CAPTCHA/SMTP/OAuth/EPAY/STRIPE 凭据组校验在 integration_settings
+    // 写入侧（control-plane update/import 用例）
     it('sentinel 无主名拒绝', () => {
       rejectLoad({ REDIS_SENTINELS: 'h1:26379' }, /REDIS_SENTINEL_NAME/);
     });

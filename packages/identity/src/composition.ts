@@ -1,8 +1,8 @@
 /**
- * 装配子入口(内部 workspace 契约,非公开 API——总纲 §5.3/§5.4):
+ * 装配子入口(内部 workspace 契约,非公开 API):
  * 业务能力包(accounts 的 adapter)或 app assembly 需要与自身业务状态**同一事务**
  * 注册凭据时(建号+挂标识原子),经此 bridge 参与;DbTx 不进根 facade。
- * 审计(§5.4 事务参与):bridge 在调用方事务内经 auditSink 直写——提交即落库、
+ * 审计(事务参与):bridge 在调用方事务内经 auditSink 直写——提交即落库、
  * 回滚即无审计行(不再返回 auditEvents 由调用方提交后冲洗)。
  * 仅 app assembly、迁移脚本与 adapter 集成测试可引用本入口。
  */
@@ -20,7 +20,7 @@ import type { ValidationGuards } from './domain/identifier.js';
 import type { PasswordPolicy } from './domain/password.js';
 
 // 存储 port 契约(可替换实现/装配桥接面,方法首参 DbLike 参与调用方事务)——
-// §5.3:不从根出口导出,仅装配/迁移/adapter 集成测试可引用本入口
+// 不从根出口导出,仅装配/迁移/adapter 集成测试可引用本入口
 export type { CredentialStore, RegisterCredentialOutcome } from './ports/credential-store.js';
 export type {
   ChallengeStore,
@@ -78,7 +78,7 @@ async function registerCredentialWithinTx(
     readonly clock: Clock;
     readonly guards: ValidationGuards;
     readonly passwordPolicy: PasswordPolicy;
-    /** 事务参与审计 sink(§5.4):提供时审计随调用方事务原子落库,失败随事务回滚 */
+    /** 事务参与审计 sink:提供时审计随调用方事务原子落库,失败随事务回滚 */
     readonly auditSink?: AuditPort;
   },
   input: BridgeRegisterCredentialInput,
@@ -123,7 +123,7 @@ export function identityWithinTx(
     readonly clock: Clock;
     readonly guards: ValidationGuards;
     readonly passwordPolicy: PasswordPolicy;
-    /** 事务参与审计 sink(§5.4):提供时审计随调用方事务原子落库,失败随事务回滚 */
+    /** 事务参与审计 sink:提供时审计随调用方事务原子落库,失败随事务回滚 */
     readonly auditSink?: AuditPort;
     readonly credentialStore?: CredentialStore;
   },

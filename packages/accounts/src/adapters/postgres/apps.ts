@@ -98,7 +98,7 @@ export const appQueries: Pick<
   },
 
   async rotateAppSecret(db, { userId, appId, clientSecretHash }) {
-    // 先 FOR UPDATE 行锁再更新:防并发轮换产生孤儿 secret(v1 两步语义)
+    // 先 FOR UPDATE 行锁再更新:防并发轮换产生孤儿 secret
     const locked = await db
       .select({ id: apps.id })
       .from(apps)

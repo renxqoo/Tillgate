@@ -1,5 +1,5 @@
 /**
- * createControlPlane facade：唯一装配面（§5.3——app 只见 facade 与稳定契约）。
+ * createControlPlane facade：唯一装配面（app 只见 facade 与稳定契约）。
  * 内部组装 postgres 适配器族；装配级可覆盖件（审计出口/凭证存储/目录缓存）显式注入。
  * 返回面不泄漏 Db/DbTx/drizzle 行类型/供应商 SDK；分组用例按单元收敛。
  * 按域方法级委托住 src/sections/*-section.ts（逐字搬迁的域构建器）——本文件只做
@@ -105,7 +105,7 @@ import { createFxSection } from './sections/fx-section';
 import { createSettingsSection } from './sections/settings-section';
 import { createCatalogSection } from './sections/catalog-section';
 
-/** 装配环境（全部必填注入——铁律 3；可选覆盖件有包内缺省实现） */
+/** 装配环境（全部必填注入；可选覆盖件有包内缺省实现） */
 export interface ControlPlaneEnv {
   readonly db: Db;
   /** 渠道上游 Key 加解密（AES-256-GCM enc:v1；runtime.createCipher 结构兼容） */
@@ -132,7 +132,7 @@ export interface ControlPlaneEnv {
   readonly fx: FxEnv;
   /** 审计出口（运营事件 best-effort；observability 桥可覆盖——降级清单见 ports/audit-sink.ts） */
   readonly audit?: AuditSink;
-  /** 资金/安全类审计（事务参与 port，§5.4/G3；缺省 postgres 同事务写入） */
+  /** 资金/安全类审计（事务参与 port；缺省 postgres 同事务写入） */
   readonly auditTx?: AuditTxSink;
   /** 凭证存储（缺省 postgres voucher_blobs；OSS 适配可覆盖） */
   readonly voucherStorage?: VoucherStorage;
@@ -206,7 +206,7 @@ export interface ControlPlane {
       replayed: boolean;
     }>;
     listRecharges(input: ListRechargesInput): Promise<ListResult<RechargeRow>>;
-    /** 进货凭证回读（admin-api P5 消费;键校验在 storage——防路径穿越） */
+    /** 进货凭证回读（admin-api 消费;键校验在 storage——防路径穿越） */
     loadVoucher(key: string): Promise<{ data: Uint8Array; mimeType: string } | null>;
   };
   readonly models: {
@@ -249,7 +249,7 @@ export interface ControlPlane {
       },
     ): Promise<ListResult<RateCardUserRow>>;
     cardHealth(rateCardId: number): Promise<RateCardHealth>;
-    /** 卡全局兜底系数读（admin-api D6 set-password「缺则回填 1.000」消费） */
+    /** 卡全局兜底系数读（admin-api set-password「缺则回填 1.000」消费） */
     findGlobalCoefficient(rateCardId: number): Promise<string | null>;
   };
   readonly fx: {
@@ -265,7 +265,7 @@ export interface ControlPlane {
       read(): Promise<{ timezone: string | null }>;
       update(input: UpdateBillingTimezoneInput): Promise<{ timezone: string }>;
     };
-    /** 第三方集成动态配置（integration_settings——DESIGN docs/integration-settings） */
+    /** 第三方集成动态配置（integration_settings） */
     integrations: {
       list(): Promise<{ integrations: readonly IntegrationListItem[] }>;
       update(input: UpdateIntegrationInput): Promise<IntegrationListItem>;
@@ -277,9 +277,9 @@ export interface ControlPlane {
     priceHistory(input: { externalName: string }): Promise<CatalogPriceHistoryEntry[]>;
     import(input: ImportCatalogInput): Promise<ImportCatalogResult>;
   };
-  /** 动态 RBAC（ADR-0008）：动态角色 + 权限树管理面（装配见 application/rbac/compose） */
+  /** 动态 RBAC：动态角色 + 权限树管理面（装配见 application/rbac/compose） */
   readonly rbac: RbacSurface;
-  /** 管理员资料面（G2——装配见 application/admins/compose） */
+  /** 管理员资料面（装配见 application/admins/compose） */
   readonly admins: AdminsSurface;
 }
 

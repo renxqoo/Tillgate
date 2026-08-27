@@ -29,7 +29,7 @@ export function createInMemorySessionInvalidation(): InMemorySessionInvalidation
   };
 }
 
-/** v1 等价策略(装配缺省由 app 持有;测试用等价值断行为) */
+/** 事务重试策略(装配缺省由 app 持有;测试用等价值断行为) */
 export const V1_TX_RETRY: TxRetryPolicy = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 };
 
 export const V1_POLICY: AccountsPolicy = {
@@ -46,7 +46,7 @@ export const V1_POLICY: AccountsPolicy = {
   banDefaultReason: '管理员封禁',
 };
 
-/** 内存 wallet 替身:自然键幂等 + 失败注入(broken wallet 验证回滚,v1 测试手法) */
+/** 内存 wallet 替身:自然键幂等 + 失败注入(broken wallet 验证回滚) */
 export interface InMemoryWalletCredit extends WalletCreditPort {
   readonly credits: CreditCommand[];
   /** 命中即抛(注入 side 匹配的 refId) */

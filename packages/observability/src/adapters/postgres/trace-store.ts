@@ -16,7 +16,7 @@ import { ensureTracePartition, listTracePartitionDays } from './trace-partitions
  * PG 实现的 trace 存储。
  *
  * 写入:批量 INSERT + 主键 (start_time, span_id) 冲突忽略(SDK 重发幂等);
- *       按行所在 UTC 日自动 ensure 分区(进程内 memo,每天至多一次 DDL——G4:闭包持有)。
+ *       按行所在 UTC 日自动 ensure 分区(进程内 memo,每天至多一次 DDL——闭包持有)。
  * 读取:点查走 trace_id/request_id 索引;recent 走 start_time 分区裁剪 + 索引。
  * 数据等级:诊断数据 best-effort——写入失败由调用方(接收端 batcher)丢弃并计数,绝不反压。
  */
@@ -56,7 +56,7 @@ function toTraceSummary(r: {
     spanCount: r.spanCount,
     hasError: r.hasError,
     services: [...new Set(r.services)],
-    // requestIds 与 names 同序(order by start_time)——summary.requestId 取最早 span 的值(B4)
+    // requestIds 与 names 同序(order by start_time)——summary.requestId 取最早 span 的值
     requestId: r.requestIds.find((id) => id != null) ?? null,
   };
 }
@@ -209,7 +209,7 @@ function findTraceByRequestId(db: Db, requestId: string) {
 
 /** 渠道健康拓扑(48h 窗口径由调用方定) */
 async function channelTopologyImpl(db: Db, sinceMs: number): Promise<ChannelHealth[]> {
-  // last_error = 时间最晚的错误消息(B1:v1 无序聚合取到任意序;desc 序保证与 last_at 语义对齐)
+  // last_error = 时间最晚的错误消息(无序聚合会取到任意序;desc 序保证与 last_at 语义对齐)
   const result = await db.execute<{
     channel: string | null;
     attempts: string;
@@ -255,7 +255,7 @@ async function traceStats(db: Db): Promise<TraceStoreStats> {
 }
 
 export function createPgTraceStore(db: Db): TraceStore {
-  // 分区 ensure 的进程内 memo(每天至多一次 DDL——G4:闭包持有)
+  // 分区 ensure 的进程内 memo(每天至多一次 DDL——闭包持有)
   const ensured = new Set<string>();
   return {
     writeBatch: (rows) => writeTraceBatch(db, ensured, rows),

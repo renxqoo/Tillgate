@@ -1,15 +1,15 @@
 import type { ChannelCandidate, ModelMappingSnapshot } from '../domain/model/types';
 
 /**
- * 目录 port（control-plane 只读快照的消费方定义；装配注入实现——重构方案 §5.2
- * 「消费方定义 port、在 app 注入实现」；gateway 波 C-G1 起实现由 apps/gateway
- * 的 catalog-port 桥提供：control-plane 目录读 + billing 纯函数组装用户价快照）。
+ * 目录 port（control-plane 只读快照的消费方定义；装配注入实现——生产实现由
+ * apps/gateway 的 catalog-port 桥提供：control-plane 目录读 + billing 纯函数组装
+ * 用户价快照）。
  * 目录侧负责启用状态过滤（status=0）与渠道连接信息装配；排序调度归 inference。
  */
 
 /**
  * 报价解析上下文：快照中的 coefficient / unitPrice / unitUpperBound 是
- * 「请求时点已解析」值（v1 buildQuote 语义）——
+ * 「请求时点已解析」值——
  *   coefficient = 用户费率卡系数（用户价 = 官方价 × 系数；无卡 = 缺省系数）；
  *   unitPrice / unitUpperBound = 按请求体推导的变体单价与单位上界（n/秒/字符）
  *   叠加映射级预扣保底。因此目录查询必须携带用户、请求体与准入时刻三个维度。

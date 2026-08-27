@@ -1,6 +1,6 @@
 /**
  * 会话吊销锚点 store postgres 实现:upsert + GREATEST 单调(管理端回填历史时刻
- * 不会放松已收紧的线);at 缺省 = SQL now()(B28:锚点推进不受应用时钟回拨影响)。
+ * 不会放松已收紧的线);at 缺省 = SQL now()(锚点推进不受应用时钟回拨影响)。
  */
 import { and, eq, sql } from 'drizzle-orm';
 import type { DbLike } from '@tillgate/db';

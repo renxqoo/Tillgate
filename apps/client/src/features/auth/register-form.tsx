@@ -122,7 +122,7 @@ function RegisterCodeStep({
 
 // 主表单：三个 Controller 字段为逐项平铺的模板（email/密码/确认密码 + 人机验证装配），
 // 超限源于表单字段模板的线性长度而非逻辑密度（验证码步已抽为 RegisterCodeStep）
-// eslint-disable-next-line max-lines-per-function -- 表单字段 Controller 模板逐项平铺，逻辑密度低（铁律 22①）
+// eslint-disable-next-line max-lines-per-function -- 表单字段 Controller 模板逐项平铺，逻辑密度低
 export function RegisterForm({
   oauthOptions = [],
   captchaSiteKey = null,

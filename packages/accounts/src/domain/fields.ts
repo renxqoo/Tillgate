@@ -1,7 +1,7 @@
 /**
  * 字段域规则:email/displayName/name/remark 等文本字段与限额数值的纯校验。
  * 宽度常量是 DDL varchar 的契约镜像(db schema 为物理真相,变更须与迁移同拍),
- * 不作装配旋钮;可变阈值(金额上界/频率上界)由 policy 必填注入(铁律 3)。
+ * 不作装配旋钮;可变阈值(金额上界/频率上界)由 policy 必填注入。
  */
 
 /** DDL varchar 宽度镜像(users/organizations/api_keys/apps/org_invitations/referrals) */
@@ -19,7 +19,7 @@ export const FIELD_LIMITS = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** email 规范化:trim + 小写(v1 登录/注册口径;唯一索引按规范化值命中,消灭大小写分叉) */
+/** email 规范化:trim + 小写(唯一索引按规范化值命中,消灭大小写分叉) */
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }

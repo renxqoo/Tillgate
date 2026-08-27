@@ -10,7 +10,7 @@ export default defineConfig({
       },
     },
 
-    // 目录结构按总纲 §3 目标树 test/{unit,render,pack}(本包用户指令优先于铁律 14 平铺先例, 见 DESIGN.md)
+    // 目录结构按 test/{unit,render,pack} 分层(刻意区别于其他包的 __test__ 平铺布局)
     include: ['test/{unit,render,pack}/*.test.{ts,tsx}'],
     environment: 'jsdom',
     setupFiles: ['test/setup.ts'],

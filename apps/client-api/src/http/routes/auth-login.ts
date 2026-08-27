@@ -18,11 +18,11 @@ interface LoginPayload {
   uid: number;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 登录族装配平铺:路由表+多级登录处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 登录族装配平铺:路由表+多级登录处理器平铺
 export function loginRoutes(deps: AuthDeps) {
   const app = new Hono<SessionEnv>();
 
-  // eslint-disable-next-line max-lines-per-function -- 凭证登录链(守卫闸/鉴别/防枚举/状态/计数)语义连续,拆段即互相回读;v1 平移语义(存量棘轮)
+  // eslint-disable-next-line max-lines-per-function -- 凭证登录链(守卫闸/鉴别/防枚举/状态/计数)语义连续,拆段即互相回读
   app.post('/v1/auth/login', jsonBody(loginSchema), async (c) => {
     const body = c.req.valid('json');
     const ip = clientIpOf(deps, c);

@@ -1,7 +1,7 @@
 import type { ChannelHealth, SpanRow, TraceStore, TraceStoreStats, TraceSummary } from './types';
 
 /**
- * trace 查询信封(v1 admin-api tracing.service 平移,D1/S1):
+ * trace 查询信封:
  * 钳位、rows+total 并行、详情组装。SQL/聚合在 TraceStore(唯一实现归 adapters);
  * 本层只做口径与信封——参数守卫(regex 白名单)在存储侧(防注入)。
  */

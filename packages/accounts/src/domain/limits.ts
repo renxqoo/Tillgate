@@ -1,17 +1,17 @@
 /**
- * 限额域(表驱动,v1 domain/key-limits.ts + 路由 zod 收敛):
+ * 限额域(表驱动):
  * 金额类上限用精确十进制字符串,拒绝科学计数法/NaN/负数/超上界;
  * 频率类(rpm/tpm)是正整数且 ≤ 注入上界。
- * 上界是可变阈值 → policy 必填注入(v1 等价 '1000000000000' / 1e6 / 1e8)。
+ * 上界是可变阈值 → policy 必填注入(缺省 '1000000000000' / 1e6 / 1e8)。
  */
 import Decimal from 'decimal.js';
 
 export interface LimitPolicy {
-  /** 金额类上限的十进制字符串上界(v1 等价 '1000000000000') */
+  /** 金额类上限的十进制字符串上界(缺省 '1000000000000') */
   readonly amountLimitUpper: string;
-  /** rpm 上界(v1 等价 1_000_000) */
+  /** rpm 上界(缺省 1_000_000) */
   readonly rpmLimitMax: number;
-  /** tpm 上界(v1 等价 100_000_000) */
+  /** tpm 上界(缺省 100_000_000) */
   readonly tpmLimitMax: number;
 }
 
@@ -25,7 +25,7 @@ export interface AmountLimitRule {
 /**
  * 解析金额上限:正数、十进制串、≤ upper。
  * 返回规范化字符串(去指数形态),非法返回 null。
- * v1 语义锚:结构性拒绝 '1e21'、22 位整数、负数、NaN、超过 1e12 业务上界。
+ * 结构性拒绝 '1e21'、22 位整数、负数、NaN、超过业务上界。
  */
 export function parseAmountLimit(input: string, upper: string): string | null {
   if (!DECIMAL_RE.test(input)) return null;
@@ -41,7 +41,7 @@ export function parseAmountLimit(input: string, upper: string): string | null {
   return input;
 }
 
-/** 管理面金额口径:非负且 ≤ 上界(允许 0=即日全拒;v1 admin zod 语义) */
+/** 管理面金额口径:非负且 ≤ 上界(允许 0=即日全拒) */
 export function isNonNegativeAmountWithin(input: string, upper: string): boolean {
   if (!DECIMAL_RE.test(input)) return false;
   try {

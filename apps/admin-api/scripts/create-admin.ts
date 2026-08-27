@@ -1,6 +1,5 @@
 /**
- * 管理员初始账号创建（bootstrap）——v1 `scripts/seed-admin.ts` 的 v2 正身
- * （identity MIGRATION §8 W1 后续波：v2 侧此前无「建管理员」动词，只有凭据迁移）。
+ * 管理员初始账号创建（bootstrap）。
  *
  * 语义（引导最优实践：创建靠命令、密码一次性、幂等）：
  *   - 密码来源优先级：`--password=`（勿入 shell 历史）> env `ADMIN_INITIAL_PASSWORD`
@@ -8,7 +7,7 @@
  *   - 幂等：同邮箱已存在即跳过，**不覆盖已有密码**（改密走登录后 /v1/me/password）；
  *     邮箱被其他身份（如 client 侧账号）占用 → 报错回滚，绝不静默造「登不上」的废号
  *   - id 分配：admins.id 必须落在 ≥1e9 段——identity_passwords.userId 是无 realm 的
- *     扁平主键，与 users.id 同号即串号（2026-08-23 生产迁移裁决；序列不足时推高）
+ *     扁平主键，与 users.id 同号即串号（序列不足时推高）
  *   - 事务：admins + identity_credentials + identity_passwords 同事务原子插入；
  *     旧列 admins.password_hash 已随 0089 退役（凭据单一真相在 identity 七表）
  *

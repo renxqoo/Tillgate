@@ -1,8 +1,8 @@
 /**
- * 返利流水管理读侧（U8/admin-api P3 消费的 billing 接缝）契约测试：
+ * 返利流水管理读侧契约测试：
  * 三类投影（refType + refId 前缀）互不串扰、id 倒序、limit/offset 分页、total 计数、
  * 同 refType 异前缀不误收（commission ↔ referral_signup 同 refType='referral' 的
- * 前缀边界——v1 marketing.repo listPayouts 行为规格）。
+ * 前缀边界）。
  */
 import { describe, expect, it } from 'vitest';
 import { createWalletApi } from '../src/application/wallet/wallet.js';

@@ -1,5 +1,5 @@
 /**
- * ledger_operations 幂等档案 postgres 适配器（v1 operations.repo 等价迁移）：
+ * ledger_operations 幂等档案 postgres 适配器：
  * 占位 INSERT（唯一键冲突感知）→ 回读比对 → 回执存档。
  * 操作行与业务写在同一事务：要么同生（执行完成且回执落档）要么同死。
  */

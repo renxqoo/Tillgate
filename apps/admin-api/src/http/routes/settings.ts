@@ -1,6 +1,6 @@
 /**
  * 运营系统设置路由：计费时区（system_configs KV）与第三方集成动态配置
- * （integration_settings——docs/integration-settings）。写入均留审计（control-plane）。
+ * （integration_settings 表）。写入均留审计（control-plane）。
  */
 import { Hono } from 'hono';
 import { jsonBody } from '@tillgate/http';
@@ -34,7 +34,7 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
     jsonBody(settingsContracts.integrationsUpdate),
     async (c) => {
       const body = c.req.valid('json');
-      // step-up 强制点（ADR-0011）：配置/启停共用本端点，未验 TOTP 不得落库
+      // step-up 强制点：配置/启停共用本端点，未验 TOTP 不得落库
       await requireTotpStepup(deps, c, body.totpCode);
       return c.json(
         await integrations.update({

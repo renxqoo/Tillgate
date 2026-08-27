@@ -1,5 +1,5 @@
 /**
- * 集成字段掩码（DESIGN §4.1）：secret 回显只出「**** + 尾 4」形态，短值全遮。
+ * 集成字段掩码：secret 回显只出「**** + 尾 4」形态，短值全遮。
  * 响应永不包含明文或密文——掩码对象是 GET 面的唯一回显形状。
  */
 import type { IntegrationSpec } from './specs';

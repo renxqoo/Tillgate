@@ -19,7 +19,7 @@ import {
   type SubscriptionAssembly,
 } from './subscription-shared.js';
 
-// eslint-disable-next-line max-lines-per-function -- 存量棘轮(铁律22⑥):顺序编排/契约签名,拆分需独立契约裁决
+// eslint-disable-next-line max-lines-per-function -- 顺序编排/契约签名,拆分需独立契约设计
 export async function change(
   assembly: SubscriptionAssembly,
   input: ChangeInput,
@@ -35,10 +35,10 @@ export async function change(
       targetPlanId: input.targetPlanId,
       quantity: input.quantity,
     },
-    // eslint-disable-next-line max-lines-per-function -- 存量棘轮(铁律22⑥):顺序编排/契约签名,拆分需独立契约裁决
+    // eslint-disable-next-line max-lines-per-function -- 顺序编排/契约签名,拆分需独立契约设计
     execute: async (tx) => {
       const now = clock();
-      // F2：折算必须基于行锁后的新鲜快照——无锁读与并发结算竞态会低估剩余价值 → 多收
+      // 折算必须基于行锁后的新鲜快照——无锁读与并发结算竞态会低估剩余价值 → 多收
       const current = await store.lockActiveSubscription(tx, input.subscriptionId);
       if (!current || (input.userId != null && current.userId !== input.userId)) {
         throw BillingErrors.business('subscription_state', { reason: 'no_subscription' });

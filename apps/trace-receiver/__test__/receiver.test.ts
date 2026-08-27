@@ -10,13 +10,12 @@ import { createReceiverApp } from '../src/app';
 
 /**
  * 接收端 HTTP 面单测(零 PG):鉴权门/媒体类型门/错误信封码/202 计数算术/探活与指标。
- * 真 PG 端到端(写路径排空/幂等)在 receiver.real.test.ts——两文件合起来是 v1
- * receiver.test.ts HTTP 面段(4 用例)的行为规格超集。
+ * 真 PG 端到端(写路径排空/幂等)在 receiver.real.test.ts。
  */
 
 const TOKEN = 't'.repeat(24);
 
-/** DB 探活闭包:app 依赖面只收函数,不出现 Db 类型(P5) */
+/** DB 探活闭包:app 依赖面只收函数,不出现 Db 类型 */
 const pingDbOk = () => Promise.resolve();
 const pingDbFail = () => Promise.reject(new Error('connection refused'));
 
@@ -133,7 +132,7 @@ describe('鉴权门(令牌配置后)', () => {
     });
     const readyz = await gated.request('/readyz'); // 不带 Bearer
     expect(readyz.status).toBe(200);
-    const livez = await gated.request('/livez'); // 豁免但未建路由 → 404(v1 同形)
+    const livez = await gated.request('/livez'); // 豁免但未建路由 → 404
     expect(livez.status).toBe(404);
   });
 });

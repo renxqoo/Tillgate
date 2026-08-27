@@ -16,7 +16,9 @@ export function ok(cond: unknown, msg: string): asserts cond {
 
 export function eq(actual: unknown, expected: unknown, msg: string) {
   if (actual !== expected) {
-    throw new CaseFail(`${msg}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    throw new CaseFail(
+      `${msg}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+    );
   }
 }
 
@@ -58,7 +60,13 @@ export interface HttpResult {
 
 export async function http(
   url: string,
-  opts: { method?: string; body?: unknown; headers?: Record<string, string>; timeoutMs?: number; raw?: boolean } = {},
+  opts: {
+    method?: string;
+    body?: unknown;
+    headers?: Record<string, string>;
+    timeoutMs?: number;
+    raw?: boolean;
+  } = {},
 ): Promise<HttpResult> {
   const start = Date.now();
   const res = await fetch(url, {
@@ -67,7 +75,11 @@ export async function http(
       ...(opts.body != null ? { 'content-type': 'application/json' } : {}),
       ...(opts.headers ?? {}),
     },
-    body: opts.raw ? (opts.body as string) : opts.body != null ? JSON.stringify(opts.body) : undefined,
+    body: opts.raw
+      ? (opts.body as string)
+      : opts.body != null
+        ? JSON.stringify(opts.body)
+        : undefined,
     signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000),
   });
   const text = await res.text();
@@ -172,7 +184,10 @@ export function sse(
       // 真实等待流收尾;stall 上限把「永不收尾」从挂死套件变成可失败断言
       return Promise.race([settled, sleep(stallMs).then(() => 'stalled' as const)]);
     },
-    (err) => ((err as { name?: string })?.name === 'AbortError' ? ('aborted' as const) : ('network-error' as const)),
+    (err) =>
+      (err as { name?: string })?.name === 'AbortError'
+        ? ('aborted' as const)
+        : ('network-error' as const),
   );
   return handle;
 }
@@ -218,7 +233,9 @@ export async function runAll(ctx: any, only?: string[]): Promise<CaseResult[]> {
       const msg = error instanceof Error ? error.message : String(error);
       const status = (error as any)?.skip === true ? 'SKIP' : 'FAIL';
       results.push({ ...c, status, ms: Date.now() - start, detail: msg });
-      console.log(`  ${status === 'SKIP' ? '−' : '✗'} ${c.id} ${c.title} [${status}] ${msg.slice(0, 300)}`);
+      console.log(
+        `  ${status === 'SKIP' ? '−' : '✗'} ${c.id} ${c.title} [${status}] ${msg.slice(0, 300)}`,
+      );
     }
   }
   return results;
@@ -236,7 +253,9 @@ export function report(results: CaseResult[]) {
   for (const g of [...new Set(results.map((r) => r.group))]) {
     const rows = results.filter((r) => r.group === g);
     const p = rows.filter((r) => r.status === 'PASS').length;
-    console.log(`  ${g}: ${p}/${rows.length} pass${rows.some((r) => r.status === 'FAIL') ? '  ⚠️ 有发现' : ''}`);
+    console.log(
+      `  ${g}: ${p}/${rows.length} pass${rows.some((r) => r.status === 'FAIL') ? '  ⚠️ 有发现' : ''}`,
+    );
   }
   console.log(`  总计: ${pass} PASS / ${fail} FAIL(=发现) / ${skip} SKIP / ${results.length} 用例`);
   if (fail > 0) {

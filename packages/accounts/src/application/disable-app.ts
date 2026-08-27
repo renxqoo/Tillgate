@@ -1,4 +1,4 @@
-/** 禁用 App:CAS 0→1,属主面不可逆(v1 disableApp) */
+/** 禁用 App:CAS 0→1,属主面不可逆 */
 import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import type { AppRecord } from '../ports/account-store.js';

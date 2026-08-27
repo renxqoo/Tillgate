@@ -1,5 +1,5 @@
 /**
- * 跨 app 生效链 e2e（v1 admin-api e2e-cross-app 搬迁——P7;断言语义逐条随迁）：
+ * 跨 app 生效链 e2e：
  *   ① 管理员重置密码 → client 旧 token /v1/me 401 + 旧密码登 401 + 新密码可登
  *   ② 管理员封禁（PATCH status:1）→ client 既有 token 即刻 401
  * 注册经 captureMailer 抓码走真实两步制;管理面经真 admin 令牌打真实 HTTP。
@@ -36,7 +36,7 @@ function clientApi(): ReturnType<typeof apiClient> {
   return api;
 }
 
-/** 两步登录走完（captureMailer 抓码）——返回新会话 token（v1「新密码可登 200」的 v2 落点） */
+/** 两步登录走完（captureMailer 抓码）——返回新会话 token */
 async function loginTwoStep(
   email: string,
   password: string,

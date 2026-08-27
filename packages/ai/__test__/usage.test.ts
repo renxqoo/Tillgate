@@ -75,7 +75,7 @@ describe('usage/token-estimate：估算与 B1 口径回归', () => {
   });
   it('B1 回归：输出侧 reasoning/tool_calls/text 与 content 同口径（传 model 后走 BPE）', () => {
     const w = resolveCalibration().weights;
-    // 同一文本：content 路径 vs text 路径，传 model 后应同值（v1 漏传时 text 走启发式口径分裂）
+    // 同一文本：content 路径 vs text 路径，传 model 后应同值
     const viaContent = estimateTextTokens('确定口径样本', w, 'gpt-4o');
     const viaOutput = estimateOutputTokens(
       { choices: [{ text: '确定口径样本' }] },

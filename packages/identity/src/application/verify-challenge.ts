@@ -1,5 +1,5 @@
 /**
- * 验码:CAS 三态翻译 + 可选目标归属比对(防跨 kind/跨主体重放,v1 expectEmail 泛化)。
+ * 验码:CAS 三态翻译 + 可选目标归属比对(防跨 kind/跨主体重放)。
  * 死因统一口径:不存在/已消费/已作废/已过期/耗尽 = challenge_invalid,不细分。
  */
 import { auditEvent } from '../domain/audit-events.js';
@@ -60,7 +60,7 @@ export async function verifyChallenge(
   }
   if (outcome.status === 'wrong_code') {
     if (outcome.remainingAttempts === 0) {
-      // 错次耗尽:统一 invalid 口径(v1 app 层 CHALLENGE_EXHAUSTED 语义)
+      // 错次耗尽:统一 invalid 口径
       throw identityErrors.business('challenge_invalid', { challengeId });
     }
     throw identityErrors.business('code_invalid', { remainingAttempts: outcome.remainingAttempts });

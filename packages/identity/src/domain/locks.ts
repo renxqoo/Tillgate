@@ -1,7 +1,6 @@
 /**
- * advisory lock 键构造器(并发契约,DESIGN §3)。键命名是 identity 业务语义
- * (@tillgate/db C8 裁决——归本包);锁获取发生在 application 的事务临界区,
- * 适配器只做纯 SQL(铁律 2)。
+ * advisory lock 键构造器(并发契约)。键命名是 identity 业务语义,归本包;
+ * 锁获取发生在 application 的事务临界区,适配器只做纯 SQL。
  */
 import type { NormalizedIdentifier } from './identifier.js';
 

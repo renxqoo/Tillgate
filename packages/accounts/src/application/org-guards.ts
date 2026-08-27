@@ -1,4 +1,4 @@
-/** 组织守卫(owner 专属动词共用;v1 requireOwner:非成员/非 owner 统一 403 语义) */
+/** 组织守卫(owner 专属动词共用;非成员/非 owner 统一 403 语义) */
 import { AccountsErrors } from '../domain/errors.js';
 import type { MembershipRecord } from '../ports/account-store.js';
 import type { UseCaseContext } from './context.js';

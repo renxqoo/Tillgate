@@ -1,4 +1,4 @@
-/** 按 id 查管理员资料（会话属主回查/GET /v1/me 消费）;授权策略在 app 裁决 */
+/** 按 id 查管理员资料（会话属主回查/GET /v1/me 消费）;授权策略在 app 层 */
 import type { AdminRecord } from '../../ports/admin-store';
 import type { AdminsDeps } from './admins-shared';
 

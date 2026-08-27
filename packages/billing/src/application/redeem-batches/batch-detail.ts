@@ -1,4 +1,4 @@
-/** 兑换批次详情（U6） */
+/** 兑换批次详情 */
 import { BillingErrors } from '../../domain/errors.js';
 import type { BillingStore } from '../../ports/billing-store.js';
 import type { RedeemBatchRecord, RedeemCodeStore } from '../../ports/payment-ports.js';

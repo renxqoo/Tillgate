@@ -66,7 +66,7 @@ export default async function ProvidersPage({ searchParams }: PageProps) {
     order,
     extra: { q, ...(view === 'deleted' ? { view } : {}) },
   });
-  // P6:词表单一真相 = admin-api /v1/vendor-catalog（ai 根出口装配;过渡快照已删除）。
+  // 词表单一真相 = admin-api /v1/vendor-catalog（ai 根出口装配）。
   // admin-api 不可达时降级空词表——表单仍可提交,后端 control-plane 词表校验是最终防线。
   const vendorCatalog =
     view === 'active'

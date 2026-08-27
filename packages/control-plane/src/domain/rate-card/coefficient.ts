@@ -6,7 +6,7 @@
 import Decimal from 'decimal.js';
 import { controlPlaneErrors } from '../../errors';
 
-/** 系数域（v1 同规则）：单个整数位 0-9 + 0-3 位小数，且大于 0 */
+/** 系数域：单个整数位 0-9 + 0-3 位小数，且大于 0 */
 const COEFFICIENT_PATTERN = /^(?:[0-9](?:\.\d{1,3})?)$/;
 
 /** 系数落库/回显口径：3 位小数字符串（numeric(6,3)） */

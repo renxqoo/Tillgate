@@ -1,6 +1,6 @@
 /**
- * PG 错误分类(IMPLEMENTATION.md §4):全 cause 链探测、精确码判定、约束名提取。
- * 含 B3 回归:深度 4 的 23505(v1 wallet 深度 3 的盲区)必须检出。
+ * PG 错误分类:全 cause 链探测、精确码判定、约束名提取。
+ * 含回归用例:深度 4 的唯一冲突(23505)必须检出。
  */
 import { describe, expect, it } from 'vitest';
 import {

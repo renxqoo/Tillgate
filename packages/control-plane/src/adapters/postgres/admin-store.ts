@@ -1,7 +1,7 @@
 /**
  * 管理员资料 postgres 适配器（ports/admin-store 唯一实现）。
  * 时间戳一律 SQL now()；投影不含密码/2FA 密钥列——凭据单一真相在 identity 七表
- * （G1/G2 裁决;旧列 admins.password_hash 已随 0089 退役）。
+ * （旧列 admins.password_hash 已随迁移 0089 退役）。
  * role 经 join roles 取 code（执法已收敛 RBAC 权限树,code 仅供展示与审计）;
  * 属主回查授权面解析（admins⋈roles⋈role_permissions⋈permissions 一条 join）。
  * 重名交给 admins_email_uq 唯一索引（23505 由 application 翻译冲突）。
@@ -24,7 +24,7 @@ function escapeLike(input: string): string {
   return input.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
-/** admin id 段分配下限（2026-08-23 生产裁决）：identity_passwords.userId 是无 realm
+/** admin id 段分配下限：identity_passwords.userId 是无 realm
  *  的扁平主键，admin id 与 users.id 同号即凭据串号——新管理员一律落 ≥1e9 段
  *  （与 apps/admin-api/scripts/create-admin.ts 同语义;段值两处同源,改动须同步）。 */
 const ADMIN_ID_SEGMENT_FLOOR = 1_000_000_000;

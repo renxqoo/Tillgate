@@ -1,9 +1,9 @@
 import type { TerminationReason } from '@tillgate/ai';
 
 /**
- * 估算归属词表与流式归属判定（v1 domain/rating/types.ts 归属部分迁移，政策不变）。
+ * 估算归属词表与流式归属判定。
  *
- * 计费政策（2026-08-21 拍板）：**部分交付即计费**——上游已处理即扣 input、
+ * 计费政策：**部分交付即计费**——上游已处理即扣 input、
  * 已交付输出按特征估算加扣（含上游故障截断的流：渠道成本已发生，网关不吸收损失）；
  * 零交付（first_chunk 前失败）不扣，走换渠/释放。
  * 估算实扣口径向精确收敛；JSON 字节保守上界只作预扣敞口，不作实扣。
@@ -12,8 +12,7 @@ import type { TerminationReason } from '@tillgate/ai';
 /**
  * 用户侧取消原因（收据归属与验收共用子集）。词表源 = @tillgate/ai 的
  * TerminationReason 封闭词表（satisfies 编译期对齐，禁止再收录词表外值）：
- * v1 的 'aborted' 是旧事件名残留，v2 ai 的终止词表只有 client_disconnect /
- * request_cancelled 两态属用户侧取消，已随本包迁移移除（B14 词表对齐）。
+ * 终止词表中仅 client_disconnect / request_cancelled 两态属用户侧取消。
  */
 export const USER_SIDE_CANCELS = [
   'client_disconnect',

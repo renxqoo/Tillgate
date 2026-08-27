@@ -20,7 +20,7 @@ export interface FxState {
   fetchedAt: string | null;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 汇率条：基准展示/覆盖与点差编辑/强刷三段内联平铺 + 保存流程三步串联，再拆即无语义碎片（存量棘轮，行为等价优先）
+// eslint-disable-next-line max-lines-per-function -- 汇率条：基准展示/覆盖与点差编辑/强刷三段内联平铺 + 保存流程三步串联，再拆即无语义碎片
 export function CatalogFxBar({ fx }: { fx: FxState }) {
   const t = useTranslations('modelMarket');
   const tc = useTranslations('common');

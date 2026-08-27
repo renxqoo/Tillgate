@@ -1,5 +1,5 @@
 /**
- * 路径参数解析：必须为正整数，否则 400 http.invalid_path_param（v1 params.ts 迁移形态）。
+ * 路径参数解析：必须为正整数，否则 400 http.invalid_path_param。
  * 防止 NaN / 负数透传到 DB 层，把本应 4xx 的客户端错误变成 500。
  */
 import type { Context } from 'hono';

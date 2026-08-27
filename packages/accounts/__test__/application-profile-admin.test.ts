@@ -1,5 +1,5 @@
 /**
- * 资料与管理面用户用例(MIGRATION §1.1-3..7):profile、显示名、列表过滤、
+ * 资料与管理面用户用例:profile、显示名、列表过滤、
  * 管理补丁全矩阵(freezeReason 规则/锚推进/换卡守卫/限额域/审计)。
  */
 import { describe, expect, it } from 'vitest';
@@ -60,7 +60,7 @@ describe('adminListUsers', () => {
     expect(ent.rows.map((r) => r.id)).toEqual([3]);
     const page = await h.api.adminListUsers({ page: 1, limit: 2 });
     expect(page.rows).toHaveLength(2);
-    // 默认排序 id desc(v1 desc(id) 稳定序)
+    // 默认排序 id desc(稳定序)
     const all = await h.api.adminListUsers({ limit: 10 });
     expect(all.rows.map((r) => r.id)).toEqual([3, 2, 1]);
   });
@@ -72,8 +72,14 @@ describe('adminListUsers', () => {
     h.store.seed.user({ id: 2, subject: 'free@x.io', rateCardId: null });
 
     const page = await h.api.adminListUsers({ limit: 10 });
-    const bound = defined(page.rows.find((r) => r.id === 1), 'bound row');
-    const free = defined(page.rows.find((r) => r.id === 2), 'free row');
+    const bound = defined(
+      page.rows.find((r) => r.id === 1),
+      'bound row',
+    );
+    const free = defined(
+      page.rows.find((r) => r.id === 2),
+      'free row',
+    );
     expect(bound.rateCardName).toBe('企业卡');
     expect(free.rateCardName).toBeNull();
   });
@@ -96,7 +102,7 @@ describe('adminPatchUser', () => {
     const u = h.store.seed.user({});
     const banned = await h.api.adminPatchUser({ userId: u.id, patch: { status: 1 }, adminId: 5 });
     expect(banned.status).toBe(1);
-    expect(banned.freezeReason).toBe('管理员封禁'); // v1 等价值(policy 注入)
+    expect(banned.freezeReason).toBe('管理员封禁'); // 缺省原因经 policy 注入
     const unbanned = await h.api.adminPatchUser({ userId: u.id, patch: { status: 0 }, adminId: 5 });
     expect(unbanned.freezeReason).toBeNull();
   });

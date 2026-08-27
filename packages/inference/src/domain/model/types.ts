@@ -30,8 +30,8 @@ export interface ModelMappingSnapshot {
    */
   pricingWindow?: string;
   /**
-   * 显式免费标记（gateway P5 波 C-G1 增补，可选）：true 时授权走 0 元 fast-path
-   * （billing R6：显式免费与候选价格非全零结构性拒绝）。目录实现方携带。
+   * 显式免费标记（可选）：true 时授权走 0 元 fast-path
+   * （显式免费与候选价格非全零结构性拒绝）。目录实现方携带。
    */
   isFree?: boolean;
 }
@@ -72,7 +72,7 @@ export interface ChannelCandidate {
   priority: number;
   weight: number;
   /**
-   * 渠道维限流/预算列（gateway P5 波 C-G1 增补，可选——目录实现方携带；网关
+   * 渠道维限流/预算列（可选——目录实现方携带；网关
    * admitChannel 钩子消费，缺省不限）。upstreamBudget 为渠道进货额度快照（元）。
    */
   rpmLimit?: number | null;

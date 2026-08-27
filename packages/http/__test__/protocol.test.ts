@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { bodyParserLimit, corsPreflight, securityHeaders } from '../src/security/protocol';
 
 /**
- * 协议安全三件套（v1 三拷贝无包级测试——D2 合一后新写行为锁，B2-B4 修正面）：
+ * 协议安全三件套的行为锁：
  * 统一安全头 4 头全集、CORS 策略参数化（白名单外静默放行、预检 204）、
  * bodyLimit 双路径（声明长度快路径 + 实际流计数）413 经单一渲染路径。
  */
@@ -11,7 +11,7 @@ import { bodyParserLimit, corsPreflight, securityHeaders } from '../src/security
 function app(): Hono {
   const a = new Hono();
   a.use('*', securityHeaders);
-  // 铁律 3：CORS 策略四要素全部显式注入（v1 三面硬编码漂移 + 藏默认的收口）
+  // CORS 策略四要素全部显式注入，不藏默认
   a.use(
     '*',
     corsPreflight({

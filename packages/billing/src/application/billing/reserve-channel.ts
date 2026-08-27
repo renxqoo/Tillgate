@@ -73,7 +73,7 @@ export function createReserveChannelUseCase(env: {
       if (decision.mode === 'covered') {
         return { allowed: true, remaining: '0', switched: false };
       }
-      // 同渠道补足（F3）：预估更高路由回同一渠道，敞口必须补差否则预算闸门被弱化
+      // 同渠道补足：预估更高路由回同一渠道，敞口必须补差否则预算闸门被弱化
       if (decision.mode === 'topup') {
         const topped = await channels.tryIncreaseReserved(tx, {
           channelId: input.channelId,

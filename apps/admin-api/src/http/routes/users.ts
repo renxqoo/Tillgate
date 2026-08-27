@@ -1,7 +1,7 @@
 /**
- * 用户路由（v1 routes/users.ts 资料面平移）：列表（钱包富化 + 企业过滤）/资料/补丁
+ * 用户路由（资料面）：列表（钱包富化 + 企业过滤）/资料/补丁
  * （封禁语义;creditLimit 拆给 wallet.setCreditLimit——app 组合,非第二套规则）/
- * set-password（P2/D6:管理员为本地账号重置密码——绑默认卡「标准」+ 全网会话下线）。
+ * set-password（管理员为本地账号重置密码——绑默认卡「标准」+ 全网会话下线）。
  * 响应体永不包括 passwordHash（服务列白名单,测试红线锁定）。
  */
 import { Hono } from 'hono';
@@ -18,21 +18,21 @@ import { toUserWireRow, walletEnrichmentOf } from '../presenters/users';
 import { authContracts } from '../contracts/auth';
 import type { PostAudit } from './redeem';
 
-/** v1 users.service DEFAULT_RATE_CARD_NAME 同值（词表事实,装配不复制第二份语义） */
+/** 默认费率卡名（词表事实,装配不复制第二份语义） */
 const DEFAULT_RATE_CARD_NAME = '标准';
 
 /** 路由依赖（facade 结构子集——测试注入替身） */
 export interface UsersRoutesDeps {
   readonly accounts: Pick<AccountUseCases, 'adminListUsers' | 'adminGetUser' | 'adminPatchUser'>;
   readonly wallet: Pick<WalletApi, 'accounts' | 'setCreditLimit'>;
-  /** P2/D6:密码重置（identity user realm 单一真相）+ 默认卡绑定 */
+  /** 密码重置（identity user realm 单一真相）+ 默认卡绑定 */
   readonly identity: Pick<Identity, 'passwords'>;
   readonly rates: Pick<ControlPlane['rates'], 'listCards' | 'updateCard' | 'findGlobalCoefficient'>;
-  /** 后置审计（user.set_password——v1 recordAudit 提交后旁路语义） */
+  /** 后置审计（user.set_password——提交后旁路,失败不阻断） */
   readonly postAudit: PostAudit;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function usersRoutes(deps: UsersRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
@@ -50,7 +50,11 @@ export function usersRoutes(deps: UsersRoutesDeps) {
     });
     const rows = await Promise.all(
       page.rows.map(async (row) =>
-        toUserWireRow(row, walletEnrichmentOf(await deps.wallet.accounts(row.id)), row.rateCardName),
+        toUserWireRow(
+          row,
+          walletEnrichmentOf(await deps.wallet.accounts(row.id)),
+          row.rateCardName,
+        ),
       ),
     );
     return c.json(listEnvelope(rows, page.total, query));
@@ -87,12 +91,12 @@ export function usersRoutes(deps: UsersRoutesDeps) {
     const id = idParam(c.req.param('id'));
     const body = authContracts.setPassword.parse(await c.req.json());
     const profile = await deps.accounts.adminGetUser(id);
-    // 只能为本地账号设密：给 OIDC 身份挂本地密码 = 管理员接管（v1 语义）
+    // 只能为本地账号设密：给 OIDC 身份挂本地密码 = 管理员接管
     if (profile.issuer !== 'local') {
       throw AdminErrors.business('not_local_account', {});
     }
-    // 未绑卡 → 绑默认卡「标准」；缺全局兜底系数则回填 1.000（v1 同语义;
-    // 已有系数不覆盖——findGlobalCoefficient 判存后才 update）
+    // 未绑卡 → 绑默认卡「标准」；缺全局兜底系数则回填 1.000
+    // （已有系数不覆盖——findGlobalCoefficient 判存后才 update）
     if (profile.rateCardId == null) {
       const cards = await deps.rates.listCards({
         sortBy: 'id',

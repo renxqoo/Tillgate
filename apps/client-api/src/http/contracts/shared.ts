@@ -1,6 +1,6 @@
 /**
  * 契约共享件：用户面分页（page/limit strict——非法值 400，limit ≤100 默认 20；
- * 与 @tillgate/http 的 page_size 容错词表语义不同，用户面钉死 v1 口径）、
+ * 与 @tillgate/http 的 page_size 容错词表语义不同，用户面钉死 strict）、
  * 金额输入结构性校验（资金输入只收十进制字符串，避免 JSON number 精度损失）、
  * 路径参数校验（body/query 走 http 包 jsonBody/query 中间件——失败统一
  * http.validation_failed；路径参数无中间件位，此处 safeParse → invalid_path_param）。
@@ -14,7 +14,7 @@ export const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-/** Key/成员限额类金额：十进制字符串形态 + 正数且 < 1e12（v1 key-limits 口径） */
+/** Key/成员限额类金额：十进制字符串形态 + 正数且 < 1e12 */
 export function isValidSpendLimitInput(raw: string): boolean {
   if (!isValidAmountString(raw)) return false;
   try {

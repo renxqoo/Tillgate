@@ -1,11 +1,11 @@
 /**
- * 架构边界门禁（DESIGN §1.2/§2）：
+ * 架构边界门禁：
  *   ① workspace 依赖白名单——apps/admin 运行时只准 @tillgate/{ui,api-client}；
- *   ② 禁 @tillgate 深导入（src 直连）（总纲 §5.5）；
+ *   ② 禁 @tillgate 深导入（src 直连）；
  *   ③ 页面（src/app）不得引用 server 内部模块（唯一例外：*-actions 动词）；
  *   ④ client 组件（"use client" 文件）禁止 import @tillgate/api-client/next
  *      （BFF 子出口带 next/headers——进浏览器包即构建期炸，这里静态先行拦截；
- *      client 侧 locale 常量走 app 自持 @/lib/locale，D1 孪生口径）。
+ *      client 侧 locale 常量走 app 自持 @/lib/locale，与 api-client 侧同值孪生）。
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';

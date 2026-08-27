@@ -8,7 +8,7 @@ import type { SpanRow, TraceStore } from './types';
  *   - 写入失败 → 本批丢弃并计数(记 lastError),绝不重试阻塞、绝不抛回调用方;
  *   - 观测链路的任何故障都不允许反压业务请求路径。
  *
- * v1 SpanBatcher class 的工厂闭包重写(G5);溢出 shift() 的 O(n) 口径见 IMPLEMENTATION B6。
+ * 工厂闭包实现(无共享 class 状态);溢出 shift() 的 O(n) 复杂度已知并接受。
  */
 
 export interface SpanBatcherOptions {
@@ -81,7 +81,7 @@ async function flushBatch(
   if (state.queue.length >= options.batchMax) await flushBatch(store, options, state);
 }
 
-/** 入队溢出控制:满则丢最旧(shift 的 O(n) 口径见 IMPLEMENTATION B6)并计数;返回本次丢弃数 */
+/** 入队溢出控制:满则丢最旧(shift 的 O(n) 复杂度已知并接受)并计数;返回本次丢弃数 */
 function enqueueWithOverflow(
   state: BatcherState,
   rows: SpanRow[],

@@ -1,5 +1,5 @@
 /**
- * P2 契约测试：管理员登录面 wire 形状与编排语义（爆破双闸/防枚举 401/2FA 两步/
+ * 契约测试：管理员登录面 wire 形状与编排语义（爆破双闸/防枚举 401/2FA 两步/
  * 守卫 fail-closed/状态闸/登出吊销）+ me 三动词（资料/改密同拍新 token/2FA 前置）。
  * authRoutes/meRoutes 独立装配（会话件用同一 sessionMiddleware——登录组公开例外）。
  * 机制语义本体在 identity/runtime 测试;此处锁 app 编排与 wire。
@@ -475,6 +475,8 @@ describe('me（P2 管理员自身）', () => {
       headers: { ...json, authorization: `Bearer ${VALID_TOKEN}` },
     });
     expect(code.status).toBe(503);
-    expect(await code.json()).toMatchObject({ error: { code: 'identity.undeliverable_challenge' } });
+    expect(await code.json()).toMatchObject({
+      error: { code: 'identity.undeliverable_challenge' },
+    });
   });
 });

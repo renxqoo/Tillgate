@@ -1,5 +1,5 @@
 /**
- * 改密码:验旧密 → 换哈希 + 吊销线推进(同一事务)。B04 修复:验旧密收进
+ * 改密码:验旧密 → 换哈希 + 吊销线推进(同一事务)。验旧密收进
  * advisoryLock 临界区——旧密的读与改之间不存在并发 reset 覆盖窗口(scrypt 在
  * 每用户锁内执行,无全局争用)。无密码账号(OAuth-only)走 reset。
  */
@@ -15,13 +15,13 @@ import { auditWithinTx } from './context.js';
 
 export interface ChangePasswordInput {
   readonly userId: number;
-  /** 吊销线推进的 realm(改哪面密码下哪面的线,v1 固定 user 的口径修正) */
+  /** 吊销线推进的 realm(改哪面密码下哪面的线) */
   readonly realm: string;
   readonly currentPassword: string;
   readonly newPassword: string;
 }
 
-/** 锁内改密临界区:验旧密 → 换哈希 → 吊销线推进 → 同事务审计(§5.4 回滚即无审计行) */
+/** 锁内改密临界区:验旧密 → 换哈希 → 吊销线推进 → 同事务审计(回滚即无审计行) */
 async function changePasswordWithinLock(
   ctx: IdentityUseCaseContext,
   tx: DbTx,
@@ -49,7 +49,7 @@ async function changePasswordWithinLock(
     realm: args.realm,
     userId: args.userId,
   });
-  // 安全审计同事务写入(§5.4):回滚即无审计行,写入失败随事务回滚
+  // 安全审计同事务写入:回滚即无审计行,写入失败随事务回滚
   await auditWithinTx(
     tx,
     ctx,

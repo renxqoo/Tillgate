@@ -1,6 +1,6 @@
 /**
- * client-api(用户面)facade 行为规格:getMe 布局守卫吞错返 null(v1 行为等价)、
- * facade 委托 core、B1 回归(token 只来自本面注入)。
+ * client-api(用户面)facade 行为规格:getMe 布局守卫吞错返 null、
+ * facade 委托 core、token 只来自本面注入回归。
  */
 import { describe, expect, it, vi } from 'vitest';
 import { createClientApiClient } from '../src/client-api';
@@ -56,7 +56,7 @@ describe('B1 回归:token 只来自本面注入的 getToken(v1 按基地址比�
       return new Response(meBody, { status: 200 });
     }) as unknown as typeof fetch;
     const user = createClientApiClient({
-      baseUrl: 'http://same-host', // v1 缺陷触发条件:两面 base 相同
+      baseUrl: 'http://same-host', // 缺陷触发条件:两面 base 相同
       fetch: fetchImpl,
       getToken: () => 'user-jwt',
     });

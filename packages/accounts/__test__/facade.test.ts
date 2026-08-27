@@ -1,5 +1,5 @@
 /**
- * facade 装配(DESIGN §2.2):必填契约(零隐藏默认)、测试缝(store/auditSink 注入)、
+ * facade 装配:必填契约(零隐藏默认)、测试缝(store/auditSink 注入)、
  * 内部适配器默认装配路径不破坏动词表形状。
  */
 import { describe, expect, it } from 'vitest';

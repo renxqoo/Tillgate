@@ -1,10 +1,10 @@
 /**
  * 拉新参数域(marketing_settings 单行表):金额非负、比例 ∈[0,1]、
- * 精度形状(整数 ≤10 位、小数 ≤18 位——v1 路由正则语义,DB numeric(38,18) 收口)。
+ * 精度形状(整数 ≤10 位、小数 ≤18 位,DB numeric(38,18) 收口)。
  * 生效语义:下一动作生效、历史不重算(schema 注释即契约)。
  */
 
-/** v1 路由正则 `^\d{1,10}(\.\d{1,18})?$` 的语义化形态 */
+/** 金额与比例共用形状 `^\d{1,10}(\.\d{1,18})?$`(整数 ≤10 位、小数 ≤18 位) */
 const MARKETING_AMOUNT_RE = /^\d{1,10}(\.\d{1,18})?$/;
 const MARKETING_RATE_RE = /^\d{1,10}(\.\d{1,18})?$/;
 
@@ -47,7 +47,7 @@ export function validateMarketingPatch(patch: MarketingSettingsPatch): string[] 
   return invalid.length > 0 ? invalid : null;
 }
 
-/** C 端入口开关:两项激励任一 > 0 即显示(v1 referral.service) */
+/** C 端入口开关:两项激励任一 > 0 即显示 */
 export function referralProgramEnabled(settings: MarketingSettings): boolean {
   return (
     new Decimal(settings.referralSignupBonus).greaterThan(0) ||

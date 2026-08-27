@@ -1,12 +1,12 @@
 /**
- * E2E ⑪ 认证绕过全家族 + ⑫ 全库数据审计（v1 e2e-auth-audit 迁移）：
+ * E2E ⑪ 认证绕过全家族 + ⑫ 全库数据审计：
  *   ⑪ 所有对外模型端点未带/带坏凭证一律 401（不可能绕过认证直调模型）；
  *      上游真实密钥在任何响应体/日志/账单 JSON 中零出现（解密值与密文都扫）。
  *   ⑫ 批量请求 + 结算后逐表审计：billing_requests（quote/receipt 快照字段）、
  *      billing_reservations（份额==预扣）、usage_logs（token/金额与收据逐笔相等、
  *      公式复核）、wallet（余额==充值−Σ实扣、流水 balance_before/after 连续、
  *      授权 settled==实扣）、request_logs（逐请求一行）、渠道预算 delta==Σ成本。
- * 断言语义与 v1 逐条等价；渠道/映射 id 取世界种子值（v1 dev 库硬编码 id 的装置适配）。
+ * 渠道/映射 id 取世界种子值。
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

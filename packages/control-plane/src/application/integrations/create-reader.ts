@@ -1,11 +1,11 @@
 /**
- * 消费侧 reader 工厂（DESIGN §5 D4/D9 细分）：整体快照 + 进程内 TTL 缓存 + 单飞刷新。
+ * 消费侧 reader 工厂：整体快照 + 进程内 TTL 缓存 + 单飞刷新。
  * - resolve()：严格异步读（发送/资金面）——读失败 fail-loud，不静默降级到旧凭据；
  * - refresh()：强制重读绕过 TTL（支付回调路由预刷缓存——消除轮换后 latest() 盲窗）；
  * - latest()：同步取最近快照（identity getter/capabilities 等 UX 面）——过期触发
  *   后台刷新（错误只经 onError 记日志，同步面不抛）；从未加载 = 全关快照。
  *
- * 缓存代次（review 修复 A-2）：invalidate() 递增 epoch——在飞读完成时若代次已变，
+ * 缓存代次：invalidate() 递增 epoch——在飞读完成时若代次已变，
  * 结果不进缓存（旧快照不得把 cachedAt 刷成完成时刻）；严格读只复用同代在飞。
  */
 import { INTEGRATION_CACHE_TTL_MS } from '../../domain/integrations/keys';
@@ -33,7 +33,7 @@ export interface IntegrationReaderDeps {
 export interface IntegrationSettingsReader {
   /** 当前快照（缓存命中 O(1)；过期后单飞重读，读失败向调用方抛错——fail-loud 面） */
   resolve(): Promise<IntegrationSnapshot>;
-  /** 强制重读（绕过 TTL；同代单飞合并——DESIGN D9 修订） */
+  /** 强制重读（绕过 TTL；同代单飞合并） */
   refresh(): Promise<IntegrationSnapshot>;
   /** 最近快照（同步契约：stale-OK；过期触发后台刷新；从未加载 = 全关快照——UX 面） */
   latest(): IntegrationSnapshot;
@@ -112,7 +112,7 @@ async function readSnapshot(
 ): Promise<IntegrationSnapshot> {
   const myEpoch = state.epoch;
   const rows = await deps.stores.integrationSettings.readAll(deps.db);
-  // 解密失败观测（review 修复 M3）：密文损坏/双键不等的行不再静默 degrade——
+  // 解密失败观测：密文损坏/双键不等的行不再静默 degrade——
   // 显式探测 secret 字段并按 <key>.<field> 上报（resolveSnapshot 自身仍 fail-safe）
   const failures = detectDecryptFailures(deps.cipher, rows);
   if (failures.length > 0) {
@@ -126,7 +126,7 @@ async function readSnapshot(
   return snapshot;
 }
 
-/** 后台刷新（latest 同步面）：失败只经 onError 出口，不抛（DESIGN §5 D9 细分） */
+/** 后台刷新（latest 同步面）：失败只经 onError 出口，不抛 */
 async function refreshInBackground(
   deps: IntegrationReaderDeps,
   read: () => Promise<IntegrationSnapshot>,

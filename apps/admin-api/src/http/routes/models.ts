@@ -1,5 +1,5 @@
 /**
- * 模型映射路由（v1 routes/models.ts 平移 + 逻辑删除回收站）：
+ * 模型映射路由（含逻辑删除回收站）：
  * 列表（channelIds 回显 / view=deleted 回收站）/创建/更新（含上下架 status）/
  * 逻辑删除/恢复记录/绑定全量替换/逐渠道探针。价格仅精确十进制字符串。
  */
@@ -15,7 +15,7 @@ export interface ModelsRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'models'>;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function modelsRoutes(deps: ModelsRoutesDeps) {
   const app = new Hono<SessionEnv>();
   const { models } = deps.controlPlane;

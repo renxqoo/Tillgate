@@ -1,5 +1,5 @@
 /**
- * 推荐与开户赠送(MIGRATION §1.5-1..4):归因拒绝矩阵、同生共死回滚(broken wallet)、
+ * 推荐与开户赠送:归因拒绝矩阵、同生共死回滚(broken wallet)、
  * 幂等、尽力而为收尾、概览开关。
  */
 import { describe, expect, it } from 'vitest';

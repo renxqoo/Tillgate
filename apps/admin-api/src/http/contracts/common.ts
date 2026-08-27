@@ -1,8 +1,8 @@
 /**
- * 管理面契约基底（v1 http/money-schema.ts + list-query.ts 语义收口）：
- *   - 金额一律十进制字符串（禁 IEEE-754 number）；上限 1e9 与 v1 同值；
+ * 管理面契约基底：
+ *   - 金额一律十进制字符串（禁 IEEE-754 number）；上限 1e9；
  *   - 统一列表契约:?page&page_size≤100&q&sort_by&order;白名单外 400;
- *   - 信封 {rows,total,page,pageSize}(v1 键名——前端 fetchAdminList 消费口径)。
+ *   - 信封 {rows,total,page,pageSize}（前端 fetchAdminList 消费口径）。
  */
 import * as z from 'zod';
 import { Decimal, parseNonNegativeAmount, parsePositiveAmount } from '@tillgate/billing';
@@ -43,7 +43,7 @@ export const signedNonZeroMoneyString = z
   .string()
   .refine(validSignedNonZero, 'Amount must be a valid non-zero decimal string within the limit');
 
-/** 路径参数 id：正整数（v1 idParam 语义 → admin.invalid_param） */
+/** 路径参数 id：正整数（不合法 → admin.invalid_param） */
 export function idParam(raw: string): number {
   const id = Number(raw);
   if (!Number.isInteger(id) || id < 1) {
@@ -66,9 +66,9 @@ export interface ListParts {
 }
 
 /**
- * 统一列表查询解析（v1 parseListQuery 语义）：分页/搜索由 @tillgate/http
+ * 统一列表查询解析：分页/搜索由 @tillgate/http
  * listQuerySchema 容错解析（非法值回退缺省,永不 400）；sort_by 缺省 defaultSort,
- * 白名单外 → 400 admin.invalid_sort_field（不静默回退——v1 语义）。
+ * 白名单外 → 400 admin.invalid_sort_field（不静默回退）。
  */
 export function parseListQuery(
   query: Record<string, string | string[] | undefined>,
@@ -94,7 +94,7 @@ export function parseListQuery(
   };
 }
 
-/** 列表信封（v1 键名 rows/pageSize;rows 收窄只读面） */
+/** 列表信封（键名 rows/pageSize;rows 收窄只读面） */
 export function listEnvelope<T>(
   rows: readonly T[],
   total: number,

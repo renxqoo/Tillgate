@@ -1,10 +1,7 @@
 /**
- * billing 错误目录（AGENT.md §11：码的唯一登记处，随迁移单元增量登记）。
- * 禁止自造错误类体系；需要精确捕获处经 entry() 固化子类（errors README §2.1 路径 B）。
+ * billing 错误目录（码的唯一登记处）。
+ * 禁止自造错误类体系；需要精确捕获处经 entry() 固化子类。
  * 不变量破坏不进目录——用根契约 DefectError（码 billing.wallet_invariant / billing.fingerprint_input）。
- * U0：金额域输入拒绝。U1a：钱包域白名单、出账口径、冻结单状态机。
- * U1b：钱包动词的幂等/归属/账户冻结拒绝。
- * U2a：计价域配置事故/毒收据；计费域状态机/限额/订阅闸。U3：结算。U4：订阅。U5：支付与兑换。
  */
 import { defineErrorCatalog } from '@tillgate/errors';
 
@@ -178,7 +175,7 @@ export const BillingErrors = defineErrorCatalog('billing', {
     message: 'Subscription quota exhausted for this request',
     zh: '订阅剩余额度不足以覆盖本请求',
   },
-  // ---- U4：订阅生命周期 ----
+  // ---- 订阅生命周期 ----
   plan_not_found: {
     category: 'not_found',
     message: 'Plan not found',
@@ -215,7 +212,7 @@ export const BillingErrors = defineErrorCatalog('billing', {
     message: 'Subscription rule violation (quantity / seats / enterprise / downgrade)',
     zh: '订阅规则不允许（数量 / 席位 / 企业 / 降档）',
   },
-  // ---- U5：支付与兑换 ----
+  // ---- 支付与兑换 ----
   topup_amount_invalid: {
     category: 'invalid_input',
     message: 'Top-up amount invalid (decimals / below minimum / above maximum)',

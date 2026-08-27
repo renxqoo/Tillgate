@@ -1,5 +1,5 @@
 /**
- * 营销配置路由（P3;v1 routes/marketing.ts 平移）：GET/PUT /v1/marketing/settings。
+ * 营销配置路由：GET/PUT /v1/marketing/settings。
  * 拉新资金参数存 DB（管理面唯一修改入口）;改值即时生效、历史不重算——
  * 审计在 accounts 用例内（actor=admin）;worker 佣金循环每 tick 读现值同源。
  */

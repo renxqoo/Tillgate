@@ -1,5 +1,5 @@
 /**
- * 动态 RBAC 契约（roles/permissions 管理面——ADR-0008;docs/admin-rbac-dynamic/DESIGN §5）。
+ * 动态 RBAC 契约（roles/permissions 管理面）。
  * 码形状/守卫在 control-plane 用例;此处只锁 wire 形状。
  */
 import * as z from 'zod';

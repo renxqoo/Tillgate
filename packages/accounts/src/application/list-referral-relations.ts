@@ -1,6 +1,5 @@
 /**
- * 推荐关系列表(管理面;v1 listRelations 去 wallet 化:B3/G3——commission_total
- * 口径修正后归 billing/app 组合,本列表只出关系事实)。
+ * 推荐关系列表(管理面;只出关系事实,commission_total 归 billing/app 组合)。
  */
 import type { PageResult, RelationView } from '../ports/account-store.js';
 import { clampListQuery } from './list-query.js';

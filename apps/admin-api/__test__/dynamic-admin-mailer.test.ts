@@ -1,7 +1,7 @@
 /**
  * 动态管理面邮件（集成设置驱动）单元规格（mock nodemailer + stub reader；
  * 独立文件——vi.resetModules 换代模块注册表，与错误面渲染测试互不污染）。
- * 规格锁（DESIGN §5 D4/D7）：发送面走 resolve() 严格读；SMTP 未生效 =
+ * 规格锁:发送面走 resolve() 严格读；SMTP 未生效 =
  * undeliverable_challenge；传输器随配置指纹重建（同指纹复用、变指纹重建）；
  * 管理面不发找回链接（端口合规空实现）。
  */

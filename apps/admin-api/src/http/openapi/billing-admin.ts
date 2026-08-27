@@ -39,7 +39,7 @@ export const adminBatchRowSchema = z
     amount: z.string(),
     total: z.number(),
     usedCount: z.number(),
-    createdBy: z.string().describe('创建管理员 id 的字符串投影(v1 wire 形状)'),
+    createdBy: z.string().describe('创建管理员 id 的字符串投影'),
     createdAt: z.string(),
   })
   .meta({ id: 'AdminBatchRow', description: '管理面兑换批次行(GET /v1/redeem-batches)' });

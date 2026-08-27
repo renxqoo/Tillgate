@@ -5,7 +5,7 @@ import { Controller, type Control, type FieldPath, type FieldValues } from 'reac
 import { Field, FieldError, FieldLabel, Input } from '@tillgate/ui';
 
 /**
- * 数字输入（react-hook-form + Controller 封装；v1 旧 ui number-field 语义等价）。
+ * 数字输入（react-hook-form + Controller 封装）。
  * 编辑期间以字符串保存原始输入（清空保持空串，不被 Number('')===0 回写成 0），
  * 数值解析交给提交时的表单逻辑；表单值类型必须为 string。
  */

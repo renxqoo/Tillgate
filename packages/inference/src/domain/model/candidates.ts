@@ -1,9 +1,9 @@
 import type { ModelMappingSnapshot, QuoteCandidate } from './types';
 
 /**
- * 候选链装配（v1 quote 的 fallback 展开语义迁移）：主映射在前，fallbackModels
- * （对外名）逐个经目录解析后追加——一级展开，不递归（兜底的兜底无限链无界，
- * v1 同款）；解析不到的兜底跳过；mappingId 去重（同一映射经两条名到达只计一次）。
+ * 候选链装配：主映射在前，fallbackModels
+ * （对外名）逐个经目录解析后追加——一级展开，不递归（兜底的兜底无限链无界）；
+ * 解析不到的兜底跳过；mappingId 去重（同一映射经两条名到达只计一次）。
  */
 export async function buildCandidateChain(
   main: ModelMappingSnapshot,

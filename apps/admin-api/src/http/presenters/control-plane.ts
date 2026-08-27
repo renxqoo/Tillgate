@@ -1,8 +1,8 @@
 /**
  * 控制面域 presenter：providers/channels/channel-funds 行 → wire DTO 快照形状。
  * 行类型经 facade 返回面推断（Awaited<ReturnType>）——app 不 import 包内 store 类型。
- * wire 偏差（MIGRATION §4）：渠道行 cooldownUntil/providerBaseUrl/updatedAt 无列来源恒 null;
- * boundModels 为 v2 线形 string[]（绑定名清单——{externalName,realModel} 对待 control-plane 列表扩展）。
+ * 渠道行 cooldownUntil/providerBaseUrl/updatedAt 无列来源恒 null;
+ * boundModels 为线形 string[]（绑定名清单——{externalName,realModel} 对待 control-plane 列表扩展）。
  */
 import type { ControlPlane } from '@tillgate/control-plane';
 import { Decimal, normalizeAmount } from '@tillgate/billing';

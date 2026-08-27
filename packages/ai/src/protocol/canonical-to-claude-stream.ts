@@ -10,7 +10,7 @@ import { claudeStopOf } from './claude-stream-shared';
  * 规范形 OpenAI chunk 流 → Claude SSE 事件流（客户端侧，入站 /v1/messages 流式）。
  * 逐 chunk 合成 message_start / content_block_delta / message_delta / message_stop。
  */
-// eslint-disable-next-line max-lines-per-function -- 双向 codec 的外壳（内层转换器另有豁免）：装配 + 终态收尾，存量棘轮（铁律 22⑥）
+// eslint-disable-next-line max-lines-per-function -- 双向 codec 的外壳（内层转换器另有豁免）：装配 + 终态收尾
 export function canonicalStreamToClaudeStream(
   upstream: ReadableStream<Uint8Array>,
   model: string,

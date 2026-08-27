@@ -1,11 +1,11 @@
 import type { HealthStore, Versioned } from '../ports/state';
 
 /**
- * 熔断器原语（v1 packages/ai breaker/breaker.ts 迁移为工厂闭包，状态机语义不变）：
+ * 熔断器原语（工厂闭包形态）：
  * closed / open / half-open + 滚动窗口计数。计数只收 circuitTrip=true 的错误
  * （5xx/网络/超时）——429/4xx/死凭据不跳闸（避免一个坏 Key 熔断整个渠道）。
  *
- * 并发安全（v1 B5）：所有状态转移走 compareAndSet 原子 CAS，多实例/高并发下：
+ * 并发安全：所有状态转移走 compareAndSet 原子 CAS，多实例/高并发下：
  *   - half-open 全局只有一个赢家放行探测（冷却到期瞬间 N 个并发只有 1 个 CAS 成功）
  *   - 滚动窗口计数不丢（并发各自 CAS，失败重试，上限 3 次后降级「放弃本次计数」）
  * CAS 失败重试上限避免理论 livelock（熔断写竞争低，几乎不会触发）。

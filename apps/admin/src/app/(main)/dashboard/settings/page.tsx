@@ -19,7 +19,7 @@ export default async function SettingsPage() {
   } catch (error) {
     loadError = error instanceof ApiError ? error.message : tc('loadFailed');
   }
-  // 按钮级显隐（2026-08-25 用户裁决 D1）：无 settings:update → 时区只读；
+  // 按钮级显隐：无 settings:update → 时区只读；
   // 无 settings:integrations → 集成/SMTP 操作位隐藏。权威判定在 admin-api ACL。
   const canUpdateTimezone = me != null && hasPerm(me, 'settings:update');
   const canManageIntegrations = me != null && hasPerm(me, 'settings:integrations');

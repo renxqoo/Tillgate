@@ -1,5 +1,5 @@
 /**
- * providers 供应商 postgres 适配器（v1 provider.repo 等价迁移 + 逻辑删除回收站）：
+ * providers 供应商 postgres 适配器（逻辑删除回收站）：
  * 管理面 CRUD + 统一列表。重名交给 PG 部分唯一索引（23505 由 application 翻译冲突
  * ——已删除行不占名）；禁用 = status=1；删除 = 逻辑删除（status=1 + deleted_at，
  * 历史渠道 FK 引用不受影响），已删除行对管理面读/改不可见。

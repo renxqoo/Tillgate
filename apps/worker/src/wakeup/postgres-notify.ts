@@ -22,10 +22,7 @@ export interface SettleWakeListener {
 
 interface SettleWakeListenerEnv {
   /** 订阅通道；onMessage 收到该通道每条通知的 payload 文本 */
-  listen(
-    channel: string,
-    onMessage: (payload: string) => void,
-  ): Promise<WakeSubscription>;
+  listen(channel: string, onMessage: (payload: string) => void): Promise<WakeSubscription>;
   channel: string;
   /** 唤醒处理：payload 是 requestId（已验 UUID 形状）或 null（触发 sweep 兜底） */
   onWake: (requestId: string | null) => Promise<void>;
@@ -34,7 +31,7 @@ interface SettleWakeListenerEnv {
   backoff?: { baseMs: number; maxMs: number };
 }
 
-// eslint-disable-next-line max-lines-per-function -- LISTEN 唤醒监听闭包工厂:onMessage/start/scheduleRetry/close 共享 closed/subscription/retryTimer/attempt 状态,拆分即互相回读(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- LISTEN 唤醒监听闭包工厂:onMessage/start/scheduleRetry/close 共享 closed/subscription/retryTimer/attempt 状态,拆分即互相回读
 export function createSettleWakeListener(env: SettleWakeListenerEnv): SettleWakeListener {
   const backoff = env.backoff ?? { baseMs: 1_000, maxMs: 30_000 };
 
@@ -54,7 +51,9 @@ export function createSettleWakeListener(env: SettleWakeListenerEnv): SettleWake
     }
     void env
       .onWake(requestId)
-      .catch((error: unknown) => env.logger.error({ err: String(error) }, 'settle wake enqueue failed (sweep covers)'));
+      .catch((error: unknown) =>
+        env.logger.error({ err: String(error) }, 'settle wake enqueue failed (sweep covers)'),
+      );
   };
 
   const start = async (): Promise<void> => {
@@ -78,7 +77,10 @@ export function createSettleWakeListener(env: SettleWakeListenerEnv): SettleWake
     retryTimer = setTimeout(() => {
       retryTimer = null;
       void start().catch((error: unknown) => {
-        env.logger.warn({ err: String(error) }, 'settle wake listen failed (sweep covers), retrying');
+        env.logger.warn(
+          { err: String(error) },
+          'settle wake listen failed (sweep covers), retrying',
+        );
         scheduleRetry();
       });
     }, delay);

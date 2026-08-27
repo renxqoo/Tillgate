@@ -7,7 +7,7 @@
  *   forgot/reset {token, password} → GETDEL 原子消费令牌(单次,重放即失效)→
  *   密码策略 → passwords.reset(免旧密,推进 user realm 吊销线 = 全网旧会话即刻
  *   下线)→ 不自动登录(用户持链接来自邮箱,设完走登录页)。
- * 配置前置:SMTP(smtp 集成行)与控制台基地址(env OAUTH_FRONTEND_URL,ADR-0012)缺一即 503 fail-closed
+ * 配置前置:SMTP(smtp 集成行)与控制台基地址(env OAUTH_FRONTEND_URL)缺一即 503 fail-closed
  * ——发不出链接的功能绝不静默降级。
  */
 import { Hono } from 'hono';
@@ -18,7 +18,7 @@ import { clientErrors } from '../error-face.js';
 import type { SessionEnv } from '../middleware/session.js';
 import { clientIpOf, localeOf, type AuthDeps } from './auth.js';
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器平铺
 export function forgotRoutes(deps: AuthDeps) {
   const app = new Hono<SessionEnv>();
 

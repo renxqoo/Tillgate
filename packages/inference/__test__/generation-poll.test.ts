@@ -1,6 +1,6 @@
 /**
- * 生成任务轮询用例单测（v1 service/generation poll 语义对位——状态机推进/
- * 信号顺序不变量/错误分类；内存任务存储 + 可编程上游/信号/状态替身）。
+ * 生成任务轮询用例单测（状态机推进/信号顺序不变量/错误分类；
+ * 内存任务存储 + 可编程上游/信号/状态替身）。
  */
 import { describe, expect, it } from 'vitest';
 import { UpstreamError } from '@tillgate/ai';

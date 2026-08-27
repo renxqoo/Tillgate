@@ -1,6 +1,6 @@
 /**
  * 调度器规格：tick 错误隔离（job 抛错不崩调度）、stop 拒新+宽限、
- * 快照更新、无立即首跑（interval 到点才触发——v1 同款）。
+ * 快照更新、无立即首跑（interval 到点才触发）。
  */
 import { describe, expect, it, vi } from 'vitest';
 import { defined } from './defined.js';

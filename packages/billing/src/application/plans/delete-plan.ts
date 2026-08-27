@@ -1,4 +1,4 @@
-/** 套餐删除（U6;守卫:任何状态的订阅引用(含历史)→ plan_in_use;审计后置归 app） */
+/** 套餐删除（守卫:任何状态的订阅引用(含历史)→ plan_in_use;审计后置归 app） */
 import { BillingErrors } from '../../domain/errors.js';
 import type { BillingStore } from '../../ports/billing-store.js';
 

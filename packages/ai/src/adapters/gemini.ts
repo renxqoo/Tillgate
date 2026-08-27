@@ -9,7 +9,7 @@ import { geminiUpstreamToCanonicalStream } from '../protocol/gemini-stream';
 import { tableOrFallback } from '../errors/fallback';
 import type { ErrorKind } from '../errors/kinds';
 
-/** gemini error.status → kind（v1 修正知识表化；extractVendorCode 读 error.status） */
+/** gemini error.status → kind 映射表（extractVendorCode 读 error.status） */
 export const GEMINI_STATUS_KINDS: Record<string, ErrorKind> = {
   UNAUTHENTICATED: 'invalid_api_key',
   PERMISSION_DENIED: 'insufficient_permissions',

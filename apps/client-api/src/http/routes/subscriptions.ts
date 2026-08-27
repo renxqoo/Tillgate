@@ -1,6 +1,6 @@
 /**
  * 套餐/订阅路由：目录（公开）+ 购买/变更/续费/我的订阅（会话）。
- * 幂等键：idempotency-key 头缺省服务端生成 uuid；非法形态 400（v1 口径）。
+ * 幂等键：idempotency-key 头缺省服务端生成 uuid；非法形态 400。
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
@@ -39,7 +39,7 @@ function operationIdOf(headerValue: string | undefined): string {
   return headerValue;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器平铺
 export function subscriptionRoutes(
   deps: SubscriptionsDeps,
   session: MiddlewareHandler<SessionEnv>,

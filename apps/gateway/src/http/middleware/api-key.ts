@@ -1,17 +1,17 @@
 import type { RequestSummary } from './request-log.js';
 /**
- * API Key 鉴权中间件（v1 middleware/api-key.ts 语义迁移；A1/A8 在案）：
+ * API Key 鉴权中间件：
  *   Bearer sk_xxx → SHA-256 → accounts resolveKeyByHash（status/过期/属主守卫在
  *   accounts 读模型，每调用直查无缓存）；Bearer <jwt> → jose HS256 验签（算法白名单
  *   + iss/aud，仅认 typ=app_jwt + app_id + sub）→ accounts resolveApp 双 status 守卫。
- * App-JWT 解析键 = apps.app_id（R-E2：v1 数字主键 → v2 应用标识串，签发端同键配对）。
+ * App-JWT 解析键 = apps.app_id（应用标识串，签发端同键配对）。
  *
  * 爆破防护（runtime guards 注入；未装配 = 直通替身，单副本开发形态）：
- *   Key 分支 keyHash 维 + IP 维双计；JWT 分支只计 IP 维（Key 可枚举、JWT 不可——A8）。
+ *   Key 分支 keyHash 维 + IP 维双计；JWT 分支只计 IP 维（Key 可枚举、JWT 不可）。
  * 真实 socket 对端地址缺失时 trustedClientIp 落进程级常量（全部客户端共享 IP 桶）——
  * 生产必须注入；app.request 测试无连接信息是唯一合法 null 形态。
  *
- * requestId 不在此设置：装配面 requestIdMiddleware 全局前置（DESIGN §2.2 服务端生成）。
+ * requestId 不在此设置：装配面 requestIdMiddleware 全局前置（服务端生成）。
  */
 import { createHash } from 'node:crypto';
 import { jwtVerify } from 'jose';
@@ -144,7 +144,7 @@ async function verifyJwt(deps: ApiKeyAuth, token: string): Promise<GatewayJwtPay
   return payload as unknown as GatewayJwtPayload;
 }
 
-/** 静态 Key 分支：SHA-256 直查读模型；失败 keyHash + IP 双维计数（A8） */
+/** 静态 Key 分支：SHA-256 直查读模型；失败 keyHash + IP 双维计数 */
 async function authByKey(deps: ApiKeyAuth, token: string, ip: string): Promise<AuthContext> {
   const { reader, guards: g } = deps;
   const keyHash = createHash('sha256').update(token).digest('hex');
@@ -172,7 +172,7 @@ async function authByKey(deps: ApiKeyAuth, token: string, ip: string): Promise<A
 
 /**
  * App-JWT 分支：伪造 JWT 狂刷 401 不计失败 = 未认证无限打点，故 per-IP 锁前置；
- * 失败只计 IP 维（Key 可枚举、JWT 不可——A8）。
+ * 失败只计 IP 维（Key 可枚举、JWT 不可）。
  */
 async function authByJwt(deps: ApiKeyAuth, token: string, ip: string): Promise<AuthContext> {
   const { reader, guards: g } = deps;

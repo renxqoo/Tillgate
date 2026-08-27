@@ -10,7 +10,7 @@ import { claudeUpstreamToCanonicalStream } from '../protocol/claude-stream';
 import { tableOrFallback } from '../errors/fallback';
 import type { ErrorKind } from '../errors/kinds';
 
-/** anthropic error.type → kind（v1 修正知识表化） */
+/** anthropic error.type → kind 映射表 */
 const ANTHROPIC_TYPE_KINDS: Record<string, ErrorKind> = {
   authentication_error: 'invalid_api_key',
   permission_error: 'insufficient_permissions',
@@ -76,7 +76,7 @@ export class AnthropicAdapter implements ProtocolAdapter {
     return claudeResponseToChat(body);
   }
 
-  /** model 参数不参与 claude 族转换：真实模型名从 message_start 提取（v1 同语义） */
+  /** model 参数不参与 claude 族转换：真实模型名从 message_start 提取 */
   translateUpstreamStream(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
     return claudeUpstreamToCanonicalStream(stream);
   }

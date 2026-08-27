@@ -6,7 +6,7 @@ import { jsonBody, query } from '../src/validation/zod-validator';
 import { errorHandler } from '../src/errors/handler';
 
 /**
- * 校验组件（v1 errors.test 的校验两例迁移 + intParam 补测——v1 无测试）：
+ * 校验组件：
  * 失败统一 400 http.validation_failed，context 平铺 `body.name` / `query.n` 形态。
  */
 

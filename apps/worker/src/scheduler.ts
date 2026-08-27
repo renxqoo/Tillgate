@@ -1,9 +1,9 @@
 /**
- * 循环调度器（v1 index.ts 八定时器的结构化形态）：注册 → setInterval(unref)
- * → tick 错误隔离 → 停机宽限。语义口径（DESIGN §3.1）：
- *   - 无重入保护（v1 刻意设计）：上一轮未完成时新一轮照常触发——正确性完全
+ * 循环调度器：注册 → setInterval(unref)
+ * → tick 错误隔离 → 停机宽限。语义口径：
+ *   - 无重入保护（刻意设计）：上一轮未完成时新一轮照常触发——正确性完全
  *     下沉到 DB（认领 SKIP LOCKED + 租约 + CAS）；
- *   - 在途 Promise 用 Set 登记（多循环并发时单变量会互相覆盖——v1 教训）；
+ *   - 在途 Promise 用 Set 登记（多循环并发时单变量会互相覆盖）；
  *   - 每 tick 维护 lastStartedAt/lastResult 快照（/health 深度报告数据源）。
  */
 export interface JobDefinition {
@@ -30,7 +30,7 @@ export interface Scheduler {
   snapshots(): Record<string, JobSnapshot | null>;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 调度器闭包工厂:track/tick/生命周期方法共享 jobs/timers/inFlight 状态,拆分即状态上提或互相回读(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 调度器闭包工厂:track/tick/生命周期方法共享 jobs/timers/inFlight 状态,拆分即状态上提或互相回读
 export function createScheduler(deps: {
   graceMs: number;
   onError: (error: unknown, name: string) => void;
@@ -52,7 +52,7 @@ export function createScheduler(deps: {
 
   const tick = async (job: JobDefinition): Promise<void> => {
     // 快照对象常驻（lastError 粘滞——最近一次错误保留到下一次错误覆盖；
-    // lastResult/lastFinishedAt 每轮刷新）——运维排障口径见 DESIGN §5
+    // lastResult/lastFinishedAt 每轮刷新）
     const snapshot: JobSnapshot = snapshots.get(job.name) ?? {
       lastStartedAt: null,
       lastResult: null,
@@ -79,7 +79,7 @@ export function createScheduler(deps: {
       if (running) return;
       running = true;
       for (const job of jobs) {
-        // interval 到点即触发（无立即首跑——首扫由各 job 的兜底周期覆盖，v1 同款）
+        // interval 到点即触发（无立即首跑——首扫由各 job 的兜底周期覆盖）
         const timer = setInterval(() => {
           if (!running) return;
           track(tick(job));

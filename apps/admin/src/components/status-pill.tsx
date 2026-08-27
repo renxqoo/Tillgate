@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 
-/** 胶囊形态 tone 类（老 ui Badge 语义 tone 的同值快照；v2 Badge 无 tone 变体） */
+/** 胶囊形态 tone 类（ui Badge 无语义 tone 变体，tone→类名映射在此自持） */
 const PILL_CLASS: Record<StatusTone, string> = {
   success: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
   warning: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',

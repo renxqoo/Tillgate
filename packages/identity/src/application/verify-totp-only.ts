@@ -1,5 +1,5 @@
 /**
- * 仅 TOTP 的 step-up 验证（ADR-0011：敏感设置操作二次确认）：
+ * 仅 TOTP 的 step-up 验证（敏感设置操作二次确认）：
  * 与 verifyMfa 的差异——不落恢复码分支（恢复码留给紧急登录，日常操作
  * 不得消耗）；步进单调 CAS 防重放（同 30 秒窗的码不可复用）与登录面同口径。
  * 错误口径统一 invalid_totp_code；未绑定 totp_not_enrolled（调用方转引导）。

@@ -1,6 +1,5 @@
 /**
- * 支付与兑换契约测试（内存 stand-in + 内存 provider；迁移自旧仓 client-api payments/
- * redeem 服务测试主干；协议规则直测自 domain/payment）。
+ * 支付与兑换契约测试（内存 stand-in + 内存 provider；协议规则直测自 domain/payment）。
  */
 import { describe, expect, it } from 'vitest';
 import { isBusinessError } from '@tillgate/errors';

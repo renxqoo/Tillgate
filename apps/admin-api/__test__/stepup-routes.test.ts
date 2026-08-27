@@ -1,9 +1,9 @@
 /**
  * 敏感确认面规格：
- * - 集成写入（PUT /v1/settings/integrations/:key）仍走 TOTP step-up（ADR-0011）：
+ * - 集成写入（PUT /v1/settings/integrations/:key）仍走 TOTP step-up：
  *   未绑定 403（totp_stepup_required 引导绑定）；错码 401（invalid_totp_code）
  *   + IP 守卫计数 + 失败审计；对码放行；6 位数字契约校验先于一切。
- * - 2FA 邮箱开关改「邮箱码自证」（admin-email-2fa,2026-08-25 D2=A）：先
+ * - 2FA 邮箱开关走「邮箱码自证」（admin-email-2fa）：先
  *   POST /v1/me/two-factor/code 发码（SMTP fail-closed 前移到发码步），再验码
  *   开关（expect 主体绑定）；取消 TOTP 前置与 step-up。
  */
@@ -94,7 +94,8 @@ function appHarness(opts?: {
     meRoutes({
       identity: {
         challenges: {
-          begin: (opts?.beginImpl ?? (async () => ({ challengeId: '11111111-1111-4111-8111-111111111111' }))) as never,
+          begin: (opts?.beginImpl ??
+            (async () => ({ challengeId: '11111111-1111-4111-8111-111111111111' }))) as never,
           verify: (opts?.verifyImpl ?? (async () => ({ target: {}, payload: {} }))) as never,
         },
         mfa: mfaStub({ stepupError: opts?.stepupError }),
@@ -228,7 +229,11 @@ describe('2FA 邮箱码自证（admin-email-2fa，DESIGN §2）', () => {
     const res = await app.request('/v1/me/two-factor', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ enabled: true, challengeId: '11111111-1111-4111-8111-111111111111', code: '123456' }),
+      body: JSON.stringify({
+        enabled: true,
+        challengeId: '11111111-1111-4111-8111-111111111111',
+        code: '123456',
+      }),
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ twoFactorEnabled: true });
@@ -251,7 +256,11 @@ describe('2FA 邮箱码自证（admin-email-2fa，DESIGN §2）', () => {
     const res = await app.request('/v1/me/two-factor', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ enabled: true, challengeId: '11111111-1111-4111-8111-111111111111', code: '000000' }),
+      body: JSON.stringify({
+        enabled: true,
+        challengeId: '11111111-1111-4111-8111-111111111111',
+        code: '000000',
+      }),
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ error: { code: 'identity.code_invalid' } });
@@ -268,7 +277,11 @@ describe('2FA 邮箱码自证（admin-email-2fa，DESIGN §2）', () => {
     const res = await app.request('/v1/me/two-factor', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ enabled: false, challengeId: '11111111-1111-4111-8111-111111111111', code: '123456' }),
+      body: JSON.stringify({
+        enabled: false,
+        challengeId: '11111111-1111-4111-8111-111111111111',
+        code: '123456',
+      }),
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ error: { code: 'identity.challenge_invalid' } });

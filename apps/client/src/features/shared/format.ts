@@ -1,9 +1,8 @@
 /**
  * 展示格式化（app 装配层）：金额/日期/数字。
  *
- * 与 v1 的口径差异（DESIGN D-D，MIGRATION §4 在案）：
- *   - 金额：v1 字符串级 4 位**截断** → Intl 货币格式 2–4 位**四舍五入**（信息量保留）；
- *   - 日期：v1 容器本地时区 → 显式 DISPLAY_TZ（B8 修复；SSR 与浏览器同值无水合漂移）。
+ * - 金额：Intl 货币格式 2–4 位**四舍五入**（信息量保留）；
+ * - 日期：显式 DISPLAY_TZ（SSR 与浏览器同值无水合漂移）。
  * formatter 构造有成本，按 locale/currency 维度缓存。
  */
 import { createDateFormatter } from '@tillgate/ui';
@@ -66,11 +65,11 @@ export function formatMoney(
     });
     moneyCache.set(key, fmt);
   }
-  // -0 不输出负号（v1 口径保持）
+  // -0 不输出负号
   return fmt.format(value === 0 ? 0 : value);
 }
 
-/** 整数计数（四舍五入，无分组——v1 语义保持） */
+/** 整数计数（四舍五入，无分组） */
 export function formatInt(v: string | number | null | undefined): string {
   const n = Number(v);
   return Math.round(Number.isFinite(n) ? n : 0).toString();

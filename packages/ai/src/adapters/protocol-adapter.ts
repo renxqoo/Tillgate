@@ -11,10 +11,10 @@ import type {
 } from '../types';
 
 /**
- * ProtocolAdapter 契约（v2，S5 演进——见 IMPLEMENTATION.md §3.2/§3.3）：
- *   - normalizeRequest 携带 endpoint（unknown-drop 词表按端点取集，修 v1 潜伏雷）；
- *   - signRequest 参数通用化（日期由签名协议自带，amzDate 不再泄漏进通用钩子）；
- *   - 新增 supportedEndpoints 能力声明面（寻址覆写缺口静态可见，错路由编译期可查）；
+ * ProtocolAdapter 契约：
+ *   - normalizeRequest 携带 endpoint（unknown-drop 词表按端点取集）；
+ *   - signRequest 参数通用（日期由签名协议自带，amzDate 不泄漏进通用钩子）；
+ *   - supportedEndpoints 能力声明面（寻址覆写缺口静态可见，错路由编译期可查）；
  *   - mapError 归一为 kind 翻译表：结构查表 → status 兜底 → 档案文本 pattern；
  *     机制位由 errors/kinds 派生表单点得出，adapter 不得逐例声明。
  *
@@ -85,8 +85,8 @@ export interface WireCodec {
   translateResponseBody?(body: unknown): unknown;
   /**
    * 上游流 → 规范形 SSE 流（gemini 族把 model 透传入帧；claude 族从 message_start
-   * 提取真实模型名，实现可忽略该参数）。v1 同签名——出站如需对外目录模型名，
-   * 由 relay 的响应侧 model 替换开关统一处理（§3.6 例外 2）。
+   * 提取真实模型名，实现可忽略该参数）。出站如需对外目录模型名，
+   * 由 relay 的响应侧 model 替换开关统一处理。
    */
   translateUpstreamStream?(
     stream: ReadableStream<Uint8Array>,

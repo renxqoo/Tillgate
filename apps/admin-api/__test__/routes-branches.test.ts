@@ -550,7 +550,7 @@ describe('观测/用户补面', () => {
         })
       ).status,
     ).toBe(200);
-    // from/to 非法日期仍 400(v1 语义)
+    // from/to 非法日期仍 400
     const badDates = await app.request('/v1/users/42/transactions?from=not-a-date', {
       headers: authHeader(),
     });

@@ -1,7 +1,7 @@
 /**
  * 用量查询面（usage_logs 是 billing 账本投影；跨 accounts/control-plane 名称富化的
- * app-face join——MIGRATION §8 待办：后迁 billing facade 用户面查询动词）。
- * 语义对齐 v1：明细 id 倒序 + 名称富化；按模型聚合默认 30 天窗、按消费额排序；
+ * app-face join）。
+ * 明细 id 倒序 + 名称富化；按模型聚合默认 30 天窗、按消费额排序；
  * 按日汇总为 CLIENT_USAGE_TZ 日界；实时速率为 60s 窗 rpm/tpm。
  */
 import { and, desc, eq, gte, isNull, lte, sql, type SQL } from 'drizzle-orm';
@@ -23,7 +23,7 @@ export interface UsageRead {
   rate(userId: number): Promise<{ rpm: number; tpm: number }>;
 }
 
-/** by-model 默认 30 天窗（避免全表聚合——v1 口径） */
+/** by-model 默认 30 天窗（避免全表聚合） */
 const BY_MODEL_WINDOW_MS = 30 * 24 * 3_600_000;
 
 /** 时间窗条件入参（options 形态,守住参数规模上限） */

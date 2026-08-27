@@ -1,12 +1,12 @@
 /**
- * PG SQLSTATE → http 目录业务错误（ADR-0002 D1）。
+ * PG SQLSTATE → http 目录业务错误。
  * 翻译表是 HTTP 边界语义（可预期拒绝不得伪装 500）归 http；
  * cause 链探测实现归 @tillgate/db（pgSqlState），由装配层注入 errorHandler。
  */
 import type { BusinessError } from '@tillgate/errors';
 import { HttpErrors } from './catalog';
 
-/** 六码翻译表键（目录 key 联合；23505 唯一冲突，FK/CHECK/超长/类型/溢出为值类拒绝——v1 语义保持） */
+/** 六码翻译表键（目录 key 联合；23505 唯一冲突，FK/CHECK/超长/类型/溢出为值类拒绝） */
 type PgKey =
   | 'pg_unique_violation'
   | 'pg_fk_violation'

@@ -1,5 +1,5 @@
 /**
- * Application 用例(MIGRATION §1.4):凭证材料一次下发、订阅守卫、
+ * Application 用例:凭证材料一次下发、订阅守卫、
  * 禁用/轮换 CAS、鉴权读模型(appId/client 双等值 + 属主状态守卫)。
  */
 import { describe, expect, it } from 'vitest';

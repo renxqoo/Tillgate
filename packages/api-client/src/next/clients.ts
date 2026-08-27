@@ -1,6 +1,6 @@
 /**
  * Next BFF 装配工厂(仅 ./next 子入口):env 基地址解析 + 会话/语言/转发 IP 出口头注入。
- * 根入口的 baseUrl 必填(铁律 3);env 读取与 dev 兜底只存在于本装配层(DESIGN §3.1)。
+ * 根入口的 baseUrl 必填;env 读取与 dev 兜底只存在于本装配层。
  */
 import { createAdminApiClient, type AdminApiClient } from '../admin-api';
 import { createClientApiClient, type ClientApiClient } from '../client-api';

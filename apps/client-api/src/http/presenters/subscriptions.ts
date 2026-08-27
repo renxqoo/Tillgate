@@ -1,6 +1,6 @@
 /**
  * 订阅呈现：subscription-read 适配器基础行 + Decimal 派生（剩余额度/续费总价/
- * 剩余价值——v1 SQL 口径的等价计算）→ /v1/subscriptions wire 行。
+ * 剩余价值）→ /v1/subscriptions wire 行。
  */
 import { Decimal } from '@tillgate/billing';
 
@@ -41,7 +41,7 @@ export function toMySubscriptionRow(r: SubscriptionBaseRow): MySubscriptionRow {
   return {
     ...r,
     remainingAmount: remaining.toString(),
-    // 续费总价 = 当前档单价 × 席位（v1 SQL 口径）
+    // 续费总价 = 当前档单价 × 席位
     renewPrice: new Decimal(r.planPrice).times(r.quantity).toString(),
     // 剩余价值 = 总价 × 剩余额度/额度
     remainingValue: quota.isZero() ? '0' : price.times(remaining.div(quota)).toString(),

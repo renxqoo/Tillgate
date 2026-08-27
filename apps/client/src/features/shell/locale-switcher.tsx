@@ -12,7 +12,7 @@ import { setLocaleAction } from '@/server/actions/locale';
 
 /**
  * 语言切换：写 NEXT_LOCALE cookie 后 router.refresh() 重渲染当前路由——
- * 服务端按新语言出全量 HTML，无客户端闪变。双态切换 en ↔ zh（v1 语义）。
+ * 服务端按新语言出全量 HTML，无客户端闪变。双态切换 en ↔ zh。
  */
 export function LocaleSwitcher() {
   const locale = useLocale();

@@ -1,8 +1,8 @@
 /**
- * channels 渠道 postgres 适配器（v1 channel.repo 管理面子集等价迁移）：
- * CRUD/列表富化读 + 探针读 + 运营资金守卫原子操作（budget/recharge 族）。
- * 热路径族（路由候选/死凭据/任务渠道/敞口守卫/成本扣减熔断）不在此——inference 波次（G1）。
- * 管理面返回形状永不包含 apiKeyEnc（密文不出库；探针/绑定探针读除外，仅 application 解密用）。
+ * channels 渠道 postgres 适配器（管理面）：
+ * CRUD/列表富化读 + 探针读 + 运营资金守卫原子操作（budget/recharge 族），
+ * 以及网关路由候选与 worker 任务渠道热路径读。
+ * 管理面返回形状永不包含 apiKeyEnc（密文不出库；探针读与热路径读除外，仅 application 解密用）。
  */
 import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import {
@@ -317,7 +317,7 @@ export const postgresChannelStore: ChannelStore = {
     return { rows: rows as RechargeRow[], total: countRows[0]?.count ?? 0 };
   },
 
-  // ---- 网关热路径读（G1；v1 channel.repo findRouteCandidates 语义） ----
+  // ---- 网关热路径读 ----
 
   async findRouteCandidates(db, realModel) {
     const rows = await db
@@ -353,7 +353,7 @@ export const postgresChannelStore: ChannelStore = {
     return rows as RouteCandidateRow[];
   },
 
-  // ---- worker 任务轮询读（worker 波；v1 channel.repo findTaskChannel 语义） ----
+  // ---- worker 任务轮询读 ----
 
   async findTaskChannel(db, channelId) {
     // 不按启用状态过滤：已提交任务所属渠道即使事后停用，轮询/代执行仍须可达

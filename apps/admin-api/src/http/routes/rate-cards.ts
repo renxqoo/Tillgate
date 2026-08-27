@@ -1,5 +1,5 @@
 /**
- * 费率卡路由（v1 routes/rate-cards.ts 平移）：列表/创建/更新/删除（绑定守卫）/
+ * 费率卡路由：列表/创建/更新/删除（绑定守卫）/
  * 卡内用户/健康自检。系数 0.001..9.999,落库与回显恒 3 位小数（control-plane）。
  */
 import { Hono } from 'hono';
@@ -14,7 +14,7 @@ export interface RateCardsRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'rates'>;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function rateCardsRoutes(deps: RateCardsRoutesDeps) {
   const app = new Hono<SessionEnv>();
   const { rates } = deps.controlPlane;

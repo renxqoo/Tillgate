@@ -1,8 +1,7 @@
 /**
- * 钱包动词契约测试（内存 stand-in；迁移自旧仓 service/__tests__/wallet*.test.ts 行为规格，
- * 真实 PostgreSQL 并发/触发器语义在 wallet-*.real.test.ts）。
+ * 钱包动词契约测试（内存 stand-in；真实 PostgreSQL 并发/触发器语义在 wallet-*.real.test.ts）。
  * 覆盖：动词闭环、幂等三段式（快速路径 + 唯一冲突兜底重放）、同键异命令 409、
- * 键劫持归属、出账守卫口径、B1/B5 回归、读侧规范化。
+ * 键劫持归属、出账守卫口径、同键竞速回归、读侧规范化。
  */
 import { describe, expect, it } from 'vitest';
 import { isBusinessError, isDefectError } from '@tillgate/errors';

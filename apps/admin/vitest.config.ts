@@ -37,7 +37,7 @@ function loadRootDotEnv(): Record<string, string> {
  * admin（Next.js 前端）测试配置：默认门禁 = 架构边界 + server 动作（mock fetch）+
  * 纯函数（URL 状态/图布局/tone）+ config 词表封闭性 + 关键 client 交互组件。
  *
- * 覆盖率口径（IMPLEMENTATION §7，如实申报不调阈值）：
+ * 覆盖率口径（如实申报不调阈值）：
  *   - 含：src/{server,lib,config}/** 与 features 内纯逻辑切片（*.ts 非 tsx）
  *   - 排除覆盖率：src/app/**（RSC 页面装配——行为由 server 动作测试 + build 类型门覆盖）、
  *     src/components 与 features 下 tsx；关键交互组件用 jsdom 渲染测试锁定，但不纳入

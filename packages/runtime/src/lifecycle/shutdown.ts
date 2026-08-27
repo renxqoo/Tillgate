@@ -4,8 +4,7 @@
  * 附加收口件 → Redis/DB 连接收口 → 正常退出；宽限耗尽强退
  * （K8s 随后 SIGKILL——在途长流由客户端重试，账务由租约恢复链兜底）。
  *
- * 三个 app 逐字漂移拷贝的合一（IMPLEMENTATION.md §2.2 S1/D1）；gateway 全集形态
- * （closeables）+ serviceName 参数化。收口顺序保持 v1：otel → closeables → redis → db。
+ * gateway 全集形态（closeables）+ serviceName 参数化；收口顺序固定：otel → closeables → redis → db。
  */
 
 export interface ShutdownLog {

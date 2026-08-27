@@ -1,10 +1,10 @@
 'use client';
 
 // 邮箱验证码二次登录卡（纯个人自助，SELF 域）：只管「我」的二次登录开关与状态。
-// 开关确认 = 邮箱码自证（admin-email-2fa,2026-08-25 D2=A）：点开关只开弹窗，
+// 开关确认 = 邮箱码自证：点开关只开弹窗，
 // 弹窗内手动「发送验证码」（60s 冷却倒计时，CountdownButton——关弹窗再开
-// 倒计时连续），输码确认生效；取消 TOTP 前置（未绑验证器也可开启——D2）。
-// 邮件通道（SMTP）是系统级配置——独立集成卡,2026-08-25 二次裁决;通道不可用
+// 倒计时连续），输码确认生效；取消 TOTP 前置（未绑验证器也可开启）。
+// 邮件通道（SMTP）是系统级配置——独立集成卡;通道不可用
 // 在发码步即被拒（503）,不再等点击开关后报错。
 
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tillgate/ui';
@@ -77,7 +77,7 @@ export function EmailTwoFactorCard({ me }: { me: AdminMeInfo | null }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-center gap-3">
-          {/* D2：不再按 TOTP 绑定置灰——邮箱码即确认凭证 */}
+          {/* 不按 TOTP 绑定置灰——邮箱码即确认凭证 */}
           <Button
             variant={enabled ? 'destructive' : 'default'}
             size="sm"

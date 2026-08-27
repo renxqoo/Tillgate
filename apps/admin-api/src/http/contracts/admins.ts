@@ -1,5 +1,5 @@
 /**
- * 管理员管理契约（动态 RBAC——docs/admin-rbac-dynamic;角色经 roleId FK,词表在 roles 表）。
+ * 管理员管理契约（动态 RBAC;角色经 roleId FK,词表在 roles 表）。
  * 密码强度策略单源在 identity（credentials.register 内校验,契约层不重复）。
  */
 import * as z from 'zod';
@@ -12,7 +12,7 @@ export const adminsContracts = {
     password: z.string().min(1).max(256),
     roleId: z.number().int().min(1),
   }),
-  /** 部分更新：displayName 可改自身;roleId/status 不可改自身（D6,路由层守卫） */
+  /** 部分更新：displayName 可改自身;roleId/status 不可改自身（路由层守卫） */
   patch: z
     .object({
       displayName: z.string().trim().min(1).max(64).nullable().optional(),

@@ -1,5 +1,5 @@
 /**
- * buildListQuery 行为规格(v1 list.ts 纯函数部分;查询参数名与跳过规则不变)。
+ * buildListQuery 行为规格(查询参数名与跳过规则不变)。
  */
 import { describe, expect, it } from 'vitest';
 import { buildListQuery } from '../src/core/pagination';

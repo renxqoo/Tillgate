@@ -1,5 +1,5 @@
 /**
- * TOTP 域测试(v1 totp.test 迁移):RFC 4648/6238 官方向量、往返、容错、
+ * TOTP 域测试:RFC 4648/6238 官方向量、往返、容错、
  * 窗口匹配、恢复码形状。
  */
 import { describe, expect, it } from 'vitest';

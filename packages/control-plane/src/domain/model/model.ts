@@ -1,6 +1,6 @@
 /**
  * 模型映射域规则（纯函数）：计价单位词表、变体计费配置形状、价格数值域、输入校验。
- * BillingConfig 形状与 @tillgate/db schema 的 $type 结构兼容（D2：双方结构契约，
+ * BillingConfig 形状与 @tillgate/db schema 的 $type 结构兼容（双方结构契约，
  * domain 不 import db；装配点由类型系统校验一致性）。
  */
 import type { ErrorContext } from '@tillgate/errors';
@@ -26,7 +26,7 @@ export interface BillingConfig {
   reservation?: { strategy?: string; params?: Record<string, unknown> };
 }
 
-/** 上下文窗口上界（v1 同值：20 亿 token——超出即运营输入事故） */
+/** 上下文窗口上界（20 亿 token——超出即运营输入事故） */
 const CONTEXT_LENGTH_MAX = 2_000_000_000;
 
 export interface ModelPrices {

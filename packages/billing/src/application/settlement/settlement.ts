@@ -49,13 +49,13 @@ export interface SettlementDeps {
   /** recover 毒行隔离写入（装配必填：logger/遥测注入；console 直写是隐藏 I/O） */
   onError: (error: unknown, context: string) => void;
   /**
-   * 可靠通知（§5.4）：死信事实同事务入箱（入箱失败回滚处置事务）。
+   * 可靠通知：死信事实同事务入箱（入箱失败回滚处置事务）。
    * 未注入时无通知副作用；可靠投递不走 onSettled/onDead 钩子。
-   * 结算成功不入箱（v2 口径：无告警消费场景——见 settle.ts 尾注）。
+   * 结算成功不入箱（无告警消费场景——见 settle.ts 尾注）。
    */
   outbox?: NotificationOutboxPort;
   onSettled?: Parameters<typeof createSettleClaimUseCase>[0]['onSettled'];
-  /** 死信复核同事务审计 port（U6;缺省丢弃——app 装配桥 observability writeAudit） */
+  /** 死信复核同事务审计 port（缺省丢弃——app 装配桥 observability writeAudit） */
   reviewAuditTx?: ReviewAuditTx;
   onDead?: (data: {
     requestId: string;
@@ -65,7 +65,7 @@ export interface SettlementDeps {
   }) => void;
 }
 
-/** 死信复核组（U6——admin-api P1 消费;审计与业务同事务经注入 port） */
+/** 死信复核组（admin-api 消费;审计与业务同事务经注入 port） */
 export interface SettlementReviewApi {
   listDead(input: {
     limit: number;
@@ -76,7 +76,7 @@ export interface SettlementReviewApi {
 }
 
 export interface SettlementApi {
-  /** 死信复核（U6） */
+  /** 死信复核 */
   review: SettlementReviewApi;
   claim(input: ClaimInput): Promise<SettlementClaim[]>;
   /**
@@ -97,7 +97,7 @@ export interface SettlementApi {
   /**
    * billing_requests 当前状态（只读；null = 行不存在）——生成任务轮询终态的
    * 自愈判定用（已 settlement_pending/settled 则跳过 succeeded 信号直接终态化，
-   * worker 波消费；v1 billingRequest.currentStatus 语义）。
+   * worker 消费）。
    */
   currentStatus(requestId: string): Promise<string | null>;
 }

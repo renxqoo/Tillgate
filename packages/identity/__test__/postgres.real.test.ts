@@ -1,14 +1,14 @@
 /**
- * 真实 PostgreSQL 门禁(test:real 显式运行;DB_TEST_URL/DATABASE_URL 缺失整组 skip,
- * 铁律 14):七表 DDL fixture + 经 facade(runTx + advisoryLock 完整编排)复验
+ * 真实 PostgreSQL 门禁(test:real 显式运行;DB_TEST_URL/DATABASE_URL 缺失整组 skip):
+ * 七表 DDL fixture + 经 facade(runTx + advisoryLock 完整编排)复验
  * CAS/锁/部分唯一索引/GREATEST 的真实语义——凭据并发注册单赢家、冷却期并发发码
  * 至多 1 成功(部分唯一索引 + 锁替换语义)、同码并发验恰 1 成功、TOTP 步进 CAS
  * 防重放、恢复码单次消费、OAuth 并发绑定单赢家、锚点 GREATEST 单调、
- * composition bridge 随事务回滚(B03)。
+ * composition bridge 随事务回滚。
  * 多语句编排(锁内 abort+insert / link 读回分类)必须经 facade 的 runTx 临界区,
  * 直连 store 无事务会让「替换语义」退化为连环替换——这是本门禁锁定的口径之一。
- * DDL fixture 与迁移 0076 同源(迁移链空库装配依赖未收口前内联;P3 收口后退役,
- * accounts real 门禁同款口径)。
+ * DDL fixture 与迁移 0076 同源(迁移链空库装配依赖收口前内联,与 accounts real
+ * 门禁同款口径)。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, runTx, type Db } from '@tillgate/db';

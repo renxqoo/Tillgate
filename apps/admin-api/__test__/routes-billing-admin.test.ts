@@ -1,5 +1,5 @@
 /**
- * billing 管理域契约测试（P1;v1 plans/redeem/billing-operations 测试行为规格）：
+ * billing 管理域契约测试：
  * 套餐 kind×周期 4xx/删除守卫 409/后置审计；兑换批次明文一次返回 + 哈希脱敏 + 作废统一 404；
  * 死信复审乐观锁 409/命令守卫;订阅管理列表信封。
  */
@@ -28,7 +28,7 @@ describe('GET|POST|PATCH|DELETE /v1/plans', () => {
     const app2 = createAdminApp({
       ...fakeDeps({
         plans: {
-          // kind×周期一致性规则在 billing 用例层(v1 service 同层)——fake 承载之
+          // kind×周期一致性规则在 billing 用例层——fake 承载之
           create: async (input: { kind?: string; periodDays?: number }) => {
             if (input.kind === 'pack' && input.periodDays != null && input.periodDays !== 0) {
               throw BillingErrors.business('invalid_period_days', { kind: 'pack' });

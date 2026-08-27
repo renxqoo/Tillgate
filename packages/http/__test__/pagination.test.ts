@@ -17,7 +17,7 @@ import {
 } from '../src/pagination/list-query';
 
 /**
- * 分页与列表 query（v1 pagination.test 全部 + list-query.test 纯半边迁移）。
+ * 分页与列表 query。
  * 容错优先：非法值回退默认、超上限 clamp——分页参数不触发 400。
  */
 

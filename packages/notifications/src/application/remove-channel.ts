@@ -1,5 +1,5 @@
 /**
- * 删除渠道:硬删(v1 语义);0 行 = channel_not_found。已入箱事件的 delivered_channel_ids
+ * 删除渠道:硬删;0 行 = channel_not_found。已入箱事件的 delivered_channel_ids
  * 引用不级联——投递循环对已删渠道自然跳过(目标筛选以快照渠道为准)。
  */
 import type { Db } from '@tillgate/db';

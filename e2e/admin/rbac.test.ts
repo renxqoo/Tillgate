@@ -1,11 +1,11 @@
 /**
- * admin RBAC 旅程 e2e（docs/admin-rbac/IMPLEMENTATION §4;全真装配——真实 PG +
+ * admin RBAC 旅程 e2e（全真装配——真实 PG +
  * 真监听 + identity 签发真 admin-realm 令牌）。旅程专属行 e2e-rbac-* 前缀,结束直删。
  *
  * 覆盖面：
- *   §E viewer 拒绝面（读 200/写 403/me 权限集）——DESIGN §2.4 矩阵的真装配抽样;
- *   §F super_admin 回填不变性（0081 迁移后既有全权限行为 = 旧规格零漂移）;
- *   §G admins 管理旅程（创建→凭据可用→降权同令牌即时生效（D2）→自改拒绝（D6）→
+ *   E viewer 拒绝面（读 200/写 403/me 权限集——拒绝矩阵的真装配抽样）;
+ *   F super_admin 回填不变性（既有全权限行为零漂移）;
+ *   G admins 管理旅程（创建→凭据可用→降权同令牌即时生效→自改拒绝→
  *      409 冲突 + 凭据被占补偿回滚——不留废号）。
  * journey.test.ts 零改动全绿 = 既有旅程回归锁（同套件运行时验证）。
  */
@@ -163,7 +163,7 @@ describe('G. admins 管理旅程（创建→降权即时生效→自改拒绝→
     expect(created.status).toBe(201);
     expect(created.body).toMatchObject({ email, role: 'operator', status: 0 });
     const operatorId = created.body.id as number;
-    // id ≥1e9 段（identity_passwords 扁平主键防串号——生产裁决）
+    // id ≥1e9 段（identity_passwords 扁平主键防串号）
     expect(operatorId).toBeGreaterThanOrEqual(1_000_000_000);
     createdAdminIds.push(operatorId);
 
@@ -187,7 +187,7 @@ describe('G. admins 管理旅程（创建→降权即时生效→自改拒绝→
     });
     expect(before.status).toBe(200);
 
-    // 降权 viewer：同一令牌（role 不嵌 JWT,属主回查每请求现读——D2 即时生效）
+    // 降权 viewer：同一令牌（role 不嵌 JWT,属主回查每请求现读,即时生效）
     const demoted = await call(w(), `/v1/admins/${operatorId}`, {
       method: 'PATCH',
       headers: jsonHeaders,

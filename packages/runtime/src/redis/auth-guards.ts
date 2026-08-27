@@ -1,6 +1,5 @@
 /**
- * 鉴权爆破防护（v1 ai-getway packages/core/src/redis/auth-guards.ts 平移；C-G5），
- * 两层防护语义：
+ * 鉴权爆破防护，两层防护语义：
  *   - keyBruteForceGuard：保护「单个 Key」不被爆破（维度=keyHash：窗口内失败
  *     N 次锁 M 分钟，成功即清零）
  *   - authFailureGuard：保护「网关整体」不被单来源无差别刷鉴权失败（维度=来源
@@ -57,8 +56,8 @@ export interface GuardCheck {
 const failsKey = (keyHash: string) => `auth:fails:${keyHash}`;
 const lockKey = (keyHash: string) => `auth:lock:${keyHash}`;
 
-// 模块级：三档故障语义的统一降级裁决（closed 抛错 / open 放行 / degraded 走本地降级体）
-// —— 两个 guard 工厂原各持一份同构闭包，收口为单一实现（真实重复抽共享，铁律 5）
+// 模块级：三档故障语义的统一降级入口（closed 抛错 / open 放行 / degraded 走本地降级体），
+// 两个 guard 工厂共用这一份实现
 function degradedOutcome<T>(
   failMode: GuardFailMode,
   error: unknown,

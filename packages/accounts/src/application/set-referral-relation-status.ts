@@ -1,5 +1,5 @@
 /**
- * 推荐关系封禁/恢复(管理面;v1 setRelationStatus):封禁=停发不停历史
+ * 推荐关系封禁/恢复(管理面):封禁=停发不停历史
  * (worker 派奖前复查;已入账不冲正);同事务审计。
  */
 import { runTx } from '@tillgate/db';

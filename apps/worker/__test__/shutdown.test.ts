@@ -1,5 +1,5 @@
 /**
- * 停机编排规格（v1 §1.6 顺序对位；runtime createShutdown 的 worker 形状绑定）：
+ * 停机编排规格（runtime createShutdown 的 worker 形状绑定）：
  * server.close → otel → closeables（scheduler → wakeup → abandon）→ db → exit(0)。
  */
 import { describe, expect, it } from 'vitest';
@@ -62,7 +62,15 @@ describe('createWorkerShutdown', () => {
     await new Promise((resolve) => {
       setTimeout(resolve, 20);
     });
-    expect(events).toEqual(['server', 'otel', 'scheduler', 'settleQueue', 'wakeup', 'abandon', 'db']);
+    expect(events).toEqual([
+      'server',
+      'otel',
+      'scheduler',
+      'settleQueue',
+      'wakeup',
+      'abandon',
+      'db',
+    ]);
     expect(exitRecord.code).toBe(0);
   });
 

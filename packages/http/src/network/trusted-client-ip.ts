@@ -1,5 +1,5 @@
 /**
- * 可信代理感知的客户端 IP 提取（v1 network.ts 逐字迁移）——XFF 信任模型的单一实现。
+ * 可信代理感知的客户端 IP 提取——XFF 信任模型的单一实现。
  *
  * 语义：TRUSTED_PROXY_HOPS = 部署在前面的反向代理层数。
  *   - hops=0（默认，安全兜底）：完全不信任 X-Forwarded-For / X-Real-IP——

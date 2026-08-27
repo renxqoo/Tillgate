@@ -52,7 +52,7 @@ export interface PlanFormValues {
 }
 
 // 复用表单字段（创建 / 编辑）
-// eslint-disable-next-line max-lines-per-function -- 套餐表单字段平铺（kind 联动显隐逐项 UI 声明），拆分收益为负（存量棘轮）
+// eslint-disable-next-line max-lines-per-function -- 套餐表单字段平铺（kind 联动显隐逐项 UI 声明），拆分收益为负
 export function PlanForm({
   form,
   onSubmit,

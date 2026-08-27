@@ -1,7 +1,7 @@
 /**
- * trace port（跨能力经消费方 port——重构方案 §5.2；v1 管线 withAsyncSpan 面的 v2 形态）：
+ * trace port（跨能力经消费方 port）：
  * inference 各阶段 span 经此口发出，装配绑 OTel 实现（gateway adapters/trace-port.ts）；
- * 未注入 = no-op 零开销。span 命名与完整清单见 docs/observability.md §3。
+ * 未注入 = no-op 零开销。
  * 嵌套语义：实现负责把 fn 包进 span 上下文——内部再嵌 withSpan 自然成树
  * （父 = 当前活动 span，网关热路径即 otel 中间件的请求根 span）。
  */

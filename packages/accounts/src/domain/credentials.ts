@@ -1,13 +1,12 @@
 /**
- * 账号凭证材料生成(v1 http/secrets.ts 的 api-key/app 部分**随消费者迁入**,D3/C5;
- * http 同一变更删除对应导出)。纯函数 + node:crypto 随机源,无其他 I/O。
+ * 账号凭证材料生成。纯函数 + node:crypto 随机源,无其他 I/O。
  *
- * 安全设计(与 v1 一致):明文只在生成时返回一次;落库只存 SHA-256;鉴权端对明文
- * 再哈希后等值查。Key 前缀是部署可变值(与网关分派端同一 env),**必填注入**(B5)。
+ * 安全设计:明文只在生成时返回一次;落库只存 SHA-256;鉴权端对明文
+ * 再哈希后等值查。Key 前缀是部署可变值(与网关分派端同一 env),**必填注入**。
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
-/** Key 前缀合法性:^[a-z][a-z0-9_-]{1,15}$(与 v1 gateway/client-api 共用 env 约束) */
+/** Key 前缀合法性:^[a-z][a-z0-9_-]{1,15}$(与 gateway/client-api 共用 env 约束) */
 export const KEY_PREFIX_RE = /^[a-z][a-z0-9_-]{1,15}$/;
 
 export function isValidKeyPrefix(prefix: string): boolean {
@@ -34,7 +33,7 @@ export function generateKeyMaterial(prefix: string): KeyMaterial {
   return { plaintext, keyHash: sha256Hex(plaintext), keyPreview: maskKey(plaintext) };
 }
 
-/** Key 脱敏预览(v1 maskKey;长度 ≤8 全遮) */
+/** Key 脱敏预览:长度 ≤8 全遮 */
 export function maskKey(plaintext: string): string {
   if (plaintext.length <= 8) return '****';
   return `${plaintext.slice(0, 3)}****${plaintext.slice(-4)}`;
@@ -51,7 +50,7 @@ export interface AppCredentials {
   readonly clientSecretHash: string;
 }
 
-/** 生成 Application 凭证材料(v1 形态:uuid 去杠截 32 / app_+16hex / 24 字节 hex) */
+/** 生成 Application 凭证材料:uuid 去杠截 32 / app_+16hex / 24 字节 hex */
 export function generateAppCredentials(): AppCredentials {
   const clientSecret = randomBytes(24).toString('hex');
   return {

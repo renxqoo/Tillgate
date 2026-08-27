@@ -12,17 +12,16 @@ import type { UpstreamPort } from '../ports/upstream';
 import type { PreparedRequest } from './quote';
 
 /**
- * 候选 × 渠道双层循环（v1 run-chat 循环体迁移；限流闸剥离，健康检查移入，阶段 span
- * 经 TracePort 回填——v1 withAsyncSpan 面等价，命名见 docs/observability.md §3）：
+ * 候选 × 渠道双层循环：
  *
  *   for 候选（主模型 + fallback 链）→ 渠道加权调度序：
- *     渠道维限流钩子（app 装配，缺省放行）→ 健康放行（C4：v1 ai 内 admission 等价）
+ *     渠道维限流钩子（app 装配，缺省放行）→ 健康放行
  *     → 渠道敞口预留（reserveChannel）→ 首次成功预留后 upstream_started（租约开始）
  *     → 单次尝试（结局编码 AttemptOutcome，控制流由本循环翻译：
  *        switch_channel → continue；next_candidate → break；respond → 返回）
  *
  * 全败收尾：request_failed 三路释放信号 + 渠道面竭尽（no_available_channel）/
- * 上游故障（upstream_failed）终结错误。尝试总数无上限（v1 B6 保留——预算与限流止步）。
+ * 上游故障（upstream_failed）终结错误。尝试总数无上限（预算与限流止步）。
  */
 
 /** 渠道维准入钩子（gateway app 装配限流；未装配 = 单副本开发形态全放行） */
@@ -71,7 +70,7 @@ export interface PassthroughDelivered {
   message?: string;
 }
 
-/** 渠道跳过事实（v1 channel.skip span 等价：跳过原因进 trace 不进响应） */
+/** 渠道跳过事实：跳过原因进 trace 不进响应 */
 function skipChannel(
   deps: ExecutionDeps,
   args: { requestId: string; channel: ChannelCandidate; channelAttempt: number; reason: string },
@@ -238,9 +237,9 @@ export async function runCandidateLoop<T>(
 }
 
 /**
- * 上游失败分派（非流式 / 流式首字节前共用——v1 dispatchFailure 迁移，
- * markDead 移除：死凭据经 AiEvent 由 health 状态机记账，C3/C4）：
+ * 上游失败分派（非流式 / 流式首字节前共用）：
  * 可换 → 换渠道；4xx → 透传终局（收尾后原码返回）；其余 → 换候选。
+ * 死凭据不在分派处显式标记，经 AiEvent 由 health 状态机记账。
  */
 export async function dispatchFailure(
   deps: ExecutionDeps,
@@ -281,7 +280,7 @@ export async function dispatchFailure(
   return { kind: 'next_candidate', code: error.kind };
 }
 
-/** 全败收尾：request_failed 三路释放 + 渠道面竭尽/上游故障终结（v1 releaseAndFail） */
+/** 全败收尾：request_failed 三路释放 + 渠道面竭尽/上游故障终结 */
 async function releaseAndFail(
   deps: ExecutionDeps,
   args: { prepared: PreparedRequest; requestId: string; lastCode: string | undefined },

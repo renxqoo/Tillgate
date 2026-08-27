@@ -1,6 +1,6 @@
 /**
  * 统一挑战持久化 port。时间单源 = DB clock_timestamp()(冷却判定与 retryAfterMs
- * 同钟,B14);验码是单条 CAS UPDATE(计错 + 命中即消费,无读改写竞态)。
+ * 同钟);验码是单条 CAS UPDATE(计错 + 命中即消费,无读改写竞态)。
  * 实现见 adapters/postgres/challenges.ts。
  */
 import type { DbLike } from '@tillgate/db';

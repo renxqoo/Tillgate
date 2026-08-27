@@ -1,6 +1,5 @@
 /**
- * 运营日志路由（v1 routes/ops.ts 的 audit/logs 子集平移）：审计列表/请求日志列表。
- * usage-logs/stats/payment-orders/generation-tasks 族为 P4 pending（IMPLEMENTATION §3）。
+ * 运营日志路由：审计列表/请求日志列表。
  * 请求日志 30 天窗由 observability 查询内置（now 注入）。
  */
 import { Hono } from 'hono';

@@ -1,6 +1,6 @@
 /**
  * 公开定价读取（未登录可达：营销首页免费模型广场 + /pricing 公开定价表）。
- * 定价契约是宽松解析（q/free/page/pageSize，非法值回落默认——v1 语义），
+ * 定价契约是宽松解析（q/free/page/pageSize，非法值回落默认），
  * 与用户面列表的 page/limit strict 契约不同源，出参信封键为 models。
  */
 import type { PricingPage } from '@tillgate/api-client';

@@ -1,5 +1,5 @@
 /**
- * 创建渠道:形状校验(B1 收口口径)→ secret 加密落库 → 唯一索引兜底重名(23505 → channel_exists)。
+ * 创建渠道:形状校验 → secret 加密落库 → 唯一索引兜底重名(23505 → channel_exists)。
  */
 import { isUniqueViolation, type Db } from '@tillgate/db';
 import type { NotifyStore } from '../ports/notify-store';

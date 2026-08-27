@@ -1,6 +1,6 @@
 /**
- * 架构门禁（P5 收紧 apps）：文件集快照 + composition/db 白名单 + 深导入禁令。
- * 与 gateway IMPLEMENTATION §3 同款口径；trace-receiver 为四文件精简版先例。
+ * 架构门禁：文件集快照 + composition/db 白名单 + 深导入禁令。
+ * 与 gateway 架构测试同款口径；trace-receiver 为四文件精简版先例。
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';

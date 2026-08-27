@@ -1,5 +1,5 @@
 /**
- * 动态管理面邮件（identity Mailer 的集成设置驱动实现——DESIGN §5 D7）。
+ * 动态管理面邮件（identity Mailer 的集成设置驱动实现）。
  * 每次发送严格读快照（resolve fail-loud）；SMTP 未生效抛 undeliverable_challenge
  * （与 identity mailer 缺席路径同码）；传输器随配置指纹重建。
  * 管理面不发送找回链接——端口合规空实现（与静态版一致）。

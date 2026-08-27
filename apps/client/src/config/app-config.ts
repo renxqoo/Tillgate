@@ -1,6 +1,5 @@
 /**
- * 应用品牌与版本（唯一事实源）：v1 模板残留「Studio Admin」品牌串在本次
- * 迁移修复（B12）——全站展示统一 Tillgate Console；版本随 package.json。
+ * 应用品牌与版本（唯一事实源）：全站展示统一 Tillgate Console；版本随 package.json。
  */
 import packageJson from '../../package.json';
 

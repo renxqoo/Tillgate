@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 /**
- * 集成设置卡交互规格（docs/integration-settings/DESIGN.md §4.1/§5 D11、§9）：
- * 词表次序渲染（SMTP 独立卡——2026-08-25 二次裁决推翻首裁「挂 2FA 卡」：
+ * 集成设置卡交互规格：
+ * 词表次序渲染（SMTP 独立卡——
  * 系统级配置与个人自助分离，门控粒度对齐 settings:integrations）；卡面不显示
  * 配置字段值（配置收进弹窗，secret 掩码只在弹窗 placeholder 回显）；启停走
  * update 动作；Turnstile 停用在注册送礼开启时出警告（不阻断）；表单三态组装
  * （空=缺席、勾选清除=null）；无 settings:integrations 权限时配置/启停操作位
- * 隐藏（2026-08-25 用户裁决 D1，状态只读保留）。
+ * 隐藏（状态只读保留）。
  */
 import '@testing-library/jest-dom/vitest';
 
@@ -96,7 +96,7 @@ describe('integration-format 纯函数', () => {
 describe('IntegrationCard 交互', () => {
   it('卡面不显示配置字段值：明文与掩码值均不出现；配置按钮在标题行', async () => {
     renderCard(epayItem);
-    // 2026-08-25 用户裁决：卡面无配置字段值（与 2FA/TOTP 卡同形态）
+    // 卡面无配置字段值（与 2FA/TOTP 卡同形态）
     expect(screen.queryByText('****k-9')).not.toBeInTheDocument();
     expect(screen.queryByText('1001')).not.toBeInTheDocument();
     expect(screen.queryByText('https://pay.example.test')).not.toBeInTheDocument();

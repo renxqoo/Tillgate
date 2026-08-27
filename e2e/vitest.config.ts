@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 
-// e2e 归组运行装置（重构方案 §933：根 e2e/ 不是 workspace 包）：
+// e2e 归组运行装置（根 e2e/ 不是 workspace 包）：
 // - 依赖闭包经 e2e/node_modules 符号链接到 apps/gateway/node_modules（gateway 依赖
 //   覆盖 e2e 所需全部模块；bun 不管理该链接——e2e 非 workspace）；
 // - 从 apps/gateway 目录用其 vitest 执行（根脚本 test:e2e），配置经 -c 指向本文件。

@@ -1,7 +1,7 @@
 /**
- * 更新渠道:白名单部分更新(type 不可改——config 校验口径与渠道类型绑定,v1 语义)。
- * config 整体替换(PUT 口径):不带 secret 键的 config 会覆盖丢 secret——v1 行为,留档。
- * 词表校验按提交口径(v1:不查库合并旧 events——zod 层 min(1) 已保证非空)。
+ * 更新渠道:白名单部分更新(type 不可改——config 校验口径与渠道类型绑定)。
+ * config 整体替换(PUT 口径):不带 secret 键的 config 会覆盖丢 secret。
+ * 词表校验按提交口径:不查库合并旧 events(zod 层 min(1) 已保证非空)。
  */
 import type { Db } from '@tillgate/db';
 import type { NotifyStore } from '../ports/notify-store';

@@ -16,7 +16,7 @@ export interface TurnstileCaptchaOptions {
   readonly verifyUrl?: string;
   /** 覆盖 fetch(测试注入) */
   readonly fetchImpl?: FetchLike;
-  /** siteverify 超时毫秒(必填注入,铁律 3) */
+  /** siteverify 超时毫秒(必填注入) */
   readonly timeoutMs: number;
 }
 

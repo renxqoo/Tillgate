@@ -4,16 +4,13 @@ import type { OtelMode } from '@tillgate/observability';
 import type { DbPoolConfig } from '@tillgate/db';
 
 /**
- * admin-api 配置（管理控制面）。v1 loadConfig 平移，v2 差异（DESIGN §2.4）：
- *   - REDIS_URL/TRUSTED_PROXY_HOPS 不在本波配置面（无消费方不落地,铁律 4;P2 登录波引入）;
- *   - 新增 IDENTITY_CODE_PEPPER（identity 配置必填项——挑战/恢复码 HMAC pepper）；
- *   - fx 拉取源地址/TTL/超时由 v1 service 常量升为装配显式值（铁律 3）。
- * 部署缺省值由本层显式持有（铁律 3：装配层是缺省值的唯一真相，不藏全局）。
+ * admin-api 配置（管理控制面）。
+ * 部署缺省值由本层显式持有（装配层是缺省值的唯一真相，不藏全局）。
  */
 
 const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
 
-/** 管理面记账币种与钱包词表白名单（wallet guards 装配注入；v1 等价 'CNY'；
+/** 管理面记账币种与钱包词表白名单（wallet guards 装配注入）；
  * refTypes 含 accounts 注册赠送/推荐族的 'gift'/'referral'——walletCredit 桥消费） */
 const ADMIN_CURRENCY = 'CNY';
 const WALLET_REF_TYPES = ['billing', 'topup', 'admin', 'gift', 'referral'] as const;
@@ -42,9 +39,9 @@ const envSchema = z
     SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(2_592_000).default(86_400),
     /** 渠道上游 Key 落库加密密钥（AES-256-GCM enc:v1；runtime.createCipher 消费） */
     ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
-    /** identity 挑战/恢复码 HMAC pepper（identity 配置必填 16-512 字符；P2 登录波消费） */
+    /** identity 挑战/恢复码 HMAC pepper（identity 配置必填 16-512 字符；登录面消费） */
     IDENTITY_CODE_PEPPER: secretSchema('IDENTITY_CODE_PEPPER', 16),
-    // ---- P2 登录波（DESIGN §2.4「Redis 必配」兑现）----
+    // ---- 登录面（Redis 必配）----
     /** 爆破守卫/会话吊销面（Redis 必配——不可达 fail-closed 503,不静默降级无锁） */
     REDIS_URL: z.string().url(),
     REDIS_SENTINELS: z.string().min(1).optional(),
@@ -52,7 +49,7 @@ const envSchema = z
     REDIS_SENTINEL_PASSWORD: z.string().min(1).optional(),
     /** 信任代理跳数（x-forwarded-for 右数第 N 跳;0 = 不信代理头） */
     TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
-    /** (email,ip) 键爆破锁：阈值/窗口/锁时长（v1 auth-guards 同语义,Redis 固定窗口） */
+    /** (email,ip) 键爆破锁：阈值/窗口/锁时长（Redis 固定窗口） */
     ADMIN_LOGIN_FAILURE_THRESHOLD: z.coerce.number().int().min(1).default(5),
     ADMIN_LOGIN_FAILURE_WINDOW_S: z.coerce.number().int().min(1).default(3600),
     ADMIN_LOGIN_LOCK_S: z.coerce.number().int().min(1).default(900),
@@ -70,16 +67,16 @@ const envSchema = z
     CATALOG_FREE_CHANNEL_BUDGET: nonNegativeDecimal.default('1000000'),
     /** 目录源拉取缓存 TTL（ms） */
     CATALOG_CACHE_TTL_MS: z.coerce.number().int().min(1).default(600_000),
-    /** OpenRouter 目录源拉取地址与超时（channel 型在线源；v1 同值） */
+    /** OpenRouter 目录源拉取地址与超时（channel 型在线源） */
     OPENROUTER_CATALOG_URL: z.string().url().default('https://openrouter.ai/api/v1/models'),
     CATALOG_FETCH_TIMEOUT_MS: z.coerce.number().int().min(1).default(10_000),
     /** 渠道进货凭证上传上限（字节） */
     VOUCHER_MAX_BYTES: z.coerce.number().int().min(1).default(2_097_152),
-    /** 通知渠道 webhook 本地地址逃生门（P5;与 worker WORKER_WEBHOOK_ALLOW_LOCAL_URL 同语义） */
+    /** 通知渠道 webhook 本地地址逃生门（与 worker WORKER_WEBHOOK_ALLOW_LOCAL_URL 同语义） */
     ADMIN_WEBHOOK_ALLOW_LOCAL_URL: strictBooleanSchema(false),
-    /** fx 拉取（ECB/frankfurter 无 key 公共源；v1 FX_SOURCE_ECB 同值） */
+    /** fx 拉取（ECB/frankfurter 无 key 公共源） */
     FX_SOURCE_URL: z.string().url().default('https://api.frankfurter.app/latest?from=USD&to=CNY'),
-    /** auto 行拉取节奏（ECB 每工作日一发，4h 懒检查足够新鲜——v1 同值） */
+    /** auto 行拉取节奏（ECB 每工作日一发，4h 懒检查足够新鲜） */
     FX_AUTO_TTL_MS: z.coerce
       .number()
       .int()
@@ -136,7 +133,7 @@ export interface AdminApiConfig {
   readonly openrouterCatalogUrl: string;
   readonly catalogFetchTimeoutMs: number;
   readonly voucherMaxBytes: number;
-  /** 通知渠道 webhook 本地地址逃生门（P5;admin 面只管渠道 CRUD,投递在 worker） */
+  /** 通知渠道 webhook 本地地址逃生门（admin 面只管渠道 CRUD,投递在 worker） */
   readonly webhookAllowLocalUrl: boolean;
   readonly fx: {
     readonly sourceUrl: string;
@@ -165,7 +162,7 @@ export interface AdminApiConfig {
   readonly otelMetricsIntervalMs: number;
   /** 池调优项(连接串在 databaseUrl,装配时合并——db 包全必填、无缺省) */
   readonly dbPool: Omit<DbPoolConfig, 'url'>;
-  // ---- P2 登录波 ----
+  // ---- 登录面 ----
   readonly redisUrl: string;
   readonly redisTopology:
     | { readonly kind: 'direct' }

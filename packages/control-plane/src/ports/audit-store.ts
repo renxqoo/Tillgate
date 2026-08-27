@@ -1,7 +1,7 @@
 /**
  * AuditStore port：审计行的只读查询边界（价格溯源）。
- * 审计存储/查询/保留归 observability（G3 演进点）；落地前由 adapters/postgres 承接。
- * 全局审计列表/定向查询是运维读侧，不在本包（observability 波次）。
+ * 审计存储/查询/保留归 observability；当前由 adapters/postgres 承接。
+ * 全局审计列表/定向查询是运维读侧，不在本包。
  */
 import type { DbLike } from '@tillgate/db';
 

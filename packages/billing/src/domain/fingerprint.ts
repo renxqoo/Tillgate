@@ -1,6 +1,5 @@
 /**
- * Canonical JSON 指纹（幂等安全的地基，DESIGN §2.3；ADR-0003 决策 3——三套实现收敛为
- * 旧仓 ledger-core 严格版语义）。普通 JSON.stringify 做指纹的坑（B4）：
+ * Canonical JSON 指纹（幂等安全的地基）。普通 JSON.stringify 做指纹的坑：
  *   1. 键序不稳定：{a:1,b:2} 与 {b:2,a:1} 序列化不同 → 重放被误判冲突
  *   2. 静默吞值：undefined/NaN 变 null → 不同输入同指纹 → 顶替重放
  *   3. 深层嵌套爆栈：攻击面输入可构造万层嵌套炸调用栈
@@ -134,8 +133,8 @@ export type FingerprintValue =
 
 /**
  * 命令指纹（幂等身份）：等价的规范化命令产生相同摘要；kind 是幂等域隔离轴。
- * 严格语义（B4 修复）：payload 含 undefined/NaN 等非 JSON 安全值时显式拒绝，
- * 不再像旧宽松版那样静默丢弃——静默吞值是重放顶替温床。
+ * 严格语义：payload 含 undefined/NaN 等非 JSON 安全值时显式拒绝，
+ * 不静默丢弃——静默吞值是重放顶替温床。
  */
 export function commandFingerprint(
   kind: string,

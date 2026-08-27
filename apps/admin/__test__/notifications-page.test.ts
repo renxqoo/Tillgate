@@ -1,5 +1,5 @@
 /**
- * 告警通知渠道页列表消费（回归 R-9）：GET /v1/notifications 契约是裸数组
+ * 告警通知渠道页列表消费（回归）：GET /v1/notifications 契约是裸数组
  * （openapi + routes-notifications.test.ts 双锁），页面曾按 {rows}/{list} 信封误读，
  * 导致「创建成功提示但列表恒空」。此处直调 RSC 页面组件，断言裸数组整行透传进 DataTable。
  */

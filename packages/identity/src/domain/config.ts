@@ -1,6 +1,6 @@
 /**
  * 装配配置解析(fail fast:词表形状/去重/数值界在 createIdentity 时一次性全查,
- * 铁律 3 零默认——一切可变值必填注入)。
+ * 零默认——一切可变值必填注入)。
  */
 import { identityErrors } from './errors.js';
 import { BUILTIN_IDENTIFIER_KINDS, VOCAB_RE, type ValidationGuards } from './identifier.js';
@@ -54,7 +54,7 @@ export interface IdentityConfigInput {
    * 每次 OAuth 动词解析时调用,键 ⊆ providers 词表与凭据非空在解析期校验)。
    */
   readonly oauth: () => Readonly<Record<string, OAuthProviderCredentials>>;
-  /** OAuth state 存活秒(v1=600) */
+  /** OAuth state 存活秒 */
   readonly oauthStateTtlSec: number;
   /**
    * OAuth redirect_uri 精确匹配白名单(部署方登记的本站回调地址全集;fail-closed:

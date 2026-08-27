@@ -1,5 +1,5 @@
 /**
- * 死信重试（U6）：CAS dead→retry_wait（revision 乐观锁 + 清失败态/重置退避）。
+ * 死信重试：CAS dead→retry_wait（revision 乐观锁 + 清失败态/重置退避）。
  * 幂等：operations 档案（同键同参重放回执、异参 409）；审计与业务同事务（注入 port）。
  */
 import { BillingErrors } from '../../../domain/errors.js';

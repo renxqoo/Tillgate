@@ -1,6 +1,6 @@
 /**
  * 公开模型定价路由（无会话——价格目录是公共信息；登录墙外价格页/Playground 用）。
- * 取数与缓存经 pricing-read（control-plane 只读目录 + Redis 共享缓存——分层铁律：
+ * 取数与缓存经 pricing-read（control-plane 只读目录 + Redis 共享缓存，
  * http 层不触 store）；本层只做查询解析、过滤切页与响应形状。
  */
 import { Hono } from 'hono';

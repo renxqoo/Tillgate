@@ -1,6 +1,6 @@
 /**
  * 概览页 KPI 纯推导（可测）：今日费用按 DISPLAY_TZ 日界取行
- * （v1 用 +8h 硬编码近似——B8 修复为显式时区推导）。
+ * （显式时区推导，不用 +8h 硬编码近似）。
  */
 import type { UsageDayRow } from '@tillgate/api-client';
 

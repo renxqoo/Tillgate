@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * 计费时区卡权限显隐（2026-08-25 用户裁决 D1）：无 settings:update →
+ * 计费时区卡权限显隐：无 settings:update →
  * 选择器与保存钮不渲染，只读展示当前值（未配置回落缺省 Asia/Shanghai 展示，
  * 与网关 BILLING_TIMEZONE_DEFAULT 同口径）；持有时完整编辑面。
  */

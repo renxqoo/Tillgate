@@ -1,6 +1,6 @@
 /**
- * 架构边界门禁(AGENT.md §0.11 / 总纲 §5.5):目录约定不靠记忆,靠本测试执行。
- * 规则来源 DESIGN §5(依赖白名单)与总纲 §5 硬约束:
+ * 架构边界门禁:目录约定不靠记忆,靠本测试执行。
+ * 依赖白名单规则:
  * - domain:零基础设施(仅 errors + node: 内建 + 域内相对引用);
  * - application:本包 domain/ports/templates + errors + db(事务壳与类型)——禁 drizzle/pg
  *   直连、禁 adapters、禁 http/runtime/ai(本包禁依赖 ai,SSRF 经 UrlGuard 注入);

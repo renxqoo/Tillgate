@@ -1,5 +1,5 @@
 /**
- * 请求日志中间件（v1 request-log 迁移；持久化归 @tillgate/observability）：
+ * 请求日志中间件（持久化归 @tillgate/observability）：
  * 挂 /v1/* 鉴权之前——401/429 也入日志（「记录一切 /v1 请求」语义）。
  * best-effort：写失败仅记日志不阻塞请求（排障日志不反压数据面）。
  */
@@ -51,7 +51,7 @@ export function requestLogMiddleware(deps: RequestLogDeps): MiddlewareHandler<Au
     const requestId = c.get('requestId');
     // 摘要不再经 raw.clone() 嗅探：@hono/node-server 的 clone 未实现 WHATWG tee
     // 语义，先读 clone 分支会把原始 body 标记已读 → 路由 c.req.json() 抛
-    // "Body has already been read" → 高并发下大面积 400（live-fire X11 实锤）。
+    // "Body has already been read" → 高并发下大面积 400。
     // 数据流反转：路由是唯一 body 消费者，解析后把摘要放 context，日志只取。
     await next();
     const auth = c.get('auth');

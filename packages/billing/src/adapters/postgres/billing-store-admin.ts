@@ -1,6 +1,6 @@
 /**
- * billing-store 的管理读侧面方法族（U6：plans 目录 CRUD / 订阅管理列表 / 死信复审
- * 原语——admin-api P1 消费）——按聚合边界拆分（铁律 5）。
+ * billing-store 的管理读侧面方法族（plans 目录 CRUD / 订阅管理列表 / 死信复审
+ * 原语——admin-api 消费）——按聚合边界拆分。
  * 订阅管理列表的 users/plans 富化在 SQL 物理层 join 完成（不引 accounts 依赖）。
  */
 import { and, asc, desc, eq, ilike, sql } from 'drizzle-orm';

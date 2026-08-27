@@ -1,8 +1,8 @@
--- 0076：identity 七表迁入统一迁移链（v1 identity-core provision 链收口，总纲 §3.4/P3）。
--- 全部语句 if not exists 幂等；v1 生产由 provision 链建过 challenges/anchors 两表，
--- 其余五表生产为空（v1 apps 未消费）——本迁移不携带数据变更，revert 无数据回滚。
+-- 0076：identity 七表迁入统一迁移链。
+-- 全部语句 if not exists 幂等；生产库可能已建过 challenges/anchors 两表，
+-- 其余五表生产为空——本迁移不携带数据变更，revert 无数据回滚。
 -- 码哈希口径变化（sha256 → HMAC(pepper)）由 identity 包装配密钥保证；存量 in-flight
--- 挑战（TTL 300s）切换即过期，无需回填（identity MIGRATION §6）。
+-- 挑战（TTL 300s）切换即过期，无需回填。
 
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS identity_credentials (

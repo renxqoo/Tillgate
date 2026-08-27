@@ -15,7 +15,7 @@ const marketingSettingsSchema = z.object({
   updatedAt: z.string(),
 });
 
-/** 邀请关系行（双方邮箱/状态;v2 去 wallet 化——资金投影走 payouts 端点） */
+/** 邀请关系行（双方邮箱/状态;不含钱包投影——资金投影走 payouts 端点） */
 const referralRelationRowSchema = z.object({
   id: z.number(),
   inviterUserId: z.number(),

@@ -1,7 +1,7 @@
 /**
- * WebhookDeliverer 的 fetch 实现(v1 deliver() 的 webhook 分支拆出,审计通过):
+ * WebhookDeliverer 的 fetch 实现:
  * SSRF 断言(注入 UrlGuard)→ 秒级时间戳 → HMAC 签名(domain)→ POST → res.ok。
- * 网络异常/超时收敛为 false(端口契约:布尔不抛——v1 由调用方 catch 兜底,语义等价)。
+ * 网络异常/超时收敛为 false(端口契约:布尔不抛)。
  * allowLocal 是装配层双门(env 允许且非生产)的结果值,本层不再二次判断。
  */
 import type { WebhookDeliverer, WebhookDeliveryInput } from '../../ports/webhook-deliverer';
@@ -10,7 +10,7 @@ import { webhookBody, signWebhook, webhookHeaders } from '../../domain/delivery'
 
 export interface WebhookDelivererOptions {
   readonly guard: UrlGuard;
-  /** POST 超时(v1=10s;须小于 claimLeaseMs) */
+  /** POST 超时;须小于 claimLeaseMs */
   readonly timeoutMs: number;
   /** dev/test 逃生门结果值(生产恒 false——装配层双门) */
   readonly allowLocal: boolean;

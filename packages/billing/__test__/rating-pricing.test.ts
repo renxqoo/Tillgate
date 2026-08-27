@@ -1,6 +1,5 @@
 /**
- * 计价公式行为规格（迁移自旧仓 rating/__tests__/pricing.test.ts + calculate.test.ts，全用例保留；
- * 错误断言换目录码；新增 B2 回归：calculateRequired 组装路径必须传 cacheWritePrice）。
+ * 计价公式行为规格；含回归用例：calculateRequired 组装路径必须传 cacheWritePrice。
  */
 import { describe, expect, it } from 'vitest';
 import { isBusinessError } from '@tillgate/errors';

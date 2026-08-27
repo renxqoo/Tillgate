@@ -2,7 +2,7 @@ import type Redis from 'ioredis';
 import type { HealthStore, Versioned } from '../ports/state';
 
 /**
- * Redis CAS 存储（v1 packages/core redis/ai-storages.ts 迁移，前缀改 inference:health:）：
+ * Redis CAS 存储（生产键前缀 inference:health:，由装配传入）：
  * Lua 原子 compareAndSet（GET + 条件 SET PX）；值 JSON 序列化。
  * 读失败/坏值返回 null（fail-open——健康状态尽力而为，不得反噬请求路径）。
  */

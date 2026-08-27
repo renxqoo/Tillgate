@@ -1,4 +1,4 @@
-/** 自助改显示名:trim 后 1..64(v1 PATCH /v1/me/display-name) */
+/** 自助改显示名:trim 后 1..64(PATCH /v1/me/display-name) */
 import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import { normalizeName } from '../domain/fields.js';

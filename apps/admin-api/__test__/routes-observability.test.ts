@@ -3,8 +3,7 @@ import { createAdminApp } from '../src/app';
 import { authHeader, fakeDeps } from './helpers';
 
 /**
- * 观测域契约（v1 tracing.ts + ops.test.ts audit/logs 子集行为规格）:
- * recent 过滤与信封 / topology hours 钳位 / 审计与请求日志列表口径。
+ * 观测域契约:recent 过滤与信封 / topology hours 钳位 / 审计与请求日志列表口径。
  */
 
 describe('GET /v1/tracing/*', () => {

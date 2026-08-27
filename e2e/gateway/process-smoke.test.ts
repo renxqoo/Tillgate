@@ -1,5 +1,5 @@
 /**
- * 双形态进程冒烟（MIGRATION §7 验收项；trace-receiver 同款手动执行、记录在案；
+ * 双形态进程冒烟（trace-receiver 同款手动执行；
  * 独立 smoke 配置不进默认门禁）：bun-native 单运行时——bun 源码形态（bun src/index.ts）
  * 与 bun 产物形态（bun dist/index.js，Bun.serve + Bun.sql 不经 node 兼容层）各——
  *   探针 healthz/readyz/livez 200 → 静态 Key 鉴权 /v1/models 200/401 →

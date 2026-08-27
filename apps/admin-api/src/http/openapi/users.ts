@@ -44,14 +44,14 @@ export const adminTransactionRowSchema = z
   .object({
     id: z.number(),
     userId: z.number(),
-    type: z.string().describe('交易类型(v2 wire:billing statement transactionKind)'),
+    type: z.string().describe('交易类型(billing statement transactionKind)'),
     amount: z.string(),
     balanceAfter: z.string(),
     refType: z.string().nullable(),
     refId: z.string().nullable(),
     remark: z.string().nullable(),
     createdAt: z.string(),
-    createdBy: z.number().nullable().describe('操作管理员(v2 presenter 恒 null——无来源列)'),
+    createdBy: z.number().nullable().describe('操作管理员(恒 null——无来源列)'),
   })
   .meta({
     id: 'AdminTransactionRow',
@@ -67,11 +67,8 @@ export const adminKeyRowSchema = z
     remark: z.string().nullable(),
     subscriptionId: z.number().nullable().describe('计费来源:NULL=余额;非空=扣该订阅额度。'),
     userId: z.number(),
-    userEmail: z.string().nullable().describe('用户邮箱(v2 accounts 行无用户 join,恒 null)'),
-    userDisplayName: z
-      .string()
-      .nullable()
-      .describe('用户展示名(v2 accounts 行无用户 join,恒 null)'),
+    userEmail: z.string().nullable().describe('用户邮箱(accounts 行无用户 join,恒 null)'),
+    userDisplayName: z.string().nullable().describe('用户展示名(accounts 行无用户 join,恒 null)'),
     rpmLimit: z.number().nullable(),
     tpmLimit: z.number().nullable(),
     dailySpendLimit: z.string().nullable().describe('Key 级每日花费上限(元,NULL=不限)。'),
@@ -84,7 +81,7 @@ export const adminKeyRowSchema = z
     description: '管理面 API Key 行(GET /v1/admin-keys;keyPreview 脱敏回显)',
   });
 
-/** 调账/赠送幂等回执（v1 FundsReceipt wire 形状） */
+/** 调账/赠送幂等回执（FundsReceipt wire 形状） */
 const fundsReceiptSchema = z.object({
   ok: z.literal(true),
   balanceBefore: z.string().describe('操作前余额(元,numeric 字符串)'),

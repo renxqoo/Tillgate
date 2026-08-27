@@ -1,10 +1,10 @@
 /**
- * 动态 RBAC 契约测试（ADR-0008;docs/admin-rbac-dynamic/DESIGN）：
- *   1. enforced 注册表封闭性——41 码全量、无重复、域词表合法、与 0082 迁移种子逐码对账
+ * 动态 RBAC 契约测试：
+ *   1. enforced 注册表封闭性——42 码全量、无重复、域词表合法、与迁移种子逐码对账
  *      （迁移 SQL 文本解析,双源一致性锁死——种子漂移即红）;
  *   2. granted() 判定原语（isSuper 短路 / 集合包含 / 未知码拒绝）;
- *   3. roles/permissions 用例族守卫矩阵（super 全锁/内置不可删/挂载守卫/码冲突/
- *      enforced 锁/子节点守卫/绑定守卫/授权 diff）。
+ *   3. roles/permissions/endpoints 用例族守卫矩阵（super 全锁/挂载守卫/码冲突/
+ *      子节点守卫/绑定守卫/授权 diff）。
  */
 import { readFileSync } from 'node:fs';
 import { defined } from './defined';

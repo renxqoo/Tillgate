@@ -1,11 +1,10 @@
 /**
- * 推荐域规则:aff 码编解码(纯函数往返)、钱包幂等键构造器(单一真相,
- * 修复 v1 client-api 与 worker 各写一份前缀的漂移面)、佣金计算。
+ * 推荐域规则:aff 码编解码(纯函数往返)、钱包幂等键构造器(单一真相)、佣金计算。
  */
 import Decimal from 'decimal.js';
 import { FIELD_LIMITS } from './fields.js';
 
-/** userId → aff 码:`u` + base36(v1 domain/referral.ts) */
+/** userId → aff 码:`u` + base36 */
 export function encodeAffCode(userId: number): string {
   return `u${userId.toString(36)}`;
 }
@@ -23,12 +22,12 @@ export function decodeAffCode(code: string): number | null {
   return userId;
 }
 
-/** 开户赠送幂等锚:gift 资金流 `signup:{userId}`(v1 等价) */
+/** 开户赠送幂等锚:gift 资金流 `signup:{userId}` */
 export function signupGiftRefId(userId: number): string {
   return `signup:${userId}`;
 }
 
-/** 邀请注册双方奖励幂等锚:referral 资金流 `referral-signup:{inviteeId}:{inviter|invitee}`(v1 等价) */
+/** 邀请注册双方奖励幂等锚:referral 资金流 `referral-signup:{inviteeId}:{inviter|invitee}` */
 export function referralSignupRefId(inviteeId: number, side: 'inviter' | 'invitee'): string {
   return `referral-signup:${inviteeId}:${side}`;
 }
@@ -43,7 +42,7 @@ export function commissionAmount(windowSpend: string, rate: string): string {
   return new Decimal(windowSpend).times(new Decimal(rate)).toString();
 }
 
-/** 邀请链接:`{frontendBaseUrl}/register?aff={code}`(基址由调用方注入,v1 写死 localhost 兜底已清除) */
+/** 邀请链接:`{frontendBaseUrl}/register?aff={code}`(基址由调用方注入) */
 export function inviteUrl(frontendBaseUrl: string, affCode: string): string {
   return `${frontendBaseUrl}/register?aff=${affCode}`;
 }

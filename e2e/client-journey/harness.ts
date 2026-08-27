@@ -152,7 +152,7 @@ function buildHarnessEnv(appUrl: string, githubEndpoints?: GithubEndpoints): Nod
     TOPUP_MAX: '100000',
     TOPUP_EXCHANGE_RATE: '1',
     // GitHub 社交登录：凭据/基地址经 DB 种子（seedIntegrationSettings——动态配置真路径）；
-    // mock 上游端点覆盖保持 env（ENDPOINTS_JSON 是 env 专属逃生门——DESIGN §5 D10）
+    // mock 上游端点覆盖保持 env（ENDPOINTS_JSON 是 env 专属逃生门）
     ...(githubEndpoints != null
       ? { OAUTH_GITHUB_ENDPOINTS_JSON: JSON.stringify(githubEndpoints) }
       : {}),
@@ -226,7 +226,7 @@ async function seedIntegrationSettings(
         returnUrl: `${appUrl}/v1/payments/return`,
         payType: EPAY.payType,
       },
-      // 轮换双读窗装置（DESIGN §5 D6）：旧密钥入 previous_secrets，rotatedAt 按注入偏移
+      // 轮换双读窗装置：旧密钥入 previous_secrets，rotatedAt 按注入偏移
       previousSecrets:
         epayRotation != null ? { key: cipher.encrypt(epayRotation.previousKey) } : null,
       rotatedAt: epayRotation != null ? new Date(Date.now() - epayRotation.rotatedAgoMs) : null,
@@ -397,8 +397,7 @@ export async function seedRedeemCode(
   code: string,
   amount: string,
 ): Promise<void> {
-  // admins.role_id 自 RBAC v2（迁移 0082）起 NOT NULL——播种行挂 super_admin
-  // （存量缺陷修复：原 INSERT 缺 role_id 触发 23502，user/org 旅程自 RBAC 合入即断）
+  // admins.role_id NOT NULL（迁移 0082 起）——播种行挂 super_admin（缺 role_id 触发 23502）
   await db.execute(
     sql`insert into admins (email, password_hash, status, role_id)
         values ('e2e-admin@tillgate.invalid', 'e2e:unused:1:1:1', 0,

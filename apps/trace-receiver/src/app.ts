@@ -11,9 +11,9 @@ import {
 } from '@tillgate/observability';
 
 /**
- * 链路接收端 HTTP 面（内网服务；v1 app.ts 平移,错误面入 v2 目录体系）。
+ * 链路接收端 HTTP 面（内网服务）。
  * 本文件是 app 非装配代码:不引用数据库连接类型、composition 或任何 adapter——
- * DB 探活以闭包注入(P5:app 只持有 facade 与纯契约类型)。
+ * DB 探活以闭包注入:app 只持有 facade 与纯契约类型。
  *
  *   POST /v1/traces      OTLP/HTTP JSON（ExportTraceServiceRequest）→ 解码 → 批量入队
  *   GET  /readyz         DB 探活（K8s/compose healthcheck 不带 Bearer,豁免鉴权）
@@ -35,14 +35,14 @@ export interface ReceiverAppDeps {
   logger?: { error(obj: Record<string, unknown>, msg?: string): void };
 }
 
-/** /v1/traces 请求体上限:OTLP JSON 批次远小于此;无上限则整读任意体积 → OOM/存储耗尽(v1 G1 语义) */
+/** /v1/traces 请求体上限:OTLP JSON 批次远小于此;无上限则整读任意体积 → OOM/存储耗尽 */
 const TRACE_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
 
-// eslint-disable-next-line max-lines-per-function -- HTTP 装配平铺：中间件链与路由挂载顺序即契约（铁律 22 ①）
+// eslint-disable-next-line max-lines-per-function -- HTTP 装配平铺：中间件链与路由挂载顺序即契约
 export function createReceiverApp(deps: ReceiverAppDeps): Hono {
   const app = new Hono();
 
-  // 统一兜底:流动错误按 v2 目录渲染(http+observability 合成),PG SQLSTATE 探测注入
+  // 统一兜底:流动错误按错误目录渲染(http+observability 合成),PG SQLSTATE 探测注入
   app.onError(
     errorHandler({
       catalog: composeErrorCatalogs(HttpErrors, observabilityErrors),
@@ -51,7 +51,7 @@ export function createReceiverApp(deps: ReceiverAppDeps): Hono {
     }),
   );
 
-  // 放在令牌校验之后＝通过认证的调用方同样受限(v1 语义);超限 413 经 http 信封
+  // 放在令牌校验之后＝通过认证的调用方同样受限;超限 413 经 http 信封
   app.use('/v1/traces', bodyParserLimit(TRACE_BODY_LIMIT_BYTES));
 
   app.use('*', async (c, next) => {
@@ -79,7 +79,7 @@ export function createReceiverApp(deps: ReceiverAppDeps): Hono {
       throw HttpErrors.business('unsupported_media_type', { received: contentType });
     }
     const payload: unknown = await c.req.json(); // 坏 JSON 抛 SyntaxError → onError → 400 http.invalid_json
-    const decoded = decodeOtlpJson(payload); // 结构错误抛 business → 400 observability.invalid_otlp_payload(G6)
+    const decoded = decodeOtlpJson(payload); // 结构错误抛 business → 400 observability.invalid_otlp_payload
     const droppedOverflow = deps.batcher.push(decoded.rows);
     return c.json(
       {
@@ -109,7 +109,7 @@ export function createReceiverApp(deps: ReceiverAppDeps): Hono {
     try {
       storage = await deps.store.stats();
     } catch {
-      storage = null; // 存储查询失败不掩盖 batcher 指标(v1 语义)
+      storage = null; // 存储查询失败不掩盖 batcher 指标
     }
     return c.json({ batcher, storage });
   });

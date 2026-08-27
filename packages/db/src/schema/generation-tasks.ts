@@ -5,7 +5,7 @@ import {
   timestamp,
   uuid,
   varchar,
-    numeric,
+  numeric,
   bigint,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
@@ -22,8 +22,8 @@ import { billingRequests } from './billing-requests.js';
  *
  * 资金单一真相在 billing_requests（两阶段：提交=authorize 预留 → 完成=实扣 /
  * 失败/超时=released 释放）；本表只承载任务生命周期与产物，终态时由 worker
- * 经 billing signal 驱动账本转移（succeeded 带收据 / failed 释放）。顺序
- * （v1 实现口径）：succeeded 先 signal 后 CAS 终态（信号=实扣是权威动作，
+ * 经 billing signal 驱动账本转移（succeeded 带收据 / failed 释放）。顺序：
+ * succeeded 先 signal 后 CAS 终态（信号=实扣是权威动作，
  * 失败保留任务行重试——防漏收费）；failed/expired 先 CAS 终态后 signal
  * （释放路径相反，信号失败由 recover 兜底）。
  *

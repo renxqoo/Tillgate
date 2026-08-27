@@ -1,5 +1,5 @@
 /**
- * 通知渠道路由（P5;v1 routes/notifications.ts 平移）：列表/创建/更新/删除/测试入箱。
+ * 通知渠道路由：列表/创建/更新/删除/测试入箱。
  * 渠道 CRUD 与测试动词全部经 @tillgate/notifications facade（业务校验/加密/掩码在包内）;
  * 实际投递由 worker dispatchOnce 消费——本面只管理 + 入箱测试事件。
  */
@@ -13,7 +13,7 @@ export interface NotificationsRoutesDeps {
   readonly notifications: Pick<Notifications, 'channels'>;
 }
 
-/** HTTP 请求 → notifications 用例上下文（actor=admin;v1 adminCtxOf 同锚） */
+/** HTTP 请求 → notifications 用例上下文（actor=admin） */
 function notifyContextOf(c: { get: (k: 'requestId' | 'adminId') => unknown }) {
   return {
     requestId: c.get('requestId') as string,

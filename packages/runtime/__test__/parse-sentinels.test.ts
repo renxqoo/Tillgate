@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isDefectError } from '@tillgate/errors';
 import { parseSentinels } from '../src/redis/parse-sentinels';
 
-/** 断言装配期配置缺陷的身份与码（§11：检测点就地分类） */
+/** 断言装配期配置缺陷的身份与码（检测点就地分类） */
 function expectSentinelsDefect(spec: string, node?: string): void {
   try {
     parseSentinels(spec);

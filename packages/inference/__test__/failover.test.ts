@@ -208,7 +208,7 @@ describe('application/failover：候选 × 渠道双层循环', () => {
 
   it('admit 拒绝（熔断 open）→ 换渠不计尝试；B13：circuit_open 全败归渠道面竭尽（no_available_channel）', async () => {
     const s = setup();
-    // 手工把 ch-a/ch-b 的健康键打熔断（同 host 共享键——B2 语义）
+    // 手工把 ch-a/ch-b 的健康键打熔断（同 host 共享同一健康键）
     const store = createMemoryHealthStore();
     const health = createChannelHealth({ store, config: healthConfig });
     const deps: ExecutionDeps = { ...s.deps, health };

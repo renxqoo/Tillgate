@@ -7,7 +7,7 @@ import type {
 } from '../ports/generation';
 
 /**
- * 内存任务存储（单副本开发/测试形态；生产为 postgres 适配器——worker 波次装配）。
+ * 内存任务存储（单副本开发/测试形态；生产为 postgres 适配器（由 worker 装配））。
  * 属主隔离在 findByOwner 强制（非本人 = 不存在）；推进动词族与 postgres 适配器
  * 同语义（超时/终态判定经注入的 now 时钟）。
  * adminList/settledAmounts 的账本投影（billingStatus/settledAmount）在内存形态

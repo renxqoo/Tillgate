@@ -5,7 +5,7 @@ import createNextIntlPlugin from 'next-intl/plugin';
 /** @type {import('next').NextConfig} */
 
 /**
- * 浏览器安全头（v1 同款；API 面由 admin-api hono app 的 securityHeaders 覆盖）。
+ * 浏览器安全头（API 面由 admin-api hono app 的 securityHeaders 覆盖）。
  * CSP 为保守版：Next.js 水合需要内联脚本与样式，故 script/style 留 'unsafe-inline'；
  * frame-ancestors 'none' + X-Frame-Options DENY 防点击劫持（管理面板不允许被嵌入）。
  */

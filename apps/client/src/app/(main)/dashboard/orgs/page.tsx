@@ -33,7 +33,7 @@ export default async function OrgsPage({ searchParams }: PageProps) {
   } catch (error) {
     loadError = error instanceof ApiError ? error.message : null;
   }
-  // 逐组织详情（成员+待接受邀请）并发拉取——契约无批量端点（B3/G2 保留并发）
+  // 逐组织详情（成员+待接受邀请）并发拉取——契约无批量端点
   const orgs: OrgWithMembers[] = await Promise.all(
     rows.map(async (org) => {
       let members: OrgWithMembers['members'] = [];

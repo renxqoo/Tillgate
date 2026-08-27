@@ -40,5 +40,5 @@ export const planChangeSchema = z.object({
 
 export const subscriptionIdParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
-/** 幂等键头（v1 口径：缺省服务端生成；非法形态 400 不静默改写） */
+/** 幂等键头（缺省服务端生成；非法形态 400 不静默改写） */
 export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;

@@ -1,9 +1,9 @@
 /**
- * inference BillingPort 的生产实现（DESIGN C-G3，装配面专属）：
+ * inference BillingPort 的生产实现（装配面专属）：
  * 包一层 @tillgate/billing facade 的 authorize/signal/reserveChannel 三用例——
  *   authorize：inference 候选链 → BillingQuote（inputTokenUpperBound 逐候选盖章、
  *     explicitlyFree = 候选链全免费）；reservationLimit/Policy 由 gateway config 持有；
- *   signal：蛇形词表 → billing 点分词表 + 收据字段结构对齐（两包同源 v1 receipt）；
+ *   signal：蛇形词表 → billing 点分词表 + 收据字段结构对齐；
  *   reserveChannel：官方价口径（coefficient=1）estimateMaxCost 自算 amount（进货
  *     额度闸的预估敞口，与用户计价系数无关）。
  * 零金额运算实现——公式全部在 billing 域（单一真相）。
@@ -20,7 +20,7 @@ import type { BillingPort, BillingSignal, QuoteCandidate, UsageReceipt } from '@
 export interface GatewayBillingConfig {
   reservationLimit: string;
   reservationPolicy: { mode: 'full' } | { mode: 'fixed'; amount: string };
-  /** 结算积压准入（bridge 级调用：authorize 前置闸；R-E4——requestId 恒服务端生成，
+  /** 结算积压准入（bridge 级调用：authorize 前置闸；requestId 恒服务端生成，
    *  HTTP 面无客户端重放路径，桥级 admission 不破坏 billing 内部的重放免疫） */
   assertCapacity?: () => Promise<void>;
 }
@@ -46,7 +46,7 @@ export interface GatewayBillingApi {
 }
 
 /**
- * 免费判定走 Decimal 口径（2026-08-25 审计复核 #8）：Number() 会把空串/脏值
+ * 免费判定走 Decimal 口径：Number() 会把空串/脏值
  * 归零误判免费并盖上 explicitlyFree；脏值不是免费——交由 billing 报价校验结构拒绝。
  */
 const allPricesZero = (c: QuoteCandidate): boolean =>
@@ -84,7 +84,7 @@ function toQuoteCandidate(c: QuoteCandidate, inputTokenUpperBound: number): Bill
   };
 }
 
-/** 报价组装：inputTokenUpperBound 逐候选盖章；显式免费 = 候选链全免费（v1 chain.every） */
+/** 报价组装：inputTokenUpperBound 逐候选盖章；显式免费 = 候选链全免费 */
 function toQuote(input: {
   maxOutputTokens: number;
   inputTokenUpperBound: number;
@@ -93,14 +93,14 @@ function toQuote(input: {
   return {
     maxOutputTokens: input.maxOutputTokens,
     candidates: input.candidates.map((c) => toQuoteCandidate(c, input.inputTokenUpperBound)),
-    // billing R6 结构性校验兜底
+    // billing 结构性校验兜底
     ...(input.candidates.every((c) => c.isFree === true || allPricesZero(c))
       ? { explicitlyFree: true }
       : {}),
   };
 }
 
-/** 蛇形事件词表 → billing 点分词表直译（收据两包同源 v1 receipt 迁移 twin——结构直传） */
+/** 蛇形事件词表 → billing 点分词表直译（收据结构两包同源，字段直传） */
 function toBillingEvent(signal: BillingSignal): BillingEvent {
   switch (signal.type) {
     case 'upstream_started': {

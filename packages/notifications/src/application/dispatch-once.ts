@@ -1,5 +1,5 @@
 /**
- * 单轮告警投递(v1 runNotifyDispatchOnce 算法逐语义迁移,IMPLEMENTATION §4.1):
+ * 单轮告警投递:
  * 轮首取活跃渠道快照一次 → 认领一次一行(独立事务,防整批排队租约未执行就过期)→
  * 订阅+进度过滤 → 并行投递 → 渠道进度 CAS → 全成功终态/否则退避失败。
  * 租约过期:进度/终态 CAS 返回 false 只告警不计数,行等待重领(fencing 保证不重发)。
@@ -30,7 +30,7 @@ export interface DispatchDeps {
   readonly db: Db;
   readonly store: NotifyStore;
   readonly cipher: SecretCipher;
-  /** 缺省 undefined = email 渠道 fail-closed(v1 mailer 未配置语义) */
+  /** 缺省 undefined = email 渠道 fail-closed */
   readonly emailSender?: EmailSender;
   readonly webhookDeliverer: WebhookDeliverer;
   readonly config: DispatchConfig;
@@ -60,7 +60,7 @@ interface ItemScope {
   ctx: NotifyContext;
 }
 
-/** 同一事件的渠道并行投递:租约上界只受最慢渠道影响(v1 语义);单渠道失败收敛为 false */
+/** 同一事件的渠道并行投递:租约上界只受最慢渠道影响;单渠道失败收敛为 false */
 async function deliverInParallel(
   deps: DispatchDeps,
   matched: ReturnType<typeof selectTargetChannels>,
@@ -179,7 +179,7 @@ export async function dispatchOnce(
   const ownerId = input.ownerId ?? `notify-${process.pid}-${randomUUID()}`;
   const ctx = input.ctx ?? systemContext(`notify-dispatch:${ownerId}`);
 
-  // 渠道快照轮首一次(v1 语义:轮中渠道变更下一轮生效)
+  // 渠道快照轮首一次:轮中渠道变更下一轮生效
   const channels = await deps.store.listChannels(deps.db, { activeOnly: true });
 
   let sent = 0;

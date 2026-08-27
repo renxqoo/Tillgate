@@ -1,6 +1,6 @@
 /**
  * OAuth 绑定:(provider, subject) 防劫持唯一 + (userId, provider) 单绑定;
- * 冲突分类读回定位;同人同 provider 同 subject = 幂等重放。审计同事务写入(§5.4)。
+ * 冲突分类读回定位;同人同 provider 同 subject = 幂等重放。审计同事务写入。
  */
 import { advisoryLock, runTx } from '@tillgate/db';
 import { auditEvent } from '../domain/audit-events.js';

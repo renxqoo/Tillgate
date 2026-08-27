@@ -16,8 +16,6 @@ import { observabilityErrors } from '../../errors';
  *     进程内 memo 在 store 闭包,此处不缓存——维护路径靠 list 差集判定)
  *   - maintainTracePartitions:worker 定时调用——预建未来分区 + DETACH/DROP 超期分区
  *     (分区删除而非 DELETE,避免 VACUUM 灾难);内置 advisory try-lock,未获锁 = 跳过
- *
- * 锁键逐字保留 v1(`ai-gateway:trace-partition`):迁移重叠期新旧 worker 互斥(S3)。
  */
 
 const PARTITION_PREFIX = 'trace_spans_p';
@@ -63,7 +61,7 @@ export async function maintainTracePartitions(
   const today = dayKey(new Date());
   const cutoff = shiftDay(today, -retentionDays);
 
-  // 锁是跨进程互斥(专用连接持有),DDL 走池连接——与 v1 语义等价
+  // 锁是跨进程互斥(专用连接持有),DDL 走池连接
   return (
     (await withSessionTryLock(db, { key: LOCK_KEY }, async () => {
       const created: string[] = [];

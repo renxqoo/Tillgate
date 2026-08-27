@@ -10,7 +10,7 @@ export async function abortChallenge(
 ): Promise<{ aborted: boolean }> {
   const challengeId = typeof input?.challengeId === 'string' ? input.challengeId : '';
   if (!isUuidLike(challengeId)) {
-    // v1 语义:非法 id 静默幂等(不泄露挑战存在性)
+    // 非法 id 静默幂等(不泄露挑战存在性)
     return { aborted: false };
   }
   const result = await ctx.challengeStore.abortChallenge(ctx.db, { challengeId });

@@ -1,5 +1,5 @@
 /**
- * 目录用例（v1 catalog.test.ts 服务级用例等价迁移，mock 源注入 + 网络零依赖）：
+ * 目录用例（mock 源注入 + 网络零依赖）：
  * 源清单 / comparison（三态+预填+fx 快照+channelReady+gone）/ channel 导入（find-or-create/
  * 重复=价格更新确认/外部名冲突回滚/缺 key 拒绝）/ reference 草稿导入 / provenance 审计全链 / 源缓存 TTL。
  */
@@ -110,9 +110,8 @@ function setup(sources: readonly CatalogSource[], fetchRate: number | 'fail' = 7
       fetchTimeoutMs: 10_000,
       fetch:
         fetchRate === 'fail'
-          ? ((async () => new Response('boom', { status: 500 })))
-          : ((async () =>
-              new Response(JSON.stringify({ rates: { CNY: fetchRate } })))),
+          ? async () => new Response('boom', { status: 500 })
+          : async () => new Response(JSON.stringify({ rates: { CNY: fetchRate } })),
     },
   };
   const sourceDeps = { sources, cache, cacheTtlMs: 60_000 };

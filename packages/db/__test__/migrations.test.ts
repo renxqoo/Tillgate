@@ -1,8 +1,8 @@
 /**
- * 迁移链结构一致性(v1 零测试,新增门禁;IMPLEMENTATION.md §4)。
+ * 迁移链结构一致性。
  *
  * 迁移 SQL 是已应用于生产的物理事实,一字不改;本测试锁的是「链本身」的结构不变量:
- * journal 与 SQL 文件 1:1、编号单调递增、历史缺口显式在案。
+ * journal 与 SQL 文件 1:1、编号单调递增、历史缺口显式断言。
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -60,8 +60,8 @@ describe('migration journal ↔ SQL files', () => {
   });
 
   it('历史缺口是断言在案的物理事实:tag 缺 0036、idx 跳 37', () => {
-    // 缺口来自 v1 早期一次被移除的迁移(生产 journal 即如此);迁移链按事实接管,
-    // 出现新的缺口/回填缺口都必须先改本断言再改链——防止静默漂移。
+    // 缺口来自早期一次被移除的迁移(生产 journal 即如此);出现新的缺口/回填缺口
+    // 都必须先改本断言再改链——防止静默漂移。
     expect(journalTags.some((t) => tagNumber(t) === 36)).toBe(false);
     expect(journal.entries.some((e) => e.idx === 37)).toBe(false);
     expect(journal.entries.map((e) => e.idx)).toEqual(

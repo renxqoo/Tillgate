@@ -4,12 +4,11 @@ import type { OtelMode } from '@tillgate/observability';
 import type { DbPoolConfig } from '@tillgate/db';
 
 /**
- * trace-receiver 配置(内网诊断服务)。v1 loadTraceReceiverEnv 平移,v2 差异:
- *   - DATABASE_URL 必填——v1 藏默认连接串,v2 db 包零缺省(observability B2 同裁决);
+ * trace-receiver 配置(内网诊断服务):
+ *   - DATABASE_URL 必填——db 包零缺省,不藏默认连接串;
  *   - 令牌走 secretSchema 三道门(长度 ≥16/非已知弱值/字符多样性,runtime 组装件);
- *   - NODE_ENV 纳入 schema(v1 从 strip 后的 parse 结果读它,生产检查实际恒不触发——
- *     v1 潜在缺陷,此处显式修正并在 MIGRATION 记录)。
- * 部署缺省值由本层显式持有(铁律 3:装配层是缺省值的唯一真相,不藏全局)。
+ *   - NODE_ENV 纳入 schema:生产环境缺令牌时 fail-fast。
+ * 部署缺省值由本层显式持有:装配层是缺省值的唯一真相,不藏全局。
  */
 
 const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;

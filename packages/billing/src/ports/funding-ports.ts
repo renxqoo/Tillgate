@@ -1,14 +1,14 @@
 /**
- * 计费链路的协作 port（总纲 §5.2：跨能力事实由消费方定义 port、装配注入）：
+ * 计费链路的协作 port（跨能力事实由消费方定义 port、装配注入）：
  *   FundingSourceResolver  凭证 → 订阅绑定/转按量开关/每日限额（accounts/identity 侧事实，
  *                           app assembly 桥接实现；billing 不回查 accounts 内部对象）
  *   SubscriptionQuotaStore 订阅额度三原语 + 快照/成员限额（user_subscriptions/org_members；
- *                           订阅能力归 billing——U4 application/subscriptions 同域）
+ *                           订阅能力归 billing——application/subscriptions 同域）
  *   ChannelExposureStore   渠道进货额度敞口（channels 表的守卫原子 UPDATE 族）
  */
 import type { WalletConn } from './wallet-store.js';
 
-/** 凭证解析结果（authorize 一次查出注入瀑布——策略不重复查库，§3.10） */
+/** 凭证解析结果（authorize 一次查出注入瀑布——策略不重复查库） */
 export interface ResolvedFundingSource {
   subscriptionId: number | null;
   /** api_keys.allow_payg_fallback（App JWT 恒 false） */

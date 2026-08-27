@@ -22,7 +22,7 @@ export function IntegrationCards({
   error: boolean;
   /** 注册送礼开启（Turnstile 停用联动警告的数据源） */
   signupGiftOn: boolean;
-  /** 当前管理员已绑定验证器（ADR-0011——未绑定者敏感按钮置灰） */
+  /** 当前管理员已绑定验证器（未绑定者敏感按钮置灰） */
   totpEnabled: boolean;
   /** settings:integrations 持有者可见配置/启停操作位 */
   canManage: boolean;

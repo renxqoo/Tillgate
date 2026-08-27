@@ -1,5 +1,5 @@
 /**
- * 仓库级包边界门禁(总纲 §5.5 / P0:目录约定必须由机器验证,进 CI 即 test 链)。
+ * 仓库级包边界门禁(目录约定必须由机器验证,进 CI 即 test 链)。
  * 检查项:
  * 1. package graph 无环(内部 workspace 依赖 DFS);
  * 2. packages/* 不得依赖 apps/*;

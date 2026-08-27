@@ -1,5 +1,5 @@
 /**
- * 渠道资金路由（v1 routes/channel-funds.ts 平移）：流水列表/进货（凭证 data URL
+ * 渠道资金路由：流水列表/进货（凭证 data URL
  * 内联）/调账。幂等键透传（同键同参重放、异参 409——control-plane operations）。
  */
 import { Hono } from 'hono';
@@ -46,7 +46,7 @@ export function channelFundsRoutes(deps: ChannelFundsRoutesDeps) {
       remark: body.remark ?? null,
       operationId: operationId(c),
     });
-    // numeric(38,18) 存储精度出站点归一(v1 wire 口径;e2e 抓出)
+    // numeric(38,18) 存储精度出站点归一(wire 口径)
     return c.json({ ...result, balanceAfter: normalizeAmount(result.balanceAfter) });
   });
 

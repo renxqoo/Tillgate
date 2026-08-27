@@ -11,10 +11,10 @@ import type { GenerationTaskKind } from '../domain/generation';
 import type { ChannelCandidate } from '../domain/model/types';
 
 /**
- * 上游执行 port（v1 gateway pipeline/upstream-port.ts 迁移）：候选渠道连接信息进，
+ * 上游执行 port：候选渠道连接信息进，
  * 归一化结果出。结果形态直接复用 ai 的 ChatResult / UpstreamError / Usage——
- * 端口不做同形包装（单一形态，铁律 8）；凭据解密与 ChannelDesc 组装在适配器。
- * worker 波增补任务族两动词（queryTask/executeTask——轮询推进与代执行）。
+ * 端口不做同形包装（单一形态）；凭据解密与 ChannelDesc 组装在适配器。
+ * 任务族两动词（queryTask/executeTask——轮询推进与代执行）。
  */
 
 export interface UpstreamCallRequest {
@@ -53,7 +53,7 @@ export interface UpstreamStreamResult {
   onEvent(cb: (event: UpstreamStreamEvent) => void): void;
 }
 
-/** 任务提交结果：upstreamTaskId null = 上游同步完成（罕见；状态推进归轮询波次） */
+/** 任务提交结果：upstreamTaskId null = 上游同步完成（罕见；状态推进归 worker 轮询） */
 export type UpstreamTaskSubmitResult =
   | { ok: true; upstreamTaskId: string | null }
   | { ok: false; error: UpstreamError };

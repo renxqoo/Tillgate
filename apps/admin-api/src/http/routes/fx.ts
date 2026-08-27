@@ -1,5 +1,5 @@
 /**
- * 目录汇率路由（v1 routes/fx.ts 平移）：状态（含懒拉）/强制刷新/手动覆盖与清除/点差。
+ * 目录汇率路由：状态（含懒拉）/强制刷新/手动覆盖与清除/点差。
  * 全部动作留审计（fx.override / fx.override_clear / fx.buffer——control-plane）。
  */
 import { Hono } from 'hono';

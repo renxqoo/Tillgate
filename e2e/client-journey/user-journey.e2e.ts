@@ -1,10 +1,10 @@
 /**
- * 用户旅程 E2E（老仓 e2e-user-journey 迁移+扩展，总纲 §3 归根 e2e/client-journey）：
+ * 用户旅程 E2E：
  * 注册两步制 → 资料 → Key 生命周期 → 只读面 → 兑换（失败+成功）→ epay 充值
  * （签名回调 + 幂等重放 + 金额篡改拒绝）→ 订阅购买 → 钱包对账（余额分文不差）→
  * 登出吊销 → 两级登录 → 改密全网下线 → 复登。真实 PG/Redis/HTTP。
  * 旅程步骤拆为模块级阶段函数（.e2e.ts 不在 root override 的 *.test.ts 放宽集内——
- * 规模限制生效；断言逐字随迁，仅变量管道化）。
+ * 规模限制生效）。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Decimal } from '@tillgate/billing';
@@ -286,7 +286,7 @@ async function subscriptionFlow(
   const subs = (await (await client('/v1/subscriptions', { token })).json()) as {
     rows: Array<{ quotaAmount: string; remainingAmount: string; renewPrice: string }>;
   };
-  // 存储层 numeric 全精度串（v1 同形）——按 Decimal 归一后比较
+  // 存储层 numeric 全精度串——按 Decimal 归一后比较
   expect(new Decimal(subs[0]?.quotaAmount ?? 'x').toString()).toBe('10');
   expect(new Decimal(subs[0]?.remainingAmount ?? 'x').toString()).toBe('10');
   expect(new Decimal(subs[0]?.renewPrice ?? 'x').toString()).toBe('1');

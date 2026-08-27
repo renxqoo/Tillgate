@@ -1,7 +1,7 @@
 /**
  * OAuth 回调半程:state 单次消费(GETDEL;不存在/已过期/provider 不匹配拒绝)
  * → code 换 profile(上游失败 → oauth_profile_failed,含 GitHub 邮箱端点降级
- * email=null 的 B27 口径)。find-or-create 编排与建号赠送归 app(G4)。
+ * email=null 的口径)。find-or-create 编排与建号赠送归 app。
  */
 import { identityErrors } from '../domain/errors.js';
 import { guardProvider } from '../domain/identifier.js';
@@ -34,7 +34,7 @@ async function consumeOAuthState(
   try {
     stored = await ctx.oauthStateStore.consume(args.state);
   } catch (error) {
-    // 不可达按已过期拒绝(fail-closed,v1 语义)
+    // 不可达按已过期拒绝(fail-closed)
     ctx.logger.warn(
       { err: (error as Error).message, provider: args.provider },
       'oauth state consume failed',

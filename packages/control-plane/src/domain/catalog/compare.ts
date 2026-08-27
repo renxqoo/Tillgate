@@ -1,5 +1,5 @@
 /**
- * 目录 × 库内映射的三态比对与消失检测（纯函数，v1 等价迁移）。
+ * 目录 × 库内映射的三态比对与消失检测（纯函数）。
  */
 import Decimal from 'decimal.js';
 import type { CatalogComparison, CatalogDiffState, CatalogItem } from './catalog';

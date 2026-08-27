@@ -20,7 +20,7 @@ export type OtelMode = 'off' | 'memory' | 'console' | 'otlp';
 
 export interface InitOtelOptions {
   serviceName: string;
-  /** 服务版本(资源属性;铁律 3 必填注入,不藏缺省) */
+  /** 服务版本(资源属性;必填注入,不藏缺省) */
   serviceVersion: string;
   mode: OtelMode;
   /** OTLP HTTP 端点,如 http://trace-receiver:8793;mode=otlp 时必填 */
@@ -36,7 +36,7 @@ export interface InitOtelOptions {
 export interface OtelHandle {
   mode: OtelMode;
   shutdown(): Promise<void>;
-  /** mode=memory 时的查看页数据源(G9:返回句柄,不再模块全局) */
+  /** mode=memory 时的查看页数据源(返回句柄,不再模块全局) */
   memory?: MemoryTraceViewer;
 }
 
@@ -46,7 +46,7 @@ export interface OtelHandle {
  *   - memory:内存环形缓冲处理器
  *   - console:一行结构化日志处理器
  *   - otlp:BatchSpanProcessor → OTLP collector(traces + metrics,双通道同令牌)
- * otlp 缺 endpoint 启动期 fail-fast(G2:authToken 无 env 回落,装配显式传)。
+ * otlp 缺 endpoint 启动期 fail-fast(authToken 无 env 回落,装配显式传)。
  */
 /** 资源属性(三种启动模式共用) */
 function buildResource(serviceName: string, serviceVersion: string): Resource {
@@ -64,7 +64,7 @@ function startMemorySdk(options: InitOtelOptions, resource: Resource): OtelHandl
   return { mode: options.mode, shutdown: () => sdk.shutdown(), memory };
 }
 
-/** console 模式:logger 必填(铁律 3,使用点守卫),一行结构化日志处理器 */
+/** console 模式:logger 必填(使用点守卫),一行结构化日志处理器 */
 function startConsoleSdk(options: InitOtelOptions, resource: Resource): OtelHandle {
   const { logger } = options;
   if (logger == null) {

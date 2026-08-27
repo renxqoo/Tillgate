@@ -109,7 +109,7 @@ function renderOutputCell(r: UsageRow, locale: DisplayLocale) {
   return <span className="text-right tabular-nums">{formatInt(r.outputTokens)}</span>;
 }
 
-/** 金额列：plan 计费金额展示口径随 D-E 简化——直接金额展示（v1 ×100 积分投影废除） */
+/** 金额列：plan 计费金额直接展示（不做 ×100 积分投影） */
 function renderAmountCell(
   r: UsageRow,
   locale: DisplayLocale,
@@ -152,7 +152,7 @@ export default async function UsagePage({ searchParams }: PageProps) {
   const tCommon = await getTranslations('common');
   const locale = (await getLocale()) === 'zh' ? 'zh' : 'en';
   const { page } = parseListSearchParams(sp);
-  // 契约过滤集（D-B）：model + from/to 时间窗（v1 的 q 搜索/列排序随 strict 契约移除——G1）
+  // 契约过滤集：model + from/to 时间窗（无 q 搜索与列排序）
   const model = (firstParam(sp.model) ?? '').trim();
   const from = firstParam(sp.from);
   const to = firstParam(sp.to);

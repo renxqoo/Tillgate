@@ -35,7 +35,7 @@ export const unsupportedProtocolError = (
     suggestion: `check the channel protocol configuration (registered adapters: ${supported.join(', ')})`,
   });
 
-/** 任务型操作面向未注册任务协议的适配器调用（B6：与真实「上游未返回 taskId」区分） */
+/** 任务型操作面向未注册任务协议的适配器调用（与真实「上游未返回 taskId」区分） */
 export const taskOpsUnavailableError = (protocol: string): UpstreamError =>
   new UpstreamError({
     kind: 'task_ops_unavailable',

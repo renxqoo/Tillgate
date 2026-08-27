@@ -1,7 +1,7 @@
 /**
  * 密码认证:标识+密码 → userId。统一口径:标识不存在、密码错误、账号无密码 →
  * 同一个 invalid_credentials(哑哈希保证等量 scrypt 计算,响应耗时一致——防枚举)。
- * 属主状态检查(封禁等)归消费方编排(DESIGN §1)。审计成败双发(B10)。
+ * 属主状态检查(封禁等)归消费方编排。审计成败双发。
  */
 import { auditEvent } from '../domain/audit-events.js';
 import { identityErrors } from '../domain/errors.js';

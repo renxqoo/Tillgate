@@ -1,8 +1,7 @@
 /**
  * 更新费率卡：卡面 patch 与全局系数分离——coefficient 是 scope='global' 系数行的列，
- * 只碰 global 行（M1 回归点：model/group 覆写行隔离），不能混进卡面 patch。
- * 审计与变更同事务（§5.4/G3）：事务内先读旧行，before/after 都进审计——
- * 费率变更可审计版本（总纲 §3.4：费率变更必须产生可审计版本）。
+ * 只碰 global 行（model/group 覆写行隔离），不能混进卡面 patch。
+ * 审计与变更同事务：事务内先读旧行，before/after 都进审计——费率变更必须产生可审计版本。
  */
 import type { Db } from '@tillgate/db';
 import type { AuditTxSink } from '../../ports/audit-sink';
@@ -15,7 +14,7 @@ import { emitAuditWithinTx } from '../audit';
 export interface UpdateRateCardDeps {
   readonly db: Db;
   readonly stores: { readonly rateCard: RateCardStore };
-  /** 费率审计（事务参与 port，§5.4/G3——写失败随业务事务回滚） */
+  /** 费率审计（事务参与 port——写失败随业务事务回滚） */
   readonly auditTx: AuditTxSink;
 }
 
@@ -54,7 +53,7 @@ export async function updateRateCard(
       globalCoefficient: coefficient !== undefined ? validateCoefficient(coefficient) : undefined,
     });
     if (!updated) return null;
-    // 审计与变更同事务提交前落（§5.4/G3）：before/after 都进 detail
+    // 审计与变更同事务提交前落：before/after 都进 detail
     await emitAuditWithinTx(deps.auditTx, tx, {
       actor: 'admin',
       adminId: adminIdOf(input.ctx),

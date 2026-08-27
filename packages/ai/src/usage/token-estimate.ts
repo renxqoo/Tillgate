@@ -255,7 +255,7 @@ export function estimateOutputTokens(json: unknown, opts: EstimateOptions = {}):
       }
       n += estimateToolCalls(message.tool_calls, weights, opts.model);
     }
-    if (typeof c.text === 'string') n += estimateTextTokens(c.text, weights, opts.model); // 补全类响应（B1：model 透传）
+    if (typeof c.text === 'string') n += estimateTextTokens(c.text, weights, opts.model); // 补全类响应（model 透传）
   }
   return n;
 }

@@ -38,7 +38,7 @@ export function referralConfigView(settings: MarketingSettingsView): {
   };
 }
 
-/** GET /v1/referrals wire 行（inviteeId/inviteeName = v1 字段名） */
+/** GET /v1/referrals wire 行 */
 export function referralOverviewRow(
   overview: ReferralOverviewView,
   totalCommission: string,

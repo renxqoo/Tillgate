@@ -1,5 +1,5 @@
 /**
- * 入站 codec 契约（v1 routes/__tests__「codec 双向往返」迁移）：
+ * 入站 codec 契约：
  * completions/responses/claude 三 codec 的 decode→encode 响应往返 + 流式转换存在性
  * （翻译函数本体在 @tillgate/ai protocol 有专测——此处锁路由消费面接线）。
  */

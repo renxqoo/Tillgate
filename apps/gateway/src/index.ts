@@ -1,6 +1,6 @@
 /**
  * 进程入口：load config → assemble → Redis 连通性 fail-closed → app → serve →
- * 信号注册（v1 index.ts 迁移；停机编排归 shutdown.ts + runtime）。
+ * 信号注册（停机编排归 shutdown.ts + runtime）。
  * 配置快照日志：排查「以为配了其实默认」——密钥类只打长度不打值。
  */
 import { serveApp } from '@tillgate/http';
@@ -46,7 +46,7 @@ function toAppDeps(assembly: GatewayAssembly, config: GatewayConfig): GatewayApp
     },
     trustedProxyHops: config.trustedProxyHops,
     // DB 并发预算门:钳制业务并发在池内(推导见 src/db-budget.ts——绝不越池,
-    // 万级并发下任何形态都须入口排队,node 池队列塌陷 / Bun SQL 排队楔死 F-6)
+    // 万级并发下任何形态都须入口排队,node 池队列塌陷 / Bun SQL 排队楔死)
     dbBudget: gatewayDbBudget(config.dbPoolMax),
     logger: assembly.logger,
   };
@@ -57,7 +57,7 @@ async function main(): Promise<void> {
   const assembly = assembleGateway(config);
   const { logger } = assembly;
 
-  // Redis fail-closed：熔断/限流/爆破共享存储连不上拒绝启动（v1 语义）
+  // Redis fail-closed：熔断/限流/爆破共享存储连不上拒绝启动
   await assertRedisReachable(assembly.redis, 'gateway', config.redisUrl, 5_000);
 
   const app = createGatewayApp(toAppDeps(assembly, config));

@@ -1,7 +1,7 @@
 /**
- * 配置契约（v1 config-security.test 语义迁移 + v2 演进项）：
+ * 配置契约：
  * 缺省值表 / 必填 fail-closed / fixed-full 交叉校验 / 生产密钥门槛 / SSRF 逃生门 /
- * GLOBAL_RPM 生产钳制 / 废弃键告警 / R-E2 字段面。
+ * GLOBAL_RPM 生产钳制 / 废弃键告警。
  */
 import { describe, expect, it, vi } from 'vitest';
 import { loadGatewayConfig } from '../src/config';

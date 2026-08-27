@@ -6,7 +6,7 @@ import {
   smallint,
   timestamp,
   bigint,
-    index,
+  index,
   uniqueIndex,
   numeric,
   boolean,
@@ -95,7 +95,7 @@ export const modelMappings = pgTable(
     /** fallback 模型链（对外模型名数组，配置启用；默认空 = 不降级） */
     fallbackModels: jsonb('fallback_models').$type<string[]>(),
     /**
-     * 参数抹平规则（透传基底，规则驱动，见 ai-package.md §7.6）：
+     * 参数抹平规则（透传基底，规则驱动）：
      * {"ignore":[],"clamp":{},"map":{},"unknown":"passthrough"}
      */
     paramRules: jsonb('param_rules').$type<{

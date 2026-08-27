@@ -1,5 +1,5 @@
 /**
- * wallet 复式账本四表（自 packages/wallet/src/schema.ts 平移——表定义唯一家收敛到本包）：
+ * wallet 复式账本四表（表定义唯一家在本包）：
  *
  *   wallet_accounts        账户：kind ∈ {user, internal}——用户账户 (user_id, currency)、
  *                          内部科目账户 (code, currency, shard)（platform_revenue 平台收入 /
@@ -12,7 +12,6 @@
  *
  * 单腿规则：credit_line / freeze 为零额审计交易，单腿 amount=0（Σ=0 平凡成立）。
  * 完整提交期不变量（延迟约束触发器）由 0059 迁移落库——DDL 单一真源在迁移文件。
- * packages/wallet 为冻结终态（其内部 schema 副本不再演进）。
  */
 import { sql } from 'drizzle-orm';
 import {

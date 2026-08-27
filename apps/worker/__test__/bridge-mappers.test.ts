@@ -1,7 +1,6 @@
 /**
- * 装配桥接映射直击（bridge-mappers.ts 拆出后无单测——0% 覆盖拖累包门禁，
- * 2026-08-25 补齐）：toBillingEvent 四分支词表直译 + toChannelCandidate 字段搬运。
- * 纯函数无 IO，表驱动逐分支锁定（铁律 16：错误码表/词表用表驱动遍历断言）。
+ * 装配桥接映射直击：toBillingEvent 四分支词表直译 + toChannelCandidate 字段搬运。
+ * 纯函数无 IO，表驱动逐分支锁定（错误码表/词表用表驱动遍历断言）。
  */
 import { describe, expect, it } from 'vitest';
 import { toBillingEvent, toChannelCandidate } from '../src/bridge-mappers';

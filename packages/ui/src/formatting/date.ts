@@ -1,4 +1,4 @@
-// 日期时间格式化: locale(/时区)必须装配注入(AGENT §0.3)。
+// 日期时间格式化: locale(/时区)必须装配注入。
 // 相对时间只覆盖一周以内, 更早/更晚回退为绝对日期(账单类控制台超出粒度后绝对日期更可读)。
 export type DateInput = string | number | Date;
 

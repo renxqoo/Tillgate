@@ -1,7 +1,6 @@
 /**
- * Sentinel 拓扑串解析（装配期 fail-fast）——拆分自 v2 原 redis-client.ts
- * （一动词一文件，铁律 5）。端口按严格十进制 1-65535 校验：
- * Number() 宽松解析会放行 '0x1e' / '1e2' / 带空白形态（P3 加固），装配缺陷不得静默通过。
+ * Sentinel 拓扑串解析（装配期 fail-fast）。端口按严格十进制 1-65535 校验：
+ * Number() 宽松解析会放行 '0x1e' / '1e2' / 带空白形态，装配缺陷不得静默通过。
  */
 import { DefectError } from '@tillgate/errors';
 

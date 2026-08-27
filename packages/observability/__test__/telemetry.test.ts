@@ -15,7 +15,7 @@ import { getMeter, getTracer } from '../src/telemetry/api';
 import { defined } from './defined';
 
 /**
- * telemetry 规格(v1 core/otel.ts 零测试,B2 补齐——铁律 16)。
+ * telemetry 规格:
  * 收集器用本包 MemoryTraceViewer(真实 SDK 管线,不 mock 处理器契约)。
  * traceId 生成注意:hex 前缀 + '0' 右补会在 '1'/'10' 间碰撞——补位用非零字符。
  */
@@ -288,7 +288,7 @@ describe('withAsyncSpan', () => {
     const span = defined(trace.spans[0], 'span');
     expect(span.name).toBe('stage.do');
     expect(span.attributes['channel.key']).toBe('ch-a');
-    expect(span.status.code).toBe(SpanStatusCode.UNSET); // 未显式设状态(与 v1 行为一致)
+    expect(span.status.code).toBe(SpanStatusCode.UNSET); // 未显式设状态
     expect(span.endTimeMs).toBeGreaterThan(span.startTimeMs);
   });
 

@@ -1,7 +1,7 @@
 /**
- * 幂等操作契约（纯函数，v1 domain/shared/operation-id + wallet/fingerprint 语义等价迁移）：
+ * 幂等操作契约（纯函数）：
  * operationId 是调用方设计责任；命令指纹 = 规范化 JSON（键排序 + 丢弃 undefined）的 SHA-256。
- * 渠道资金用例与未来跨包可靠事件共用此口径；ledger-core/wallet 波次收敛时对齐单一真相。
+ * 渠道资金用例共用此口径。
  */
 import { createHash } from 'node:crypto';
 import { controlPlaneErrors } from '../errors';

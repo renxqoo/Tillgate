@@ -1,12 +1,12 @@
 /**
- * 架构边界门禁（AGENT.md §0.11 / 总纲 §5.5；参照 packages/accounts 的写法）：
- * 目录与出口约定不靠记忆，靠本测试执行。规则来源 DESIGN §1/§2.1/§4.5：
+ * 架构边界门禁：
+ * 目录与出口约定不靠记忆，靠本测试执行。规则：
  * ① 分层白名单——domain 零基础设施（drizzle/pg/@tillgate/db 禁入）；
  *    application 零 SQL（drizzle 只允许出现在 adapters/postgres/**）；
  * ② 出口面封闭——index.ts / billing.ts / wallet.ts / settlement.ts 不泄漏
  *    Db/DbTx/drizzle 符号（文本级 + 导出符号扫描）；
  * ③ 账本零 round——src/domain 与 src/application 除登记豁免外不得出现
- *    toFixed/Math.round/round(（DESIGN §4.5「零 round 架构锁死」）；
+ *    toFixed/Math.round/round( 调用；
  * ④ 业务代码不 import ./composition（装配便捷件仅 app assembly 消费）。
  */
 import { readdirSync, readFileSync } from 'node:fs';

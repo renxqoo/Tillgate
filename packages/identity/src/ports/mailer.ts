@@ -1,13 +1,13 @@
 /**
  * 验证码邮件投递 port。渲染见 templates/login-code-email.ts(纯函数);
  * 实现见 adapters/smtp/nodemailer-mailer.ts。缺省不装配 = 邮件通道 fail-closed
- * (begin-challenge 对 email 目标直接 undeliverable,不静默降级,B12)。
+ * (begin-challenge 对 email 目标直接 undeliverable,不静默降级)。
  */
 export interface Mailer {
   /**
    * 发送验证码(locale 跟随触发请求,默认英文;ip 用于邮件内来源提示)。
    * purpose 区分用途文案:login=登录/注册(缺省);two_factor_toggle=管理端
-   * 「邮箱验证码二次登录」开关确认(admin-email-2fa,2026-08-25)。
+   * 「邮箱验证码二次登录」开关确认(admin-email-2fa)。
    */
   sendLoginCode(
     to: string,

@@ -5,7 +5,7 @@ import { toast } from '@tillgate/ui';
  *
  *   if (!actionResult(res, '创建失败', '已创建')) return;
  *
- * - errorTitle 缺省时直接把错误文案当标题（v1 语义）；
+ * - errorTitle 缺省时直接把错误文案当标题；
  * - success 缺省时不弹成功 toast（保留「仅失败提示」的调用点）；
  * - 返回 boolean：true=成功，调用方在成功分支继续收尾。
  */

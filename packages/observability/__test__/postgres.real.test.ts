@@ -1,6 +1,6 @@
 /**
- * postgres 适配器真实 PG 行为等价测试(铁律 14:默认门禁按文件名排除,test:real 显式运行)。
- * 覆盖 SQL 专属语义:trace 批写幂等/点查/recent 聚合/拓扑(B1 回归)、分区 ensure/maintain、
+ * postgres 适配器真实 PG 行为等价测试(默认门禁按文件名排除,test:real 显式运行)。
+ * 覆盖 SQL 专属语义:trace 批写幂等/点查/recent 聚合/拓扑、分区 ensure/maintain、
  * 审计同事务回滚与 best-effort 吞错、请求日志写入/过滤列表、月分区维护。
  * 环境:DATABASE_URL(根 .env);不可达时全组跳过(退出码 0——由显式运行者保证环境)。
  * 数据纪律:trace 以 service='trt-test-svc'、审计以 action like 'trt.%'、请求日志以 path
@@ -145,7 +145,7 @@ describe('PgTraceStore(真 PG)', () => {
     await cleanup();
     const store = createPgTraceStore(db);
     const base = Date.now() - 1_000;
-    // ch-a 两个错误:插入序与时间序相反——v1 无序聚合会随机取其一
+    // ch-a 两个错误:插入序与时间序相反——聚合须取时间最晚者,不能随机取其一
     await store.writeBatch([
       spanRow({
         name: 'upstream p1',

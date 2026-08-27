@@ -1,7 +1,7 @@
 import { DEFAULT_MAX_LINE_BYTES } from './sse';
 
 /**
- * 响应侧 model 字段替换（§3.6 透传例外 2，可配置开关、默认关）：
+ * 响应侧 model 字段替换（可配置开关、默认关）：
  * 出站 SSE 帧内仅替换 "model" 字符串值为对外目录模型名，其余字节不动；
  * 逐行状态机（行缓冲受 DEFAULT_MAX_LINE_BYTES 上界约束），不整流缓冲——
  * 每个 push 只处理已完成行并立即吐出，半截行留待下一 chunk 补齐（有界）。

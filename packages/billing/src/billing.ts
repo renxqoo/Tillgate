@@ -1,15 +1,15 @@
 /**
- * createBilling facade（收口装配：§3 目标态的包根出口）。
+ * createBilling facade（收口装配的包根出口）。
  *
  * 装配分两层：
  *   - 本文件：纯装配（store 注入——内存 stand-in 可测，应用层组合不绑 PG）；
  *   - ./composition：postgres 装配便捷件（db + retry → 全套 store → createBilling），
- *     仅 app assembly / 迁移脚本 / adapter 集成测试可引用（总纲 §5.3）。
+ *     仅 app assembly / 迁移脚本 / adapter 集成测试可引用。
  *
  * 支付（payments/redemption）因渠道凭证（epay key / stripe secret）是部署环境事实，
  * 不进核心 facade——app assembly 用 createPaymentsApi/createRedemptionApi 按环境组合。
  * 可靠通知走 NotificationOutboxPort：结算/死信事实在业务事务提交前同事务入箱
- * （入箱失败回滚，§5.4）；onSettled/onDead/wake 是提交后的 metrics 级 best-effort
+ * （入箱失败回滚）；onSettled/onDead/wake 是提交后的 metrics 级 best-effort
  * 观察钩子（可丢），不承载资金、安全、恢复所需事实。
  */
 import { DefectError } from '@tillgate/errors';
@@ -55,12 +55,12 @@ export interface CreateBillingConfig {
   /** 结算失败策略（次数/退避必填注入） */
   failurePolicy: SettleFailurePolicyConfig;
   /**
-   * 时钟（装配必填单点注入，向下传递到全部用例——零隐藏缺省，铁律 3；
+   * 时钟（装配必填单点注入，向下传递到全部用例——零隐藏缺省；
    * 钱包动词内部的 DB 时钟权威路径不经此）
    */
   clock: () => Date;
   /**
-   * 可靠通知事务参与 port（§5.4）：结算/死信事实同事务入箱，入箱失败回滚
+   * 可靠通知事务参与 port：结算/死信事实同事务入箱，入箱失败回滚
    * 业务事务。消费方 = app assembly 桥接 notifications outbox。
    */
   outbox?: NotificationOutboxPort;
@@ -72,7 +72,7 @@ export interface CreateBillingConfig {
   wake?: (requestId: string) => void;
   onSettled?: SettlementDeps['onSettled'];
   onDead?: SettlementDeps['onDead'];
-  /** 死信复核同事务审计 port（U6;app 装配桥 observability writeAudit;缺省丢弃） */
+  /** 死信复核同事务审计 port（app 装配桥 observability writeAudit;缺省丢弃） */
   reviewAuditTx?: SettlementDeps['reviewAuditTx'];
 }
 
@@ -84,7 +84,7 @@ export interface BillingStores {
   accounts?: AccountContextStore;
 }
 
-/** 套餐目录管理组（U6——admin-api P1 消费;审计后置归 app 装配层） */
+/** 套餐目录管理组（admin-api 消费;审计后置归 app 装配层） */
 export interface PlansApi {
   list(query: ListPlansQuery): Promise<{ rows: PlanRecord[]; total: number }>;
   create(input: CreatePlanInput): Promise<PlanRecord>;

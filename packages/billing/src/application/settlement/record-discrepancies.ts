@@ -3,9 +3,8 @@
  * reconcile_discrepancies 行。告警入箱不在此（billing 不拥有通知副作用——
  * worker 拿计数后经 notifications enqueue，fire-and-forget）。
  *
- * 数值口径挂账：v2 verifyInvariants 是复式不变量布尔核验（violation 无
- * expected/actual 数值），本用例记 '0' 并把完整上下文存 detail JSON；
- * 数值化差异（需要核验 SQL 输出两侧数值）是后续增强，届时表列已就位。
+ * 数值口径：verifyInvariants 是复式不变量布尔核验（violation 无
+ * expected/actual 数值），本用例记 '0' 并把完整上下文存 detail JSON。
  */
 import type { ReconcileDiscrepancyRow } from '../../ports/reconcile-store.js';
 import type { ReconcileDiscrepancyStore } from '../../ports/reconcile-store.js';

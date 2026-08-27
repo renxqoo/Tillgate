@@ -1,5 +1,5 @@
 /**
- * 网关鉴权读模型(v1 credential.findActiveKeyByKeyHash):单查询取回鉴权与限额全集,
+ * 网关鉴权读模型:单查询取回鉴权与限额全集,
  * 守卫 = key status=0 + 属主 status=0 + 未过期(存储时钟);每调用直查,无缓存承诺。
  */
 import type { ActiveKeyRecord } from '../ports/account-store.js';

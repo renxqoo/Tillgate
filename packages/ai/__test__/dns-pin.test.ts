@@ -2,7 +2,6 @@
  * DNS 解析后校验（防 rebinding）：vi.mock 掉 node:dns/promises ——
  * 域名 → 私网地址拒绝、解析失败降级放行、公网解析放行。
  * 本文件独占该 mock，不与其他传输测试混跑。
- * （2026-08-25 ADR-0010：hostname 白名单形态已撤销，防线 = 机械基线 + 运营面。）
  */
 import { describe, expect, it, vi } from 'vitest';
 

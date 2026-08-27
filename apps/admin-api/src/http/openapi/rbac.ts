@@ -1,5 +1,5 @@
 /**
- * 动态 RBAC OpenAPI registry（routes/{roles,permissions}.ts 契约面——docs/admin-rbac-dynamic）。
+ * 动态 RBAC OpenAPI registry（routes/{roles,permissions}.ts 契约面）。
  */
 import * as z from 'zod';
 import { rbacContracts } from '../contracts/rbac';

@@ -1,5 +1,5 @@
 /**
- * Accept-Language 协商内核（错误出口本地化 / BFF 转发共用，单一实现；v1 语义原样移植）。
+ * Accept-Language 协商内核（错误出口本地化 / BFF 转发共用，单一实现）。
  *
  * 支持语言固定为 en | zh，默认英文。zh-CN/zh-TW/zh-HK 等全部归并为 zh，
  * en-* 归并为 en；其余语言不命中，回落默认。
@@ -47,7 +47,7 @@ function localeOfTag(tag: string): Locale | undefined {
 /**
  * 解析 Accept-Language 头（RFC 9110 简化版）：取 q 值最高的已支持语言；
  * q 解析失败按 1 处理；无命中回落默认英文。
- * 与 @tillgate/api-client/src/next/locale.ts 孪生(D1 同语义副本),两侧锁步演进。
+ * 与 @tillgate/api-client/src/next/locale.ts 孪生,两侧锁步演进。
  */
 export function parseAcceptLanguage(header: string | null | undefined): Locale {
   if (!header) return DEFAULT_LOCALE;

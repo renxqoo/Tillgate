@@ -1,5 +1,5 @@
 /**
- * 通知渠道路由契约（P5;v1 routes/notifications.ts 内联 zod 平移）。
+ * 通知渠道路由契约。
  * webhook 需 url+secret;email 需 recipients（refine 互斥;events 词表封闭）。
  * 事件词表单一真相 = notifications domain NOTIFY_EVENTS（此处 import,不复制）。
  */
@@ -26,6 +26,6 @@ const channelSchema = z.object({
 
 export const notificationsContracts = {
   create: channelSchema,
-  /** 类型不可改（config 口径与类型绑定——v1 z.never() 语义） */
+  /** 类型不可改（config 口径与类型绑定,以 z.never() 拒绝） */
   update: channelSchema.partial().extend({ type: z.never().optional() }),
 };

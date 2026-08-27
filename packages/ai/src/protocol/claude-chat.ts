@@ -1,5 +1,5 @@
 /**
- * Claude Messages ⇄ OpenAI Chat 非流式 codec（chat 家族，relaykit 等价物）。
+ * Claude Messages ⇄ OpenAI Chat 非流式 codec（chat 家族）。
  *
  * 规范形 = OpenAI chat/completions（请求/响应）。本文件四个方向中的非流式三个：
  *   ① claudeRequestToChat   入站 /v1/messages 请求 → 规范形请求
@@ -76,7 +76,7 @@ function claudeContentToChat(blocks: unknown): string | Array<Record<string, unk
 
 // ─────────────────────────── ① 入站请求 → 规范形 ───────────────────────────
 
-// eslint-disable-next-line complexity, max-lines-per-function -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态，存量棘轮（铁律 22⑥）
+// eslint-disable-next-line complexity, max-lines-per-function -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态
 export function claudeRequestToChat(req: unknown): Json {
   const r = asJson(req) ?? {};
   const messages: unknown[] = [];
@@ -168,7 +168,7 @@ export function claudeRequestToChat(req: unknown): Json {
 
 // ─────────────────────────── ② 规范形请求 → Claude（上游适配器） ───────────────────────────
 
-// eslint-disable-next-line complexity, max-lines-per-function, max-statements -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态，存量棘轮（铁律 22⑥）
+// eslint-disable-next-line complexity, max-lines-per-function, max-statements -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态
 export function chatRequestToClaude(req: unknown): Json {
   const r = asJson(req) ?? {};
   const out: Json = {};
@@ -295,7 +295,7 @@ export function claudeUsageToUsage(u: unknown): {
   };
 }
 
-/** 响应内容块收集：text 块拼正文、tool_use 块转 tool_calls（形状兜底同 v1） */
+/** 响应内容块收集：text 块拼正文、tool_use 块转 tool_calls（含形状兜底） */
 function collectClaudeBlocks(blocks: unknown[]): {
   textParts: string[];
   toolCalls: Array<Record<string, unknown>>;
@@ -367,7 +367,7 @@ const CHAT_FINISH_TO_CLAUDE: Record<string, string> = {
 };
 
 /** 规范形 chat 非流式响应 → Claude Messages 响应（入站 /v1/messages 非流式） */
-// eslint-disable-next-line complexity -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态，存量棘轮（铁律 22⑥）
+// eslint-disable-next-line complexity -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态
 export function chatResponseToClaude(res: unknown): Json {
   const r = asJson(res) ?? {};
   const choice = asJson(asArray(r.choices)[0]) ?? {};

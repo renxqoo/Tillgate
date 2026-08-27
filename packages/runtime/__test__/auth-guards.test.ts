@@ -1,6 +1,5 @@
 /**
  * 鉴权爆破防护双件（真实 Redis 段 + degraded/closed/open 三档故障语义）。
- * 行为规格 = v1 gateway app.test「JWT 伪造计数→锁定」/ production-hardening 爆破两层的机制段。
  */
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { Redis } from 'ioredis';

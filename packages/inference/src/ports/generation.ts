@@ -12,7 +12,7 @@ export const GENERATION_TASK_STATUSES = [
 export type GenerationTaskStatus = (typeof GENERATION_TASK_STATUSES)[number];
 /**
  * 生成任务存储 port（消费方定义；生产实现为 postgres（generation_tasks 表，
- * control-plane/db 波次装配），单副本/测试用内存适配器）。
+ * 经 control-plane/db 装配），单副本/测试用内存适配器）。
  * 轮询推进用例（application/generation-poll.ts，worker app 驱动）消费本 port 的
  * 推进动词族；入队适配面只写 insert——状态机 UPDATE 全部在推进动词内
  * （单一写口径，避免双写漂移）。
@@ -68,7 +68,7 @@ export interface GenerationTaskActiveRow {
   expiresAt: number;
 }
 
-/** 管理任务列表行(admin-api P4;账单状态经 billing_requests 左联——无账单行 null) */
+/** 管理任务列表行(账单状态经 billing_requests 左联——无账单行 null) */
 export interface GenerationTaskAdminRow {
   taskId: string;
   /** 账单锚(billing_requests.request_id;实扣金额回填的关联键) */
@@ -99,18 +99,18 @@ export interface GenerationTaskStore {
   insert(record: GenerationTaskRecord): Promise<void>;
   /** 属主隔离查询：非本人/不存在一律 null（404 语义） */
   findByOwner(userId: number, taskId: string): Promise<GenerationTaskView | null>;
-  /** 管理面全量列表（admin-api P4;kind/status 过滤 + total 全量） */
+  /** 管理面全量列表（kind/status 过滤 + total 全量） */
   adminList(
     input: GenerationTaskAdminListInput,
   ): Promise<{ rows: GenerationTaskAdminRow[]; total: number }>;
   /**
    * 已结算任务的实扣金额（页内批量——消除 N+1）:taskId → usage_logs.amount。
    * 关联走 generation_tasks.request_id = usage_logs.request_id（账单锚;
-   * v1 依赖「task.id 即计费 requestId」惯例,新仓两列显式分立,join 是意图忠实移植）。
+   * 任务主键与计费 requestId 分立,按 request_id join）。
    */
   settledAmounts(taskIds: readonly string[]): Promise<Map<string, string>>;
 
-  // ---- 轮询推进（worker 波；SQL/UPDATE 只在 adapters） ----
+  // ---- 轮询推进（worker 驱动；SQL/UPDATE 只在 adapters） ----
 
   /**
    * 超时扫描：queued/running 且 expires_at ≤ 存储端权威时钟 → CAS expired

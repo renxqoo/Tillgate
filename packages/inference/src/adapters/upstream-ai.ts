@@ -89,7 +89,7 @@ async function submitTaskViaAi(
   };
 }
 
-/** 任务查询：succeeded 且 url 缺失、协议给 fileId（MiniMax files/retrieve 换取型）→ 适配器内二次换取补齐（v1 task-adapter 同语义：编排层不见协议差异；换取失败 = 整体查询失败，轮询层按瞬时错误续租下轮重试） */
+/** 任务查询：succeeded 且 url 缺失、协议给 fileId（MiniMax files/retrieve 换取型）→ 适配器内二次换取补齐——编排层不见协议差异；换取失败 = 整体查询失败，轮询层按瞬时错误续租下轮重试 */
 async function queryTaskViaAi(
   env: { ai: Ai; decrypt: (enc: string) => string },
   args: { candidate: ChannelCandidate; upstreamTaskId: string },

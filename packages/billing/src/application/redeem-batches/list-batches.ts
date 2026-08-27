@@ -1,4 +1,4 @@
-/** 兑换批次管理列表（U6） */
+/** 兑换批次管理列表 */
 import type { BillingStore } from '../../ports/billing-store.js';
 import type { RedeemBatchRecord, RedeemCodeStore } from '../../ports/payment-ports.js';
 

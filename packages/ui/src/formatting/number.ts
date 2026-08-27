@@ -1,4 +1,4 @@
-// 数值格式化: locale 必须装配注入(AGENT §0.3); 位数缺省沿用 Intl 各形态的展示默认
+// 数值格式化: locale 必须装配注入; 位数缺省沿用 Intl 各形态的展示默认
 export interface NumberFormatter {
   format(value: number): string;
   formatCompact(value: number): string;

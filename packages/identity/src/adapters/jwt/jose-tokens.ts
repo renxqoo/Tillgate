@@ -1,7 +1,7 @@
 /**
  * 会话令牌 jose 实现(HS256;realm 参数化——issuer/密钥/TTL 每 realm 独立装配注入)。
- * 验签三重隔离:算法白名单 + issuer 强校验 + 载荷 realm 比对(v1 session.ts 语义,
- * user/admin 互不认账即使密钥巧合相同)。
+ * 验签三重隔离:算法白名单 + issuer 强校验 + 载荷 realm 比对
+ * (user/admin 互不认账即使密钥巧合相同)。
  */
 import { SignJWT, jwtVerify, errors as joseErrors } from 'jose';
 import { randomUUID } from 'node:crypto';

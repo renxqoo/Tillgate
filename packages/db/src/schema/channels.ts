@@ -5,7 +5,7 @@ import {
   smallint,
   timestamp,
   bigint,
-    text,
+  text,
   numeric,
   index,
   check,
@@ -69,11 +69,11 @@ export const channels = pgTable(
   },
   (t) => [
     index('channels_provider_id_idx').on(t.providerId),
-    // 渠道名唯一（仅约束在册记录——导入查重按 name，逻辑删除后名称释放可复用；A8 结构化收口）
+    // 渠道名唯一（仅约束在册记录——导入查重按 name，逻辑删除后名称释放可复用）
     uniqueIndex('channels_name_uq')
       .on(t.name)
       .where(sql`deleted_at IS NULL`),
-    // 渠道在途敞口非负（R4）：释放路径带 >= 守卫的原子扣减，DB 兜底禁止穿透为负。
+    // 渠道在途敞口非负：释放路径带 >= 守卫的原子扣减，DB 兜底禁止穿透为负。
     // 注：不加 upstream_reserved <= upstream_budget 的 CHECK——管理端允许调低 budget，
     // 该场景由 reserveChannel 的守卫 UPDATE 拦截新预留，不构成结构不变量。
     check('channels_upstream_reserved_nonnegative_ck', sql`${t.upstreamReserved} >= 0`),

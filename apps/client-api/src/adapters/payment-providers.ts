@@ -1,5 +1,5 @@
 /**
- * 支付能力装配件（动态形态——docs/integration-settings/DESIGN.md §5 D6/D7）。
+ * 支付能力装配件（动态形态）。
  * 下单面：wrapper.accepting 按快照 effective 求值（resolveProvider/channels 过滤），
  * createOrder 再以严格读复核；验签面：complete 即可用（停用不停验签——在途订单
  * 回调不因渠道停用而拒收），密钥序列先新后旧（轮换双读窗）。

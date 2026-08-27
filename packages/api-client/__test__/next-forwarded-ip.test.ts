@@ -1,6 +1,6 @@
 /**
  * ./next forwarded-ip 行为规格。
- * hops 语义矩阵与 @tillgate/http __test__/network.test.ts 锁步一致(D2 同语义副本约束);
+ * hops 语义矩阵与 @tillgate/http __test__/network.test.ts 锁步一致(同语义副本约束);
  * outgoingUserIpHeader 为 BFF 透传出口封装(mock next/headers)。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

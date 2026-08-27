@@ -1,5 +1,5 @@
 /**
- * 轮换 Key(v1 keys.service rotate):同事务「新行(继承全部设置,expiresAt 原样)
+ * 轮换 Key:同事务「新行(继承全部设置,expiresAt 原样)
  * + 旧行 CAS 吊销」;绑定订阅失格时新行降级个人余额(subscriptionId=null)。
  * 旧吊销竞态失败 → 整事务回滚(两行不共存半态)。
  */
@@ -24,7 +24,7 @@ export async function rotateKey(
     throw AccountsErrors.business('key_already_revoked', { keyId: input.keyId });
   }
 
-  // 订阅重新校验:失格(过期/被移除)降级个人余额(v1 降级语义)
+  // 订阅重新校验:失格(过期/被移除)降级个人余额
   let { subscriptionId } = owned;
   if (subscriptionId !== null) {
     const usable = await ctx.store.findUsableSubscription(ctx.db, {

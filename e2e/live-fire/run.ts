@@ -30,12 +30,18 @@ import './cases-conc.ts';
 import './cases-p1.ts';
 
 const args = process.argv.slice(2);
-const only = args.find((a) => a.startsWith('--only='))?.slice(7).split(',');
+const only = args
+  .find((a) => a.startsWith('--only='))
+  ?.slice(7)
+  .split(',');
 const noCleanup = args.includes('--no-cleanup');
 const keepStack = args.includes('--keep-stack');
 
 loadRootEnv();
-const ctx: any = { url: URLS, seed: { mkUser, mkKey, fund, wallet, billOf, usageRow, usageSum, billCount } };
+const ctx: any = {
+  url: URLS,
+  seed: { mkUser, mkKey, fund, wallet, billOf, usageRow, usageSum, billCount },
+};
 
 let failedToBoot = false;
 try {
@@ -45,10 +51,17 @@ try {
   const seeded = await seedCatalog();
   ctx.db = seeded.db;
   // 引导测试管理员(create-admin 真实路径,幂等:已存在则报错忽略)
-  const out = Bun.spawnSync([
-    'bun', 'scripts/create-admin.ts',
-    '--email=rt-admin@fire.test', '--password=Rt!AdminPass#7', '--role=super_admin', '--apply',
-  ], { cwd: 'apps/admin-api', env: { ...process.env }, stdout: 'pipe', stderr: 'pipe' });
+  const out = Bun.spawnSync(
+    [
+      'bun',
+      'scripts/create-admin.ts',
+      '--email=rt-admin@fire.test',
+      '--password=Rt!AdminPass#7',
+      '--role=super_admin',
+      '--apply',
+    ],
+    { cwd: 'apps/admin-api', env: { ...process.env }, stdout: 'pipe', stderr: 'pipe' },
+  );
   const adminLog = out.stdout.toString() + out.stderr.toString();
   if (!/already exists|已存在|created|成功|apply/i.test(adminLog)) {
     console.log(`[run] create-admin output: ${adminLog.slice(0, 400)}`);
@@ -77,5 +90,7 @@ if (!noCleanup) {
   }
 }
 if (!keepStack) await stopStack();
-console.log(`\n[run] done: ${summary.pass} PASS / ${summary.fail} FAIL / ${summary.skip} SKIP / ${summary.total} total`);
+console.log(
+  `\n[run] done: ${summary.pass} PASS / ${summary.fail} FAIL / ${summary.skip} SKIP / ${summary.total} total`,
+);
 process.exit(summary.fail > 0 || failedToBoot ? 1 : 0);

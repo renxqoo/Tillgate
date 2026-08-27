@@ -1,5 +1,5 @@
 /**
- * worker 唯一装配根（P5：非 assembly 代码只持闭包与纯契约——Db/composition
+ * worker 唯一装配根（非 assembly 代码只持闭包与纯契约——Db/composition
  * 子入口只在本文件出现）。装配分七段：观测/db → billing（两套 wallet 实例 +
  * settlement + signal 桥）→ notifications（outbox 桥 + SMTP）→ inference
  * poll（signal/渠道桥）→ 佣金（rate/refId 桥——词表单一真相在 accounts）→
@@ -70,17 +70,17 @@ import { createSettleWakeListener } from './wakeup/postgres-notify';
 import type { SettleWakeListener } from './wakeup/postgres-notify';
 import type { WorkerHealthState } from './health';
 
-/** v1 等价重试策略（billing 组装件沿用值） */
+/** 事务重试策略（与 billing 组装件同值） */
 const TX_RETRY = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 } as const;
-/** 对账会话锁键（保留 v1 键——重叠部署互斥，与分区锁同口径） */
+/** 对账会话锁键（重叠部署互斥，与分区锁同口径） */
 const RECONCILE_LOCK_KEY = 'ai-gateway:billing-reconcile';
-/** settlement 侧 wallet guards（v1 默认 wallet 全词表口径） */
+/** settlement 侧 wallet guards（默认 wallet 全词表口径） */
 const SETTLEMENT_GUARDS = {
   refTypes: ['billing', 'topup', 'admin', 'subscription', 'pack', 'redeem'],
   currencies: ['CNY'],
   internalAccounts: ['outside', 'platform_revenue'],
 } as const;
-/** 佣金侧 wallet guards（v1 独立佣金钱包口径：只许 referral 资金流） */
+/** 佣金侧 wallet guards（独立佣金钱包口径：只许 referral 资金流） */
 const REFERRAL_GUARDS = {
   refTypes: ['referral'],
   currencies: ['CNY'],
@@ -139,7 +139,7 @@ export interface WorkerAssembly {
 
 /** inference 蛇形 → billing 点分 与 渠道行 → 候选形状两个桥接映射已拆至 ./bridge-mappers.ts */
 
-// eslint-disable-next-line max-lines-per-function, max-statements -- 装配根 composition root:线性依赖组装,每条语句即一个装配步骤;拆段只会层层透传上下文(存量棘轮)
+// eslint-disable-next-line max-lines-per-function, max-statements -- 装配根 composition root:线性依赖组装,每条语句即一个装配步骤;拆段只会层层透传上下文
 export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   const logger = createLogger({
     level: config.logLevel,
@@ -185,7 +185,7 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
 
   // ---- notifications：facade + billing 同事务入箱桥 ----
   const cipher = createCipher(config.channelApiKeyEncryption);
-  // 告警邮件动态化（DESIGN §5 D7）：每次投递严格读快照（fail-loud），
+  // 告警邮件动态化：每次投递严格读快照（fail-loud），
   // SMTP 未生效抛错走投递失败重试路径（email 渠道 fail-closed 语义等价）；
   // 传输器随配置指纹重建。密钥 = 渠道 Key 同一部署契约（CHANNEL_API_KEY_ENCRYPTION）。
   const integrationReader = createPostgresIntegrationSettingsReader({
@@ -226,7 +226,7 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
     config: config.notify.dispatch,
   });
   const notifyCtx = systemContext(config.ownerId);
-  /** billing 结算/死信事实同事务入箱（§5.4：入箱失败回滚业务事务） */
+  /** billing 结算/死信事实同事务入箱（入箱失败回滚业务事务） */
   const outboxPort: NotificationOutboxPort = {
     append: async (tx, fact: OutboxFact) => {
       // 句柄两包同底（同一 DbTx 的 opaque 铸形）；enqueue 的 onConflictDoNothing
@@ -236,7 +236,7 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
     },
   };
 
-  // balance_low 预警（v1 onSettled 钩子对位）：结算后查用户余额，低于阈值入箱
+  // balance_low 预警：结算后查用户余额，低于阈值入箱
   // （按用户×日幂等；全程 catch 静默——告警不反噬结算）
   const balanceLowCheck = async (data: { requestId: string; userId: number }): Promise<void> => {
     const accounts = await settlementWallet.accounts(data.userId);
@@ -287,8 +287,8 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   // ---- inference：生成任务轮询（signal/渠道/状态三桥）----
   const ai: Ai = createAi(
     {},
-    // SSRF 双门：逃生门仅非生产可用（v1 同口径）。
-    // 防线 = 机械基线 + 运营面信任（渠道/provider 写入是 admin 域——ADR-0010）
+    // SSRF 双门：逃生门仅非生产可用。
+    // 防线 = 机械基线 + 运营面信任（渠道/provider 写入是 admin 域）
     config.aiAllowLocalUrl && config.nodeEnv !== 'production'
       ? { guardUrl: async () => {} }
       : {
@@ -447,7 +447,7 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
 
   const healthState: WorkerHealthState = {
     live: () => scheduler.isRunning(),
-    // readyz 三探测（scheduler + PG + BullMQ Redis，DESIGN §5 口径）：未启动短路
+    // readyz 三探测（scheduler + PG + BullMQ Redis）：未启动短路
     // （不触依赖），探测失败 = 不就绪（fail-closed，warn 留痕——依赖侧日志不覆盖 ping 拒绝）。
     ready: async () => {
       if (!scheduler.isRunning()) return false;

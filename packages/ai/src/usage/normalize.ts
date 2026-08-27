@@ -2,7 +2,7 @@ import { asRecord } from '../internal/util';
 import type { Usage } from '../types';
 
 /**
- * usage 归一化（ai-package.md §7.5）：
+ * usage 归一化：
  *   - OpenAI 风格: prompt_tokens_details.cached_tokens → cachedInputTokens
  *   - DeepSeek: prompt_cache_hit_tokens / prompt_cache_miss_tokens
  *   - Mistral: prompt_tokens_details.cached_tokens 及其 camel 变体（promptTokensDetails.
@@ -55,7 +55,7 @@ function resolveCachedTokens(u: Record<string, unknown>): number | null {
   return mistralCamelCached(u);
 }
 
-/** 终态校验：total 一致性 + 双侧非零。B3：total 含额外分量（cache-write/reasoning）
+/** 终态校验：total 一致性 + 双侧非零。total 含额外分量（cache-write/reasoning）
  *  时弃真退估算（返回 null）——弃真可观测由调用方日志承担（纯函数零副作用）。 */
 function usageTotalValid(
   u: Record<string, unknown>,

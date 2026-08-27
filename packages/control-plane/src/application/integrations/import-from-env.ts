@@ -1,5 +1,5 @@
 /**
- * env → integration_settings 一次性导入（DESIGN §7.2）：
+ * env → integration_settings 一次性导入：
  * 计划纯函数（可测）+ 应用函数（幂等：已存在的键跳过，不覆盖 admin 已改值）。
  * 语义对齐存量启动校验：完整组导入并启用；非空不完整组跳过并警告（不部分导入）。
  */
@@ -119,7 +119,7 @@ export interface IntegrationImportReport {
   readonly skippedExisting: readonly IntegrationKey[];
 }
 
-/** 应用：insert-if-absent（逐行原子——review 修复 A-4），secret 加密落库，逐键审计 */
+/** 应用：insert-if-absent（逐行原子），secret 加密落库，逐键审计 */
 export async function applyIntegrationImport(
   deps: ApplyIntegrationImportDeps,
   plan: IntegrationImportPlan,
@@ -149,7 +149,7 @@ export async function applyIntegrationImport(
       skippedExisting.push(row.key);
     }
   }
-  // 逐键一条审计事件（review 修复 E-1：targetId ≤ audit_logs.target_id varchar(64)）
+  // 逐键一条审计事件（targetId ≤ audit_logs.target_id varchar(64)）
   for (const key of imported) {
     await emitAudit(deps.audit ?? neverAudit, {
       actor: 'system',

@@ -4,7 +4,7 @@ import { CATEGORY_STATUS_DEFAULTS, renderError } from '../src/errors/render';
 import { HttpErrors } from '../src/errors/catalog';
 
 /**
- * 渲染分派（v1 errors.test / error-locale.test 可迁移断言的重写形态）：
+ * 渲染分派：
  * business 三级 status 链、双语文案、context/retryAfterMs 透传、
  * infrastructure 503 原码、defect/未知 500 细节不外泄（内外分际）。
  */

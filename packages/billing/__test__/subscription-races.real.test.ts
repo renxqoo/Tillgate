@@ -1,21 +1,20 @@
 /**
- * 订阅真实 PG 竞态套件（U4 遗留补齐——MIGRATION-U4 §5「真实 PG 竞态随收口真 PG 套件」
- * 兑现）：并发用例打真实 PostgreSQL 的并发原语——「单有效订阅」部分唯一索引
+ * 订阅真实 PG 竞态套件：并发用例打真实 PostgreSQL 的并发原语——「单有效订阅」部分唯一索引
  * （user_subscriptions_one_active_uq）、订阅行 FOR UPDATE 行锁、CAS 状态迁移、
  * 凭证改绑 UPDATE——不是内存 stand-in 的顺序重放。装置复用 real-pg.ts
  * setupRealFullSchema（隔离 schema + 完整迁移链 + 42P01 容错，settlement 同款）。
  *
  * 竞态矩阵（每例 Promise.allSettled 收两路，断言恰一成恰一败）：
- *   1. 并发 purchase 同用户 → 预检无可锁行，唯一索引是唯一裁决者：单赢家；
+ *   1. 并发 purchase 同用户 → 预检无可锁行，唯一索引决定单赢家；
  *      败者事务整体回滚（订阅行/钱包流水/操作档案零残留——无半订阅半扣款）。
  *   2. 并发 renew + change 同一订阅 → 行锁串行化，后到者重读到终态（status 已翻）
  *      判定 no_subscription；恰一笔收款、余额守恒（充值 − Σ实扣）。
  *   3. 凭证（API key）改绑并发 → 同一订阅两路并发续费恰一成功，key 恰落在
- *      赢家新订阅上（行锁先行裁决；唯一索引兜底语义同 1——见模块头注释）。
+ *      赢家新订阅上（行锁先行判定；唯一索引兜底语义同 1——见模块头注释）。
  *
  * 断言口径：金额 Decimal 精确比较；账本不变量复用 real-pg.assertLedgerCoherent
  * （Σ腿=0 / 腿链连续 / 余额=末腿 / in_flight 投影——settlement 套件同款守卫）。
- * 默认门禁排除（铁律 14），经 test:real（DB_TEST_URL / DATABASE_URL）显式运行。
+ * 默认门禁排除，经 test:real（DB_TEST_URL / DATABASE_URL）显式运行。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql, type SQL } from 'drizzle-orm';
@@ -43,7 +42,9 @@ function businessOf(error: unknown): { code: string; reason: unknown } {
     let cur: unknown = error;
     for (let i = 0; cur != null && i < 5; i += 1) {
       const e = cur as Record<string, unknown>;
-      chain.push(`${String(e.name)}: code=${String(e.code)} errno=${String(e.errno)} msg=${String(e.message).slice(0, 60)}`);
+      chain.push(
+        `${String(e.name)}: code=${String(e.code)} errno=${String(e.errno)} msg=${String(e.message).slice(0, 60)}`,
+      );
       cur = e.cause;
     }
     throw new Error(`expected business rejection, got:\n${chain.join('\n')}`);
@@ -139,7 +140,7 @@ function partition<T>(results: PromiseSettledResult<T>[]): {
     const planId = await seedPlan({ name: 'race1档', price: '30', quota: '100', sortOrder: 1 });
 
     // 新用户无有效订阅——预检 lockActiveSubscriptionForUser 无行可锁，
-    // 两路同时过检；user_subscriptions_one_active_uq 是唯一裁决者
+    // 两路同时过检；唯一赢家由 user_subscriptions_one_active_uq 决定
     const { winner, loserReason } = await partition(
       await Promise.allSettled([
         subscriptions.purchase({ operationId: 'subrace1-a', userId, planId, quantity: 1 }),

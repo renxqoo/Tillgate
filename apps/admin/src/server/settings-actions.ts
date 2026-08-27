@@ -32,7 +32,7 @@ export async function updateBillingTimezoneAction(timezone: string): Promise<{
   }
 }
 
-// ---- 第三方集成动态配置（docs/integration-settings/DESIGN.md §4.1）----
+// ---- 第三方集成动态配置 ----
 
 /** 集成设置项（GET 列表元素/PUT 响应；secret 字段为掩码回显） */
 export interface IntegrationSettingItem {
@@ -62,7 +62,7 @@ export async function getIntegrationSettingsAction(): Promise<{
 }
 
 /** 集成更新（字段三态：缺席=保持 / null=清除 / 值=设置）；
- * totpCode = step-up 强制（ADR-0011——服务端验证当前管理员验证器，未绑定者拒绝）。
+ * totpCode = step-up 强制（服务端验证当前管理员验证器，未绑定者拒绝）。
  * 失败在 action 内翻译成 error 字段（ApiError.message）——Server Action 直接抛错
  * 会被 Next 脱敏成「unexpected response」弹错，错误细节到不了 toast */
 export async function updateIntegrationAction(
@@ -81,7 +81,7 @@ export async function updateIntegrationAction(
   }
 }
 
-/** 注册送礼金额读（Turnstile 停用联动警告用——DESIGN §5 D11） */
+/** 注册送礼金额读（Turnstile 停用联动警告用） */
 export async function getMarketingSignupGiftAction(): Promise<{ signupGiftAmount: string | null }> {
   try {
     const res = await adminApi().get<{ signupGiftAmount: string }>('/v1/marketing/settings');

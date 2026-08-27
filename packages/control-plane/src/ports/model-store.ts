@@ -1,14 +1,14 @@
 /**
  * ModelStore port：模型映射（对外名→真实模型）与渠道绑定的持久化边界。
- * 报价候选链解析（findActiveBy*）与在架目录读（listEnabledModels）是网关热路径——
- * 不在此（inference 波次 G1）；本 port 只覆盖管理面 CRUD/绑定/探针读/目录比对读。
+ * 网关热路径读（findActiveBy* / listEnabledMappings）见文件尾「网关热路径读」分区；
+ * 其余方法覆盖管理面 CRUD/绑定/探针读/目录比对读。
  */
 import type { DbLike } from '@tillgate/db';
 import type { BillingConfig } from '../domain/model/model';
 import type { ListQuery, ListResult } from '../domain/list';
 
 /**
- * 网关热路径读行（G1，gateway P5 波）：在架映射的报价快照原料——价格/计价维度/
+ * 网关热路径读行：在架映射的报价快照原料——价格/计价维度/
  * 分组键/免费标记/fallback 链/策略配置。快照的最终组装（费率卡系数、请求体单位上界）
  * 在 apps/gateway 的 catalog-port 桥（billing 纯函数 + 本行原料）。
  */
@@ -177,7 +177,7 @@ export interface ModelStore {
   ): Promise<Array<{ mappingId: number; externalName: string; realModel: string }>>;
   /** 绑定到渠道的在册映射数（渠道删除守卫：>0 → channel_has_models；已删除映射的残留绑定不计） */
   countActiveMappingsByChannel(db: DbLike, channelId: number): Promise<number>;
-  // ---- 网关热路径读（G1，gateway P5 波；v1 findActiveBy* / listEnabledModels 语义） ----
+  // ---- 网关热路径读 ----
   /** 按对外名查在架映射（status=0 且未删除）；无/下架/已删除返回 null */
   findActiveByExternalName(db: DbLike, externalName: string): Promise<ActiveMappingRow | null>;
   /** 批量查在架映射（fallback 链展开）；空入参返回空表 */

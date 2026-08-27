@@ -1,20 +1,13 @@
 import { jsonb } from './jsonb.js';
 /**
- * 幂等操作档案表（自 packages/ledger-core/src/schema.ts 平移——表定义唯一家收敛到本包）：
+ * 幂等操作档案表（表定义唯一家在本包）：
  *
  *   ledger_operations   operation_id 全局唯一（幂等键=调用方设计责任）+ fingerprint
  *                       （canonical 参数指纹——同键不同参=冲突）+ receipt（回执 jsonb——
  *                       重放的原样归还物）。操作行与业务写在同一事务：要么同生
  *                       （执行完成且回执落档）要么同死（execute 抛错整体回滚）。
  */
-import {
-  bigserial,
-  index,
-    pgTable,
-  timestamp,
-  uniqueIndex,
-  varchar,
-} from 'drizzle-orm/pg-core';
+import { bigserial, index, pgTable, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 
 export const ledgerOperations = pgTable(
   'ledger_operations',

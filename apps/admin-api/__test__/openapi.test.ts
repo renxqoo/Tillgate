@@ -1,5 +1,5 @@
 /**
- * OpenAPI 生成链门禁（总纲 P3/admin-api 侧）：
+ * OpenAPI 生成链门禁（admin-api 侧）：
  *   1. 入库产物与内存重生成逐字节相等——禁止手改（generator 是唯一写入方）;
  *   2. 端点词表封闭：method+path 全集快照（增删端点 = registry 变更 → 必须同步本表
  *      并重生成产物,一处不落即红）;

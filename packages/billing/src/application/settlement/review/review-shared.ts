@@ -1,7 +1,7 @@
 /**
- * 死信复核共享契约（U6）：命令守卫与审计 port。
- * 审计口径（MIGRATION-U6 §2）：复核是资金敏感操作——审计与业务同事务，
- * port 由 app 装配桥接 observability writeAudit（G1 同口径）；缺省丢弃（测试缝）。
+ * 死信复核共享契约：命令守卫与审计 port。
+ * 审计口径：复核是资金敏感操作——审计与业务同事务，
+ * port 由 app 装配桥接 observability writeAudit；缺省丢弃（测试缝）。
  */
 import { BillingErrors } from '../../../domain/errors.js';
 import type { WalletTx } from '../../../ports/wallet-store.js';

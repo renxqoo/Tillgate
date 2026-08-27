@@ -1,7 +1,7 @@
 /**
- * 密码域测试(v1 identity-core password.test + identity/password.test 合并迁移):
+ * 密码域测试:
  * scrypt 往返、存储格式快照、自描述参数、哑哈希恒定时间、脏 stored 恒 false、
- * 策略矩阵、超长输入不崩(安全用例随迁)。
+ * 策略矩阵、超长输入不崩。
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -38,7 +38,7 @@ describe('hashPassword / verifyPassword 往返', () => {
   });
 
   it('自描述参数:历史 N=16384 哈希按行内参数可验(v1 兼容口径)', async () => {
-    // 用 v1 自述参数形态构造历史哈希(N=16384),keylen 跟随存储长度
+    // 用自描述参数形态构造历史哈希(N=16384),keylen 跟随存储长度
     const { randomBytes, scrypt } = await import('node:crypto');
     const salt = randomBytes(16);
     const key = await new Promise<Buffer>((resolve, reject) => {

@@ -43,7 +43,7 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
     );
     const { readdirSync } = await import('node:fs');
     await db.execute(sql.raw(`create schema ${schema}`));
-    // 回放范围：0000–0054（db IMPLEMENTATION §6 探针结论的空库可推进范围）
+    // 回放范围：0000–0054（空库可推进的迁移范围）
     // + 独立 provision 风格加列件（0060-0064：api_keys.allow_payg_fallback /
     //   model_mappings.billing_config / providers.vendor / cache_write_price 族——
     //   if-not-exists、不依赖 identity 链；目录/渠道/鉴权读需要）
@@ -184,7 +184,7 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
       priority: 2,
       weight: 3,
     });
-    // 未绑卡用户 → 快照照常（无卡恒系数 1——v1 buildQuote 语义）
+    // 未绑卡用户 → 快照照常（无卡恒系数 1）
     const other = await catalog.findMapping('it-gpt-x', {
       userId: 999_999,
       body: {},

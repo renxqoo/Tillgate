@@ -1,7 +1,7 @@
 'use client';
 
 // 集成字段编辑弹窗（spec 驱动字段面：secret write-only——留空=保持、勾选清除提交 null；
-// 启停不经弹窗——独立卡卡面启停钮触达，2026-08-25 二次裁决 SMTP 亦独立成卡后
+// 启停不经弹窗——独立卡卡面启停钮触达，SMTP 独立成卡后
 // 本弹窗恒为纯字段编辑）。
 
 import { Button, FieldDescription, FieldLabel, FormItem, Input } from '@tillgate/ui';
@@ -132,7 +132,7 @@ export function IntegrationFormDialog({
 /** secret 字段名集合（掩码回显只标已设置项；未设置的 secret 字段按规格名单标记） */
 const SECRET_FIELD_NAMES = new Set(['clientSecret', 'pass', 'secretKey', 'key', 'webhookSecret']);
 
-/** step-up 码框（ADR-0011：敏感写操作强制 TOTP——原生校验 6 位，模块级哑件拆分） */
+/** step-up 码框（敏感写操作强制 TOTP——原生校验 6 位，模块级哑件拆分） */
 function StepupField({ itemId }: { itemId: string }) {
   const t = useTranslations('settings.integrations');
   return (

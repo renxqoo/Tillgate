@@ -5,7 +5,8 @@
  * pgSqlState 是纯 SQLSTATE 分类函数（trace-receiver 同款白名单例外）。
  */
 import { Hono } from 'hono';
-import { dbBudgetMiddleware,
+import {
+  dbBudgetMiddleware,
   bodyParserLimit,
   corsPreflight,
   errorHandler,
@@ -62,7 +63,7 @@ export interface ClientApiDeps {
   readonly referrals: ReferralsDeps;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 应用装配:错误处理/中间件栈/路由挂载线性平铺(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 应用装配:错误处理/中间件栈/路由挂载线性平铺
 export function createClientApiApp(deps: ClientApiDeps): Hono<SessionEnv> {
   const app = new Hono<SessionEnv>();
   const session = sessionMiddleware(deps.validateSession);

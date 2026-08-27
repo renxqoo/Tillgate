@@ -6,8 +6,6 @@
  * 语义：同 operationId + 同 canonical 指纹 → 重放首次回执；
  *       同 operationId + 异指纹 → idempotency_conflict（409）。
  * 操作行与 execute 的业务写在同一事务（调用方传入 tx 或本用例自开）。
- * D8 收敛：旧仓 ledger-core 引擎与 service 平行实现合一——严格指纹 + 16KB 回执上限
- * 吸收自 ledger-core（回执超限即缺陷）；D7 的 operationId 词表归本包 domain。
  */
 import { DefectError } from '@tillgate/errors';
 import { BillingErrors } from '../domain/errors.js';
@@ -19,7 +17,7 @@ import type { WalletTx } from '../ports/wallet-store.js';
 /** 回执序列化上限（16KB——超限即缺陷：回执是重放凭据不是数据仓库） */
 const MAX_RECEIPT_BYTES = 16_384;
 
-/** operationId 契约（1-128 位可见标识符；D7 词表归 domain） */
+/** operationId 契约（1-128 位可见标识符；词表校验在 domain） */
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export function assertOperationId(operationId: string): void {

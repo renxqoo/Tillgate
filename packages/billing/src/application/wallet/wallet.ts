@@ -10,8 +10,8 @@
  *   - 出账守卫唯一口径（domain exposure）；结算 ≤ 冻结额（内核保证）
  *   - 释放审计在冻结单本身，不落交易（零额噪声行取消）
  *
- * U2 计费授权链可按需只取个别动词工厂（createAuthorizeUseCase 等），无须整体装配。
- * freeze 动词不在活路径（旧仓无生产调用方，状态由管理面置位）——归属 admin 迁移单元裁决。
+ * 计费授权链可按需只取个别动词工厂（createAuthorizeUseCase 等），无须整体装配。
+ * freeze 动词不在活路径（状态由管理面置位）。
  */
 import type { AccountSnapshot } from '../../domain/wallet/accounts.js';
 import { assertCurrency, type WalletGuards } from '../../domain/wallet/guards.js';
@@ -80,7 +80,7 @@ export interface WalletApi {
   accounts(userId: number): Promise<AccountSnapshot[]>;
   /** 用户资金流水（腿级，id 倒序游标分页；读侧） */
   statement(input: StatementQuery): Promise<StatementItemView[]>;
-  /** 返利流水管理读侧（v1 marketing listPayouts;accounts G3 落位——admin-api P3 消费） */
+  /** 返利流水管理读侧（admin-api 消费） */
   referralPayouts(input: ReferralPayoutsQuery): Promise<ReferralPayoutsResult>;
 }
 

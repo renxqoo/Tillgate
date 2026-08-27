@@ -1,5 +1,5 @@
 /**
- * postgres 适配器真实 PG 行为等价测试(铁律 14:默认门禁按文件名排除,test:real 显式运行)。
+ * postgres 适配器真实 PG 行为等价测试(默认门禁按文件名排除,test:real 显式运行)。
  * 覆盖 SQL 专属语义:FOR UPDATE SKIP LOCKED 并发单赢家、三列 CAS fencing(错 token/
  * 过期租约零效果)、dedupe 唯一索引、渠道重名 23505 翻译、jsonb 渠道进度追加、
  * 退避/终态表达式。

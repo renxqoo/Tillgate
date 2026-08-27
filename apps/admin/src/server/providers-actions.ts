@@ -24,8 +24,8 @@ export async function createProviderAction(input: ProviderInput): Promise<{ erro
     await adminApi().post('/v1/providers', {
       name: input.name.trim(),
       baseUrl: input.baseUrl.trim(),
-      // protocol 缺省不补——v1 前端 SUPPORTED_PROTOCOLS[0] 默认改由 control-plane
-      // defaultProtocol('openai-compatible')兜底（词表不在 app 复制,P6/D1）
+      // protocol 缺省不补——默认值由 control-plane
+      // defaultProtocol('openai-compatible')兜底（词表不在 app 复制）
       ...(input.protocol?.trim() ? { protocol: input.protocol.trim() } : {}),
       vendor: input.vendor?.trim() ? input.vendor.trim() : null,
       status: input.status ?? 0,

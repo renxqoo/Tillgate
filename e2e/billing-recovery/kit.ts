@@ -1,20 +1,18 @@
 /**
- * worker 全链 e2e 装置（v1 gateway e2e-worker 搬迁;P7）：网关真装配世界
+ * worker 全链 e2e 装置：网关真装配世界
  * （e2e/gateway/kit——隔离 schema + mock chat 上游 + 种子渠道/映射）+ worker
  * 全真装配（assembleWorker,loadWorkerConfig 最小 env）共库;视频生成环的
- * MiniMax 任务协议上游在本地 mock（v1 createServer 形态——gateway/upstream.ts
+ * MiniMax 任务协议上游在本地 mock（gateway/upstream.ts
  * 只覆盖 openai-compatible chat 族,任务族协议不在其内）。
  *
- * 驱动口径（P7 与 v1 的装置差异,断言语义不改）：
- * - v1 真 worker 三定时器 100ms 节奏自驱 → v2 assembly.runners 直驱（settle/
- *   generation 入口即定时器 tick 的同一生产函数——数据接收仍由真实 worker
- *   装配完成,只是不经定时器）;停机语义用真 scheduler（start 消费 → stop 停止）。
- * - v1 共享 dev 库 + 预算快照还原/逐表清理 → v2 隔离 schema 世界（drop cascade
- *   自清,v1 ⑯b/⑯c 的手工清理清单消亡）。
- * - v1 worker 必配 REDIS_URL（BullMQ 唤醒）→ v2 迁移期一度去 Redis →
- *   2026-08-26 BullMQ 结算调度回归:装置注入独立前缀的 REDIS_URL（队列随
- *   schema 世界隔离;runners.settle 直驱不经队列,⑯c 真 scheduler tick 走
- *   sweep 入队 + BullMQ worker 消费）。
+ * 驱动口径：
+ * - settle/generation 环走 assembly.runners 直驱（入口即定时器 tick 的同一
+ *   生产函数——数据接收仍由真实 worker 装配完成,只是不经定时器）;停机语义
+ *   用真 scheduler（start 消费 → stop 停止）。
+ * - 隔离 schema 世界（drop cascade 自清）。
+ * - 装置注入独立前缀的 REDIS_URL（BullMQ 队列随 schema 世界隔离;
+ *   runners.settle 直驱不经队列,⑯c 真 scheduler tick 走 sweep 入队 +
+ *   BullMQ worker 消费）。
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
@@ -25,7 +23,7 @@ import { loadWorkerConfig } from '../../apps/worker/src/config.js';
 import { assembleWorker } from '../../apps/worker/src/assembly.js';
 import type { WorkerAssembly } from '../../apps/worker/src/assembly.js';
 
-/** mock MiniMax 视频上游（v1 e2e-worker createServer 形态迁移）：
+/** mock MiniMax 视频上游：
  *  提交 → task_id;查询 2 次 Queueing 后 Success（file_id + 宽高）;files/retrieve 换 url */
 export interface VideoUpstream {
   server: Server;

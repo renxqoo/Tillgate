@@ -66,7 +66,7 @@ interface PageProps {
 }
 
 /**
- * 钱包流水（游标分页——D-A：v1 页码条改「加载更多」，URL 状态锚 ?before=）。
+ * 钱包流水（游标分页——「加载更多」，URL 状态锚 ?before=）。
  */
 export default async function TransactionsPage({ searchParams }: PageProps) {
   const sp = await searchParams;

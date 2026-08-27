@@ -1,6 +1,6 @@
 /**
- * 架构边界门禁（P5 红线的可执行形态；trace-receiver 同款手法）：
- * ① src 文件集合快照（目标树 §3 L86–96 的机器锁死——新增/删除文件即红）；
+ * 架构边界门禁：
+ * ① src 文件集合快照（新增/删除文件即红）；
  * ② Db/DbTx/drizzle 符号只在装配面（assembly/config/index/shutdown）；
  * ③ ./composition 子入口只在 assembly.ts（唯一装配根）；
  * ④ 跨包 import 只走包名 exports（禁 /src/ 深导入）。

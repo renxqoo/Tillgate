@@ -2,7 +2,7 @@
  * 管理员登录验证码邮件（identity Mailer port 的 SMTP/nodemailer 实现,
  * client-api smtp-login-mailer 同款——模板归 identity renderLoginCodeEmail 单源,
  * 本适配器只做传输）。由 config.smtp 构造:null = 邮件通道 fail-closed
- * （2FA 随之不可开启/不可用,v1 语义）。装配面文件:仅 assembly 引用。
+ * （2FA 随之不可开启/不可用）。装配面文件:仅 assembly 引用。
  */
 import nodemailer from 'nodemailer';
 import { renderLoginCodeEmail, type MailBrand, type Mailer } from '@tillgate/identity';

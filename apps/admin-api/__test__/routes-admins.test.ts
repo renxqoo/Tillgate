@@ -1,7 +1,7 @@
 /**
- * 管理员管理面契约测试（RBAC admins 域——docs/admin-rbac/DESIGN §2.5）：
+ * 管理员管理面契约测试（RBAC admins 域）：
  * 列表信封/创建双动词编排（含凭据被占补偿回滚——不留废号）/PATCH 部分更新 +
- * 自改守卫（D6）/权限面（非 super_admin 403——admins 域独占）。
+ * 自改守卫/权限面（非 super_admin 403——admins 域独占）。
  * 审计旁路形状由 e2e/admin/rbac 真装配断言（fakeDeps 的 postAudit 缺省不可覆写）。
  */
 import { describe, expect, it, vi } from 'vitest';

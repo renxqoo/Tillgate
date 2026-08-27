@@ -1,7 +1,6 @@
 /**
- * 会话与吊销测试(v1 session.test + revocation.test 迁移):载荷契约、跨 realm
- * 互验拒绝、validate 链(jti/锚点)、logout、GREATEST 单调、realm 白名单双路径
- * (B08 回归)。
+ * 会话与吊销测试:载荷契约、跨 realm
+ * 互验拒绝、validate 链(jti/锚点)、logout、GREATEST 单调、realm 白名单双路径。
  */
 import { describe, expect, it } from 'vitest';
 import { createTestHarness } from '../src/testing/harness.js';
