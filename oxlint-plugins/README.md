@@ -11,13 +11,21 @@ oxlint-plugins/
 ├── package.json            type: module + test/typecheck 脚本(非 workspace,不进 turbo 门禁)
 ├── tsconfig.json           继承根 tsconfig.base.json,插件 TS 的编辑器与 tsc 检查上下文
 ├── README.md
-└── tillgate/               一个插件一个文件夹,插件之间互不依赖
-    ├── index.ts            definePlugin 汇总入口,meta.name 即规则 ID 前缀
-    ├── rules/              一条规则一个文件 + 就近的 <rule>.test.ts
-    │   ├── no-multi-component.ts
-    │   └── no-multi-component.test.ts
+├── tillgate/               一个插件一个文件夹,插件之间互不依赖
+│   ├── index.ts            definePlugin 汇总入口,meta.name 即规则 ID 前缀
+│   ├── rules/              一条规则一个文件 + 就近的 <rule>.test.ts
+│   │   ├── no-multi-component.ts
+│   │   └── no-multi-component.test.ts
+│   └── test/
+│       └── utils.ts        测试 harness:临时目录写样本,拉起真实 oxlint 断言
+└── boundaries/             包边界门禁(@tillgate/* import 边界,全部由 lint 承担)
+    ├── index.ts
+    ├── utils.ts            workspace 发现 + exports 查表(按仓库根缓存)
+    ├── rules/
+    │   ├── no-deep-import.ts / no-deep-import.test.ts
+    │   └── no-workspace-escape.ts / no-workspace-escape.test.ts
     └── test/
-        └── utils.ts        测试 harness:临时目录写样本,拉起真实 oxlint 断言
+        └── utils.ts        测试 harness:临时目录搭最小 monorepo
 ```
 
 新增规则:`rules/` 下新建 `<rule>.ts`,`export default defineRule({ meta, create })`,
@@ -41,6 +49,27 @@ oxlint-plugins/
 
 只作用于 `.tsx`;`.ts` 里的纯函数与多个 hook 合法,不受约束。
 `const X = memo(() => ...)` 这类包装写法当前不识别(仓库无此形态)。
+
+## 插件 boundaries
+
+包边界门禁的逐文件 import 检查(迁移自已移除的 `scripts/check-package-boundaries.ts`,
+边界检查自此全部由 lint 承担)。
+
+### boundaries/no-deep-import
+
+`@tillgate/*` import 必须命中目标包 package.json 的显式 exports:
+
+- 深导入(如 `@tillgate/x/src/...`)与未登记子路径 → `deep`;
+- import 不存在的 workspace → `unknown`;
+- packages 里的文件 import app 包 → `pkg-to-app`。
+
+AST 解析替代原脚本的正则扫描,`import()` 动态导入同样覆盖;
+workspace 定位依赖本仓布局约定(workspace 只有一层 apps/_、packages/_,不嵌套)。
+
+### boundaries/no-workspace-escape
+
+- 相对 import 越出所在 workspace 根 → `escape`(阻止用 `../` 绕过 exports);
+- 指向 `apps/` 的深路径 import → `app-path`。
 
 ## 接入方式
 
