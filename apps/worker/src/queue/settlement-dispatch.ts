@@ -6,7 +6,7 @@
  * 直驱、process=两者共用的处理真相）。
  */
 import type { SettlementApi } from '@tillgate/billing';
-import type { Logger } from '@tillgate/runtime';
+import type { Logger, SentinelTopology } from '@tillgate/runtime';
 import { createSettlementDirectJob, createSettlementProcessor } from '../jobs/settlement';
 import { createSettlementSweepJob } from '../jobs/settlement-sweep';
 import { createSettlementQueue } from './settlement-queue';
@@ -22,7 +22,7 @@ export interface SettlementDispatchConfig {
     readonly prefix: string;
     readonly concurrency: number;
     readonly maxAttempts: number;
-  };
+  } & SentinelTopology;
 }
 
 export interface SettlementDispatch {
@@ -49,10 +49,7 @@ export function createSettlementDispatch(deps: {
     onError: deps.onError,
   });
   const queue = createSettlementQueue({
-    redisUrl: deps.config.bullmq.redisUrl,
-    prefix: deps.config.bullmq.prefix,
-    concurrency: deps.config.bullmq.concurrency,
-    maxAttempts: deps.config.bullmq.maxAttempts,
+    ...deps.config.bullmq,
     backoffBaseMs: deps.config.backoffBaseMs,
     process,
     logger: deps.logger,

@@ -21,18 +21,15 @@ const config = (overrides: Record<string, string | undefined> = {}) =>
 describe('assembleWorker', () => {
   const assemblies: WorkerAssembly[] = [];
   // timeout 放宽:不可达 Redis 的有界收口竞速最多 10s/实例
-  afterAll(
-    async () => {
-      for (const assembly of assemblies) {
-        // BullMQ 消费端先收口(断 ioredis 重连定时器),再收 db 池
-        await assembly.settleQueue.close().catch(() => {});
-        await assembly.closeDb().catch(() => {});
-      }
-    },
-    60_000,
-  );
+  afterAll(async () => {
+    for (const assembly of assemblies) {
+      // BullMQ 消费端先收口(断 ioredis 重连定时器),再收 db 池
+      await assembly.settleQueue.close().catch(() => {});
+      await assembly.closeDb().catch(() => {});
+    }
+  }, 60_000);
 
-  it('off 模式全链装配：七个 job 注册 + 唤醒关闭 + 健康深度报告形状', () => {
+  it('off 模式全链装配：七个 job 注册 + 唤醒关闭 + 健康深度报告形状', async () => {
     const assembly = assembleWorker(config());
     assemblies.push(assembly);
     expect([...assembly.jobs].toSorted()).toEqual([
@@ -46,6 +43,7 @@ describe('assembleWorker', () => {
     ]);
     expect(assembly.wakeup).toBeNull();
     expect(typeof assembly.abandonOwnedClaims).toBe('function');
+    await expect(assembly.healthState.ready()).resolves.toBe(false);
     const deep = assembly.healthState.deep() as Record<string, unknown>;
     expect(deep.owner).toBe(`worker-${process.pid}`);
     expect(deep.running).toBe(false); // 未 start

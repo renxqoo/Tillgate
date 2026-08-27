@@ -7,6 +7,8 @@
  * 桥接说明：inference 蛇形信号词表 ↔ billing 点分词表的映射与 gateway
  * billing-port 同款（apps 互不依赖，共享真相是两包的类型本身）。
  */
+/* eslint-disable max-lines -- 装配根 composition root：线性依赖组装，行数棘轮与
+   下方 max-lines-per-function 同口径（拆段/拆文件只会层层透传上下文） */
 import { createTransport } from 'nodemailer';
 import { assertSafeUrl, createAi } from '@tillgate/ai';
 import type { Ai } from '@tillgate/ai';
@@ -103,10 +105,7 @@ const TICK_MARGIN = 2;
  * 前提是池 ≥ 最大并发；不满足 = 检出排队起点，node 塌吞吐 / Bun SQL 楔死
  * （F-6）——fail-fast 胜过带病运行。
  */
-function assertPoolCoversConcurrency(
-  config: WorkerConfig,
-  ticks: readonly string[],
-): void {
+function assertPoolCoversConcurrency(config: WorkerConfig, ticks: readonly string[]): void {
   const tickDemand = ticks.reduce((sum, name) => sum + (TICK_CONN_DEMAND[name] ?? 1), 0);
   const worstCase = config.settle.bullmq.concurrency + tickDemand + TICK_MARGIN;
   if (config.dbPool.poolMax < worstCase) {
@@ -153,6 +152,7 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
     serviceVersion: config.serviceVersion,
     mode: config.otelMode,
     ...(config.otelEndpoint != null ? { endpoint: config.otelEndpoint } : {}),
+    ...(config.otelAuthToken != null ? { authToken: config.otelAuthToken } : {}),
     ...(config.otelMode === 'otlp'
       ? { metricsExportIntervalMs: config.otelMetricsIntervalMs }
       : {}),
@@ -447,7 +447,19 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
 
   const healthState: WorkerHealthState = {
     live: () => scheduler.isRunning(),
-    ready: () => scheduler.isRunning(),
+    // readyz 三探测（scheduler + PG + BullMQ Redis，DESIGN §5 口径）：未启动短路
+    // （不触依赖），探测失败 = 不就绪（fail-closed，warn 留痕——依赖侧日志不覆盖 ping 拒绝）。
+    ready: async () => {
+      if (!scheduler.isRunning()) return false;
+      try {
+        await ping(db);
+        await settleQueue.ping();
+        return true;
+      } catch (error) {
+        logger.warn({ err: String(error) }, 'worker readiness probe failed');
+        return false;
+      }
+    },
     deep: () => ({
       owner: config.ownerId,
       running: scheduler.isRunning(),

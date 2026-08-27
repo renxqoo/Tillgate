@@ -10,6 +10,7 @@
 import IORedis from 'ioredis';
 import { Queue, Worker } from 'bullmq';
 import type { JobsOptions } from 'bullmq';
+import { resolveRedisConnection, type SentinelTopology } from '@tillgate/runtime';
 import type { SettlementProcessOutcome } from '../jobs/settlement.js';
 
 /** 有界收口竞速（模块级：close 语义单一定义；副作用式绕开 then 返回值规则） */
@@ -39,11 +40,13 @@ export interface SettlementQueueFace {
    * 归还→sweep 永久 no-op）。出口 = 终态残留 remove 后重投。
    */
   enqueueMany(requestIds: readonly string[]): Promise<void>;
+  /** readiness 真实出口：验证 BullMQ 当前可连接的主节点。 */
+  ping(): Promise<void>;
   /** 优雅收口：停消费 → 关队列 → 断 Redis 连接 */
   close(): Promise<void>;
 }
 
-export interface SettlementQueueEnv {
+export type SettlementQueueEnv = {
   readonly redisUrl: string;
   readonly prefix: string;
   readonly concurrency: number;
@@ -56,16 +59,18 @@ export interface SettlementQueueEnv {
     info(obj: unknown, msg: string): void;
     error(obj: unknown, msg: string): void;
   };
-}
+} & SentinelTopology;
 
 // eslint-disable-next-line max-lines-per-function -- BullMQ 装配工厂:连接/队列/消费端/事件一次成型,拆分只透传句柄
 export function createSettlementQueue(env: SettlementQueueEnv): SettlementQueueFace {
   // BullMQ 硬性要求 maxRetriesPerRequest:null(阻塞命令语义);不复用 runtime
   // 通用客户端(maxRetriesPerRequest:1 形态冲突)
-  const connection = new IORedis(env.redisUrl, {
-    maxRetriesPerRequest: null,
-    enableOfflineQueue: true,
-  });
+  const connectionOptions = { maxRetriesPerRequest: null, enableOfflineQueue: true } as const;
+  const target = resolveRedisConnection(env.redisUrl, env);
+  const connection =
+    target.kind === 'direct'
+      ? new IORedis(target.url, connectionOptions)
+      : new IORedis({ ...target.options, ...connectionOptions });
   const jobOptions: JobsOptions = {
     attempts: env.maxAttempts,
     backoff: { type: 'exponential', delay: env.backoffBaseMs },
@@ -136,6 +141,9 @@ export function createSettlementQueue(env: SettlementQueueEnv): SettlementQueueF
         })),
       );
       await reenqueueTerminalRetained(requestIds);
+    },
+    async ping() {
+      await connection.ping();
     },
     async close() {
       // 有界收口:Redis 不可达时 BullMQ close 会等重试循环——竞速超时后强制断连
