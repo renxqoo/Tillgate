@@ -264,6 +264,9 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     ...(mailer != null ? { mailer } : {}),
     sessionRevocation,
     auditSink: createIdentityAuditSinkBridge((dbLike, entry) => writeAudit(dbLike, entry)),
+    // TOTP secret 静态加密（S1：identity_totp.secret 不再明文落库；遗留明文行
+    // 读取回落 + 重挂换密文收敛——见 identity loadedSecret）
+    cipher: createCipher(config.encryptionKey),
   });
 
   // billing:postgres store 细粒度直组(store 引用留在手上——operations 幂等用例需要)

@@ -240,4 +240,46 @@ describe('cipher 密文落库(SecretCipher)', () => {
       api.mfa.confirmTotp({ userId: 1, code: currentCode(h, enrolled.secret) }),
     ).resolves.toBeTruthy();
   });
+
+  it('遗留明文行（装配注入 cipher 前写入）验证不回归——格式不符回落明文', async () => {
+    const h = harness();
+    const { createIdentity } = await import('../src/identity.js');
+    const { TEST_CONFIG } = await import('../src/testing/harness.js');
+    // 旧形态装配：未注入 cipher → 明文落库
+    const legacy = createIdentity({
+      db: h.ctx.db,
+      txRetry: h.ctx.txRetry,
+      clock: h.ctx.clock,
+      logger: { warn: () => {} },
+      config: TEST_CONFIG,
+      store: h.store,
+    });
+    const enrolled = await legacy.mfa.enrollTotp({ userId: 1 });
+    await legacy.mfa.confirmTotp({ userId: 1, code: currentCode(h, enrolled.secret) });
+    expect((await h.store.loadTotp(h.ctx.db, 1))?.secret).toBe(enrolled.secret); // 明文行
+    // 新形态装配（cipher 已注入）：同一明文行仍可验证（重挂后即换密文）
+    const upgraded = createIdentity({
+      db: h.ctx.db,
+      txRetry: h.ctx.txRetry,
+      clock: h.ctx.clock,
+      logger: { warn: () => {} },
+      config: TEST_CONFIG,
+      store: h.store,
+      cipher: {
+        encrypt: (plain) => `enc:v1:${Buffer.from(plain).toString('base64')}`,
+        decrypt: (stored) => {
+          if (!stored.startsWith('enc:v1:')) {
+            throw Object.assign(new Error('invalid ciphertext format'), {
+              code: 'runtime.cipher.invalid_format',
+            });
+          }
+          return Buffer.from(stored.slice(8), 'base64').toString();
+        },
+      },
+    });
+    h.advanceClockMs(30_000); // 步进单调 CAS：新步号验证
+    await expect(
+      upgraded.mfa.verify({ userId: 1, code: currentCode(h, enrolled.secret) }),
+    ).resolves.toEqual({ method: 'totp' });
+  });
 });

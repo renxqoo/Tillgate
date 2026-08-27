@@ -24,7 +24,17 @@ export function storedSecret(cipher: SecretCipher | undefined, plain: string): s
 }
 
 export function loadedSecret(cipher: SecretCipher | undefined, storedValue: string): string {
-  return cipher ? cipher.decrypt(storedValue) : storedValue;
+  if (!cipher) return storedValue;
+  try {
+    return cipher.decrypt(storedValue);
+  } catch (error) {
+    // 遗留明文行（装配注入 cipher 之前写入）：密文格式校验不符 → 原样返回。
+    // 收敛条件：遗留行经重挂（enroll 换钥）逐个替换为密文，清零后移除本回落。
+    if ((error as { code?: string }).code === 'runtime.cipher.invalid_format') {
+      return storedValue;
+    }
+    throw error;
+  }
 }
 
 export async function enrollTotp(

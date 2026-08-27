@@ -7,7 +7,7 @@
  */
 import type { Db, TxRetryPolicy } from '@tillgate/db';
 import type { IntegrationSettingsReader } from '@tillgate/control-plane';
-import type { Logger } from '@tillgate/runtime';
+import { createCipher, type Logger } from '@tillgate/runtime';
 import type { Redis } from 'ioredis';
 import {
   createIdentity,
@@ -150,6 +150,9 @@ export function createIdentityStack(args: {
     captcha,
     sessionRevocation: createRedisSessionRevocation(redis),
     oauthStateStore: createRedisOAuthStateStore(redis),
+    // TOTP secret 静态加密（S1：用户面 MFA 端点开放前即落密文形态；遗留明文行
+    // 读取回落 + 重挂换密文收敛——见 identity loadedSecret）
+    cipher: createCipher(config.ENCRYPTION_KEY),
   });
 
   return {
