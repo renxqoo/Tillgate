@@ -27,6 +27,7 @@ import { geminiNativeRoutes } from '../src/http/routes/native-gemini';
 import { modelsRoutes } from '../src/http/routes/models';
 import { generationRoutes } from '../src/http/routes/generation';
 import { oauthTokenRoutes } from '../src/http/routes/oauth-token';
+import type { AuthFailureGuard } from '@tillgate/runtime';
 import { modalityMultipartRoutes } from '../src/http/routes/modality-multipart';
 import { inferenceEndpoints } from '../src/http/contracts/inference-endpoints';
 import { defined } from './defined';
@@ -69,6 +70,45 @@ function stubInference(over: Partial<Inference> = {}): Inference {
   } as Inference;
 }
 
+/** 记录型守卫（可编程锁定集合） */
+function recordingGuard(lockedKeys: Set<string>): {
+  guard: AuthFailureGuard;
+  calls: { failures: string[]; successes: string[] };
+} {
+  const calls = { failures: [] as string[], successes: [] as string[] };
+  const guard = {
+    isLocked: async (key: string) => ({ locked: lockedKeys.has(key), retryAfterSec: 60 }),
+    recordFailure: async (key: string) => {
+      calls.failures.push(key);
+      return { locked: false, retryAfterSec: 60 };
+    },
+    recordSuccess: async (key: string) => {
+      calls.successes.push(key);
+    },
+  };
+  return { guard, calls };
+}
+
+function oauthApp(guard: AuthFailureGuard) {
+  return withErrorFace(
+    new Hono<AuthEnv>().route(
+      '/oauth/token',
+      oauthTokenRoutes({
+        verifyAppClient: async ({ clientId, clientSecret }) =>
+          clientId === 'app_0123456789abcdef' && clientSecret === 's'
+            ? { id: 5, appId: 'app-1', userId: 42, scope: null }
+            : null,
+        jwtSecret: JWT.secret,
+        tokenTtlSeconds: 3_600,
+        issuer: JWT.issuer,
+        audience: JWT.audience,
+        ipGuard: guard,
+        trustedProxyHops: 0,
+      }),
+    ),
+  );
+}
+
 /** 记录型限流闸（RPM 放行；TPM 预占入参全记录） */
 function recordingGate() {
   const calls = {
@@ -109,7 +149,7 @@ function harness(inference: Inference) {
     '/oauth/token',
     oauthTokenRoutes({
       verifyAppClient: async ({ clientId, clientSecret }) =>
-        clientId === 'ci-1' && clientSecret === 's'
+        clientId === 'app_0123456789abcdef' && clientSecret === 's'
           ? { id: 5, appId: 'app-1', userId: 42, scope: { rpm: 10 } }
           : null,
       jwtSecret: JWT.secret,
@@ -347,7 +387,7 @@ describe('oauth token（三形态 + 闭环）', () => {
     const app = harness(stubInference());
     const ok = await post(app, '/oauth/token', {
       grant_type: 'client_credentials',
-      client_id: 'ci-1',
+      client_id: 'app_0123456789abcdef',
       client_secret: 's',
     });
     expect(ok.status).toBe(200);
@@ -362,14 +402,14 @@ describe('oauth token（三形态 + 闭环）', () => {
     const form = await app.request('/oauth/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: 'grant_type=client_credentials&client_id=ci-1&client_secret=s',
+      body: 'grant_type=client_credentials&client_id=app_0123456789abcdef&client_secret=s',
     });
     expect(form.status).toBe(200);
 
     const basic = await app.request('/oauth/token', {
       method: 'POST',
       headers: {
-        authorization: `Basic ${Buffer.from('ci-1:s').toString('base64')}`,
+        authorization: `Basic ${Buffer.from('app_0123456789abcdef:s').toString('base64')}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify({ grant_type: 'client_credentials' }),
@@ -378,7 +418,7 @@ describe('oauth token（三形态 + 闭环）', () => {
 
     const bad = await post(app, '/oauth/token', {
       grant_type: 'client_credentials',
-      client_id: 'ci-1',
+      client_id: 'app_0123456789abcdef',
       client_secret: 'wrong',
     });
     expect(bad.status).toBe(401);
@@ -386,7 +426,7 @@ describe('oauth token（三形态 + 闭环）', () => {
 
     const badGrant = await post(app, '/oauth/token', {
       grant_type: 'password',
-      client_id: 'ci-1',
+      client_id: 'app_0123456789abcdef',
       client_secret: 's',
     });
     expect(badGrant.status).toBe(400);
@@ -421,7 +461,7 @@ describe('oauth token（三形态 + 闭环）', () => {
     );
     const tokenRes = await post(app, '/oauth/token', {
       grant_type: 'client_credentials',
-      client_id: 'ci-1',
+      client_id: 'app_0123456789abcdef',
       client_secret: 's',
     });
     const { access_token: token } = (await tokenRes.json()) as { access_token: string };
@@ -527,6 +567,42 @@ describe('客户端取消信号贯通（c.req.raw.signal → ChatInput.signal）
     });
     expect(res.status).toBe(201);
     expect((seen[0] as { signal?: AbortSignal }).signal).toBe(controller.signal);
+  });
+});
+
+describe('oauth token 爆破守卫（S7：clientId 校验 + 成功解锁）', () => {
+  it('畸形 clientId（非 app_+16hex）→ 401 且不触守卫（键空间不被任意串污染）', async () => {
+    const { guard, calls } = recordingGuard(new Set());
+    const app = oauthApp(guard);
+    const res = await post(app, '/oauth/token', {
+      grant_type: 'client_credentials',
+      client_id: 'x'.repeat(500),
+      client_secret: 's',
+    });
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as { error: string }).error).toBe('invalid_client');
+    expect(calls.failures).toHaveLength(0); // 不计数、不写键
+  });
+
+  it('client 维被锁 + 合法凭证 → 验证通过并清锁（持有人不被连坐死锁）；错凭证仍 401', async () => {
+    const { guard, calls } = recordingGuard(new Set(['client:app_0123456789abcdef']));
+    const app = oauthApp(guard);
+    const ok = await post(app, '/oauth/token', {
+      grant_type: 'client_credentials',
+      client_id: 'app_0123456789abcdef',
+      client_secret: 's',
+    });
+    expect(ok.status).toBe(200); // 锁定态合法持有人可验证解锁
+    expect(calls.successes).toContain('client:app_0123456789abcdef');
+    const bad = await post(app, '/oauth/token', {
+      grant_type: 'client_credentials',
+      client_id: 'app_0123456789abcdef',
+      client_secret: 'wrong',
+    });
+    expect(bad.status).toBe(401);
+    expect(((await bad.json()) as { error_description: string }).error_description).toContain(
+      'locked',
+    );
   });
 });
 

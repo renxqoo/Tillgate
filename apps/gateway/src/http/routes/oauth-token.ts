@@ -96,16 +96,6 @@ async function recordGuardFailures(deps: OAuthTokenDeps, ip: string, guardKey: s
   }
 }
 
-/** 爆破锁预检：ip/client 任一维已锁 → true（未装配守卫恒 false） */
-async function guardLocked(deps: OAuthTokenDeps, ip: string, guardKey: string): Promise<boolean> {
-  if (deps.ipGuard == null) return false;
-  const [ipLock, keyLock] = await Promise.all([
-    deps.ipGuard.isLocked(ip),
-    deps.ipGuard.isLocked(guardKey),
-  ]);
-  return ipLock.locked || keyLock.locked;
-}
-
 /** 客户端 IP（按装配的 trustedProxyHops 口径） */
 function clientIpOf(deps: OAuthTokenDeps, c: Context): string {
   return trustedClientIp({
@@ -113,6 +103,46 @@ function clientIpOf(deps: OAuthTokenDeps, c: Context): string {
     trustedProxyHops: deps.trustedProxyHops,
     socketAddress: socketAddressFromContext(c),
   });
+}
+
+/** clientId 线格式：app_ + 16 hex（accounts 域生成口径）——守卫键入参先过形状闸 */
+const CLIENT_ID_RE = /^app_[0-9a-f]{16}$/;
+
+/**
+ * 爆破锁 + 凭证校验（S7 语义）：
+ * - IP 维锁 = 快速 401（不进凭证验证——攻击者 IP 不消耗验证成本）；
+ * - 仅 client 维锁时仍验证——合法持有人以正确 secret 解锁（recordSuccess），
+ *   不被他人撞锁连坐到 TTL 自然过期（否则持有人永远无法证明自己）。
+ */
+async function authenticateAgainstGuards(
+  deps: OAuthTokenDeps,
+  args: { ip: string; clientId: string; clientSecret: string },
+): Promise<
+  | { ok: true; app: NonNullable<Awaited<ReturnType<OAuthTokenDeps['verifyAppClient']>>> }
+  | { ok: false; description: string }
+> {
+  const guardKey = `client:${args.clientId}`;
+  const ipLocked = deps.ipGuard != null && (await deps.ipGuard.isLocked(args.ip)).locked;
+  if (ipLocked) return { ok: false, description: 'source locked, try again later' };
+  const clientLocked = deps.ipGuard != null && (await deps.ipGuard.isLocked(guardKey)).locked;
+  const app = await deps.verifyAppClient({
+    clientId: args.clientId,
+    clientSecret: args.clientSecret,
+  });
+  if (app == null) {
+    await recordGuardFailures(deps, args.ip, guardKey);
+    return {
+      ok: false,
+      description: clientLocked
+        ? 'source locked, try again later'
+        : 'invalid credentials or application disabled',
+    };
+  }
+  if (clientLocked && deps.ipGuard != null) {
+    const unlock = deps.ipGuard.recordSuccess?.(guardKey);
+    if (unlock != null) await unlock.catch(() => {});
+  }
+  return { ok: true, app };
 }
 
 export function oauthTokenRoutes(deps: OAuthTokenDeps): Hono {
@@ -139,24 +169,20 @@ export function oauthTokenRoutes(deps: OAuthTokenDeps): Hono {
         description: 'missing client_id / client_secret',
       });
     }
-
-    // per-clientId 爆破锁：IP 可轮换——按 clientId 锁定才能挡住撞 client_secret
-    const guardKey = `client:${clientId}`;
-    if (await guardLocked(deps, ip, guardKey)) {
+    // 形状闸（S7）：非线格式 clientId 直接 401——任意串不得进守卫键空间
+    // （每个失败请求写 2 个 Redis 键的可污染面收敛为零）
+    if (!CLIENT_ID_RE.test(clientId)) {
       return oauthError(c, 401, {
         error: 'invalid_client',
-        description: 'source locked, try again later',
+        description: 'invalid client_id format',
       });
     }
 
-    const app = await deps.verifyAppClient({ clientId, clientSecret });
-    if (!app) {
-      await recordGuardFailures(deps, ip, guardKey);
-      return oauthError(c, 401, {
-        error: 'invalid_client',
-        description: 'invalid credentials or application disabled',
-      });
+    const auth = await authenticateAgainstGuards(deps, { ip, clientId, clientSecret });
+    if (!auth.ok) {
+      return oauthError(c, 401, { error: 'invalid_client', description: auth.description });
     }
+    const { app } = auth;
 
     // app_id = apps.app_id（与鉴权端 resolveApp(appId) 同键配对）
     const token = await signAppJwt(deps, app);
