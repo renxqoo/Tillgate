@@ -58,6 +58,8 @@ export function createReceiverApp(deps: ReceiverAppDeps): Hono {
     // 健康探针豁免鉴权:/readyz /livez 只返回探活状态、无敏感数据——
     // 若一并挡 401,compose/K8s healthcheck（不带 Bearer）会让容器永久 unhealthy
     if (c.req.path === '/readyz' || c.req.path === '/livez') return next();
+    // 无令牌放行仅可达于显式 TRACE_RECEIVER_OPEN=true(config fail-fast 保证——
+    // 装配遗漏不会再走到这里;启动日志会打 auth: 'open(dev)')
     if (deps.token === undefined) return next();
     const auth = c.req.header('authorization') ?? '';
     if (!timingSafeTokenEqual(auth, `Bearer ${deps.token}`)) {

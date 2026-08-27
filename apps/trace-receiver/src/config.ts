@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { secretSchema } from '@tillgate/runtime';
+import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
 import type { OtelMode } from '@tillgate/observability';
 import type { DbPoolConfig } from '@tillgate/db';
 
@@ -7,7 +7,8 @@ import type { DbPoolConfig } from '@tillgate/db';
  * trace-receiver 配置(内网诊断服务):
  *   - DATABASE_URL 必填——db 包零缺省,不藏默认连接串;
  *   - 令牌走 secretSchema 三道门(长度 ≥16/非已知弱值/字符多样性,runtime 组装件);
- *   - NODE_ENV 纳入 schema:生产环境缺令牌时 fail-fast。
+ *   - 缺令牌任意环境 fail-fast(S10:不再按 NODE_ENV 字面量推断——staging/裸跑装配
+ *     遗漏不再静默敞口);唯一逃生门 = 显式 TRACE_RECEIVER_OPEN=true(隔离本机开发)。
  * 部署缺省值由本层显式持有:装配层是缺省值的唯一真相,不藏全局。
  */
 
@@ -20,6 +21,8 @@ const envSchema = z
     DATABASE_URL: z.string().min(1),
     TRACE_RECEIVER_PORT: z.coerce.number().int().min(1).default(8793),
     TRACE_RECEIVER_TOKEN: secretSchema('TRACE_RECEIVER_TOKEN', 16).optional(),
+    /** 显式开放逃生门(仅隔离本机开发):缺令牌放行必须显式声明,不再按 NODE_ENV 字面量推断 */
+    TRACE_RECEIVER_OPEN: strictBooleanSchema(false),
     TRACE_BATCH_MAX: z.coerce.number().int().min(1).default(500),
     TRACE_FLUSH_INTERVAL_MS: z.coerce.number().int().min(100).default(2_000),
     TRACE_QUEUE_MAX: z.coerce.number().int().min(100).default(10_000),
@@ -31,11 +34,14 @@ const envSchema = z
     OTEL_METRICS_INTERVAL_MS: z.coerce.number().int().min(1_000).default(10_000),
   })
   .superRefine((env, ctx) => {
-    if (env.NODE_ENV === 'production' && env.TRACE_RECEIVER_TOKEN === undefined) {
+    // 任意环境缺令牌即拒(S10):旧闸只看 NODE_ENV===production——staging/uat/裸跑
+    // 装配遗漏即静默敞口;放行只能走显式 TRACE_RECEIVER_OPEN=true 逃生门
+    if (env.TRACE_RECEIVER_TOKEN === undefined && env.TRACE_RECEIVER_OPEN !== true) {
       ctx.addIssue({
         code: 'custom',
         path: ['TRACE_RECEIVER_TOKEN'],
-        message: 'TRACE_RECEIVER_TOKEN is required in production (receiver auth)',
+        message:
+          'TRACE_RECEIVER_TOKEN is required (or TRACE_RECEIVER_OPEN=true for isolated local dev)',
       });
     }
   });
