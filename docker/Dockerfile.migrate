@@ -6,6 +6,8 @@
 FROM oven/bun:1.4-alpine AS builder
 WORKDIR /repo
 COPY package.json bun.lock tsconfig.base.json ./
+# bun patch 依赖(patchedDependencies)——漏拷则 --frozen-lockfile 直接报找不到 patch 文件
+COPY patches ./patches
 COPY packages ./packages
 COPY apps ./apps
 RUN bun install --frozen-lockfile
@@ -23,4 +25,10 @@ COPY --from=builder /repo/packages ./packages
 # 直跑官方脚本，不再依赖宿主机 clone 仓库或挂载变通
 COPY --from=builder /repo/apps ./apps
 WORKDIR /repo/packages/db
-CMD ["bun", "node_modules/.bin/drizzle-kit", "migrate"]
+# 空库两步初始化(provision-fresh.ts 头注释的正式收口):先前置幂等 DDL
+# (迁移链 0055-0057 前向引用 0059/0076 才建的表,空库直跑 journal 必在 0055
+# 失败——且 drizzle-kit 在 bun 下静默 exit 1 无错误输出),再走 journal 全量。
+# --conditions=development:workspace 包 exports 非开发条件指向 dist/(本镜像不构建),
+# 直跑 TS 源码脚本时必须显式启用 development 条件才解析到 src/。
+# DATABASE_URL 由 compose environment 注入(provision-fresh 缺 env 时报错退出)
+CMD ["sh", "-c", "bun --conditions=development scripts/provision-fresh.ts && bun node_modules/.bin/drizzle-kit migrate"]

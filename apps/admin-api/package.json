@@ -17,8 +17,8 @@
     "test:real": "bun x --bun vitest run \"__test__/*.real.test.ts\" --passWithNoTests",
     "test:coverage": "bun x --bun vitest run --exclude \"__test__/*.real.test.ts\" --coverage",
     "test:e2e": "bun x --bun vitest run -c ../../e2e/admin/vitest.config.ts",
-    "generate:openapi": "bun scripts/generate-openapi.ts",
-    "migrate:admin-credentials": "bun scripts/migrate-admin-credentials.ts"
+    "generate:openapi": "bun ./scripts/generate-openapi.ts",
+    "migrate:admin-credentials": "bun ./scripts/create-admin.ts"
   },
   "dependencies": {
     "@tillgate/accounts": "workspace:*",

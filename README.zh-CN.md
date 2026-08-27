@@ -100,8 +100,8 @@ docker compose -f docker/compose.yml ps # 全部 Up（migrate 为 Exited(0) 属�
 ```
 
 上线后必做：支付回调地址指向 `https://app.example.com/v1/payments/notify/epay|stripe`
-（漏配 = 充值不入账）；证书到期前续期（certbot renew + nginx reload，建议 cron）；
-可选观测栈 `--profile obs`。完整清单见[部署清单](docs/deployment-checklist.md)，
+（漏配 = 充值不入账）；证书到期前续期（certbot renew + nginx reload，建议 cron）。
+完整清单见[部署清单](docs/deployment-checklist.md)，
 高可用拓扑见[高可用部署手册](docs/ha-deployment.md)。
 
 ### 如何使用

@@ -80,6 +80,7 @@
     "loginDescription": "Invited admin accounts only",
     "email": "Email",
     "password": "Password",
+    "passwordPlaceholder": "Enter your password",
     "invalidEmail": "Enter a valid email",
     "passwordRequired": "Enter a password",
     "submit": "Sign in",

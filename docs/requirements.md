@@ -303,7 +303,6 @@
 | migrate | 一次性 drizzle-kit 迁移 |
 | redis | 限流/熔断状态/计量队列唤醒；不参与资金正确性 |
 | postgres | 主存储（PostgreSQL 16） |
-| otel-collector / prometheus / tempo / grafana | 观测栈（compose profile `obs`，默认关闭） |
 
 **高并发关键设计**：
 - Gateway 无状态 → K8s 化后只需加副本。

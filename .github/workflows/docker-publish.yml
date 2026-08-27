@@ -21,10 +21,6 @@ concurrency:
   group: docker-publish-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # compose 插值用：grafana（obs profile）的必填校验变量，构建阶段不消费
-  GRAFANA_ADMIN_PASSWORD: build-placeholder
-
 jobs:
   build-push:
     name: build & push (amd64)

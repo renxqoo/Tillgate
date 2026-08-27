@@ -93,13 +93,12 @@ requestId **永远服务端生成**（`requestIdMiddleware`，`@tillgate/http` �
 db:generate）；分区维护由 worker 定时执行（内置 advisory try-lock，未获锁跳过），
 按保留期滚动清理。查询面经 admin-api 运营路由消费（traces / ops-logs / ops-usage）。
 
-## 5. 观测栈部署
+## 5. 链路启用
 
-`docker compose -f docker/compose.yml --profile obs up -d` 启动自建开源观测栈：
-otel-collector（接收 OTLP）→ tempo（trace 存储）+ prometheus（指标）→ grafana
-（看板，数据源已预配置）。启用链路需：设置 `TRACE_RECEIVER_TOKEN`、把对应服务的
-`OTEL_TRACES_MODE` 从 compose 缺省 `off` 改为 `otlp`（compose environment 覆盖
-env_file，见 [configuration.md](configuration.md)）。
+链路追踪走内置 trace-receiver（PG 存储，管理台「链路追踪」页查询）。启用需：设置
+`TRACE_RECEIVER_TOKEN`、把对应服务的 `OTEL_TRACES_MODE` 从 compose 缺省 `off` 改为
+`otlp` 并将 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向 `http://trace-receiver:8793`（compose
+environment 覆盖 env_file，见 [configuration.md](configuration.md)）。
 
 ## 6. 韧性边界
 

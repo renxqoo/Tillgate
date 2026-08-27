@@ -78,17 +78,17 @@ tillgate/
 
 ---
 
-## 3. OpenTelemetry 观测架构（自建开源栈）
+## 3. OpenTelemetry 观测架构
 
 ```
 gateway ──┐
-worker  ──┼─ OTLP (4318 HTTP) ─▶ trace-receiver（默认）──▶ PostgreSQL（分区存储）
-admin-api─┤            └─可选─▶ OpenTelemetry Collector ─┬─▶ Prometheus（指标）
-client-api┘                                             └─▶ Tempo（链路）→ Grafana
+worker  ──┼─ OTLP ─▶ trace-receiver:8793 ──▶ PostgreSQL（分区存储）
+admin-api─┤
+client-api┘
 日志：pino → stdout（Docker json-file 驱动统一收集）
 ```
 
-**默认路径**：内置 `trace-receiver`（`POST /v1/traces` 接收 OTLP/HTTP JSON → 解码 → 批量入库 PG 分区；Bearer `TRACE_RECEIVER_TOKEN` 鉴权），管理台「链路追踪」页查询（admin-api `/v1/tracing/*`，数据经 `packages/observability` tracing 查询面）。各服务默认 `OTEL_TRACES_MODE=off`，显式开启（`otlp` + endpoint）才导出；collector / tempo / grafana 是 compose profile `obs` 的可选增强。
+**默认路径**：内置 `trace-receiver`（`POST /v1/traces` 接收 OTLP/HTTP JSON → 解码 → 批量入库 PG 分区；Bearer `TRACE_RECEIVER_TOKEN` 鉴权），管理台「链路追踪」页查询（admin-api `/v1/tracing/*`，数据经 `packages/observability` tracing 查询面）。各服务默认 `OTEL_TRACES_MODE=off`，显式开启（`otlp` + endpoint）才导出。
 
 **观测能力分包**（`packages/observability/src/`）：
 
@@ -100,13 +100,11 @@ client-api┘                                             └─▶ Tempo（链�
 | request-log/ | 网关 `/v1/*` 请求日志（401/429 也入日志；30 天窗滚动删除） |
 | usage/ | 用量明细查询（day-window / by-model / summary；含 estimated/estimateReason） |
 
-**Docker 观测栈服务**（profile `obs`，默认不启动，`docker compose --profile obs up -d`）：`otel-collector` / `prometheus`（15 天保留 + 5GB 上限）/ `tempo`（7 天保留）/ `grafana`（匿名访问关闭）。
-
 ### 3.1 埋点与指标要点
 
 - gateway HTTP 入口 OTel 中间件（requestId 之后挂载，span 属性带 request.id）；限流 429、余额 402 单独计数。
 - 上游调用经 `ai` 包 `onEvent` 观察面旁路消费——**不阻塞数据面**；渠道熔断/死凭据等跨请求健康状态由 `inference/health` 作为订阅者维护（`ai` 零运维状态）。
-- 业务指标（请求量/延迟/错误/渠道健康/计费）经 OTLP 导出；Prometheus 指标名沿用 v1 约定（gateway_requests_total 族）。
+- 业务指标（请求量/延迟/错误/渠道健康/计费）经 OTLP 导出；指标名沿用 v1 Prometheus 命名约定（gateway_requests_total 族）。
 
 ---
 
@@ -130,9 +128,8 @@ client-api┘                                             └─▶ Tempo（链�
 | redis | redis:7-alpine | 限流/守卫/缓存（AOF 持久化） |
 | postgres | postgres:16-alpine | 主存储 |
 | migrate | tillgate/migrate（Dockerfile.migrate） | 一次性：drizzle-kit migrate（postgres 就绪后执行并退出） |
-| otel-collector / prometheus / tempo / grafana | otel-contrib / prometheus / tempo / grafana | **profile `obs`**，默认不启动 |
 
-**启动流程**：postgres 就绪 → `migrate`（一次性 init 容器）→ gateway / client-api / admin-api / worker / trace-receiver → 前端 → （可选）观测栈。
+**启动流程**：postgres 就绪 → `migrate`（一次性 init 容器）→ gateway / client-api / admin-api / worker / trace-receiver → 前端。
 
 **网络边界**：nginx 只发布 80/443；**admin-api / client-api 不发布任何端口**，仅 compose 内网可达，由前端服务端代理调用；client-api 仅 oauth 与支付回调路径经 nginx 放行。
 

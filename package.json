@@ -14,7 +14,6 @@
     "db:migrate": "cd packages/db && bun run  --env-file=../../.env  drizzle-kit migrate",
     "dev": "bunx turbo dev",
     "docker:up": "docker compose -f docker/compose.yml up -d",
-    "docker:up:obs": "docker compose -f docker/compose.yml --profile obs up -d",
     "format": "bun x oxfmt --write .",
     "format:check": "bun x oxfmt --check .",
     "integrations:import": "bun --env-file=.env packages/control-plane/scripts/import-integration-env.ts",

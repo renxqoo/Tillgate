@@ -23,7 +23,7 @@ export interface InitOtelOptions {
   /** 服务版本(资源属性;铁律 3 必填注入,不藏缺省) */
   serviceVersion: string;
   mode: OtelMode;
-  /** OTLP HTTP 端点(collector),如 http://otel-collector:4318;mode=otlp 时必填 */
+  /** OTLP HTTP 端点,如 http://trace-receiver:8793;mode=otlp 时必填 */
   endpoint?: string;
   /** mode=console 时的日志出口(必填,不再藏 console 缺省) */
   logger?: SpanLogSink;

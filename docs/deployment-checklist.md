@@ -22,7 +22,6 @@
 | SMTP（`smtp` 集成行） | **动态配置**：admin 端 `/dashboard/settings` 卡片配置（或 `bun run integrations:import` 从存量 env 导入）；个人邮箱（QQ/163 开 SMTP 拿授权码）或企业邮箱 | 不配 = 管理员 2FA 与用户验证码功能 fail-closed（503，不降级单密码，属预期防线）；worker 告警邮件渠道不投递。**安全**：写入需 `settings:integrations` 权限（host 属出网点，变更留 `outboundEndpointChanged` 审计高亮） |
 | Turnstile（`captcha.turnstile` 集成行） | **动态配置**：admin 端设置卡配置 siteKey/secretKey（Cloudflare Dashboard → Turnstile → Add site） | 不配 = 注册面人机验证关闭：分布式刷号可薅首登赠额（单 IP 限流 5 次/时挡不住僵尸网络）。开发可用官方测试键（恒过）。停用且注册送礼开启时 UI 出风险警告并留审计高亮 |
 | `REGISTER_ENABLED` | 默认 `true`。设 `false` = 关闭邮箱自助注册，只留 GitHub/Google OAuth 建号（防多账号薅赠额的运营闸门；存量账号登录不受影响） | 不动即开启；关闭后 `POST /api/auth/register*` 一律 403，前端注册页显示关闭态 |
-| `GRAFANA_ADMIN_PASSWORD` | 强随机（启用 `--profile obs` 观测栈时必配） | obs profile 未设此值 compose 直接拒绝启动（匿名访问已关闭，弱密码默认已移除） |
 | `REQUEST_LOG_RETENTION_DAYS` / `TRACE_RETENTION_DAYS` | 默认 90 / 7（worker 分区滚动窗口） | v2 变化：v1 清单写 30，以 `apps/worker/src/config.ts` schema 默认 90 为准；调整保留期改此值 |
 | `GLOBAL_RPM` | 按容量评估（默认 2000；生产硬顶 5000，超配自动钳回并告警） | 默认即生效；0 = 不限（生产慎用） |
 
@@ -80,10 +79,8 @@ v2 变化：v1 清单中的 `INTERNAL_API_TOKEN`（BFF 内部令牌）与 `FREE_
       `/health`（带 `x-health-token`）入监控面板（关注结算积压 pending/dead、
       `balance_low`、`reconcile_discrepancy` 告警事件——经 worker notify 渠道投递，
       `WORKER_NOTIFY_ENABLED=false` 会静音，生产保持 true）。
-- [ ] 链路观测二选一：内置 trace-receiver（`OTEL_TRACES_MODE=otlp` + endpoint 指向
-      `http://trace-receiver:8793` + `TRACE_RECEIVER_TOKEN`，管理台「链路追踪」页查看）；
-      或 `--profile obs` 全家桶（collector+tempo+grafana，须配 `GRAFANA_ADMIN_PASSWORD`，
-      各服务 endpoint 改指 `otel-collector:4318`）。
+- [ ] 链路观测：内置 trace-receiver（`OTEL_TRACES_MODE=otlp` + endpoint 指向
+      `http://trace-receiver:8793` + `TRACE_RECEIVER_TOKEN`，管理台「链路追踪」页查看）。
 - [ ] 审计留存：request_logs 月分区按 `REQUEST_LOG_RETENTION_DAYS`（默认 90 天）滚动、
       trace_spans 日分区 7 天；资金类审计建议长期归档策略。
 

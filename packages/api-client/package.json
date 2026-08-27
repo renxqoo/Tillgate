@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && bun build src/index.ts src/next/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "build": "rm -rf dist && bun build src/index.ts src/next/index.ts --target=bun --format=esm --sourcemap --packages=external --splitting --outdir=dist",
     "typecheck": "bun x tsc --noEmit",
     "lint": "bun x oxlint",
     "test": "bun x --bun vitest run --passWithNoTests",

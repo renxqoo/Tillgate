@@ -80,6 +80,7 @@
     "loginDescription": "仅限受邀管理员账号登录",
     "email": "邮箱",
     "password": "密码",
+    "passwordPlaceholder": "请输入密码",
     "invalidEmail": "请输入有效邮箱",
     "passwordRequired": "请输入密码",
     "submit": "登录",

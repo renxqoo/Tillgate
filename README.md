@@ -105,8 +105,7 @@ docker compose -f docker/compose.yml ps # all Up (migrate Exited(0) is expected)
 
 Post-deploy musts: point payment webhooks at
 `https://app.example.com/v1/payments/notify/epay|stripe` (missing = top-ups never credited);
-renew certs before expiry (certbot renew + nginx reload, cron recommended);
-optional observability stack with `--profile obs`.
+renew certs before expiry (certbot renew + nginx reload, cron recommended).
 Full checklist: [docs/deployment-checklist.md](docs/deployment-checklist.md) ·
 HA topology: [docs/ha-deployment.md](docs/ha-deployment.md).
 

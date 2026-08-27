@@ -6,6 +6,8 @@
 FROM oven/bun:1.4-alpine AS builder
 WORKDIR /repo
 COPY package.json bun.lock tsconfig.base.json tsconfig.next.json ./
+# bun patch 依赖(patchedDependencies)——漏拷则 --frozen-lockfile 直接报找不到 patch 文件
+COPY patches ./patches
 COPY apps/client ./apps/client
 COPY apps/admin ./apps/admin
 COPY packages ./packages

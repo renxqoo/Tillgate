@@ -1,8 +1,6 @@
 # 生产编排（tech-stack.md §4）
-# 观测栈使用 profile `obs`：docker compose --profile obs up -d
-# 注意：链路追踪默认走内置 trace-receiver（PG 存储 + 管理台「链路追踪」页）；
-# obs 栈（collector+tempo+grafana）是可选增强，需要 Grafana 全家桶时再把各服务
-# OTEL_EXPORTER_OTLP_ENDPOINT 指向 otel-collector:4318。
+# 链路追踪走内置 trace-receiver（PG 存储 + 管理台「链路追踪」页）：启用时各服务
+# OTEL_TRACES_MODE 改 otlp，OTEL_EXPORTER_OTLP_ENDPOINT 指向 trace-receiver:8793。
 
 name: tillgate
 
@@ -12,6 +10,7 @@ services:
     ports:
       - '80:80'
       - '443:443' # TLS（证书由 certbot 签发，挂载 letsencrypt 卷）
+      - '8443:8443' # admin IP 直达入口（nginx.conf 同名 server 块;无 admin.* DNS 的场景）
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - certbot-etc:/etc/letsencrypt:ro
@@ -51,6 +50,10 @@ services:
       - path: ../.env
         required: true
     environment:
+      # 锁定生产形态:compose environment 优先级高于 env_file,防 .env 里的
+      # NODE_ENV=development(本地 dev 值)覆盖镜像 ENV——development 会启用
+      # pino-pretty worker transport,在 bundle 产物里 thread-stream 崩溃
+      NODE_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-tillgate}
       REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
       GATEWAY_PORT: 8080
@@ -61,6 +64,10 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      migrate:
+        # 空库起服务 = 启动期 DB 探测失败后的僵死态(不自动恢复,登录等服务全挂)——
+        # 迁移链完成才放行后端服务;migrate 幂等,重复 up 直接跳过已应用项
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:8080/readyz']
       interval: 10s
@@ -82,6 +89,7 @@ services:
       - path: ../.env
         required: true
     environment:
+      NODE_ENV: production # 防 .env 的 dev 值覆盖镜像 ENV(pino-pretty worker 在 bundle 里崩溃)
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-tillgate}
       TRUSTED_PROXY_HOPS: '1' # 经 FE BFF 透传的 XFF（右数第 1 跳 = 真实用户 IP）
       REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
@@ -91,6 +99,10 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      migrate:
+        # 空库起服务 = 启动期 DB 探测失败后的僵死态(不自动恢复,登录等服务全挂)——
+        # 迁移链完成才放行后端服务;migrate 幂等,重复 up 直接跳过已应用项
+        condition: service_completed_successfully
     restart: unless-stopped
     stop_grace_period: 15s
 
@@ -106,6 +118,7 @@ services:
       - path: ../.env
         required: true
     environment:
+      NODE_ENV: production # 防 .env 的 dev 值覆盖镜像 ENV(pino-pretty worker 在 bundle 里崩溃)
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-tillgate}
       TRUSTED_PROXY_HOPS: '1' # 经 FE BFF 透传的 XFF（右数第 1 跳 = 真实用户 IP）
       REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
@@ -115,6 +128,10 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      migrate:
+        # 空库起服务 = 启动期 DB 探测失败后的僵死态(不自动恢复,登录等服务全挂)——
+        # 迁移链完成才放行后端服务;migrate 幂等,重复 up 直接跳过已应用项
+        condition: service_completed_successfully
     restart: unless-stopped
     stop_grace_period: 15s
 
@@ -130,6 +147,7 @@ services:
       - path: ../.env
         required: true
     environment:
+      NODE_ENV: production # 防 .env 的 dev 值覆盖镜像 ENV(pino-pretty worker 在 bundle 里崩溃)
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-tillgate}
       REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
       OTEL_TRACES_MODE: 'off'
@@ -138,6 +156,10 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      migrate:
+        # 空库起服务 = 启动期 DB 探测失败后的僵死态(不自动恢复,登录等服务全挂)——
+        # 迁移链完成才放行后端服务;migrate 幂等,重复 up 直接跳过已应用项
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:8792/readyz']
       interval: 30s
@@ -160,11 +182,14 @@ services:
       - path: ../.env
         required: true
     environment:
+      NODE_ENV: production # 防 .env 的 dev 值覆盖镜像 ENV(pino-pretty worker 在 bundle 里崩溃)
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-tillgate}
       OTEL_TRACES_MODE: 'off' # 接收端自身不再导出（防自环）
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully # 同其余后端:迁移完成才启动(空库启动=僵死态)
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:8793/readyz']
       interval: 10s
@@ -182,6 +207,7 @@ services:
       - path: ../.env
         required: true
     environment:
+      NODE_ENV: production # 防 .env 的 dev 值覆盖镜像 ENV(Next standalone 以生产模式跑)
       # 后端（用户面 8081）
       CLIENT_API_BASE: http://client-api:8081
       TRUSTED_PROXY_HOPS: '1' # FE 在 nginx 后：解入站 XFF 供 BFF 透传给 API
@@ -199,6 +225,7 @@ services:
       - path: ../.env
         required: true
     environment:
+      NODE_ENV: production # 防 .env 的 dev 值覆盖镜像 ENV(Next standalone 以生产模式跑)
       # 后端（管理面 8082）
       ADMIN_API_BASE: http://admin-api:8082
       TRUSTED_PROXY_HOPS: '1' # FE 在 nginx 后：解入站 XFF 供 BFF 透传给 API
@@ -215,6 +242,10 @@ services:
     env_file:
       - path: ../.env
         required: true
+    environment:
+      # 同其余服务:容器网地址覆盖 env_file 的宿主机形态(localhost 在容器内指向自身,
+      # 缺此覆盖时 drizzle-kit 静默失败——进度条后 exit 1,库零表)
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-tillgate}
     depends_on:
       postgres:
         condition: service_healthy
@@ -250,66 +281,8 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # ── 观测栈（profile obs，默认不启动）──
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
-    profiles: ['obs']
-    ports:
-      - '4318:4318' # OTLP HTTP（宿主机 gateway/worker/admin-api 推送到此）
-      - '4317:4317' # OTLP gRPC
-    volumes:
-      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
-    depends_on:
-      - tempo
-      - prometheus
-    restart: unless-stopped
-
-  prometheus:
-    image: prom/prometheus:latest
-    profiles: ['obs']
-    ports:
-      - '9090:9090' # Prometheus UI
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=15d'
-      - '--storage.tsdb.retention.size=5GB'
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    restart: unless-stopped
-
-  tempo:
-    image: grafana/tempo:latest
-    profiles: ['obs']
-    ports:
-      - '3200:3200' # Tempo UI / API（Grafana 查 trace 用）
-    command: ['-config.file=/etc/tempo.yaml']
-    volumes:
-      - ./tempo.yaml:/etc/tempo.yaml:ro
-      - tempo-data:/var/tempo
-    restart: unless-stopped
-
-  grafana:
-    image: grafana/grafana:latest
-    profiles: ['obs']
-    ports:
-      - '3001:3000'
-    environment:
-      # 安全：关闭匿名访问（审计发现原配置匿名 Admin 暴露全量指标）
-      GF_AUTH_ANONYMOUS_ENABLED: 'false'
-      # 首次启动后手动创建管理员（或配 GF_SECURITY_ADMIN_PASSWORD）
-      GF_SECURITY_ADMIN_PASSWORD: '${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD required（obs profile 必配——弱密码默认已移除）}'
-    volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-    depends_on:
-      - prometheus
-      - tempo
-    restart: unless-stopped
-
 volumes:
   redis-data:
   pg-data:
   certbot-etc: # TLS 证书（/etc/letsencrypt）
   certbot-web: # certbot webroot 验证（/var/www/certbot）
-  prometheus-data: # 指标持久化（15 天保留 + 5GB 上限）
-  tempo-data: # 链路追踪持久化（7 天保留）

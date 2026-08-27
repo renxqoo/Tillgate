@@ -208,7 +208,6 @@ compose 部署由 `environment` 段注入：
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `postgres` / `postgres` / `ai_gateway` | 容器 PG 超级用户/密码/库名；compose 同时用它们拼 `DATABASE_URL`。生产必改强随机密码 |
 | `REDIS_PASSWORD` | `root123`（仅开发） | compose 用它建 Redis `requirepass` 并拼 `REDIS_URL`；HA 形态的 replica/sentinel 凭证同源。生产务必覆盖强随机值 |
 | `TILLGATE_TAG` | `local` | 自建镜像标签（`tillgate/<svc>:<tag>`）；server 形态「本地构建 → save/load」用它对齐两端 |
-| `GRAFANA_ADMIN_PASSWORD` | 无默认 | obs profile（`--profile obs`）必配——未设时 compose 直接拒绝启动（弱密码默认已移除） |
 
 ## v1 → v2 键名与语义变化
 

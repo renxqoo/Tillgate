@@ -10,6 +10,10 @@ build/
 .next/
 .next-dev-verify/
 out/
+# Next.js 生成文件：next dev 写 .next/dev/types 路径、next build 写 .next/types 路径，
+# 本地交替跑两命令会无限漂移；两个 app 的 tsc 已实证不依赖它（缺失时 typecheck 照样过），
+# dev/build 会自动再生，故不入库
+next-env.d.ts
 
 # env
 .env
