@@ -32,7 +32,7 @@ export interface ReceiverAppDeps {
   /** 共享令牌;未配置（开发内网）时放行——生产强制由 config 层 fail-fast */
   token?: string;
   /** 5xx 服务端日志出口(pino 结构兼容;缺省静默) */
-  logger?: { error(obj: Record<string, unknown>, msg?: string): void };
+  logger?: { error(obj: unknown, msg?: string): void };
 }
 
 /** /v1/traces 请求体上限:OTLP JSON 批次远小于此;无上限则整读任意体积 → OOM/存储耗尽 */
@@ -99,7 +99,7 @@ export function createReceiverApp(deps: ReceiverAppDeps): Hono {
       return c.json({ status: 'ok', dependencies: { postgres: 'up' } });
     } catch (error) {
       // 故障细节只进日志——公开探针不回显驱动错误串(S6)
-      deps.logger?.error({ err: String(error) }, 'readyz ping failed');
+      deps.logger?.error({ err: error }, 'readyz ping failed');
       return c.json({ status: 'fail', dependencies: { postgres: 'down' } }, 503);
     }
   });

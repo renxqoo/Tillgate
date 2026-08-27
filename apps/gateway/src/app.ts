@@ -93,6 +93,9 @@ function mountPreauthChain(app: Hono<AuthEnv>, deps: GatewayAppDeps): void {
     });
     app.use('/v1/*', preauth);
     app.use('/v1beta/*', preauth);
+    // /oauth/token 是第三个公网入口（不在 /v1 前缀下）：未认证洪水在 ipGuard 锁定
+    // 前每发都是一次 verifyAppClient DB 读 + 2 个 Redis 写——同闸覆盖
+    app.use('/oauth/token', preauth);
   }
   const requestLog = requestLogMiddleware({
     store: deps.requestLogs,

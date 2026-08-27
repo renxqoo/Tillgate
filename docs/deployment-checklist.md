@@ -16,7 +16,7 @@
 | `IDENTITY_CODE_PEPPER` / `CLIENT_CODE_PEPPER` | ≥16 随机（生产建议 ≥32） | admin-api / client-api 拒绝启动（v2 新增必填，两把 pepper 必须不同值——管理面/用户面分离） |
 | `REDIS_PASSWORD` | 强随机（compose 用它建 Redis `requirepass` 并拼 `REDIS_URL`） | 缺省 `root123` = Redis 裸奔弱口令（仅开发默认） |
 | `POSTGRES_PASSWORD` | 强随机（compose 用它拼 `DATABASE_URL`） | 缺省 `postgres`，数据目录卷沿用旧值时改键不生效——首次建库前设好 |
-| `TRACE_RECEIVER_TOKEN` | ≥16 字符随机串（`openssl rand -hex 24`） | 生产无此值 Compose 插值和 trace-receiver 都会 fail-fast；启用链路只需再设 `OTEL_TRACES_MODE=otlp` |
+| `TRACE_RECEIVER_TOKEN` | ≥16 字符随机串（`openssl rand -hex 24`） | 任意环境无此值 trace-receiver 直接 fail-fast（本地隔离开发显式 `TRACE_RECEIVER_OPEN=true`）；生产另有 Compose 强制插值；启用链路只需再设 `OTEL_TRACES_MODE=otlp` |
 | `OAUTH_API_BASE` | 对外 client-api HTTPS 根地址 | client-api 生产启动拒绝，OAuth 回调白名单无法构建 |
 | `WORKER_HEALTH_TOKEN` | ≥16 字符随机串 | 不配 = `/health` 深度报告一律 403（`/livez` `/readyz` 不受影响） |
 | `SECURE_COOKIE=true` | 生产必设（默认即生产 true） | 显式配 `false` = client-api 拒绝启动；缺 Secure 位 cookie 明文链路可被截获 |

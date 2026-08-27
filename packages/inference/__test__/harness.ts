@@ -263,6 +263,7 @@ export function buildInference(env: {
   upstream: UpstreamPort;
   defaults?: Parameters<typeof createInference>[0]['defaults'];
   admitChannel?: Parameters<typeof createInference>[0]['admitChannel'];
+  admitModel?: Parameters<typeof createInference>[0]['admitModel'];
   trace?: Parameters<typeof createInference>[0]['trace'];
 }): Inference {
   return createInference({
@@ -274,6 +275,7 @@ export function buildInference(env: {
     upstream: env.upstream,
     ...(env.defaults != null ? { defaults: env.defaults } : {}),
     ...(env.admitChannel != null ? { admitChannel: env.admitChannel } : {}),
+    ...(env.admitModel != null ? { admitModel: env.admitModel } : {}),
     ...(env.trace != null ? { trace: env.trace } : {}),
   });
 }

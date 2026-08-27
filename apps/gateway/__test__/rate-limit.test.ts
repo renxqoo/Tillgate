@@ -120,16 +120,21 @@ describe('admitRequest 并罚制', () => {
     ]);
   });
 
-  it('App-JWT 凭证（apiKeyId=null, appId 在场）：维度同 user-only，span 凭证维走 app:', async () => {
+  it('App-JWT 凭证（apiKeyId=null, appId 在场，scope 有限额）：凭证维 = app:{appId}（并罚 user 维）', async () => {
     const { limiter, calls } = fakeLimiter();
     await admitRequest(gate(limiter, null), {
       requestId: 'r',
-      auth: auth({ apiKeyId: null, appId: 9, rpmLimit: 10, tpmLimit: 10 }),
+      auth: auth({
+        apiKeyId: null,
+        appId: 9,
+        rpmLimit: 10,
+        tpmLimit: 10,
+        userRpmLimit: null,
+        userTpmLimit: null,
+      }),
       estimatedTokens: 5,
     });
-    expect(defined(calls.checkAll[0], 'checkAll[0]')[0]).toEqual([
-      { dimension: 'user:42', max: 30 },
-    ]);
+    expect(defined(calls.checkAll[0], 'checkAll[0]')[0]).toEqual([{ dimension: 'app:9', max: 10 }]);
   });
 
   it('限流维度串不外泄：错误码可编程分派，无 dimension 泄漏', async () => {
@@ -150,6 +155,48 @@ describe('admitRequest 并罚制', () => {
       estimatedTokens: 1,
     });
     await handle.release(); // no-op 不抛
+  });
+});
+
+describe('admitRequest App-JWT 凭证维（scope rpm/tpm 落地）', () => {
+  it('JWT 形态（apiKeyId=null + appId）→ 凭证维用 app:{appId}（RPM 与 TPM 同维）', async () => {
+    const { limiter, calls } = fakeLimiter();
+    const jwtAuth = auth({
+      apiKeyId: null,
+      appId: 5,
+      rpmLimit: 10,
+      tpmLimit: 20_000,
+      userRpmLimit: null,
+      userTpmLimit: null,
+    });
+    await admitRequest(gate(limiter), { requestId: 'rq-jwt', auth: jwtAuth, estimatedTokens: 42 });
+    const rpmDims = calls.checkAll[0]?.[0] as Array<{ dimension: string; max: number }>;
+    expect(rpmDims).toEqual([
+      { dimension: 'app:5', max: 10 },
+      { dimension: 'global', max: 2_000 },
+    ]);
+    const tpmDims = calls.reserveTpmAll[0]?.[0] as Array<{
+      dimension: string;
+      estimatedTokens: number;
+      max: number;
+    }>;
+    expect(tpmDims).toEqual([{ dimension: 'app:5', estimatedTokens: 42, max: 20_000 }]);
+  });
+
+  it('JWT 无限额（scope 未配 rpm/tpm）→ 凭证维缺席，仅 global RPM', async () => {
+    const { limiter, calls } = fakeLimiter();
+    const jwtAuth = auth({
+      apiKeyId: null,
+      appId: 5,
+      rpmLimit: null,
+      tpmLimit: null,
+      userRpmLimit: null,
+      userTpmLimit: null,
+    });
+    await admitRequest(gate(limiter), { requestId: 'rq-jwt2', auth: jwtAuth, estimatedTokens: 1 });
+    const rpmDims = calls.checkAll[0]?.[0] as Array<{ dimension: string; max: number }>;
+    expect(rpmDims).toEqual([{ dimension: 'global', max: 2_000 }]);
+    expect(calls.reserveTpmAll).toHaveLength(0);
   });
 });
 

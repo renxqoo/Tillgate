@@ -77,8 +77,10 @@ describe('inviteMember', () => {
       email: ' New@X.IO ',
     });
     expect(inv.token).toMatch(/^[0-9a-f]{32}$/);
-    // S4：落库形态 = sha256 哈希键（明文只在本次响应下发；只读库泄露不可占席）
-    expect(inv.token).toMatch(/^[0-9a-f]{32}$/);
+    // S4：落库形态 = sha256 哈希键（64 hex——明文只在本次响应下发；只读库泄露不可占席）
+    const { invitationTokenHash } = await import('../src/domain/org.js');
+    const stored = await h.store.findInvitationByToken(h.ctx.db, invitationTokenHash(inv.token));
+    expect(stored?.token).toMatch(/^[0-9a-f]{64}$/);
     expect(await h.store.countPendingInvitations(h.ctx.db, org.id)).toBe(1);
     const again = await h.api.getOrgDetail({ userId: owner.id, orgId: org.id });
     expect(defined(again.invitations[0], 'again.invitations[0]').email).toBe('new@x.io'); // 规范化落库

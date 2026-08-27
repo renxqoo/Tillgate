@@ -222,8 +222,13 @@ export function createGatewayBilling(
     },
 
     async signal(signal: BillingSignal) {
-      await api.signal(toBillingEvent(signal));
-      await finalizeTpmReservation(config.limiter, signal);
+      // TPM 收尾与 billing 结算解耦（finally）：billing 抛错（DB 抖动）时
+      // release/renew 不丢——release/backfill 均幂等，settle 重试链重放安全
+      try {
+        await api.signal(toBillingEvent(signal));
+      } finally {
+        await finalizeTpmReservation(config.limiter, signal);
+      }
     },
 
     async reserveChannel(input) {

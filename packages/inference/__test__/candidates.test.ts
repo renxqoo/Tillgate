@@ -49,3 +49,22 @@ describe('domain/model/candidates：主模型 + fallback 一级展开', () => {
     expect(chain).toHaveLength(1);
   });
 });
+
+describe('限流限额透传（S4 列贯通——admitModel 消费的字段）', () => {
+  it('主/fallback 候选各带自己的 rpm/tpm 限额；null 形态不带字段', async () => {
+    const chain = await buildCandidateChain(
+      mapping({ fallbackModels: ['fb'], rpmLimit: 60, tpmLimit: 90_000 }),
+      async () =>
+        mapping({
+          mappingId: 12,
+          externalModel: 'fb',
+          realModel: 'fb-real',
+          rpmLimit: 30,
+          tpmLimit: null,
+        }),
+    );
+    expect(chain[0]).toMatchObject({ rpmLimit: 60, tpmLimit: 90_000 });
+    expect(chain[1]).toMatchObject({ rpmLimit: 30 });
+    expect(chain[1]).not.toHaveProperty('tpmLimit'); // null → 字段省略（钩子侧 ?? null 归一）
+  });
+});

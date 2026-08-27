@@ -7,7 +7,6 @@
  * 的 admitModel/admitChannel 钩子：模型超限换候选（fallback 链）、渠道超限换渠；
  * TPM 预占与 key/user 维共用同一 requestId 预占哈希。
  */
-import { randomUUID } from 'node:crypto';
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
 import type { MiddlewareHandler } from 'hono';
 import { socketAddressFromContext, trustedClientIp } from '@tillgate/http';
@@ -40,7 +39,9 @@ export interface AdmitHandle {
   release(): Promise<void>;
 }
 
-/** RPM 维表（key/user/global 并罚——任一维超限即拒） */
+/** RPM 维表（key/app/user/global 并罚——任一维超限即拒）。
+ *  凭证维二选一：静态 Key → key:{apiKeyId}；App-JWT → app:{appId}
+ *  （scope.rpm 随令牌签发——「限流执行依据」的落地维）。 */
 function rpmDimsOf(
   gate: RateLimitGate,
   auth: AuthContext,
@@ -48,6 +49,8 @@ function rpmDimsOf(
   const dims: Array<{ dimension: string; max: number }> = [];
   if (auth.apiKeyId != null && auth.rpmLimit != null) {
     dims.push({ dimension: `key:${auth.apiKeyId}`, max: auth.rpmLimit });
+  } else if (auth.appId != null && auth.rpmLimit != null) {
+    dims.push({ dimension: `app:${auth.appId}`, max: auth.rpmLimit });
   }
   if (auth.userRpmLimit != null) {
     dims.push({ dimension: `user:${auth.userId}`, max: auth.userRpmLimit });
@@ -56,7 +59,7 @@ function rpmDimsOf(
   return dims;
 }
 
-/** TPM 维表（key/user 预占——凭证维缺失跳过） */
+/** TPM 维表（key/app/user 预占——凭证维缺失跳过；维度选择同 rpmDimsOf） */
 function tpmDimsOf(
   auth: AuthContext,
   estimatedTokens: number,
@@ -64,6 +67,8 @@ function tpmDimsOf(
   const dims: Array<{ dimension: string; estimatedTokens: number; max: number }> = [];
   if (auth.apiKeyId != null && auth.tpmLimit != null) {
     dims.push({ dimension: `key:${auth.apiKeyId}`, estimatedTokens, max: auth.tpmLimit });
+  } else if (auth.appId != null && auth.tpmLimit != null) {
+    dims.push({ dimension: `app:${auth.appId}`, estimatedTokens, max: auth.tpmLimit });
   }
   if (auth.userTpmLimit != null) {
     dims.push({ dimension: `user:${auth.userId}`, estimatedTokens, max: auth.userTpmLimit });
@@ -132,10 +137,12 @@ export async function tryChannelAdmission(
 ): Promise<boolean> {
   if (gate == null) return true;
   if (channel.rpmLimit != null && channel.rpmLimit > 0) {
+    // member=requestId：同请求对同一渠道的重复准入尝试幂等计数（failover 跨候选
+    // 常共用渠道集——randomUUID member 会让一笔请求吃掉同渠道多个 RPM 槽）
     const result = await gate.limiter.check(
       `channel:${channel.channelId}`,
       channel.rpmLimit,
-      randomUUID(),
+      scope.requestId,
     );
     if (!result.allowed) return false;
   }

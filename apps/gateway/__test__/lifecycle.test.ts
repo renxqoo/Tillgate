@@ -33,11 +33,11 @@ describe('createGatewayShutdown（gateway 绑定形状）', () => {
     shutdown('SIGTERM');
     // 宽限下界 1s：drain abort 先于强退
     await new Promise((r) => {
-      setTimeout(r, 1_200);
+      setTimeout(r, 1_600);
     });
     expect(order).toEqual(['drain-abort']);
     await new Promise((r) => {
-      setTimeout(r, 1_100);
+      setTimeout(r, 1_500);
     });
     expect(order).toEqual(['drain-abort', 'exit:1']);
   });

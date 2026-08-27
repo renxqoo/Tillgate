@@ -53,6 +53,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `CORS_ORIGINS` | 空 | 跨域白名单（逗号分隔；空 = 不放行跨域）；client-api 与 admin-api 消费。网关另有独立键 `GATEWAY_CORS_ORIGINS` |
 | `OTEL_TRACES_MODE` | `off` | `off`/`otlp`（gateway、client-api）；admin-api / worker / trace-receiver 另支持 `memory`/`console`。Compose 中设 `otlp` 即使用内置 `http://trace-receiver:8793` |
 | `TRACE_RECEIVER_TOKEN` | 空 | 链路鉴权（见「可选功能组」） |
+| `TRACE_RECEIVER_OPEN` | `false` | 显式逃生门：无令牌放行（仅隔离本机开发；任意环境缺令牌默认拒绝启动） |
 | `OTEL_METRICS_INTERVAL_MS` | gateway/admin/worker/trace `10000`；client-api `60000` | OTLP 指标推送周期（otlp 模式生效） |
 | `OTEL_SERVICE_VERSION` | `0.1.0` | OTel 资源版本（admin-api / worker / trace-receiver） |
 
@@ -63,7 +64,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `GATEWAY_PORT` | `8080` | 监听端口（v2 变化：compose 容器也固定 8080，v1 的 8083 覆盖已取消；nginx upstream 即 `gateway:8080`） |
 | `GATEWAY_CURRENCY` | `CNY` | 计费币种（3 字母） |
 | `GLOBAL_RPM` | `2000` | 全站每分钟请求闸（0 = 不限；生产硬顶 5000，超配钳回并打告警日志） |
-| `PREAUTH_IP_RPM` | `1200` | 预认证 per-IP 每分钟请求闸（鉴权前第一道闸，未认证洪水超限 429 且不写 request_logs；0 = 不设） |
+| `PREAUTH_IP_RPM` | `1200` | 预认证 per-IP 每分钟请求闸（鉴权前第一道闸，未认证洪水超限 429 且不写 request_logs；0 = 不设）。按客户端 IP 计桶——反代后必须正确设置 `TRUSTED_PROXY_HOPS`，否则全站共享代理 IP 桶被钳到此值 |
 | `GATEWAY_DRAIN_FINALIZE_MS` | `5000` | 停机宽限耗尽 abort 在途请求后的收尾窗（信号结算/释放；之后强退） |
 | `AUTH_KEY_FAILURE_THRESHOLD` / `_WINDOW_S` / `_LOCK_S` | 5 / 600 / 600 | 同 Key 失败 5 次（10 分钟窗）锁 10 分钟 |
 | `AUTH_IP_FAILURE_LIMIT` / `_WINDOW_S` | 30 / 300 | 同 IP 失败 30 次即锁 |

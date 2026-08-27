@@ -549,6 +549,33 @@ describe('billing-port（C-G3）', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('TPM 收尾与 billing 结算解耦：api.signal 抛错时 release 仍执行（finally）', async () => {
+    const released: string[] = [];
+    const limiter = {
+      backfillTpm: async () => {},
+      renewTpm: async () => {},
+      releaseTpm: async (requestId: string) => {
+        released.push(requestId);
+      },
+    };
+    const failingApi = {
+      authorize: async () => {},
+      signal: async () => {
+        throw new Error('settle db down');
+      },
+      reserveChannel: async () => ({ allowed: true, remaining: '0', switched: false }),
+    };
+    const port = createGatewayBilling(failingApi as never, {
+      reservationLimit: '1',
+      reservationPolicy: { mode: 'full' },
+      limiter: limiter as never,
+    });
+    await expect(
+      port.signal({ type: 'request_failed', requestId: 'r-x', reason: 'boom' }),
+    ).rejects.toThrow('settle db down'); // billing 错误照常上抛（重试链兜底）
+    expect(released).toEqual(['r-x']); // TPM 释放不丢
+  });
+
   it('reserveChannel：官方价口径（coefficient=1）amount 自算 + allowed 收窄', async () => {
     const { api, calls } = spyApi();
     const port = createGatewayBilling(api as never, {

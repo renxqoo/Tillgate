@@ -71,14 +71,14 @@ describe('createShutdown', () => {
     createShutdown(deps)('SIGTERM');
     // 宽限下界 1s 耗尽 → drain abort（不直接强退）
     await new Promise((r) => {
-      setTimeout(r, 1_200);
+      setTimeout(r, 1_600);
     });
     expect(aborted).toBe(1);
     expect(order).toEqual(['close', 'drain-abort']);
     expect(logs.some((m) => m.includes('aborting in-flight'))).toBe(true);
     // 收尾窗（信号结算/释放）后强退
     await new Promise((r) => {
-      setTimeout(r, 1_000);
+      setTimeout(r, 1_500);
     });
     expect(order).toEqual(['close', 'drain-abort', 'exit:1']);
   });

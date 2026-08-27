@@ -42,7 +42,6 @@
 | assembly.ts                          | 重写（inference facade 装配 + 五桥）                          | src/assembly.ts                                                  |
 | app.ts                               | 重写（错误面 composeErrorCatalogs + 路由挂载）                | src/app.ts                                                       |
 | http/error-map.ts                    | 重写（24 条 instance 表 → 目录组合 + face override 表）       | src/http/openai-error-face.ts                                    |
-| http/sanitize.ts                     | 复制+微修                                                     | src/http/sanitize.ts                                             |
 | middleware/api-key.ts                | 重写（accounts 读模型 + jose app_jwt 分支 + runtime guards）  | src/http/middleware/api-key.ts                                   |
 | middleware/request-id.ts             | 删除（http 包同源件）                                         | —                                                                |
 | middleware/security.ts               | 删除（http 包三件）                                           | —（app.ts 组装）                                                 |
@@ -84,8 +83,7 @@ apps/gateway/
 │   │                         #   （api-key 与 rate-limit 各包阶段 span：auth.api_key /
 │   │                         #   rate_limit.admit——docs/observability.md §3 全链清单）
 │   │   ├── openai-error-face.ts  # 目录组合 + face override（502/402/429…）+ OAuth 错误形
-│   │   ├── openai-envelope.ts    # 交付三态 → Response（SSE/raw/json + x-request-id）
-│   │   └── sanitize.ts           # 上游细节脱敏（§3.6 三层）
+│   │   │   └── openai-envelope.ts    # 交付三态 → Response（SSE/raw/json + x-request-id）
 │   └── adapters/                 # inference 端口生产实现（装配面专属，架构测试白名单）
 │       ├── catalog-port.ts       # C-G2：control-plane 读 + billing 纯函数 → CatalogPort
 │       ├── billing-port.ts       # C-G3：BillingPort ← billing facade

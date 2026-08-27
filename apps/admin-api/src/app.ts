@@ -72,7 +72,7 @@ export interface AdminAppDeps {
   /** DB 并发预算门(管理面批量脚本/导出的入口排队;缺省关闭——不注入即旁路) */
   dbBudget?: { limit: number; maxQueue: number; waitTimeoutMs: number };
   /** 5xx 服务端日志出口(pino 结构兼容;缺省静默) */
-  logger?: { error(obj: Record<string, unknown>, msg?: string): void };
+  logger?: { error(obj: unknown, msg?: string): void };
   /** admin realm 会话验证(identity facade 结构子集)+ 属主回查 */
   sessions: SessionValidator;
   accounts: Pick<
@@ -222,7 +222,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       await deps.pingDb();
       return c.json({ ok: true });
     } catch (error) {
-      deps.logger?.error({ err: String(error) }, 'healthz ping failed');
+      deps.logger?.error({ err: error }, 'healthz ping failed');
       return c.json({ ok: false }, 503);
     }
   });
@@ -232,7 +232,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       await deps.pingDb();
       return c.json({ status: 'ok', dependencies: { postgres: 'up' } });
     } catch (error) {
-      deps.logger?.error({ err: String(error) }, 'readyz ping failed');
+      deps.logger?.error({ err: error }, 'readyz ping failed');
       return c.json({ status: 'fail', dependencies: { postgres: 'down' } }, 503);
     }
   });
