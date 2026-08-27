@@ -10,14 +10,18 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
+import type { MiddlewareHandler } from 'hono';
+import { socketAddressFromContext, trustedClientIp } from '@tillgate/http';
 import { getTracer, withAsyncSpan } from '@tillgate/observability';
 import { GatewayErrors } from '../openai-error-face';
-import type { AuthContext } from './api-key';
+import type { AuthContext, AuthEnv } from './api-key';
 
 export interface RateLimitGate {
   limiter: SlidingWindowLimiter;
   /** null = 无全局维 */
   globalRpm: number | null;
+  /** 预认证 per-IP RPM 上限（null = 不设该闸）；鉴权前的第一道闸 */
+  preauthIpRpm: number | null;
 }
 
 export interface AdmitInput {
@@ -120,4 +124,32 @@ export async function tryChannelRpm(
     randomUUID(),
   );
   return result.allowed;
+}
+
+/**
+ * 预认证 per-IP 限流中间件（/v1/* 与 /v1beta/* 共用同一 IP 桶）：
+ * 鉴权维度限流（key/user/global）全部依赖 AuthContext——未认证洪水不经过任何闸，
+ * 且每发请求都写一行 request_logs（写放大）。本闸挂在 requestLog 之前：
+ * 超限 429 直接出站、不写日志。Redis 故障 fail-closed（与 admitRequest 同语义）。
+ */
+export function preauthIpRateLimitMiddleware(gate: {
+  limiter: SlidingWindowLimiter;
+  maxPerMinute: number;
+  trustedProxyHops: number;
+}): MiddlewareHandler<AuthEnv> {
+  return async (c, next) => {
+    const ip = trustedClientIp({
+      headers: c.req.raw.headers,
+      trustedProxyHops: gate.trustedProxyHops,
+      socketAddress: socketAddressFromContext(c),
+    });
+    const requestId = c.get('requestId');
+    const result = await gate.limiter.check(`preauth-ip:${ip}`, gate.maxPerMinute, requestId);
+    if (!result.allowed) {
+      throw GatewayErrors.business('rate_limit_exceeded', {
+        retryAfterSec: result.retryAfterSec ?? 60,
+      });
+    }
+    await next();
+  };
 }

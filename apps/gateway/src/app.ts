@@ -23,7 +23,7 @@ import {
   type AuthGuards,
   type AuthReadModel,
 } from './http/middleware/api-key';
-import type { RateLimitGate } from './http/middleware/rate-limit';
+import { preauthIpRateLimitMiddleware, type RateLimitGate } from './http/middleware/rate-limit';
 import { inferenceEndpoints } from './http/contracts/inference-endpoints';
 import { inferenceRoutes, enginesAliasRoutes } from './http/routes/inference-endpoints';
 import { geminiNativeRoutes } from './http/routes/native-gemini';
@@ -116,15 +116,27 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
     return c.json({ ok: true });
   });
 
-  // requestLog 前置到鉴权之前：401/429 也入日志（「记录一切 /v1 请求」语义）
-  app.use(
-    '/v1/*',
-    requestLogMiddleware({
-      store: deps.requestLogs,
-      ...(deps.logger != null ? { logger: deps.logger } : {}),
+  // 预认证 per-IP 硬限（第一道闸）：未认证洪水不经过任何鉴权维度限流，且每发都写
+  // request_logs（写放大）——本闸挂 requestLog 之前，超限 429 不写日志。
+  // /v1 与 /v1beta 双入口同一 IP 桶（Gemini 原生入口不匹配 /v1/* 前缀）。
+  if (deps.rateLimit?.preauthIpRpm != null) {
+    const preauth = preauthIpRateLimitMiddleware({
+      limiter: deps.rateLimit.limiter,
+      maxPerMinute: deps.rateLimit.preauthIpRpm,
       trustedProxyHops: deps.trustedProxyHops,
-    }),
-  );
+    });
+    app.use('/v1/*', preauth);
+    app.use('/v1beta/*', preauth);
+  }
+
+  // requestLog 前置到鉴权之前：401/429 也入日志（「记录一切 /v1 与 /v1beta 请求」语义）
+  const requestLog = requestLogMiddleware({
+    store: deps.requestLogs,
+    ...(deps.logger != null ? { logger: deps.logger } : {}),
+    trustedProxyHops: deps.trustedProxyHops,
+  });
+  app.use('/v1/*', requestLog);
+  app.use('/v1beta/*', requestLog);
 
   const authMiddleware = () =>
     apiKeyMiddleware(deps.reader, deps.authGuards, {

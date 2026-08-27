@@ -52,9 +52,14 @@ const auth = (over: Partial<AuthContext> = {}): AuthContext => ({
   ...over,
 });
 
-const gate = (limiter: SlidingWindowLimiter, globalRpm: number | null = 2_000): RateLimitGate => ({
+const gate = (
+  limiter: SlidingWindowLimiter,
+  globalRpm: number | null = 2_000,
+  preauthIpRpm: number | null = null,
+): RateLimitGate => ({
   limiter,
   globalRpm,
+  preauthIpRpm,
 });
 
 describe('admitRequest 并罚制', () => {

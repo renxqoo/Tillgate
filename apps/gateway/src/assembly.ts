@@ -170,6 +170,7 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
   const rateLimit: RateLimitGate = {
     limiter: createSlidingWindowLimiter(redis, { logger }),
     globalRpm: config.globalRpm,
+    preauthIpRpm: config.preauthIpRpm,
   };
   const keyGuard = createKeyBruteForceGuard(redis, {
     failureThreshold: config.authGuards.keyFailureThreshold,

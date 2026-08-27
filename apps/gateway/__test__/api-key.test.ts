@@ -127,13 +127,13 @@ describe('Key 分支', () => {
     });
   });
 
-  it('缺头 / 未知 Key → 401；未知 Key 双计数（keyHash + IP）', async () => {
+  it('缺头 / 未知 Key → 401；未知 Key 双计数（keyHash + IP）；缺头也计 IP 维', async () => {
     const { guards, calls } = makeGuards();
     const a = app(reader(), guards);
     expect((await get(a, '/v1/whoami')).status).toBe(401);
     expect((await get(a, '/v1/whoami', 'sk_unknown')).status).toBe(401);
     expect(calls.keyFail).toBe(1);
-    expect(calls.ipFail).toBe(1);
+    expect(calls.ipFail).toBe(2); // 缺头 1 次 + 未知 Key 1 次（缺头不再绕过 IP 计数）
     expect((await get(a, '/v1/whoami', 'sk_valid')).status).toBe(200);
     expect(calls.keySuccess).toBe(1);
   });
@@ -197,5 +197,19 @@ describe('JWT 分支', () => {
     const res = await get(a, '/v1/whoami', token);
     expect(res.status).toBe(401);
     expect(await res.text()).toContain('locked');
+  });
+
+  it('缺鉴权头/空 Bearer 也计 IP 失败并受锁约束（未认证洪水不再绕过 ipGuard）', async () => {
+    const { guards, calls } = makeGuards(100, 3); // Key 维抬高：隔离 IP 维行为
+    const a = app(reader(), guards);
+    for (let i = 0; i < 3; i++) await get(a, '/v1/whoami'); // 完全无 Authorization 头
+    expect(calls.ipFail).toBe(3);
+    const lockedRes = await get(a, '/v1/whoami');
+    expect(lockedRes.status).toBe(401);
+    expect(await lockedRes.text()).toContain('locked');
+    // 空 Bearer（"Bearer " 空值 token）同口径——锁定后拒绝文案不退回 missing key
+    const empty = await a.request('/v1/whoami', { headers: { authorization: 'Bearer ' } });
+    expect(empty.status).toBe(401);
+    expect(await empty.text()).toContain('locked');
   });
 });

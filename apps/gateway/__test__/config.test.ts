@@ -29,6 +29,7 @@ describe('缺省值与推导', () => {
     expect(c.generationTaskTtlMs).toBe(3_600_000);
     expect(c.generationLeaseGraceMs).toBe(30_000);
     expect(c.globalRpm).toBe(2_000);
+    expect(c.preauthIpRpm).toBe(1_200);
     expect(c.upstreamDeadlineMs).toBe(120_000);
     expect(c.upstreamConnectTimeoutMs).toBe(10_000);
     expect(c.bodyLimitBytes).toBe(10 * 1024 * 1024);
@@ -70,12 +71,14 @@ describe('缺省值与推导', () => {
       BILLING_RESERVATION_MODE: 'fixed',
       BILLING_FIXED_RESERVATION_AMOUNT: '0.5',
       GLOBAL_RPM: '0',
+      PREAUTH_IP_RPM: '0',
     });
     expect(c.bodyLimitBytes).toBe(16 * 1024 * 1024);
     expect(c.uploadLimits.maxFileBytes).toBe(16 * 1024 * 1024);
     expect(c.corsOrigins).toEqual(['https://a.example', 'https://b.example']);
     expect(c.reservationPolicy).toEqual({ mode: 'fixed', amount: '0.5' });
     expect(c.globalRpm).toBeNull(); // 0 = 不限
+    expect(c.preauthIpRpm).toBeNull(); // 0 = 不设预认证闸
   });
 
   it('OTLP 覆盖：mode/endpoint/TRACE_RECEIVER_TOKEN → otel.authToken', () => {

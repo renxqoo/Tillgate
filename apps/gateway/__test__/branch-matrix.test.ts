@@ -46,7 +46,7 @@ describe('限流闸维度矩阵', () => {
   it('rpm 拒绝无 retryAfterSec → 缺省 60 上下文', async () => {
     await expect(
       admitRequest(
-        { limiter: limiter({ rpm: { allowed: false } }), globalRpm: null },
+        { limiter: limiter({ rpm: { allowed: false } }), globalRpm: null, preauthIpRpm: null },
         {
           requestId: 'r',
           auth: auth(),
@@ -70,7 +70,7 @@ describe('限流闸维度矩阵', () => {
     };
     await expect(
       admitRequest(
-        { limiter: spy, globalRpm: null },
+        { limiter: spy, globalRpm: null, preauthIpRpm: null },
         {
           requestId: 'r',
           auth: auth({ tpmLimit: null }),
@@ -92,7 +92,7 @@ describe('限流闸维度矩阵', () => {
       return { allowed: true };
     };
     const handle = await admitRequest(
-      { limiter: spy, globalRpm: null },
+      { limiter: spy, globalRpm: null, preauthIpRpm: null },
       {
         requestId: 'r',
         auth: auth({

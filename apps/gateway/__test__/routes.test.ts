@@ -412,8 +412,8 @@ describe('oauth token（三形态 + 闭环）', () => {
 
 describe('客户端取消信号贯通（c.req.raw.signal → ChatInput.signal）', () => {
   it.each([
-    ['/v1/chat/completions', { model: 'm', messages: [{}] }, 'chat'],
-    ['/v1/engines/gpt-4o/embeddings', { input: 'x' }, 'chat'],
+    ['/v1/chat/completions', { model: 'm', messages: [{}] }],
+    ['/v1/engines/gpt-4o/embeddings', { input: 'x' }],
   ])('%s 透传请求 signal 给 inference', async (path, body) => {
     const seen: unknown[] = [];
     const inference = stubInference({
@@ -488,7 +488,7 @@ describe('客户端取消信号贯通（c.req.raw.signal → ChatInput.signal）
           seen.push(input);
           return { ok: true, taskId: '019c0b7d-0000-7000-8000-0000000000aa', expiresAt: 1 };
         },
-        query: async () => null,
+        query: async () => null as never,
         adminList: async () => ({ rows: [], total: 0 }),
         settledAmounts: async () => new Map(),
       },

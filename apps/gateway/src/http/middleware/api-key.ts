@@ -176,10 +176,13 @@ async function authByKey(deps: ApiKeyAuth, token: string, ip: string): Promise<A
  */
 async function authByJwt(deps: ApiKeyAuth, token: string, ip: string): Promise<AuthContext> {
   const { reader, guards: g } = deps;
+  // 锁检查与失败计数必须先于空 token 快速拒绝：否则完全不带 Authorization 头的
+  // 洪水零计数、永不触发 IP 锁（未认证流量的唯一爆破闸被绕过）
+  await assertUnlocked('source', await g.ipGuard.isLocked(ip));
   if (!token) {
+    await g.ipGuard.recordFailure(ip);
     throw HttpErrors.business('unauthorized', { detail: 'missing or malformed api key' });
   }
-  await assertUnlocked('source', await g.ipGuard.isLocked(ip));
   try {
     const payload = await verifyJwt(deps, token);
     // 仅支持 app_jwt：操练场（playground）等其他形态一律 401——信任根分离
