@@ -114,4 +114,4 @@ Tillgate 是 TypeScript/Bun monorepo，提供 OpenAI 兼容的多供应商 LLM �
 - 只在用户明确要求时提交。`git add` 逐路径点名，禁止 `git add .`、`git add -A`、
   `git commit -a`；提交前核对 staged diff 只含本任务文件。
 - commit 使用英文 Conventional Commits：`type(scope): subject`。一个提交只包含一个关注点。
-- 提交代码到github优先使用本地代理网络
+- 提交代码到github优先使用本地代理网络, git push 直接走 SSH
