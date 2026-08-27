@@ -1,16 +1,42 @@
-# syntax=docker/dockerfile:1
 # 服务端统一镜像（gateway / worker / admin-api / client-api / trace-receiver），compose 通过 build arg APP 指定
 # 构建段：全 bun；全量 bundle → dist 自包含
 # 运行段：仅 dist（零 node_modules/packages——符号链接布局坑整体退场，镜像 ~40MB）
 FROM oven/bun:1.4.0-alpine AS builder
-ARG APP
 WORKDIR /repo
 COPY package.json bun.lock tsconfig.base.json ./
 # bun patch 依赖(patchedDependencies)——漏拷则 --frozen-lockfile 直接报找不到 patch 文件
 COPY patches ./patches
+# manifest 先行：bun install 的输入只有根 manifest/lockfile/patches + 各 workspace 成员的
+# package.json——源码后拷，改源码不再打掉 install 层缓存。
+# 新增 workspace 成员时须同步补一行（漏拷则 --frozen-lockfile 报 workspace 成员缺失）。
+COPY packages/accounts/package.json packages/accounts/
+COPY packages/ai/package.json packages/ai/
+COPY packages/api-client/package.json packages/api-client/
+COPY packages/billing/package.json packages/billing/
+COPY packages/control-plane/package.json packages/control-plane/
+COPY packages/db/package.json packages/db/
+COPY packages/errors/package.json packages/errors/
+COPY packages/http/package.json packages/http/
+COPY packages/identity/package.json packages/identity/
+COPY packages/inference/package.json packages/inference/
+COPY packages/notifications/package.json packages/notifications/
+COPY packages/observability/package.json packages/observability/
+COPY packages/runtime/package.json packages/runtime/
+COPY packages/ui/package.json packages/ui/
+COPY apps/admin/package.json apps/admin/
+COPY apps/admin-api/package.json apps/admin-api/
+COPY apps/client/package.json apps/client/
+COPY apps/client-api/package.json apps/client-api/
+COPY apps/gateway/package.json apps/gateway/
+COPY apps/trace-receiver/package.json apps/trace-receiver/
+COPY apps/worker/package.json apps/worker/
+# 缓存挂载：bun 下载缓存跨构建持久（同机构建全部共享；层失效重装时本地缓存直解，不再全量走网络）
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile
 COPY packages ./packages
 COPY apps ./apps
-RUN bun install --frozen-lockfile
+# ARG 声明在此而非文件头：ARG 会以其值参与后续 RUN 的缓存键——放头部则
+# 5 个 APP 各自打掉 install 层（无法共享），下移后 install 层全 APP 复用一份。
+ARG APP
 # 显式全量 bundle（无 --packages=external）：workspace 源码直接打进 dist，运行段才能零依赖。
 # 各 app 自身的 build script 带 --packages=external（产物需 node_modules 解析），此处不可复用。
 RUN bun build "apps/${APP}/src/index.ts" --target=bun --format=esm --sourcemap --outdir=/out/dist

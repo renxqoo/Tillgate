@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # migrate：一次性迁移任务（postgres 就绪后执行并退出）
 # v2 迁移收敛为单入口：packages/db 的 drizzle-kit migrate（SQL 全量在 packages/db/migrations，
 # 含 identity/billing 等业务表——v1 的 identity-core/ledger-core/wallet 多段 provision 已并入）
@@ -8,9 +7,34 @@ WORKDIR /repo
 COPY package.json bun.lock tsconfig.base.json ./
 # bun patch 依赖(patchedDependencies)——漏拷则 --frozen-lockfile 直接报找不到 patch 文件
 COPY patches ./patches
+# manifest 先行：bun install 的输入只有根 manifest/lockfile/patches + 各 workspace 成员的
+# package.json——源码后拷，改源码不再打掉 install 层缓存。
+# 新增 workspace 成员时须同步补一行（漏拷则 --frozen-lockfile 报 workspace 成员缺失）。
+COPY packages/accounts/package.json packages/accounts/
+COPY packages/ai/package.json packages/ai/
+COPY packages/api-client/package.json packages/api-client/
+COPY packages/billing/package.json packages/billing/
+COPY packages/control-plane/package.json packages/control-plane/
+COPY packages/db/package.json packages/db/
+COPY packages/errors/package.json packages/errors/
+COPY packages/http/package.json packages/http/
+COPY packages/identity/package.json packages/identity/
+COPY packages/inference/package.json packages/inference/
+COPY packages/notifications/package.json packages/notifications/
+COPY packages/observability/package.json packages/observability/
+COPY packages/runtime/package.json packages/runtime/
+COPY packages/ui/package.json packages/ui/
+COPY apps/admin/package.json apps/admin/
+COPY apps/admin-api/package.json apps/admin-api/
+COPY apps/client/package.json apps/client/
+COPY apps/client-api/package.json apps/client-api/
+COPY apps/gateway/package.json apps/gateway/
+COPY apps/trace-receiver/package.json apps/trace-receiver/
+COPY apps/worker/package.json apps/worker/
+# 缓存挂载：bun 下载缓存跨构建持久（与 Dockerfile.server 共享同一缓存卷）
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile
 COPY packages ./packages
 COPY apps ./apps
-RUN bun install --frozen-lockfile
 
 FROM oven/bun:1.4.0-alpine AS runtime
 WORKDIR /repo
