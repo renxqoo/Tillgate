@@ -20,6 +20,7 @@ describe('缺省值与推导', () => {
     const c = loadGatewayConfig({ ...BASE });
     expect(c.otel.mode).toBe('off');
     expect(c.otel.authToken).toBeUndefined();
+    expect(c.redisTopology).toEqual({ kind: 'direct' });
     expect(c.port).toBe(8_080);
     expect(c.currency).toBe('CNY');
     expect(c.reservationLimit).toBe('1000');
@@ -39,6 +40,25 @@ describe('缺省值与推导', () => {
     expect(c.output).toEqual({ defaultMaxOutputTokens: 4_096, exposureCap: 32_768 });
     expect(c.settleSignal).toEqual({ attempts: 5, baseDelayMs: 500 });
     expect(c.corsOrigins).toEqual([]);
+  });
+
+  it('Redis Sentinel 拓扑需要主名并完整传递鉴权', () => {
+    expect(() => loadGatewayConfig({ ...BASE, REDIS_SENTINELS: 's1:26379' })).toThrow(
+      /REDIS_SENTINEL_NAME/,
+    );
+    expect(
+      loadGatewayConfig({
+        ...BASE,
+        REDIS_SENTINELS: 's1:26379,s2:26379',
+        REDIS_SENTINEL_NAME: 'mymaster',
+        REDIS_SENTINEL_PASSWORD: 'sentinel-secret',
+      }).redisTopology,
+    ).toEqual({
+      kind: 'sentinel',
+      sentinels: 's1:26379,s2:26379',
+      sentinelName: 'mymaster',
+      sentinelPassword: 'sentinel-secret',
+    });
   });
 
   it('显式覆盖：字节量/origins/policy fixed', () => {

@@ -12,6 +12,7 @@
  */
 import * as z from 'zod';
 import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
+import type { SentinelTopology } from '@tillgate/runtime';
 import type { OtelMode } from '@tillgate/observability';
 import type { DbPoolConfig } from '@tillgate/db';
 
@@ -42,6 +43,9 @@ const envSchema = z
     // ---- BullMQ 结算调度(2026-08-26 增量):连接/前缀/并发/保险丝 ----
     WORKER_REDIS_URL: z.string().min(1).optional(),
     REDIS_URL: z.string().min(1).optional(),
+    REDIS_SENTINELS: z.string().min(1).optional(),
+    REDIS_SENTINEL_NAME: z.string().min(1).optional(),
+    REDIS_SENTINEL_PASSWORD: z.string().min(1).optional(),
     WORKER_BULLMQ_PREFIX: z.string().min(1).default('{bull}'),
     WORKER_SETTLE_CONCURRENCY: z.coerce.number().int().min(1).default(8),
     WORKER_SETTLE_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(10),
@@ -97,6 +101,7 @@ const envSchema = z
     // ---- 观测 ----
     OTEL_TRACES_MODE: z.enum(['off', 'memory', 'console', 'otlp']).optional(),
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+    TRACE_RECEIVER_TOKEN: z.string().min(1).optional(),
     OTEL_SERVICE_VERSION: z.string().min(1).default('0.1.0'),
     OTEL_METRICS_INTERVAL_MS: z.coerce.number().int().min(1_000).default(10_000),
   })
@@ -106,6 +111,13 @@ const envSchema = z
         code: 'custom',
         path: ['OTEL_EXPORTER_OTLP_ENDPOINT'],
         message: 'required when OTEL_TRACES_MODE=otlp',
+      });
+    }
+    if (v.REDIS_SENTINELS != null && v.REDIS_SENTINEL_NAME == null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['REDIS_SENTINEL_NAME'],
+        message: 'required when REDIS_SENTINELS is configured',
       });
     }
   });
@@ -132,7 +144,7 @@ export interface WorkerConfig {
       readonly prefix: string;
       readonly concurrency: number;
       readonly maxAttempts: number;
-    };
+    } & SentinelTopology;
   };
   readonly recover: { readonly intervalMs: number; readonly batchSize: number };
   readonly generation: {
@@ -173,6 +185,7 @@ export interface WorkerConfig {
 
   readonly otelMode: OtelMode;
   readonly otelEndpoint: string | undefined;
+  readonly otelAuthToken: string | undefined;
   readonly serviceVersion: string;
   readonly otelMetricsIntervalMs: number;
   /** 池调优项（连接串在 databaseUrl，装配时合并——db 包全必填、无缺省） */
@@ -202,6 +215,25 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
   const otelMode: OtelMode =
     parsed.OTEL_TRACES_MODE ?? (parsed.NODE_ENV === 'production' ? 'off' : 'off');
 
+  // SentinelTopology 是判别联合，须按分支显式构造（条件 spread 会把字段降级为可选）
+  const bullmqBase = {
+    redisUrl: redisUrlOf(parsed),
+    prefix: parsed.WORKER_BULLMQ_PREFIX,
+    concurrency: parsed.WORKER_SETTLE_CONCURRENCY,
+    maxAttempts: parsed.WORKER_SETTLE_MAX_ATTEMPTS,
+  };
+  const bullmq: WorkerConfig['settle']['bullmq'] =
+    parsed.REDIS_SENTINELS != null
+      ? {
+          ...bullmqBase,
+          sentinels: parsed.REDIS_SENTINELS,
+          sentinelName: parsed.REDIS_SENTINEL_NAME as string,
+          ...(parsed.REDIS_SENTINEL_PASSWORD != null
+            ? { sentinelPassword: parsed.REDIS_SENTINEL_PASSWORD }
+            : {}),
+        }
+      : { ...bullmqBase };
+
   return {
     nodeEnv: parsed.NODE_ENV,
     logLevel: parsed.LOG_LEVEL,
@@ -218,12 +250,7 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
       },
       wake: parsed.WORKER_SETTLE_WAKE,
       intervalMs: parsed.WORKER_SETTLE_INTERVAL_MS,
-      bullmq: {
-        redisUrl: redisUrlOf(parsed),
-        prefix: parsed.WORKER_BULLMQ_PREFIX,
-        concurrency: parsed.WORKER_SETTLE_CONCURRENCY,
-        maxAttempts: parsed.WORKER_SETTLE_MAX_ATTEMPTS,
-      },
+      bullmq,
     },
     recover: {
       intervalMs: parsed.WORKER_RECOVER_INTERVAL_MS,
@@ -268,6 +295,7 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     webhookAllowLocalUrl: parsed.WORKER_WEBHOOK_ALLOW_LOCAL_URL,
     otelMode,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT,
+    otelAuthToken: parsed.TRACE_RECEIVER_TOKEN,
     serviceVersion: parsed.OTEL_SERVICE_VERSION,
     otelMetricsIntervalMs: parsed.OTEL_METRICS_INTERVAL_MS,
     dbPool: DB_POOL,

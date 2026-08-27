@@ -26,6 +26,12 @@ describe('worker 配置 fail-closed', () => {
     expect(config.settle.bullmq.redisUrl).toBe('redis://:dedicated@localhost:6380/2');
   });
 
+  it('TRACE_RECEIVER_TOKEN 传递到 worker OTel 鉴权配置', () => {
+    expect(loadWorkerConfig(base({ TRACE_RECEIVER_TOKEN: 'trace-secret' })).otelAuthToken).toBe(
+      'trace-secret',
+    );
+  });
+
   it('缺省全显式（部署缺省唯一真相在本层）', () => {
     const config = loadWorkerConfig(base());
     expect(config.settle).toMatchObject({
@@ -72,6 +78,25 @@ describe('worker 配置 fail-closed', () => {
     );
     expect(config.settle.wake).toBe(false);
     expect(config.notify.enabled).toBe(false);
+  });
+
+  it('Sentinel 拓扑完整透传到 BullMQ，节点缺 master name 拒绝启动', () => {
+    expect(() => loadWorkerConfig(base({ REDIS_SENTINELS: 's1:26379' }))).toThrow(
+      /REDIS_SENTINEL_NAME/,
+    );
+    const config = loadWorkerConfig(
+      base({
+        REDIS_SENTINELS: 's1:26379,s2:26379',
+        REDIS_SENTINEL_NAME: 'mymaster',
+        REDIS_SENTINEL_PASSWORD: 'sentinel-secret',
+      }),
+    );
+    expect(config.settle.bullmq).toMatchObject({
+      redisUrl: 'redis://:secret@localhost:6379/0',
+      sentinels: 's1:26379,s2:26379',
+      sentinelName: 'mymaster',
+      sentinelPassword: 'sentinel-secret',
+    });
   });
 
   it('数值非法 fail-closed（zod 拒绝后不落缺省）', () => {

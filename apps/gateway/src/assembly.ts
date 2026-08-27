@@ -83,10 +83,20 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     // 10k 级负载:检出等待耐心 60s(预算门内的排队请求等待而非 5s 超时失败)
     connectionTimeoutMillis: 60_000,
   });
-  const redis = createRedisClient(config.redisUrl, {
-    serviceName: 'gateway',
-    logThrottleMs: 5_000,
-  });
+  const redis = createRedisClient(
+    config.redisUrl,
+    config.redisTopology.kind === 'sentinel'
+      ? {
+          serviceName: 'gateway',
+          logThrottleMs: 5_000,
+          sentinels: config.redisTopology.sentinels,
+          sentinelName: config.redisTopology.sentinelName,
+          ...(config.redisTopology.sentinelPassword != null
+            ? { sentinelPassword: config.redisTopology.sentinelPassword }
+            : {}),
+        }
+      : { serviceName: 'gateway', logThrottleMs: 5_000 },
+  );
   const otel = initOtel({
     serviceName: 'gateway',
     serviceVersion: '0.1.0',

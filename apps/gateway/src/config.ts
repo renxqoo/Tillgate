@@ -51,6 +51,9 @@ function createSchema(production: boolean) {
       GATEWAY_PORT: z.coerce.number().int().min(1).max(65_535).default(8_080),
       DATABASE_URL: z.string().url(),
       REDIS_URL: z.string().url(),
+      REDIS_SENTINELS: z.string().min(1).optional(),
+      REDIS_SENTINEL_NAME: z.string().min(1).optional(),
+      REDIS_SENTINEL_PASSWORD: z.string().min(1).optional(),
       DB_POOL_MAX: z.coerce.number().int().min(1).max(300).default(10),
       GATEWAY_CURRENCY: z.string().length(3).default('CNY'),
       ADMISSION_MAX_PENDING: z.coerce.number().int().min(1).default(10_000),
@@ -116,6 +119,13 @@ function createSchema(production: boolean) {
           message: 'required when BILLING_RESERVATION_MODE=fixed',
         });
       }
+      if (v.REDIS_SENTINELS != null && v.REDIS_SENTINEL_NAME == null) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['REDIS_SENTINEL_NAME'],
+          message: 'required when REDIS_SENTINELS is configured',
+        });
+      }
     });
 }
 
@@ -124,6 +134,14 @@ export interface GatewayConfig {
   readonly port: number;
   readonly databaseUrl: string;
   readonly redisUrl: string;
+  readonly redisTopology:
+    | { readonly kind: 'direct' }
+    | {
+        readonly kind: 'sentinel';
+        readonly sentinels: string;
+        readonly sentinelName: string;
+        readonly sentinelPassword?: string;
+      };
   readonly dbPoolMax: number;
   readonly currency: string;
   readonly admissionMaxPending: number;
@@ -221,6 +239,23 @@ function requireFixedAmount(amount: string | undefined): string {
   return amount;
 }
 
+/** Redis 拓扑收窄：schema 已保证 Sentinel 节点在场时主名必定在场。 */
+function redisTopologyOf(parsed: {
+  REDIS_SENTINELS?: string;
+  REDIS_SENTINEL_NAME?: string;
+  REDIS_SENTINEL_PASSWORD?: string;
+}): GatewayConfig['redisTopology'] {
+  if (parsed.REDIS_SENTINELS == null) return { kind: 'direct' };
+  return {
+    kind: 'sentinel',
+    sentinels: parsed.REDIS_SENTINELS,
+    sentinelName: parsed.REDIS_SENTINEL_NAME as string,
+    ...(parsed.REDIS_SENTINEL_PASSWORD != null
+      ? { sentinelPassword: parsed.REDIS_SENTINEL_PASSWORD }
+      : {}),
+  };
+}
+
 // eslint-disable-next-line max-lines-per-function -- env → GatewayConfig 逐字段搬运的纯配置映射（铁律 22 ①）
 export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
   // 弃用键：告警后剔除出解析输入（过滤式构造替代动态 delete，行为等价）
@@ -255,6 +290,7 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     port: parsed.GATEWAY_PORT,
     databaseUrl: parsed.DATABASE_URL,
     redisUrl: parsed.REDIS_URL,
+    redisTopology: redisTopologyOf(parsed),
     dbPoolMax: parsed.DB_POOL_MAX,
     currency: parsed.GATEWAY_CURRENCY,
     admissionMaxPending: parsed.ADMISSION_MAX_PENDING,

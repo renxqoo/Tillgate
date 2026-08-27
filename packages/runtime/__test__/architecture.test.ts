@@ -77,6 +77,7 @@ describe('双入口导出面快照（有意维护的公共接口——新增导�
       'createSlidingWindowLimiter',
       'parseSentinels',
       'rateLimitUnavailable',
+      'resolveRedisConnection',
       'secretSchema',
       'strictBooleanSchema',
     ]);

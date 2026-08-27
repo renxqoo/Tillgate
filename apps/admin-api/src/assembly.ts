@@ -157,11 +157,22 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
 
   // P2 登录面装置:Redis 守卫双闸（不可达 fail-closed 503,路由层翻译）+
   // SMTP mailer（三要素齐才建,null = 2FA fail-closed）+ jti 吊销面
-  const redis = createRedisClient(config.redisUrl, {
-    serviceName: 'admin-api',
-    logThrottleMs: 60_000,
-    log: (message) => logger.warn({ component: 'redis' }, message),
-  });
+  const redisLog = (message: string): void => logger.warn({ component: 'redis' }, message);
+  const redis = createRedisClient(
+    config.redisUrl,
+    config.redisTopology.kind === 'sentinel'
+      ? {
+          serviceName: 'admin-api',
+          logThrottleMs: 60_000,
+          log: redisLog,
+          sentinels: config.redisTopology.sentinels,
+          sentinelName: config.redisTopology.sentinelName,
+          ...(config.redisTopology.sentinelPassword != null
+            ? { sentinelPassword: config.redisTopology.sentinelPassword }
+            : {}),
+        }
+      : { serviceName: 'admin-api', logThrottleMs: 60_000, log: redisLog },
+  );
   const loginGuard = createKeyBruteForceGuard(redis, {
     failureThreshold: config.loginGuard.failureThreshold,
     failureWindowS: config.loginGuard.failureWindowS,

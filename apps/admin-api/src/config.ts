@@ -47,6 +47,9 @@ const envSchema = z
     // ---- P2 登录波（DESIGN §2.4「Redis 必配」兑现）----
     /** 爆破守卫/会话吊销面（Redis 必配——不可达 fail-closed 503,不静默降级无锁） */
     REDIS_URL: z.string().url(),
+    REDIS_SENTINELS: z.string().min(1).optional(),
+    REDIS_SENTINEL_NAME: z.string().min(1).optional(),
+    REDIS_SENTINEL_PASSWORD: z.string().min(1).optional(),
     /** 信任代理跳数（x-forwarded-for 右数第 N 跳;0 = 不信代理头） */
     TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
     /** (email,ip) 键爆破锁：阈值/窗口/锁时长（v1 auth-guards 同语义,Redis 固定窗口） */
@@ -108,6 +111,13 @@ const envSchema = z
         message: 'OTEL_EXPORTER_OTLP_ENDPOINT is required when OTEL_TRACES_MODE=otlp',
       });
     }
+    if (env.REDIS_SENTINELS != null && env.REDIS_SENTINEL_NAME == null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['REDIS_SENTINEL_NAME'],
+        message: 'required when REDIS_SENTINELS is configured',
+      });
+    }
   });
 
 export interface AdminApiConfig {
@@ -157,6 +167,14 @@ export interface AdminApiConfig {
   readonly dbPool: Omit<DbPoolConfig, 'url'>;
   // ---- P2 登录波 ----
   readonly redisUrl: string;
+  readonly redisTopology:
+    | { readonly kind: 'direct' }
+    | {
+        readonly kind: 'sentinel';
+        readonly sentinels: string;
+        readonly sentinelName: string;
+        readonly sentinelPassword?: string;
+      };
   readonly trustedProxyHops: number;
   readonly loginGuard: {
     readonly failureThreshold: number;
@@ -212,6 +230,17 @@ export function loadAdminApiConfig(env: NodeJS.ProcessEnv = process.env): AdminA
     },
     otelMode,
     redisUrl: parsed.REDIS_URL,
+    redisTopology:
+      parsed.REDIS_SENTINELS == null
+        ? { kind: 'direct' }
+        : {
+            kind: 'sentinel',
+            sentinels: parsed.REDIS_SENTINELS,
+            sentinelName: parsed.REDIS_SENTINEL_NAME as string,
+            ...(parsed.REDIS_SENTINEL_PASSWORD != null
+              ? { sentinelPassword: parsed.REDIS_SENTINEL_PASSWORD }
+              : {}),
+          },
     trustedProxyHops: parsed.TRUSTED_PROXY_HOPS,
     loginGuard: {
       failureThreshold: parsed.ADMIN_LOGIN_FAILURE_THRESHOLD,
