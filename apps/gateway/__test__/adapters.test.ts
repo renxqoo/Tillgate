@@ -480,6 +480,75 @@ describe('billing-port（C-G3）', () => {
     expect(receiptEvent.receipt.usage.inputTokens).toBe(1);
   });
 
+  it('TPM 预占收尾接线：succeeded→backfill（billing 先行）/ lease_renewed→renew / failed→release', async () => {
+    const { api } = spyApi();
+    const order: string[] = [];
+    const calls = {
+      backfill: [] as Array<[string, string[], number]>,
+      renew: [] as string[],
+      release: [] as string[],
+    };
+    const limiter = {
+      backfillTpm: async (requestId: string, dims: string[], tokens: number) => {
+        order.push('backfill');
+        calls.backfill.push([requestId, dims, tokens]);
+      },
+      renewTpm: async (requestId: string) => {
+        order.push('renew');
+        calls.renew.push(requestId);
+      },
+      releaseTpm: async (requestId: string) => {
+        order.push('release');
+        calls.release.push(requestId);
+      },
+    };
+    const port = createGatewayBilling({ ...api, signal: api.signal } as never, {
+      reservationLimit: '1',
+      reservationPolicy: { mode: 'full' },
+      limiter: limiter as never,
+    });
+    await port.signal({ type: 'lease_renewed', requestId: 'r-1', leaseOwner: 'o', leaseMs: 100 });
+    await port.signal({ type: 'request_failed', requestId: 'r-2', reason: 'boom' });
+    await port.signal({
+      type: 'request_succeeded',
+      requestId: 'r-3',
+      receipt: {
+        requestId: 'r-3',
+        userId: 42,
+        apiKeyId: 7,
+        realModel: 'gpt-x-real',
+        channelId: 3,
+        usage: { inputTokens: 100, cachedInputTokens: 10, outputTokens: 50, estimated: false },
+      } as never,
+    });
+    expect(calls.renew).toEqual(['r-1']);
+    expect(calls.release).toEqual(['r-2']);
+    // 实值口径 = 输入 + 缓存命中 + 输出（TPM 窗口按原始吞吐）；维度串与准入闸同源
+    expect(calls.backfill).toEqual([
+      ['r-3', ['key:7', 'user:42', 'model:gpt-x-real', 'channel:3'], 160],
+    ]);
+    expect(order).toEqual(['renew', 'release', 'backfill']);
+    // 未注入 limiter → 零收尾调用（兼容形态）
+    const bare = createGatewayBilling(api as never, {
+      reservationLimit: '1',
+      reservationPolicy: { mode: 'full' },
+    });
+    await expect(
+      bare.signal({
+        type: 'request_succeeded',
+        requestId: 'r-4',
+        receipt: {
+          requestId: 'r-4',
+          userId: 1,
+          apiKeyId: null,
+          realModel: 'm',
+          channelId: null,
+          usage: { inputTokens: 1, cachedInputTokens: 0, outputTokens: 1, estimated: false },
+        } as never,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it('reserveChannel：官方价口径（coefficient=1）amount 自算 + allowed 收窄', async () => {
     const { api, calls } = spyApi();
     const port = createGatewayBilling(api as never, {

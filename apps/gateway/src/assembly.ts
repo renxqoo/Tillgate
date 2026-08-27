@@ -213,6 +213,8 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
       reservationLimit: config.reservationLimit,
       reservationPolicy: config.reservationPolicy,
       assertCapacity,
+      // TPM 预占收尾（结算信号面回填/释放——预占不再靠分钟桶滚动硬等）
+      limiter: rateLimit.limiter,
     }),
     store: createRedisHealthStore(redis, HEALTH_PREFIX),
     decrypt: (enc) => cipher.decrypt(enc),

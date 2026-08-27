@@ -144,10 +144,10 @@ export interface SlidingWindowLimiter {
   /** 长流续租 TPM 预占，避免流仍在传输时 reservation TTL 提前释放。 */
   renewTpm(requestId: string): Promise<void>;
   /**
-   * 结算回填（成功请求的 TPM 收尾——契约写明「结算时 worker 回填 actual」）：
-   * 释放该请求 reservation hash 里的全部预占维度 + 把真实 token 记到收据归属
-   * 维度的 actual 计数。幂等（projected 标记防重放）；best-effort 不抛错。
-   * 缺席时成功请求的预占只能等 TTL 600s 自然过期——TPM 窗口被残留预占越占越紧。
+   * 结算回填（成功请求的 TPM 收尾）：释放该请求 reservation hash 里的全部预占
+   * 维度 + 把真实 token 记到收据归属维度的 actual 计数。幂等（projected 标记防
+   * 重放）；best-effort 不抛错。接线点 = gateway billing 桥的 request_succeeded
+   * 信号（结算主路径在网关进程内）；进程崩溃残留预占由 TTL 600s 兜底回收。
    */
   backfillTpm(requestId: string, dimensions: readonly string[], tokens: number): Promise<void>;
 }

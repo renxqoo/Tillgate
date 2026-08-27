@@ -15,6 +15,7 @@ import {
   type BillingQuote,
   type BillingQuoteCandidate,
 } from '@tillgate/billing';
+import type { SlidingWindowLimiter } from '@tillgate/runtime';
 import type { BillingPort, BillingSignal, QuoteCandidate, UsageReceipt } from '@tillgate/inference';
 
 export interface GatewayBillingConfig {
@@ -23,6 +24,14 @@ export interface GatewayBillingConfig {
   /** 结算积压准入（bridge 级调用：authorize 前置闸；requestId 恒服务端生成，
    *  HTTP 面无客户端重放路径，桥级 admission 不破坏 billing 内部的重放免疫） */
   assertCapacity?: () => Promise<void>;
+  /**
+   * TPM 预占收尾（成功结算主路径在网关进程内——本桥 signal 面即收尾点）：
+   * request_succeeded → backfillTpm（释放预占 + 实值入 actual 维）；lease_renewed →
+   * renewTpm（长流防 600s TTL 提前释放）；request_failed → releaseTpm。
+   * limiter 件内部 best-effort（不反杀资金面）；崩溃残留预占由 TTL 兜底（worker
+   * 恢复路径不回填——预占按分钟桶滚动，保守不放大窗口）。
+   */
+  limiter?: Pick<SlidingWindowLimiter, 'backfillTpm' | 'renewTpm' | 'releaseTpm'>;
 }
 
 export interface GatewayBillingApi {
@@ -151,6 +160,45 @@ function officialPriceAmount(
   }).toString();
 }
 
+/** TPM actual 维度（与 admitRequest/tryModelAdmission/tryChannelAdmission 的维度串同源） */
+function tpmDimensionsOf(receipt: UsageReceipt): string[] {
+  const dims: string[] = [];
+  if (receipt.apiKeyId != null) dims.push(`key:${receipt.apiKeyId}`);
+  dims.push(`user:${receipt.userId}`);
+  dims.push(`model:${receipt.realModel}`);
+  if (receipt.channelId != null) dims.push(`channel:${receipt.channelId}`);
+  return dims;
+}
+
+/** TPM 实值口径 = 输入 + 缓存命中 + 输出（窗口按原始吞吐——缓存命中不占输入价但仍占窗口） */
+function tpmTokensOf(receipt: UsageReceipt): number {
+  const usage = receipt.usage as {
+    inputTokens: number;
+    cachedInputTokens?: number;
+    outputTokens: number;
+  };
+  return usage.inputTokens + (usage.cachedInputTokens ?? 0) + usage.outputTokens;
+}
+
+/** 结算信号后的 TPM 预占收尾（billing 先行；limiter 件内部 best-effort 不抛） */
+async function finalizeTpmReservation(
+  limiter: GatewayBillingConfig['limiter'],
+  signal: BillingSignal,
+): Promise<void> {
+  if (limiter == null) return;
+  if (signal.type === 'request_succeeded') {
+    await limiter.backfillTpm(
+      signal.requestId,
+      tpmDimensionsOf(signal.receipt),
+      tpmTokensOf(signal.receipt),
+    );
+  } else if (signal.type === 'lease_renewed') {
+    await limiter.renewTpm(signal.requestId);
+  } else if (signal.type === 'request_failed') {
+    await limiter.releaseTpm(signal.requestId);
+  }
+}
+
 export function createGatewayBilling(
   api: GatewayBillingApi,
   config: GatewayBillingConfig,
@@ -175,6 +223,7 @@ export function createGatewayBilling(
 
     async signal(signal: BillingSignal) {
       await api.signal(toBillingEvent(signal));
+      await finalizeTpmReservation(config.limiter, signal);
     },
 
     async reserveChannel(input) {

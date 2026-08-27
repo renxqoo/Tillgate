@@ -11,7 +11,7 @@ import {
   type OutputCapConfig,
 } from '@tillgate/inference';
 import type { AuthEnv } from '../middleware/api-key';
-import { toInferenceInput } from './inference-input';
+import { requestSignalOf, toInferenceInput } from './inference-input';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { GatewayErrors } from '../openai-error-face';
 import { encodeDelivered } from '../openai-envelope';
@@ -24,6 +24,8 @@ export interface InferenceRouteDeps {
   rateLimit?: RateLimitGate;
   /** 输出上界口径（缺省取 inference 包缺省——与未覆盖装配时的 prepare 口径一致） */
   outputCap?: OutputCapConfig;
+  /** 服务端 drain 信号（宽限耗尽 abort——与客户端断连信号合成） */
+  drainSignal?: AbortSignal;
 }
 
 /** 端点 → 输出维口径（与 quote/prepare 的 kind 映射一致：仅 chat 族计输出） */
@@ -119,7 +121,7 @@ export function inferenceRoutes(
         auth,
         body: canonical,
         endpoint: endpoint.kind,
-        signal: c.req.raw.signal,
+        signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
       });
       const result =
         canonical.stream === true
@@ -132,7 +134,8 @@ export function inferenceRoutes(
       );
     } catch (error) {
       // 零上游执行的失败（鉴权后异常/目录未命中/预算拒绝）归还 TPM 预占——宁可归还
-      // 也不过度占用窗口（成功路径由结算 backfill 归还，失败路径 TTL 兜底）
+      // 也不过度占用窗口（上游已执行的成败收尾归 billing 桥：succeeded→backfill、
+      // failed→release，见 adapters/billing-port.ts finalizeTpmReservation）
       await admit.release();
       throw error;
     }
@@ -171,7 +174,7 @@ export function enginesAliasRoutes(
           auth,
           body: canonical,
           endpoint: endpoint.kind,
-          signal: c.req.raw.signal,
+          signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
         }),
       );
       return await encodeDelivered(
