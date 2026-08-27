@@ -1,10 +1,12 @@
 /**
  * 注册动词（公开，恒两步制）：register 发码（载荷只存 cipher 封装后的
  * 密码，永不落明文）→ register/verify 建号 + 绑凭据 + 建号收尾（赠送/归因
- * best-effort）+ 签发会话。闸序：开关 → IP 限频 → captcha → 邮箱占用 → 密码策略。
+ * best-effort）+ 签发会话。闸序：开关 → IP 限频 → captcha → 密码策略 →
+ * 邮箱占用哑口径（已占邮箱同款 code_required 响应但不发码——注册状态不可枚举，
+ * 与登录/找回的哑口径一致）。
  */
+import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
-import { AccountsErrors } from '@tillgate/accounts';
 import { jsonBody } from '@tillgate/http';
 import { assertPasswordPolicy } from '@tillgate/identity';
 import { registerSchema, verifySchema } from '../contracts/auth.js';
@@ -48,7 +50,9 @@ export function registerRoutes(deps: AuthDeps) {
       await deps.captcha.verify({ token: body.captchaToken, remoteIp: ip ?? undefined });
     }
     if (await deps.emailTaken(body.email)) {
-      throw AccountsErrors.business('email_taken', { email: body.email });
+      // 哑口径（S5）：已占邮箱与未占用完全同形状响应，但不建挑战不发码——
+      // 409 email_taken 等于免费枚举探测；哑 challengeId 走 verify 与垃圾 ID 同款失败
+      return c.json({ kind: 'code_required', challengeId: randomUUID() });
     }
     // 密码策略单源校验（identity 域；不满足直接 400——在发码前拒绝）
     assertPasswordPolicy(body.password, deps.passwordPolicy);
