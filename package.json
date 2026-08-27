@@ -13,7 +13,7 @@
     "build": "bunx turbo build",
     "db:migrate": "cd packages/db && bun run  --env-file=../../.env  drizzle-kit migrate",
     "dev": "bunx turbo dev",
-    "docker:up": "docker compose -f docker/compose.yml up -d",
+    "docker:up": "docker compose --env-file .env -f docker/compose.yml up -d",
     "format": "bun x oxfmt --write .",
     "format:check": "bun x oxfmt --check .",
     "integrations:import": "bun --env-file=.env packages/control-plane/scripts/import-integration-env.ts",

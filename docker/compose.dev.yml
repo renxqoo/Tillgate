@@ -1,4 +1,10 @@
 # 本地开发：仅基础设施（应用在宿主机 bun dev 运行）
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
 services:
   redis:
     image: redis:7-alpine
@@ -14,6 +20,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    logging: *default-logging
 
   postgres:
     image: postgres:16-alpine
@@ -30,6 +37,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    logging: *default-logging
 
 volumes:
   redis-dev:

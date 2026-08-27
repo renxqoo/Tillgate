@@ -4,6 +4,12 @@
 
 name: tillgate
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '5'
+
 services:
   nginx:
     image: nginx:alpine
@@ -16,30 +22,39 @@ services:
       - certbot-etc:/etc/letsencrypt:ro
       - certbot-web:/var/www/certbot:ro
     depends_on:
-      - gateway
-      - console-client
-      - console-admin
+      gateway:
+        condition: service_healthy
+      client-api:
+        condition: service_healthy
+      admin-api:
+        condition: service_healthy
+      console-client:
+        condition: service_healthy
+      console-admin:
+        condition: service_healthy
+    logging: *default-logging
     restart: unless-stopped
 
   # certbot 证书签发与续期（Let's Encrypt）——本服务 entrypoint 为 sleep 常驻，
   # 签发/续期须显式指定 --entrypoint certbot（或用 exec）：
   # 首次签发（standalone——此时 80 端口空闲、nginx 未起；--cert-name gateway 对齐 nginx 挂载路径）：
-  #   docker compose -f docker/compose.yml run --rm --entrypoint certbot -p 80:80 certbot certonly \
+  #   docker compose --env-file .env -f docker/compose.yml run --rm --entrypoint certbot -p 80:80 certbot certonly \
   #     --standalone --cert-name gateway -d app.xxx.com -d admin.xxx.com --email you@xxx.com --agree-tos --no-eff-email
   # 续期（webroot——nginx 已在跑、ACME 路径直出）：
-  #   docker compose -f docker/compose.yml exec certbot certbot renew --webroot -w /var/www/certbot \
-  #     && docker compose -f docker/compose.yml exec nginx nginx -s reload
+  #   docker compose --env-file .env -f docker/compose.yml exec certbot certbot renew --webroot -w /var/www/certbot \
+  #     && docker compose --env-file .env -f docker/compose.yml exec nginx nginx -s reload
   certbot:
     image: certbot/certbot:latest
     volumes:
       - certbot-etc:/etc/letsencrypt
       - certbot-web:/var/www/certbot
     entrypoint: sleep infinity # 常驻，由 cron/手动触发 renew
+    logging: *default-logging
     restart: unless-stopped
 
   gateway:
     # 生产镜像按 linux/amd64 构建（服务器 x86_64；本地 Apple Silicon 经 colima Rosetta 交叉构建）
-    image: tillgate/gateway:${TILLGATE_TAG:-local}
+    image: ${TILLGATE_IMAGE_PREFIX:-tillgate}/gateway:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
@@ -54,11 +69,17 @@ services:
       # NODE_ENV=development(本地 dev 值)覆盖镜像 ENV——development 会启用
       # pino-pretty worker transport,在 bundle 产物里 thread-stream 崩溃
       NODE_ENV: production
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-tillgate}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tillgate}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
       GATEWAY_PORT: 8080
-      OTEL_TRACES_MODE: 'off'
+      OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-off}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://trace-receiver:8793}
       TRUSTED_PROXY_HOPS: '1' # nginx 单层代理：XFF 右数第 1 跳 = 真实客户端
+      ADMIN_JWT_SECRET:
+      IDENTITY_CODE_PEPPER:
+      CLIENT_CODE_PEPPER:
+      POSTGRES_PASSWORD:
+      REDIS_PASSWORD:
     depends_on:
       redis:
         condition: service_healthy
@@ -73,12 +94,15 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+      start_period: 10s
+    security_opt: ['no-new-privileges:true']
+    logging: *default-logging
     restart: unless-stopped
     stop_grace_period: 30s # 优雅关停：给 in-flight SSE/请求足够 drain 时间
-    # 多副本：docker compose up -d --scale gateway=2
+    # 多副本：docker compose --env-file .env -f docker/compose.yml up -d --scale gateway=2
 
   client-api:
-    image: tillgate/client-api:${TILLGATE_TAG:-local}
+    image: ${TILLGATE_IMAGE_PREFIX:-tillgate}/client-api:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
@@ -90,10 +114,16 @@ services:
         required: true
     environment:
       NODE_ENV: production # 防 .env 的 dev 值覆盖镜像 ENV(pino-pretty worker 在 bundle 里崩溃)
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-tillgate}
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tillgate}
       TRUSTED_PROXY_HOPS: '1' # 经 FE BFF 透传的 XFF（右数第 1 跳 = 真实用户 IP）
-      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      OTEL_TRACES_MODE: 'off'
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
+      OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-off}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://trace-receiver:8793}
+      ADMIN_JWT_SECRET:
+      IDENTITY_CODE_PEPPER:
+      CHANNEL_API_KEY_ENCRYPTION:
+      POSTGRES_PASSWORD:
+      REDIS_PASSWORD:
     depends_on:
       redis:
         condition: service_healthy
@@ -103,11 +133,19 @@ services:
         # 空库起服务 = 启动期 DB 探测失败后的僵死态(不自动恢复,登录等服务全挂)——
         # 迁移链完成才放行后端服务;migrate 幂等,重复 up 直接跳过已应用项
         condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8081/healthz']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    security_opt: ['no-new-privileges:true']
+    logging: *default-logging
     restart: unless-stopped
     stop_grace_period: 15s
 
   admin-api:
-    image: tillgate/admin-api:${TILLGATE_TAG:-local}
+    image: ${TILLGATE_IMAGE_PREFIX:-tillgate}/admin-api:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
@@ -119,10 +157,15 @@ services:
         required: true
     environment:
       NODE_ENV: production # 防 .env 的 dev 值覆盖镜像 ENV(pino-pretty worker 在 bundle 里崩溃)
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-tillgate}
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tillgate}
       TRUSTED_PROXY_HOPS: '1' # 经 FE BFF 透传的 XFF（右数第 1 跳 = 真实用户 IP）
-      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      OTEL_TRACES_MODE: 'off'
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
+      OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-off}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://trace-receiver:8793}
+      CLIENT_CODE_PEPPER:
+      CHANNEL_API_KEY_ENCRYPTION:
+      POSTGRES_PASSWORD:
+      REDIS_PASSWORD:
     depends_on:
       redis:
         condition: service_healthy
@@ -132,11 +175,19 @@ services:
         # 空库起服务 = 启动期 DB 探测失败后的僵死态(不自动恢复,登录等服务全挂)——
         # 迁移链完成才放行后端服务;migrate 幂等,重复 up 直接跳过已应用项
         condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8082/readyz']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    security_opt: ['no-new-privileges:true']
+    logging: *default-logging
     restart: unless-stopped
     stop_grace_period: 15s
 
   worker:
-    image: tillgate/worker:${TILLGATE_TAG:-local}
+    image: ${TILLGATE_IMAGE_PREFIX:-tillgate}/worker:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
@@ -148,9 +199,17 @@ services:
         required: true
     environment:
       NODE_ENV: production # 防 .env 的 dev 值覆盖镜像 ENV(pino-pretty worker 在 bundle 里崩溃)
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-tillgate}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      OTEL_TRACES_MODE: 'off'
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tillgate}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
+      OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-off}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://trace-receiver:8793}
+      TRACE_RECEIVER_TOKEN: ${TRACE_RECEIVER_TOKEN:?TRACE_RECEIVER_TOKEN is required}
+      JWT_SECRET:
+      ADMIN_JWT_SECRET:
+      IDENTITY_CODE_PEPPER:
+      CLIENT_CODE_PEPPER:
+      POSTGRES_PASSWORD:
+      REDIS_PASSWORD:
     depends_on:
       redis:
         condition: service_healthy
@@ -165,25 +224,33 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 10s
+    security_opt: ['no-new-privileges:true']
+    logging: *default-logging
     restart: unless-stopped
     stop_grace_period: 30s
 
   # 链路接收端（内网）：OTLP/HTTP JSON → PG trace_spans 日分区；
   # 各服务通过 OTEL_TRACES_MODE=otlp + endpoint 指向它（见下方 environment 注入）。
   trace-receiver:
-    image: tillgate/trace-receiver:${TILLGATE_TAG:-local}
+    image: ${TILLGATE_IMAGE_PREFIX:-tillgate}/trace-receiver:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
       dockerfile: docker/Dockerfile.server
       args:
         APP: trace-receiver
-    env_file:
-      - path: ../.env
-        required: true
     environment:
       NODE_ENV: production # 防 .env 的 dev 值覆盖镜像 ENV(pino-pretty worker 在 bundle 里崩溃)
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-tillgate}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tillgate}
+      TRACE_RECEIVER_TOKEN: ${TRACE_RECEIVER_TOKEN:?TRACE_RECEIVER_TOKEN is required}
+      TRACE_RECEIVER_PORT: ${TRACE_RECEIVER_PORT:-8793}
+      TRACE_BATCH_MAX: ${TRACE_BATCH_MAX:-500}
+      TRACE_FLUSH_INTERVAL_MS: ${TRACE_FLUSH_INTERVAL_MS:-2000}
+      TRACE_QUEUE_MAX: ${TRACE_QUEUE_MAX:-10000}
+      OTEL_SERVICE_VERSION: ${OTEL_SERVICE_VERSION:-0.1.0}
+      OTEL_METRICS_INTERVAL_MS: ${OTEL_METRICS_INTERVAL_MS:-10000}
       OTEL_TRACES_MODE: 'off' # 接收端自身不再导出（防自环）
     depends_on:
       postgres:
@@ -195,82 +262,109 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+      start_period: 10s
+    security_opt: ['no-new-privileges:true']
+    logging: *default-logging
     restart: unless-stopped
 
   console-client:
-    image: tillgate/console-client:${TILLGATE_TAG:-local}
+    image: ${TILLGATE_IMAGE_PREFIX:-tillgate}/console-client:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
       dockerfile: apps/client/Dockerfile
-    env_file:
-      - path: ../.env
-        required: true
+      args:
+        GATEWAY_BASE: http://gateway:8080
+        NEXT_PUBLIC_DISPLAY_TZ: ${NEXT_PUBLIC_DISPLAY_TZ:-Asia/Shanghai}
     environment:
       NODE_ENV: production # 防 .env 的 dev 值覆盖镜像 ENV(Next standalone 以生产模式跑)
       # 后端（用户面 8081）
       CLIENT_API_BASE: http://client-api:8081
       TRUSTED_PROXY_HOPS: '1' # FE 在 nginx 后：解入站 XFF 供 BFF 透传给 API
     depends_on:
-      - client-api
+      client-api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3001/']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    security_opt: ['no-new-privileges:true']
+    logging: *default-logging
     restart: unless-stopped
 
   console-admin:
-    image: tillgate/console-admin:${TILLGATE_TAG:-local}
+    image: ${TILLGATE_IMAGE_PREFIX:-tillgate}/console-admin:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
       dockerfile: apps/admin/Dockerfile
-    env_file:
-      - path: ../.env
-        required: true
     environment:
       NODE_ENV: production # 防 .env 的 dev 值覆盖镜像 ENV(Next standalone 以生产模式跑)
       # 后端（管理面 8082）
       ADMIN_API_BASE: http://admin-api:8082
       TRUSTED_PROXY_HOPS: '1' # FE 在 nginx 后：解入站 XFF 供 BFF 透传给 API
     depends_on:
-      - admin-api
+      admin-api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3002/']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    security_opt: ['no-new-privileges:true']
+    logging: *default-logging
     restart: unless-stopped
 
   migrate:
-    image: tillgate/migrate:${TILLGATE_TAG:-local}
+    image: ${TILLGATE_IMAGE_PREFIX:-tillgate}/migrate:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
       dockerfile: docker/Dockerfile.migrate
-    env_file:
-      - path: ../.env
-        required: true
     environment:
       # 同其余服务:容器网地址覆盖 env_file 的宿主机形态(localhost 在容器内指向自身,
       # 缺此覆盖时 drizzle-kit 静默失败——进度条后 exit 1,库零表)
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-tillgate}
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tillgate}
     depends_on:
       postgres:
         condition: service_healthy
     restart: 'no'
+    security_opt: ['no-new-privileges:true']
+    logging: *default-logging
 
   redis:
     image: redis:7-alpine
     # B3 修复：启用 requirepass（与 REDIS_URL 的密码对齐），生产 Redis 不裸奔。
-    # REDIS_PASSWORD 来自 .env（默认 root123 仅开发；生产务必覆盖为强随机值）。
-    command: ['redis-server', '--appendonly', 'yes', '--requirepass', '${REDIS_PASSWORD:-root123}']
+    # REDIS_PASSWORD 来自 .env，生产必须显式配置。
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--requirepass',
+        '${REDIS_PASSWORD:?REDIS_PASSWORD is required}',
+      ]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     volumes:
       - redis-data:/data
     healthcheck:
       # 带鉴权 ping（requirepass 启用后无密码 ping 返回 NOAUTH）
-      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD:-root123}', 'ping']
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 10
     restart: unless-stopped
+    logging: *default-logging
 
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:-tillgate}
     volumes:
       - pg-data:/var/lib/postgresql/data
@@ -280,6 +374,7 @@ services:
       timeout: 3s
       retries: 10
     restart: unless-stopped
+    logging: *default-logging
 
 volumes:
   redis-data:

@@ -34,6 +34,7 @@ e2e/live-fire/.smtp-captures.ndjson
 # docker
 docker/data/
 docker/nginx/certs/
+docker/nginx/certs-server/
 
 # redis 持久化数据（运行时产物，勿入库）
 *.rdb

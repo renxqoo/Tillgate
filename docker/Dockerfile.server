@@ -2,7 +2,7 @@
 # 服务端统一镜像（gateway / worker / admin-api / client-api / trace-receiver），compose 通过 build arg APP 指定
 # 构建段：全 bun；全量 bundle → dist 自包含
 # 运行段：仅 dist（零 node_modules/packages——符号链接布局坑整体退场，镜像 ~40MB）
-FROM oven/bun:1.4-alpine AS builder
+FROM oven/bun:1.4.0-alpine AS builder
 ARG APP
 WORKDIR /repo
 COPY package.json bun.lock tsconfig.base.json ./
@@ -15,7 +15,7 @@ RUN bun install --frozen-lockfile
 # 各 app 自身的 build script 带 --packages=external（产物需 node_modules 解析），此处不可复用。
 RUN bun build "apps/${APP}/src/index.ts" --target=bun --format=esm --sourcemap --outdir=/out/dist
 
-FROM oven/bun:1.4-alpine AS runtime
+FROM oven/bun:1.4.0-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=builder /out/dist ./dist
@@ -23,4 +23,5 @@ COPY --from=builder /out/dist ./dist
 # 见 models-dev-source.ts 头注释）；bun 全量 bundle 不内联 require 的 JSON——随 dist 同级分发。
 # 未依赖 control-plane 的 app（trace-receiver）多出 5MB，换取单一 Dockerfile 零特判。
 COPY --from=builder /repo/packages/control-plane/src/adapters/model-sources/models-dev-snapshot.json ./dist/
+USER bun
 CMD ["bun", "dist/index.js"]
