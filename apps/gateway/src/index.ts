@@ -36,6 +36,10 @@ function toAppDeps(assembly: GatewayAssembly, config: GatewayConfig): GatewayApp
       tokenTtlSeconds: config.oauth.tokenTtlSeconds,
     },
     rateLimit: assembly.rateLimit,
+    outputCap: {
+      defaultMax: config.output.defaultMaxOutputTokens,
+      exposureCap: config.output.exposureCap,
+    },
     oauthIpGuard: assembly.authGuards.ipGuard,
     corsOrigins: config.corsOrigins,
     bodyLimitBytes: config.bodyLimitBytes,

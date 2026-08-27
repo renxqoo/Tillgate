@@ -14,6 +14,7 @@ import {
   HttpErrors,
 } from '@tillgate/http';
 import type { Inference } from '@tillgate/inference';
+import type { OutputCapConfig } from '@tillgate/inference';
 import type { RequestLogStore } from '@tillgate/observability';
 import { otelMiddleware } from './http/middleware/otel';
 import { requestLogMiddleware } from './http/middleware/request-log';
@@ -55,6 +56,8 @@ export interface GatewayAppDeps {
     tokenTtlSeconds: number;
   };
   rateLimit?: RateLimitGate;
+  /** 输出上界口径（准入预占与 inference prepare 共用配置；缺省取包缺省） */
+  outputCap?: OutputCapConfig;
   oauthIpGuard?: AuthFailureGuard;
   corsOrigins?: readonly string[];
   bodyLimitBytes?: number;
@@ -161,6 +164,7 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
   const routeDeps = {
     inference: deps.inference,
     ...(deps.rateLimit != null ? { rateLimit: deps.rateLimit } : {}),
+    ...(deps.outputCap != null ? { outputCap: deps.outputCap } : {}),
   };
   for (const endpoint of inferenceEndpoints) {
     app.use(endpoint.path, authMiddleware());

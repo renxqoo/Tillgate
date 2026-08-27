@@ -153,6 +153,20 @@ describe('admitRequest 并罚制', () => {
   });
 });
 
+describe('admitRequest TPM 豁免维（按张/按秒计费端点）', () => {
+  it('exemptTpm = true：RPM 照查、TPM 不预占（模态族计价单位非 token——TPM 维无意义）', async () => {
+    const { limiter, calls } = fakeLimiter();
+    await admitRequest(gate(limiter), {
+      requestId: 'rq-x',
+      auth: auth(),
+      estimatedTokens: 0,
+      exemptTpm: true,
+    });
+    expect(calls.checkAll).toHaveLength(1);
+    expect(calls.reserveTpmAll).toHaveLength(0);
+  });
+});
+
 describe('tryChannelAdmission（渠道维 RPM + TPM 尝试前判定）', () => {
   it('渠道限额缺失/未装配 = 放行；RPM 有限额走 limiter.check（member 随机）', async () => {
     const { limiter, calls } = fakeLimiter();

@@ -9,10 +9,12 @@ import { Hono, type Context } from 'hono';
 import { HttpErrors } from '@tillgate/http';
 import type { Inference } from '@tillgate/inference';
 import {
+  admissionTokenUpperBound,
   canonicalStreamToGeminiStream,
   chatResponseToGemini,
-  conservativeInputTokenUpperBound,
+  defaultInferenceDefaults,
   geminiRequestToChat,
+  type OutputCapConfig,
 } from '@tillgate/inference';
 import type { AuthEnv } from '../middleware/api-key';
 import { toInferenceInput } from './inference-input';
@@ -65,9 +67,24 @@ async function readGeminiRequest(
   return { ...parsed, raw };
 }
 
+/** 准入预占估算（输入 + 输出上界；与 chat 端点同式——gemini 原生恒 chat 族） */
+function geminiAdmissionEstimate(
+  outputCap: OutputCapConfig | undefined,
+  canonical: Record<string, unknown>,
+): number {
+  const config =
+    outputCap ??
+    (() => {
+      const defaults = defaultInferenceDefaults().output;
+      return { defaultMax: defaults.defaultMaxOutputTokens, exposureCap: defaults.exposureCap };
+    })();
+  return admissionTokenUpperBound('chat', canonical, config);
+}
+
 export function geminiNativeRoutes(deps: {
   inference: Inference;
   rateLimit?: RateLimitGate;
+  outputCap?: OutputCapConfig;
 }): Hono<AuthEnv> {
   return new Hono<AuthEnv>().post('/v1beta/models/:modelAction', async (c) => {
     const { model, stream, raw } = await readGeminiRequest(c);
@@ -79,7 +96,7 @@ export function geminiNativeRoutes(deps: {
     const admit = await admitRequest(deps.rateLimit, {
       requestId,
       auth,
-      estimatedTokens: conservativeInputTokenUpperBound(canonical),
+      estimatedTokens: geminiAdmissionEstimate(deps.outputCap, canonical),
     });
     try {
       const input = toInferenceInput({

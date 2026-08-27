@@ -159,11 +159,15 @@ function multipartRoute(
     const auth = c.get('auth');
     const requestId = c.get('requestId');
     const body = wrapper as unknown as Record<string, unknown>;
-    // multipart 族恒非流式
+    // multipart 族恒非流式。计价单位为张/秒（非 token）——TPM 维明确豁免：
+    // 旧口径 JSON.stringify(FormData) 恒为几十字节（文件序列化为 "{}"），
+    // 是既不反映敞口也无消费语义的假预占；成本敞口由 billing reserveChannel
+    // 的单位上界（张/秒）兜住，RPM 维照查。
     const admit = await admitRequest(deps.rateLimit, {
       requestId,
       auth,
-      estimatedTokens: JSON.stringify(body).length,
+      estimatedTokens: 0,
+      exemptTpm: true,
     });
     try {
       const result = await deps.inference.chat(

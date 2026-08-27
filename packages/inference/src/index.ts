@@ -59,7 +59,11 @@ export type {
   PricingUnit,
 } from './domain/model/types';
 export { buildCandidateChain } from './domain/model/candidates';
-export { conservativeInputTokenUpperBound } from './domain/model/output-cap';
+export {
+  admissionTokenUpperBound,
+  conservativeInputTokenUpperBound,
+  type OutputCapConfig,
+} from './domain/model/output-cap';
 export type {
   UsageReceipt,
   ReceiptParams,

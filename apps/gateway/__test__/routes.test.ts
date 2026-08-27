@@ -69,6 +69,30 @@ function stubInference(over: Partial<Inference> = {}): Inference {
   } as Inference;
 }
 
+/** 记录型限流闸（RPM 放行；TPM 预占入参全记录） */
+function recordingGate() {
+  const calls = {
+    reserveTpmAll: [] as Array<[Array<{ dimension: string; estimatedTokens: number }>, string]>,
+    checkAll: 0,
+  };
+  const limiter = {
+    checkAll: async () => {
+      calls.checkAll += 1;
+      return { allowed: true };
+    },
+    reserveTpmAll: async (
+      dims: Array<{ dimension: string; estimatedTokens: number }>,
+      requestId: string,
+    ) => {
+      calls.reserveTpmAll.push([dims, requestId]);
+      return { allowed: true };
+    },
+    check: async () => ({ allowed: true }),
+    releaseTpm: async () => {},
+  };
+  return { gate: { limiter, globalRpm: null, preauthIpRpm: null } as never, calls };
+}
+
 function harness(inference: Inference) {
   const app = withErrorFace(new Hono<AuthEnv>());
   app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
@@ -503,6 +527,63 @@ describe('客户端取消信号贯通（c.req.raw.signal → ChatInput.signal）
     });
     expect(res.status).toBe(201);
     expect((seen[0] as { signal?: AbortSignal }).signal).toBe(controller.signal);
+  });
+});
+
+describe('TPM 预占口径（B8：含输出上界；B7：模态族豁免）', () => {
+  /** 带 TPM 限额的 reader（TPM 维存在时豁免/预占才可观测） */
+  const LIMITED_READER: AuthReadModel = {
+    resolveKeyByHash: async () => ({
+      keyId: 7,
+      userId: 42,
+      rpmLimit: 60,
+      tpmLimit: 100_000,
+      allowPaygFallback: false,
+      userRpmLimit: null,
+      userTpmLimit: null,
+    }),
+    resolveApp: async () => null,
+  };
+
+  it('chat 端点预占 = 输入字节 + min(max_tokens×n, cap)（与 billing 敞口同式）', async () => {
+    const { gate, calls } = recordingGate();
+    const app = withErrorFace(new Hono<AuthEnv>());
+    app.use('/v1/*', apiKeyMiddleware(LIMITED_READER, undefined, JWT));
+    const chatEndpoint = defined(
+      inferenceEndpoints.find((e) => e.path === '/v1/chat/completions'),
+      'chat endpoint',
+    );
+    app.route(
+      chatEndpoint.path,
+      inferenceRoutes({ inference: stubInference(), rateLimit: gate }, chatEndpoint),
+    );
+    const body = { model: 'm', messages: [{}], max_tokens: 100 };
+    const res = await post(app, '/v1/chat/completions', body);
+    expect(res.status).toBe(200);
+    const dims = calls.reserveTpmAll[0]?.[0];
+    expect(dims).toBeDefined();
+    // 输入字节 + 声明 max_tokens（未声明时按缺省 4096——不小于纯输入）
+    const inputBytes = Buffer.byteLength(JSON.stringify(body), 'utf8');
+    expect(dims?.[0]?.estimatedTokens).toBe(inputBytes + 100);
+  });
+
+  it('multipart 模态族：RPM 照查、TPM 维豁免（按张/按秒计价——预占恒 0 的假口径移除）', async () => {
+    const { gate, calls } = recordingGate();
+    const app = withErrorFace(new Hono<AuthEnv>());
+    app.use('/v1/*', apiKeyMiddleware(LIMITED_READER, undefined, JWT));
+    app.route('/', modalityMultipartRoutes({ inference: stubInference(), rateLimit: gate }));
+    const form = new FormData();
+    form.append('model', 'img-x');
+    form.append('prompt', 'a cat');
+    form.append('image', new File([new Uint8Array([1, 2, 3])], 'cat.png', { type: 'image/png' }));
+    const res = await app.request('/v1/images/edits', {
+      method: 'POST',
+      headers: { authorization: 'Bearer sk_k' },
+      body: form,
+    });
+    expect(res.status).toBe(200);
+    expect(calls.checkAll).toBe(1); // RPM 维照查
+    expect(calls.reserveTpmAll).toHaveLength(0); // TPM 维不预占
   });
 });
 

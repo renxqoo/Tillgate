@@ -21,6 +21,7 @@ describe('api：facade 契约与出口面', () => {
       'GENERATION_TASK_STATUSES',
       'InferenceErrors',
       'USER_SIDE_CANCELS',
+      'admissionTokenUpperBound',
       'buildCandidateChain',
       'canonicalStreamToClaudeStream',
       'canonicalStreamToCompletionsStream',

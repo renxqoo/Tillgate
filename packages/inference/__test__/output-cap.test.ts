@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  admissionTokenUpperBound,
   clampForwardedOutputLimit,
   conservativeInputTokenUpperBound,
   maxOutputTokensFor,
@@ -51,6 +52,29 @@ describe('domain/model/output-cap：输出上界口径（mct > mt > 缺省；×n
     expect(clampForwardedOutputLimit(body, 4_096)).toBe(body);
     expect(clampForwardedOutputLimit({ max_tokens: 100, n: 4 }, 3)).toBeInstanceOf(Object);
     expect(Object.keys(clampForwardedOutputLimit({ n: 4 }, 3))).toEqual(['n']);
+  });
+
+  it('准入预占口径 = 输入上界 + 输出上界（与 billing 敞口同式；仅 chat 族计输出）', () => {
+    const cap = { defaultMax: 4_096, exposureCap: 32_768 };
+    const body = { model: 'm', messages: [{}] };
+    const input = conservativeInputTokenUpperBound(body);
+    // chat：无声明 max_tokens → 缺省 4096
+    expect(admissionTokenUpperBound('chat', body, cap)).toBe(input + 4_096);
+    // chat：声明 max_tokens=100 → 100
+    const capped = { ...body, max_tokens: 100 };
+    expect(admissionTokenUpperBound('chat', capped, config)).toBe(
+      conservativeInputTokenUpperBound(capped) + 100,
+    );
+    // chat：×n 封顶 exposureCap
+    expect(admissionTokenUpperBound('chat', { ...body, max_tokens: 100, n: 9 }, cap)).toBe(
+      conservativeInputTokenUpperBound({ ...body, max_tokens: 100, n: 9 }) + 900,
+    );
+    expect(admissionTokenUpperBound('chat', { ...body, max_tokens: 32_768, n: 8 }, cap)).toBe(
+      conservativeInputTokenUpperBound({ ...body, max_tokens: 32_768, n: 8 }) + 32_768,
+    );
+    // embeddings / modality：输出维恒 0（只押输入）
+    expect(admissionTokenUpperBound('embeddings', body, cap)).toBe(input);
+    expect(admissionTokenUpperBound('modality', body, cap)).toBe(input);
   });
 
   it('输入保守上界 = JSON UTF-8 字节数（每 token ≥1 字节——安全上界）', () => {

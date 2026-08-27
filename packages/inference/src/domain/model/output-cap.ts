@@ -71,3 +71,16 @@ export function conservativeInputTokenUpperBound(body: Record<string, unknown>):
     return 0;
   }
 }
+
+/**
+ * 入口准入预占口径 = 输入保守上界 + 输出上界（kind 映射与 quote/prepare 一致：
+ * 仅 chat 族计输出）。与 billing 敞口（failover estimatedTokens）同式——
+ * 入口只押输入会漏掉大 max_tokens 请求对 key/user TPM 维的敞口。
+ */
+export function admissionTokenUpperBound(
+  kind: 'chat' | 'embeddings' | 'modality',
+  body: Record<string, unknown>,
+  config: OutputCapConfig,
+): number {
+  return conservativeInputTokenUpperBound(body) + maxOutputTokensFor(kind, body, config);
+}

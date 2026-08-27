@@ -28,6 +28,11 @@ export interface AdmitInput {
   auth: AuthContext;
   /** TPM 预占口径的估算 token 数（敞口保守上界） */
   estimatedTokens: number;
+  /**
+   * TPM 维豁免（按张/按秒计价的模态端点）：RPM 照查、不预占 TPM——
+   * 计价单位非 token 时 TPM 维没有消费语义，预占恒 0 的假口径不如明确豁免。
+   */
+  exemptTpm?: boolean;
 }
 
 export interface AdmitHandle {
@@ -94,7 +99,7 @@ export async function admitRequest(
         });
       }
 
-      const tpmDims = tpmDimsOf(auth, input.estimatedTokens);
+      const tpmDims = input.exemptTpm === true ? [] : tpmDimsOf(auth, input.estimatedTokens);
       if (tpmDims.length > 0) {
         const tpm = await gate.limiter.reserveTpmAll(tpmDims, input.requestId);
         if (!tpm.allowed) {
