@@ -139,7 +139,12 @@ export function ChannelForm({
           }) => (
             <FormItem data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="ch-key">{isEdit ? t('apiKeyKeep') : t('apiKey')}</FieldLabel>
-              <Input id="ch-key" type="password" {...field} placeholder={isEdit ? '••••••' : ''} />
+              <Input
+                id="ch-key"
+                type="password"
+                {...field}
+                placeholder={isEdit ? t('apiKeyMaskedPlaceholder') : t('apiKeyPlaceholder')}
+              />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </FormItem>
           )}

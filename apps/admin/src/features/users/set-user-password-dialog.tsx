@@ -101,6 +101,7 @@ export function PasswordDialog({
                 <Input
                   id="pw"
                   type={show ? 'text' : 'password'}
+                  placeholder={t('newPasswordPlaceholder')}
                   {...form.register('password')}
                   className="pr-9"
                 />

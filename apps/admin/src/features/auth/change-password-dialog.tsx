@@ -57,6 +57,7 @@ export function ChangePasswordDialog({
                 id="oldPassword"
                 name="oldPassword"
                 autoComplete="current-password"
+                placeholder={t('oldPasswordPlaceholder')}
                 required
               />
             </FormItem>
@@ -66,6 +67,7 @@ export function ChangePasswordDialog({
                 id="newPassword"
                 name="newPassword"
                 autoComplete="new-password"
+                placeholder={t('newPasswordPlaceholder')}
                 required
               />
             </FormItem>
@@ -75,6 +77,7 @@ export function ChangePasswordDialog({
                 id="confirmPassword"
                 name="confirmPassword"
                 autoComplete="new-password"
+                placeholder={t('confirmPasswordPlaceholder')}
                 required
               />
             </FormItem>

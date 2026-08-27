@@ -210,6 +210,7 @@ export function LoginForm({
                       id="login-password"
                       type={showPassword ? 'text' : 'password'}
                       autoComplete="new-password"
+                      placeholder={t('passwordPlaceholder')}
                       className="h-11"
                       {...field}
                     />

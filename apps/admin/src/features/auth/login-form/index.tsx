@@ -144,6 +144,7 @@ export function LoginForm() {
                       id="admin-password"
                       type={showPwd ? 'text' : 'password'}
                       autoComplete="new-password"
+                      placeholder={t('passwordPlaceholder')}
                       className="h-11"
                       {...field}
                     />
