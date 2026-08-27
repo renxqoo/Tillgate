@@ -69,6 +69,32 @@ export interface GatewayAppDeps {
   logger?: { error(obj: unknown, msg: string): void };
 }
 
+/**
+ * 预认证链挂载（顺序即契约）：
+ * 1. per-IP 硬限——未认证洪水不经过任何鉴权维度限流，且每发都写 request_logs（写放大），
+ *    故本闸挂日志之前：超限 429 直接出站、不写日志；/v1 与 /v1beta 双入口同一 IP 桶。
+ * 2. requestLog——鉴权之前，401/429 也入日志（「记录一切 /v1 与 /v1beta 请求」语义）。
+ */
+function mountPreauthChain(app: Hono<AuthEnv>, deps: GatewayAppDeps): void {
+  const gate = deps.rateLimit;
+  if (gate != null && gate.preauthIpRpm != null) {
+    const preauth = preauthIpRateLimitMiddleware({
+      limiter: gate.limiter,
+      maxPerMinute: gate.preauthIpRpm,
+      trustedProxyHops: deps.trustedProxyHops,
+    });
+    app.use('/v1/*', preauth);
+    app.use('/v1beta/*', preauth);
+  }
+  const requestLog = requestLogMiddleware({
+    store: deps.requestLogs,
+    ...(deps.logger != null ? { logger: deps.logger } : {}),
+    trustedProxyHops: deps.trustedProxyHops,
+  });
+  app.use('/v1/*', requestLog);
+  app.use('/v1beta/*', requestLog);
+}
+
 // eslint-disable-next-line max-lines-per-function -- HTTP 装配平铺：中间件链与路由挂载顺序即契约
 export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
@@ -116,27 +142,7 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
     return c.json({ ok: true });
   });
 
-  // 预认证 per-IP 硬限（第一道闸）：未认证洪水不经过任何鉴权维度限流，且每发都写
-  // request_logs（写放大）——本闸挂 requestLog 之前，超限 429 不写日志。
-  // /v1 与 /v1beta 双入口同一 IP 桶（Gemini 原生入口不匹配 /v1/* 前缀）。
-  if (deps.rateLimit?.preauthIpRpm != null) {
-    const preauth = preauthIpRateLimitMiddleware({
-      limiter: deps.rateLimit.limiter,
-      maxPerMinute: deps.rateLimit.preauthIpRpm,
-      trustedProxyHops: deps.trustedProxyHops,
-    });
-    app.use('/v1/*', preauth);
-    app.use('/v1beta/*', preauth);
-  }
-
-  // requestLog 前置到鉴权之前：401/429 也入日志（「记录一切 /v1 与 /v1beta 请求」语义）
-  const requestLog = requestLogMiddleware({
-    store: deps.requestLogs,
-    ...(deps.logger != null ? { logger: deps.logger } : {}),
-    trustedProxyHops: deps.trustedProxyHops,
-  });
-  app.use('/v1/*', requestLog);
-  app.use('/v1beta/*', requestLog);
+  mountPreauthChain(app, deps);
 
   const authMiddleware = () =>
     apiKeyMiddleware(deps.reader, deps.authGuards, {

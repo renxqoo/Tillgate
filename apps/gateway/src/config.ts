@@ -260,6 +260,11 @@ function redisTopologyOf(parsed: {
   };
 }
 
+/** 限流 RPM 键归一：0/null → null（0 = 不设闸） */
+function rpmOrNull(value: number): number | null {
+  return value > 0 ? value : null;
+}
+
 // eslint-disable-next-line max-lines-per-function -- env → GatewayConfig 逐字段搬运的纯配置映射
 export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
   // 弃用键：告警后剔除出解析输入（过滤式构造替代动态 delete，行为等价）
@@ -318,7 +323,7 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     },
     trustedProxyHops: parsed.TRUSTED_PROXY_HOPS,
     globalRpm,
-    preauthIpRpm: parsed.PREAUTH_IP_RPM > 0 ? parsed.PREAUTH_IP_RPM : null,
+    preauthIpRpm: rpmOrNull(parsed.PREAUTH_IP_RPM),
     upstreamDeadlineMs: parsed.GATEWAY_UPSTREAM_DEADLINE_MS,
     upstreamConnectTimeoutMs: parsed.GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS,
     aiAllowLocalUrl: parsed.GATEWAY_AI_ALLOW_LOCAL_URL,

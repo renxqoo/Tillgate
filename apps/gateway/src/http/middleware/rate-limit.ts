@@ -3,10 +3,9 @@
  * 并罚制——任一维（key/user RPM、key/user/global TPM）超限即 429，不做凭证>用户择优；
  * 维度串不外泄（Retry-After 头表达等待）；TPM 预占失败必须 releaseTpm（TTL 兜底）。
  *
- * 范围说明：模型维 TPM 与渠道维 TPM 预占不在本闸——前者需目录候选映射 id
- * （inference 内部解析），后者需请求作用域 TPM 生命周期（admitChannel 钩子无
- * requestId 维）。渠道维 RPM 经 assembly 注入的 admitChannel 钩子保留
- * （渠道超限换渠语义）。
+ * 候选/渠道维（tryModelAdmission / tryChannelAdmission）经 assembly 注入 inference
+ * 的 admitModel/admitChannel 钩子：模型超限换候选（fallback 链）、渠道超限换渠；
+ * TPM 预占与 key/user 维共用同一 requestId 预占哈希。
  */
 import { randomUUID } from 'node:crypto';
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
@@ -112,18 +111,75 @@ export async function admitRequest(
   );
 }
 
-/** 渠道维 RPM 尝试前判定（assembly 经 inference admitChannel 钩子消费；false = 换渠） */
-export async function tryChannelRpm(
+/** TPM 预占作用域（与 key/user 维共用同一预占哈希的请求级上下文） */
+export interface AdmissionScope {
+  estimatedTokens: number;
+  requestId: string;
+}
+
+/** 渠道维准入（RPM 滑窗 + TPM 预占；assembly 经 inference admitChannel 钩子消费；false = 换渠）。
+ *  TPM 与 key/user 维共用同一 requestId 预占哈希（RESERVE 幂等追加维，异常路径 release
+ *  统一收口）；failover 换渠时旧渠道预占保留到分钟桶滚动（保守口径——无按维撤销原语）。 */
+export async function tryChannelAdmission(
   gate: RateLimitGate | undefined,
-  channel: { channelId: number; rpmLimit: number | null },
+  channel: { channelId: number; rpmLimit: number | null; tpmLimit?: number | null },
+  scope: AdmissionScope,
 ): Promise<boolean> {
-  if (gate == null || channel.rpmLimit == null || channel.rpmLimit <= 0) return true;
-  const result = await gate.limiter.check(
-    `channel:${channel.channelId}`,
-    channel.rpmLimit,
-    randomUUID(),
-  );
-  return result.allowed;
+  if (gate == null) return true;
+  if (channel.rpmLimit != null && channel.rpmLimit > 0) {
+    const result = await gate.limiter.check(
+      `channel:${channel.channelId}`,
+      channel.rpmLimit,
+      randomUUID(),
+    );
+    if (!result.allowed) return false;
+  }
+  if (channel.tpmLimit != null && channel.tpmLimit > 0) {
+    const tpm = await gate.limiter.reserveTpmAll(
+      [
+        {
+          dimension: `channel:${channel.channelId}`,
+          estimatedTokens: scope.estimatedTokens,
+          max: channel.tpmLimit,
+        },
+      ],
+      scope.requestId,
+    );
+    if (!tpm.allowed) return false;
+  }
+  return true;
+}
+
+/** 模型维准入（realModel 维 RPM + TPM；assembly 经 inference admitModel 钩子消费；
+ *  false = 换候选——fallback 模型接手）。管理台可配的模型级限流在此生效。 */
+export async function tryModelAdmission(
+  gate: RateLimitGate | undefined,
+  model: { realModel: string; rpmLimit: number | null; tpmLimit: number | null },
+  scope: AdmissionScope,
+): Promise<boolean> {
+  if (gate == null) return true;
+  if (model.rpmLimit != null && model.rpmLimit > 0) {
+    const result = await gate.limiter.check(
+      `model:${model.realModel}`,
+      model.rpmLimit,
+      scope.requestId,
+    );
+    if (!result.allowed) return false;
+  }
+  if (model.tpmLimit != null && model.tpmLimit > 0) {
+    const tpm = await gate.limiter.reserveTpmAll(
+      [
+        {
+          dimension: `model:${model.realModel}`,
+          estimatedTokens: scope.estimatedTokens,
+          max: model.tpmLimit,
+        },
+      ],
+      scope.requestId,
+    );
+    if (!tpm.allowed) return false;
+  }
+  return true;
 }
 
 /**

@@ -25,6 +25,9 @@ export interface ActiveMappingRow {
   readonly unitPrice: string;
   /** 费率卡 scope='group' 匹配键（可空） */
   readonly pricingGroup: string | null;
+  /** 模型维限流（可空 = 不限；网关 admitModel 钩子消费——管理台可配必生效） */
+  readonly rpmLimit: number | null;
+  readonly tpmLimit: number | null;
   readonly isFree: boolean;
   /** fallback 对外名链（一级展开；null/空 = 不降级） */
   readonly fallbackModels: string[] | null;

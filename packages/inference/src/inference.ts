@@ -30,6 +30,7 @@ import {
   type AttemptContext,
   type AttemptOutcome,
   type ChannelAdmission,
+  type ModelAdmission,
   type ExecutionDeps,
   type PassthroughDelivered,
 } from './application/failover';
@@ -72,6 +73,8 @@ export interface InferenceEnv {
   tasks?: GenerationTaskStore;
   /** 渠道维限流钩子（gateway app 装配；未装配 = 放行） */
   admitChannel?: ChannelAdmission;
+  /** 模型维限流钩子（候选级 RPM/TPM；gateway app 装配；未装配 = 放行） */
+  admitModel?: ModelAdmission;
   /** 阶段 span 注入口（gateway 装配绑 OTel；未装配 = no-op 零开销） */
   trace?: TracePort;
   defaults?: InferenceDefaultsInput;
@@ -212,6 +215,7 @@ function buildExecutionDeps(
     upstream,
     health,
     ...(env.admitChannel != null ? { admitChannel: env.admitChannel } : {}),
+    ...(env.admitModel != null ? { admitModel: env.admitModel } : {}),
     trace,
     defaults,
     onError,

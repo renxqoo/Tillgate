@@ -6,7 +6,11 @@ export { createInference } from './inference';
 export type { ChatInput, Inference, InferenceEnv } from './inference';
 export type { ChatDelivered } from './application/chat';
 export type { StreamDelivered } from './application/stream';
-export type { PassthroughDelivered, ChannelAdmission } from './application/failover';
+export type {
+  PassthroughDelivered,
+  ChannelAdmission,
+  ModelAdmission,
+} from './application/failover';
 export type { GenerationSubmitInput, GenerationSubmitOutcome } from './application/generation';
 export { createGenerationPollUseCase } from './application/generation-poll';
 export type {

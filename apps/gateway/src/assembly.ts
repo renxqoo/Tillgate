@@ -37,7 +37,11 @@ import { createPostgresGatewayCatalog } from './adapters/catalog-port';
 import { createGatewayBilling } from './adapters/billing-port';
 import { createSettleWakeProducer } from './adapters/settle-wake';
 import { otelTracePort } from './adapters/trace-port';
-import { tryChannelRpm, type RateLimitGate } from './http/middleware/rate-limit';
+import {
+  tryChannelAdmission,
+  tryModelAdmission,
+  type RateLimitGate,
+} from './http/middleware/rate-limit';
 import { ACCOUNTS_POLICY, BILLING_GUARDS, type GatewayConfig } from './config';
 
 /** 渠道健康 Redis 键前缀（前缀纪律：breaker/credential 分键） */
@@ -215,12 +219,28 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     tasks: createPostgresGenerationTaskStore(db),
     // 阶段 span 绑定（inference TracePort → OTel）
     trace: otelTracePort,
-    // 渠道维 RPM 尝试前判定（钩子无请求作用域生命周期，故无渠道 TPM 预占）
-    admitChannel: async (channel) =>
-      tryChannelRpm(rateLimit, {
-        channelId: channel.channelId,
-        rpmLimit: channel.rpmLimit ?? null,
-      }),
+    // 渠道维准入（RPM 滑窗 + TPM 预占——预占并入请求级预占哈希，异常路径 release 收口）
+    admitChannel: async (channel, estimatedTokens, requestId) =>
+      tryChannelAdmission(
+        rateLimit,
+        {
+          channelId: channel.channelId,
+          rpmLimit: channel.rpmLimit ?? null,
+          tpmLimit: channel.tpmLimit ?? null,
+        },
+        { estimatedTokens, requestId },
+      ),
+    // 模型维准入（管理台 model_mappings.rpm/tpm_limit 生效面；超限换 fallback 候选）
+    admitModel: async (candidate, estimatedTokens, requestId) =>
+      tryModelAdmission(
+        rateLimit,
+        {
+          realModel: candidate.realModel,
+          rpmLimit: candidate.rpmLimit ?? null,
+          tpmLimit: candidate.tpmLimit ?? null,
+        },
+        { estimatedTokens, requestId },
+      ),
     defaults: {
       output: config.output,
       authorization: { ttlMs: config.authorizationTtlMs },

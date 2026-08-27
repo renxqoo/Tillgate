@@ -261,6 +261,8 @@ describe('catalog 快照杂项防御', () => {
       pricingUnit: 'weird',
       unitPrice: '0',
       pricingGroup: null,
+      rpmLimit: null,
+      tpmLimit: null,
       isFree: false,
       fallbackModels: null,
       billingPolicy: null,

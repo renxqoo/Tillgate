@@ -34,6 +34,9 @@ export interface ModelMappingSnapshot {
    * （显式免费与候选价格非全零结构性拒绝）。目录实现方携带。
    */
   isFree?: boolean;
+  /** 模型维限流（目录实现方携带；admitModel 钩子消费，缺省不限） */
+  rpmLimit?: number | null;
+  tpmLimit?: number | null;
 }
 
 /** 报价候选（主模型 + 兜底展开后的有序链；价格快照来自各自映射） */
@@ -50,6 +53,9 @@ export interface QuoteCandidate {
   unitUpperBound: number;
   coefficient: string;
   billingPolicyFingerprint: string | null;
+  /** 模型维限流（候选级准入维度；见 ModelMappingSnapshot.rpmLimit） */
+  rpmLimit?: number | null;
+  tpmLimit?: number | null;
   /** 命中时段标签透传（收据审计列；见 ModelMappingSnapshot.pricingWindow） */
   pricingWindow?: string;
   /** 显式免费标记透传（授权 0 元 fast-path 判定；见 ModelMappingSnapshot.isFree） */

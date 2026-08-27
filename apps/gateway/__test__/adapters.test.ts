@@ -34,6 +34,8 @@ const mapping = (
   pricingUnit: 'token',
   unitPrice: '0',
   pricingGroup: null,
+  rpmLimit: null,
+  tpmLimit: null,
   isFree: false,
   fallbackModels: null,
   billingPolicy: null,
@@ -73,6 +75,20 @@ const card = (coefficients: UserRateCardContext['coefficients']): UserRateCardCo
   cardName: 'vip',
   status: 0,
   coefficients,
+});
+
+describe('catalog-port：模型级限流列透传', () => {
+  it('ActiveMappingRow 的 rpm/tpm 限额进快照（admitModel 钩子消费面）', async () => {
+    const catalog = createGatewayCatalog(
+      stores({
+        mappings: [mapping({ id: 1, externalName: 'm-main', rpmLimit: 60, tpmLimit: 90_000 })],
+      }),
+    );
+    expect(defined(await catalog.findMapping('m-main', noCard))).toMatchObject({
+      rpmLimit: 60,
+      tpmLimit: 90_000,
+    });
+  });
 });
 
 describe('catalog-port：系数解析（C-G2）', () => {

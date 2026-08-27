@@ -14,8 +14,8 @@ import type { PreparedRequest } from './quote';
 /**
  * 候选 × 渠道双层循环：
  *
- *   for 候选（主模型 + fallback 链）→ 渠道加权调度序：
- *     渠道维限流钩子（app 装配，缺省放行）→ 健康放行
+ *   for 候选（主模型 + fallback 链）→ 模型维准入钩子（app 装配，缺省放行）：
+ *     渠道加权调度序 → 渠道维限流钩子（app 装配，缺省放行）→ 健康放行
  *     → 渠道敞口预留（reserveChannel）→ 首次成功预留后 upstream_started（租约开始）
  *     → 单次尝试（结局编码 AttemptOutcome，控制流由本循环翻译：
  *        switch_channel → continue；next_candidate → break；respond → 返回）
@@ -24,10 +24,19 @@ import type { PreparedRequest } from './quote';
  * 上游故障（upstream_failed）终结错误。尝试总数无上限（预算与限流止步）。
  */
 
-/** 渠道维准入钩子（gateway app 装配限流；未装配 = 单副本开发形态全放行） */
+/** 渠道维准入钩子（gateway app 装配限流；未装配 = 单副本开发形态全放行）。
+ *  requestId 供 TPM 预占作用域（与 key/user 维同一预占哈希，release/backfill 统一收口）。 */
 export type ChannelAdmission = (
   channel: ChannelCandidate,
   estimatedTokens: number,
+  requestId: string,
+) => Promise<boolean>;
+
+/** 模型维准入钩子（候选级——realModel 维 RPM/TPM；false = 换候选走 fallback 链） */
+export type ModelAdmission = (
+  candidate: { realModel: string; rpmLimit?: number | null; tpmLimit?: number | null },
+  estimatedTokens: number,
+  requestId: string,
 ) => Promise<boolean>;
 
 export interface ExecutionDeps {
@@ -36,6 +45,7 @@ export interface ExecutionDeps {
   upstream: UpstreamPort;
   health: ChannelHealth;
   admitChannel?: ChannelAdmission;
+  admitModel?: ModelAdmission;
   trace: TracePort;
   defaults: InferenceDefaults;
   onError?: (error: unknown, context: string) => void;
@@ -120,7 +130,10 @@ async function gateChannel(
   },
 ): Promise<string | null> {
   const { requestId, prepared, candidate, channel, channelAttempt, estimatedTokens } = args;
-  if (deps.admitChannel != null && !(await deps.admitChannel(channel, estimatedTokens))) {
+  if (
+    deps.admitChannel != null &&
+    !(await deps.admitChannel(channel, estimatedTokens, requestId))
+  ) {
     await skipChannel(deps, { requestId, channel, channelAttempt, reason: 'rate_limited' });
     return 'rate_limit_exceeded';
   }
@@ -193,6 +206,19 @@ export async function runCandidateLoop<T>(
   const estimatedTokens = prepared.inputUpperBound + prepared.outputCap;
 
   for (const candidate of prepared.candidates) {
+    // 模型维准入（候选级）：拒绝 = 该候选整体跳过（含其全部渠道），fallback 候选接手
+    if (
+      deps.admitModel != null &&
+      !(await deps.admitModel(candidate, estimatedTokens, requestId))
+    ) {
+      lastCode = 'rate_limit_exceeded';
+      await deps.trace.withSpan(
+        'model.skip',
+        { 'request.id': requestId, 'ai.model': candidate.realModel, 'skip.reason': 'rate_limited' },
+        async () => {},
+      );
+      continue;
+    }
     const channels = await resolveChannelOrder(deps, {
       requestId,
       realModel: candidate.realModel,

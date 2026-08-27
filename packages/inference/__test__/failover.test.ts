@@ -304,3 +304,64 @@ describe('application/failover：候选 × 渠道双层循环', () => {
     });
   });
 });
+
+describe('模型维准入钩子（admitModel）与渠道钩子作用域', () => {
+  it('admitModel 拒绝主模型 → 整候选跳过（不进渠道环），fallback 候选接手', async () => {
+    const { deps } = setup();
+    const seen: Array<{ realModel: string; estimatedTokens: number; requestId: string }> = [];
+    deps.admitModel = async (candidate, estimatedTokens, requestId) => {
+      seen.push({ realModel: candidate.realModel, estimatedTokens, requestId });
+      return candidate.realModel !== 'real-1';
+    };
+    const attempts: string[] = [];
+    const outcome = await runCandidateLoop(
+      deps,
+      preparedOf([candidateOf(1, 'real-1'), candidateOf(2, 'real-2')]),
+      'req-9',
+      0,
+      undefined,
+      async (ctx): Promise<AttemptOutcome<string>> => {
+        attempts.push(ctx.candidate.realModel);
+        return { kind: 'respond', value: 'OK' };
+      },
+    );
+    expect(outcome).toBe('OK');
+    expect(attempts).toEqual(['real-2']); // real-1 候选整体被跳过（连渠道解析都不进）
+    // 钩子入参：候选 realModel + 敞口口径估算（inputUpperBound 500 + outputCap 100）+ requestId
+    expect(seen[0]).toEqual({ realModel: 'real-1', estimatedTokens: 600, requestId: 'req-9' });
+    expect(seen[1]).toMatchObject({ realModel: 'real-2' });
+  });
+
+  it('全部候选被模型维限流拒绝 → no_available_channel 终结（rate_limit 计入竭尽码）', async () => {
+    const { deps } = setup();
+    deps.admitModel = async () => false;
+    await expect(
+      runCandidateLoop(
+        deps,
+        preparedOf([candidateOf(1, 'real-1'), candidateOf(2, 'real-2')]),
+        'req-1',
+        0,
+        undefined,
+        async (): Promise<AttemptOutcome<string>> => ({ kind: 'respond', value: 'x' }),
+      ),
+    ).rejects.toThrow(/no channel available/i);
+  });
+
+  it('admitChannel 钩子携带 requestId（渠道 TPM 预占作用域）', async () => {
+    const { deps } = setup();
+    const seenRids: string[] = [];
+    deps.admitChannel = async (_channel, _estimatedTokens, requestId) => {
+      seenRids.push(requestId);
+      return true;
+    };
+    await runCandidateLoop(
+      deps,
+      preparedOf([candidateOf(1, 'real-1')]),
+      'req-rid',
+      0,
+      undefined,
+      async (): Promise<AttemptOutcome<string>> => ({ kind: 'respond', value: 'v' }),
+    );
+    expect(seenRids).toEqual(['req-rid']);
+  });
+});
