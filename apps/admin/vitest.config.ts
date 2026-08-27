@@ -63,7 +63,12 @@ export default defineConfig({
     environment: 'node',
     fileParallelism: false,
     testTimeout: 15_000,
-    env: loadRootDotEnv(),
+    // server 动作测试断言锁定兜底基地址:钉住 ADMIN_API_BASE,
+    // 防本机根 .env 的 dev 值(如 LAN IP)渗入断言 URL(CI 无 .env,形态一致)
+    env: {
+      ...loadRootDotEnv(),
+      ADMIN_API_BASE: 'http://localhost:8082',
+    },
     coverage: {
       include: ['src/server/**', 'src/lib/**', 'src/config/**'],
       thresholds: { lines: 90, statements: 90, functions: 90, branches: 85 },
