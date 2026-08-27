@@ -410,6 +410,102 @@ describe('oauth token（三形态 + 闭环）', () => {
   });
 });
 
+describe('客户端取消信号贯通（c.req.raw.signal → ChatInput.signal）', () => {
+  it.each([
+    ['/v1/chat/completions', { model: 'm', messages: [{}] }, 'chat'],
+    ['/v1/engines/gpt-4o/embeddings', { input: 'x' }, 'chat'],
+  ])('%s 透传请求 signal 给 inference', async (path, body) => {
+    const seen: unknown[] = [];
+    const inference = stubInference({
+      chat: async (input) => {
+        seen.push(input);
+        return { ok: true, status: 200, body: {} };
+      },
+    });
+    const app = harness(inference);
+    const controller = new AbortController();
+    const res = await app.request(path, {
+      method: 'POST',
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    expect(res.status).toBe(200);
+    expect((seen[0] as { signal?: AbortSignal }).signal).toBe(controller.signal);
+  });
+
+  it('gemini 原生 /v1beta 入口透传请求 signal', async () => {
+    const seen: unknown[] = [];
+    const inference = stubInference({
+      chat: async (input) => {
+        seen.push(input);
+        return { ok: true, status: 200, body: {} };
+      },
+    });
+    const app = harness(inference);
+    const controller = new AbortController();
+    const res = await app.request('/v1beta/models/gemini-x:generateContent', {
+      method: 'POST',
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+      signal: controller.signal,
+    });
+    expect(res.status).toBe(200);
+    expect((seen[0] as { signal?: AbortSignal }).signal).toBe(controller.signal);
+  });
+
+  it('multipart 族入口透传请求 signal', async () => {
+    const seen: unknown[] = [];
+    const inference = stubInference({
+      chat: async (input) => {
+        seen.push(input);
+        return { ok: true, status: 200, body: {} };
+      },
+    });
+    const app = withErrorFace(new Hono<AuthEnv>());
+    app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
+    app.route('/', modalityMultipartRoutes({ inference }, { bodyLimitBytes: 10 * 1024 * 1024 }));
+    const controller = new AbortController();
+    const form = new FormData();
+    form.append('model', 'img-x');
+    form.append('prompt', 'a cat');
+    form.append('image', new File([new Uint8Array([1, 2, 3])], 'cat.png', { type: 'image/png' }));
+    const res = await app.request('/v1/images/edits', {
+      method: 'POST',
+      headers: { authorization: 'Bearer sk_k' },
+      body: form,
+      signal: controller.signal,
+    });
+    expect(res.status).toBe(200);
+    expect((seen[0] as { signal?: AbortSignal }).signal).toBe(controller.signal);
+  });
+
+  it('generation 提交入口透传请求 signal', async () => {
+    const seen: unknown[] = [];
+    const inference = stubInference({
+      generation: {
+        submit: async (input) => {
+          seen.push(input);
+          return { ok: true, taskId: '019c0b7d-0000-7000-8000-0000000000aa', expiresAt: 1 };
+        },
+        query: async () => null,
+        adminList: async () => ({ rows: [], total: 0 }),
+        settledAmounts: async () => new Map(),
+      },
+    });
+    const app = harness(inference);
+    const controller = new AbortController();
+    const res = await app.request('/v1/video/generations', {
+      method: 'POST',
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'video-x', prompt: 'a cat', duration: 6 }),
+      signal: controller.signal,
+    });
+    expect(res.status).toBe(201);
+    expect((seen[0] as { signal?: AbortSignal }).signal).toBe(controller.signal);
+  });
+});
+
 describe('multipart 族', () => {
   it('缺文件 400；PNG 白名单通过并组装 wrapper（模型/文件转发）', async () => {
     const seen: unknown[] = [];

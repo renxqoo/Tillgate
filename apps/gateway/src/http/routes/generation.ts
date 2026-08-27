@@ -100,6 +100,7 @@ function submitHandler(
         },
         kind,
         body: parsed.data,
+        signal: c.req.raw.signal,
       });
       return submitResponse(c, {
         result,

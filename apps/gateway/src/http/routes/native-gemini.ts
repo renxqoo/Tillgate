@@ -65,7 +65,13 @@ export function geminiNativeRoutes(deps: {
       estimatedTokens: conservativeInputTokenUpperBound(canonical),
     });
     try {
-      const input = toInferenceInput({ requestId, auth, body: canonical, endpoint: 'chat' });
+      const input = toInferenceInput({
+        requestId,
+        auth,
+        body: canonical,
+        endpoint: 'chat',
+        signal: c.req.raw.signal,
+      });
       const result = stream ? await deps.inference.stream(input) : await deps.inference.chat(input);
       if ('stream' in result && result.ok && result.status === 200) {
         return sseResponse(canonicalStreamToGeminiStream(result.stream, model), requestId);

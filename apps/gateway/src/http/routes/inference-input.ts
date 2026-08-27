@@ -13,8 +13,10 @@ export function toInferenceInput(input: {
   auth: AuthContext;
   body: Record<string, unknown>;
   endpoint: Endpoint;
+  /** 客户端断连取消信号（c.req.raw.signal；贯通到上游 fetch 与终止分类） */
+  signal?: AbortSignal;
 }): ChatInput {
-  const { requestId, auth, body, endpoint } = input;
+  const { requestId, auth, body, endpoint, signal } = input;
   return {
     requestId,
     auth: {
@@ -25,5 +27,6 @@ export function toInferenceInput(input: {
     },
     body,
     endpoint,
+    ...(signal != null ? { signal } : {}),
   };
 }

@@ -49,6 +49,11 @@ export interface ChatInput {
   auth: RequestAuth;
   body: Record<string, unknown>;
   endpoint?: Endpoint;
+  /**
+   * 客户端断连取消信号：HTTP 入口必须传 c.req.raw.signal（贯通到上游 fetch，
+   * 终止分类 request_cancelled/server_draining 依赖它）。缺传 = 客户端断开后
+   * 上游照跑、计费照走——路由层契约测试锁定各入口必传。
+   */
   signal?: AbortSignal;
 }
 

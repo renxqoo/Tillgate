@@ -90,6 +90,7 @@ export function inferenceRoutes(
         auth,
         body: canonical,
         endpoint: endpoint.kind,
+        signal: c.req.raw.signal,
       });
       const result =
         canonical.stream === true
@@ -136,7 +137,13 @@ export function enginesAliasRoutes(
     });
     try {
       const result = await deps.inference.chat(
-        toInferenceInput({ requestId, auth, body: canonical, endpoint: endpoint.kind }),
+        toInferenceInput({
+          requestId,
+          auth,
+          body: canonical,
+          endpoint: endpoint.kind,
+          signal: c.req.raw.signal,
+        }),
       );
       return await encodeDelivered(
         c.json.bind(c),

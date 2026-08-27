@@ -167,7 +167,7 @@ function multipartRoute(
     });
     try {
       const result = await deps.inference.chat(
-        toInferenceInput({ requestId, auth, body, endpoint: opts.kind }),
+        toInferenceInput({ requestId, auth, body, endpoint: opts.kind, signal: c.req.raw.signal }),
       );
       return encodeMultipartResult(c, result, requestId);
     } catch (error) {
