@@ -1,10 +1,15 @@
 /**
  * 音频时长估算（秒，向上取整）——audio_transcription/translation 按秒计费的计量源。
  *
- * WAV：RIFF 头精确（data 块大小 ÷ 字节率）。
- * MP3：首帧头解析位率 → 文件大小 ÷ 位率（CBR 近似；VBR 偏差可接受——估算仅用于计费下界）。
+ * WAV：RIFF 头逐块遍历（data 实际字节 ÷ 字节率）——声明值不可信：
+ *   data 尺寸按文件实际字节收敛、字节率按上界钳制（伪造头只能高估不能少计）。
+ * MP3：前 8KB 内多帧头位率取中位 → 文件大小 ÷ 位率（VBR/伪造首帧不放大偏差；
+ *   位率表上界 320kbps 即少计的硬下界）。
  * 其它/无法识别：保守估算（16KB/s，语音电话质量下限）——宁可高估不漏收。
  */
+
+/** WAV 字节率可信上界（4MB/s 覆盖 192kHz/8ch/24bit 专业形态；更高只存在于伪造头） */
+const WAV_BYTE_RATE_CAP = 4 * 1024 * 1024;
 
 /** WAV：'RIFF' 头精确时长；非 WAV 或块缺失 → undefined（字节下标越界按 0 参与位运算，与原实现一致） */
 function wavDurationSeconds(bytes: Uint8Array, view: DataView): number | undefined {
@@ -14,22 +19,26 @@ function wavDurationSeconds(bytes: Uint8Array, view: DataView): number | undefin
   ) {
     return undefined;
   }
-  // 逐块找 fmt（字节率 byteRate）与 data（大小）
+  // 逐块找 fmt（字节率 byteRate）与 data（实际字节）
   let offset = 12;
   let byteRate = 0;
-  let dataSize = 0;
+  let dataBytes = 0;
   while (offset + 8 <= bytes.byteLength) {
     const chunkId = view.getUint32(offset, false);
     const chunkSize = view.getUint32(offset + 4, true);
     if (chunkId === 0x666d7420) {
       byteRate = view.getUint32(offset + 16, true);
     } // 'fmt '
-    else if (chunkId === 0x64617461) dataSize = chunkSize; // 'data'
+    else if (chunkId === 0x64617461) {
+      // 声明尺寸按文件实际字节收敛（伪造大/小 chunkSize 都不改变计量事实）
+      const actual = Math.min(chunkSize, bytes.byteLength - (offset + 8));
+      dataBytes = Math.max(dataBytes, Math.max(0, actual));
+    } // 'data'
     offset += 8 + chunkSize + (chunkSize % 2);
-    if (byteRate > 0 && dataSize > 0) break;
+    if (byteRate > 0 && dataBytes > 0) break;
   }
-  if (byteRate > 0 && dataSize > 0) {
-    return Math.max(1, Math.ceil(dataSize / byteRate));
+  if (byteRate > 0 && dataBytes > 0) {
+    return Math.max(1, Math.ceil(dataBytes / Math.min(byteRate, WAV_BYTE_RATE_CAP)));
   }
   return undefined;
 }
@@ -61,17 +70,20 @@ function mp3FrameKbps(bytes: Uint8Array, i: number): number {
   return (bitrateVersion === 0x03 ? MP3_BITRATES_V1 : MP3_BITRATES_V2)[bitrateIndex] ?? 0;
 }
 
-/** MP3：首帧头位率 → 文件大小 ÷ 位率（CBR 近似）；未识别 → undefined */
+/** MP3：前 8KB 多帧头位率中位 → 文件大小 ÷ 位率；未识别 → undefined */
 function mp3DurationSeconds(bytes: Uint8Array, view: DataView): number | undefined {
   const start = id3SkipBytes(bytes, view);
-  for (let i = start; i < Math.min(bytes.length - 4, start + 8192); i++) {
+  const rates: number[] = [];
+  for (let i = start; i < Math.min(bytes.length - 4, start + 8192) && rates.length < 32; i++) {
     const kbps = mp3FrameKbps(bytes, i);
-    if (kbps > 0) {
-      const bytesPerSecond = (kbps * 1000) / 8;
-      return Math.max(1, Math.ceil((bytes.length - start) / bytesPerSecond));
-    }
+    if (kbps > 0) rates.push(kbps);
   }
-  return undefined;
+  if (rates.length === 0) return undefined;
+  rates.sort((a, b) => a - b);
+  const medianKbps = rates[rates.length >> 1] ?? rates[0];
+  if (medianKbps == null || medianKbps <= 0) return undefined;
+  const bytesPerSecond = (medianKbps * 1000) / 8;
+  return Math.max(1, Math.ceil((bytes.length - start) / bytesPerSecond));
 }
 
 export function estimateAudioDurationSeconds(bytes: Uint8Array): number {

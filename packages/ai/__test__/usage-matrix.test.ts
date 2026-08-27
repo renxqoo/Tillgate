@@ -235,6 +235,42 @@ describe('media-duration：WAV/MP3 头解析分支（秒数向上取整）', () 
   it('短于 16 字节 → 1 秒下限', () => {
     expect(estimateAudioDurationSeconds(new Uint8Array(8))).toBe(1);
   });
+
+  it('B9 回归：伪造 WAV 头（超大 byteRate）不可少计——字节率按上界钳制', () => {
+    const fmt = new Uint8Array(16);
+    new DataView(fmt.buffer).setUint32(8, 0xffff_ffff, true); // 声明字节率 4GB/s（伪造）
+    const data = new Uint8Array(10 * 1024 * 1024); // 实际 10MB 音频字节
+    const sec = estimateAudioDurationSeconds(
+      mkWav([
+        { id: 'fmt ', body: fmt },
+        { id: 'data', body: data },
+      ]),
+    );
+    // 下界 = 实际字节 ÷ 字节率上界(4MB/s) = 2.5 → 3s；旧实现按伪造头计 1s
+    expect(sec).toBeGreaterThanOrEqual(3);
+  });
+
+  it('B9 回归：WAV 声明 data 尺寸按文件实际字节收敛（伪造大 chunkSize 不放大也不会缩小计费）', () => {
+    const fmt = new Uint8Array(16);
+    new DataView(fmt.buffer).setUint32(8, 32_000, true); // 32KB/s
+    const data = new Uint8Array(32_000);
+    const wav = mkWav([
+      { id: 'fmt ', body: fmt },
+      { id: 'data', body: data },
+    ]);
+    // 把声明 chunkSize 篡改为 1（伪造微型声明）
+    new DataView(wav.buffer, wav.byteOffset).setUint32(12 + 8 + 16 + 8 + 4, 1, true);
+    expect(estimateAudioDurationSeconds(wav)).toBe(1); // 仍按实际 32000B/32KB/s
+  });
+
+  it('B9 回归：MP3 多帧取中位位率（伪造首帧高码率声明不放大少计）', () => {
+    const buf = new Uint8Array(200_000);
+    buf.set([0xff, 0xfb, 0xd0], 0); // 首帧声明 320kbps（伪造）
+    for (let j = 0; j < 4; j++) buf.set([0xff, 0xfb, 0x50], 10 + j * 10); // 64kbps × 4
+    const sec = estimateAudioDurationSeconds(buf);
+    // 中位 = 64kbps → 8000B/s → 25s；按首帧 320 则 5s（少计 5 倍）
+    expect(sec).toBe(25);
+  });
 });
 
 // ─────────────────── normalize：方言矩阵 ───────────────────
