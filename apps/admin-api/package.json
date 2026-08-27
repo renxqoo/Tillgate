@@ -34,7 +34,7 @@
     "@tillgate/observability": "workspace:*",
     "@tillgate/runtime": "workspace:*",
     "hono": "^4.13.0",
-    "ioredis": "^5.8.0",
+    "ioredis": "^6.0.0",
     "nodemailer": "^9.0.5",
     "zod": "^4.4.3"
   },
@@ -43,7 +43,7 @@
     "@types/nodemailer": "^7.0.4",
     "@vitest/coverage-v8": "^4.1.11",
     "drizzle-orm": "^0.45.2",
-    "typescript": "^5.9.0",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   },
   "engines": {

@@ -30,7 +30,7 @@
     "oxfmt": "^0.62.0",
     "oxlint": "^1.77.0",
     "turbo": "^2.10.8",
-    "typescript": "^5"
+    "typescript": "^7.0.2"
   },
   "overrides": {
     "nanoid": "3.3.18"
