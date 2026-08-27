@@ -24,7 +24,14 @@ describe('admin-api app 骨架', () => {
     );
     const resDown = await down.request('/healthz');
     expect(resDown.status).toBe(503);
-    expect(await resDown.json()).toMatchObject({ ok: false });
+    // S6：故障细节只进日志——公开探针不回显驱动错误串（主机名/凭据细节）
+    expect(await resDown.json()).toEqual({ ok: false });
+    const readyDown = await down.request('/readyz');
+    expect(readyDown.status).toBe(503);
+    expect(await readyDown.json()).toEqual({
+      status: 'fail',
+      dependencies: { postgres: 'down' },
+    });
   });
 
   it('livez 纯 200(不触 DB);readyz 查 DB', async () => {

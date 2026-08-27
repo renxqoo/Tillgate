@@ -215,13 +215,15 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
   };
   app.use('*', createAclMiddleware(deps.sessions, resolveBinding));
 
-  // 探针:healthz/readyz 查 DB(livez 纯 200);K8s/compose healthcheck 不带 Bearer
+  // 探针:healthz/readyz 查 DB(livez 纯 200);K8s/compose healthcheck 不带 Bearer。
+  // 故障细节只进日志——公开探针不回显驱动错误串(S6:主机名/凭据细节不外泄)
   app.get('/healthz', async (c) => {
     try {
       await deps.pingDb();
       return c.json({ ok: true });
     } catch (error) {
-      return c.json({ ok: false, error: (error as Error).message }, 503);
+      deps.logger?.error({ err: String(error) }, 'healthz ping failed');
+      return c.json({ ok: false }, 503);
     }
   });
   app.get('/livez', (c) => c.json({ ok: true }));
@@ -230,10 +232,8 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       await deps.pingDb();
       return c.json({ status: 'ok', dependencies: { postgres: 'up' } });
     } catch (error) {
-      return c.json(
-        { status: 'fail', dependencies: { postgres: 'down' }, error: (error as Error).message },
-        503,
-      );
+      deps.logger?.error({ err: String(error) }, 'readyz ping failed');
+      return c.json({ status: 'fail', dependencies: { postgres: 'down' } }, 503);
     }
   });
 

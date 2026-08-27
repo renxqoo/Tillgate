@@ -96,10 +96,9 @@ export function createReceiverApp(deps: ReceiverAppDeps): Hono {
       await deps.pingDb();
       return c.json({ status: 'ok', dependencies: { postgres: 'up' } });
     } catch (error) {
-      return c.json(
-        { status: 'fail', dependencies: { postgres: 'down' }, error: (error as Error).message },
-        503,
-      );
+      // 故障细节只进日志——公开探针不回显驱动错误串(S6)
+      deps.logger?.error({ err: String(error) }, 'readyz ping failed');
+      return c.json({ status: 'fail', dependencies: { postgres: 'down' } }, 503);
     }
   });
 
