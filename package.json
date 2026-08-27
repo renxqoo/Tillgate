@@ -26,6 +26,7 @@
     "typecheck": "bunx turbo typecheck"
   },
   "devDependencies": {
+    "@oxlint/plugins": "^1.80.0",
     "@types/bun": "^1.4.0",
     "oxfmt": "^0.62.0",
     "oxlint": "^1.77.0",
