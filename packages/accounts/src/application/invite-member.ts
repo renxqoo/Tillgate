@@ -5,7 +5,11 @@
  */
 import { AccountsErrors } from '../domain/errors.js';
 import { normalizeValidEmail } from '../domain/fields.js';
-import { generateInvitationToken, pendingInvitationLimit } from '../domain/org.js';
+import {
+  generateInvitationToken,
+  invitationTokenHash,
+  pendingInvitationLimit,
+} from '../domain/org.js';
 import { requireOwnerMembership } from './org-guards.js';
 import type { UseCaseContext } from './context.js';
 
@@ -46,12 +50,14 @@ export async function inviteMember(
     throw AccountsErrors.business('invitations_full', { orgId: input.orgId, pending, limit });
   }
 
+  // 明文 token 只进本次响应;库内落 sha256 哈希键(泄露不可占席)
+  const token = generateInvitationToken();
   const invitation = await ctx.store.insertInvitation(ctx.db, {
     orgId: input.orgId,
     email,
-    token: generateInvitationToken(),
+    token: invitationTokenHash(token),
     invitedByUserId: input.operatorUserId,
     ttlMs: ctx.policy.invitationTtlMs,
   });
-  return { invitationId: invitation.id, token: invitation.token, expiresAt: invitation.expiresAt };
+  return { invitationId: invitation.id, token, expiresAt: invitation.expiresAt };
 }
