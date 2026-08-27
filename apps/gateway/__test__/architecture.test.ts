@@ -57,7 +57,6 @@ describe('src 文件集合快照', () => {
       'http/routes/models.ts',
       'http/routes/native-gemini.ts',
       'http/routes/oauth-token.ts',
-      'http/sanitize.ts',
       'index.ts',
       'shutdown.ts',
     ]);

@@ -74,11 +74,10 @@ export async function oauthCallback(
       redirectUri,
     });
   } catch (error) {
+    // 上游原始 message 只进日志——business error 的 context 会随错误信封出站，
+    // 不可信上游文本（内部寻址/响应细节）不得进入（S8：detail 出站即信息泄露）
     ctx.logger.warn({ err: (error as Error).message, provider }, 'oauth upstream exchange failed');
-    throw identityErrors.business('oauth_profile_failed', {
-      provider,
-      detail: (error as Error).message,
-    });
+    throw identityErrors.business('oauth_profile_failed', { provider });
   }
   return {
     provider,

@@ -71,7 +71,9 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
   it('index.ts 值导出集合精确等于下表', () => {
     expect(Object.keys(exports).toSorted()).toEqual([
       'DEFAULT_CLAUDE_MAX_TOKENS',
+      'DEFAULT_SANITIZE_MAX_LEN',
       'KIND_MECHANICS',
+      'REDACTED',
       'SUPPORTED_PROTOCOLS',
       'TextFeaturesAccumulator',
       'UpstreamError',
@@ -98,6 +100,7 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
       'isRetryable',
       'isUpstreamError',
       'responsesRequestToChat',
+      'sanitizeUpstreamDetail',
       'vendorProfileNames',
     ]);
   });

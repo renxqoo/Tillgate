@@ -1,4 +1,4 @@
-import type { UpstreamError } from '@tillgate/ai';
+import { sanitizeUpstreamDetail, type UpstreamError } from '@tillgate/ai';
 import type { InferenceDefaults } from '../config';
 import { InferenceErrors } from '../domain/errors';
 import type { ChannelCandidate, QuoteCandidate } from '../domain/model/types';
@@ -263,6 +263,20 @@ export async function runCandidateLoop<T>(
 }
 
 /**
+ * 出站错误面脱敏（单点收口）：上游 passthrough message 在此过「realModel → 对外名
+ * 替换（候选链逐项配对）+ 内部寻址遮蔽 + 512 截断」。流式首字节前 / 非流式 / 任务
+ * 提交三路共用本点——事件面、rawBody 与日志保真，仅出站字节脱敏。
+ */
+function outboundMessageOf(error: UpstreamError, prepared: PreparedRequest): string | undefined {
+  if (error.message === error.kind) return undefined;
+  const redactions = prepared.candidates
+    .filter((candidate) => candidate.realModel !== candidate.externalModel)
+    .map((candidate) => ({ needle: candidate.realModel, replacement: candidate.externalModel }));
+  const sanitized = sanitizeUpstreamDetail(error.message, { redactions });
+  return sanitized.length > 0 ? sanitized : undefined;
+}
+
+/**
  * 上游失败分派（非流式 / 流式首字节前共用）：
  * 可换 → 换渠道；4xx → 透传终局（收尾后原码返回）；其余 → 换候选。
  * 死凭据不在分派处显式标记，经 AiEvent 由 health 状态机记账。
@@ -278,6 +292,7 @@ export async function dispatchFailure(
     // 透传≠免收尾：4xx = 上游确定未计费 → request.failed 三路释放后原码返回
     const status =
       error.status != null && error.status >= 400 && error.status < 500 ? error.status : 502;
+    const message = outboundMessageOf(error, ctx.prepared);
     const delivered = await deps.trace.withSpan(
       'billing.passthrough_4xx',
       {
@@ -297,7 +312,7 @@ export async function dispatchFailure(
           passthrough: true,
           status,
           code: error.kind,
-          ...(error.message !== error.kind ? { message: error.message } : {}),
+          ...(message != null ? { message } : {}),
         } as const;
       },
     );

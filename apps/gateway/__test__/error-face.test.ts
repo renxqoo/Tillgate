@@ -1,7 +1,7 @@
 /**
  * 错误面契约：
- * 组合目录封闭 / status 分派链（category 默认 + face override 502）/ 信封形状 /
- * 上游细节脱敏（内容层）。
+ * 组合目录封闭 / status 分派链（category 默认 + face override 502）/ 信封形状。
+ * 上游细节脱敏（内容层）在 inference dispatchFailure 单点收口（其 failover 测试锁定）。
  */
 import { describe, expect, it } from 'vitest';
 import { renderError } from '@tillgate/http';
@@ -14,7 +14,6 @@ import {
   gatewayErrorCatalog,
   LEGACY_CODE_MAP,
 } from '../src/http/openai-error-face';
-import { sanitizeUpstreamDetail } from '../src/http/sanitize';
 
 const catalog = gatewayErrorCatalog();
 
@@ -81,25 +80,5 @@ describe('status 分派（v1 24 条表的 v2 形态；逐类代表核销）', ()
     expect(rendered.status).toBe(500);
     expect(rendered.code).toBe('errors.unhandled');
     expect(rendered.message).not.toContain('secret');
-  });
-});
-
-describe('上游细节脱敏（§3.6 内容层——v1 sanitize 语义）', () => {
-  it('空值兜底 / 剥 URL / 剥 host:port / 真实模型名替换 / 截断', () => {
-    expect(sanitizeUpstreamDetail('')).toBe('upstream service error');
-    expect(sanitizeUpstreamDetail(null)).toBe('upstream service error');
-    expect(sanitizeUpstreamDetail('failed at https://api.internal.example/v1/chat')).toBe(
-      'failed at [upstream]',
-    );
-    expect(sanitizeUpstreamDetail('connect to upstream.example:8443 failed')).toBe(
-      'connect to [upstream] failed',
-    );
-    expect(
-      sanitizeUpstreamDetail('model gpt-4o-internal overload', {
-        externalModel: 'gpt-x',
-        realModels: ['gpt-4o-internal'],
-      }),
-    ).toBe('model gpt-x overload');
-    expect(sanitizeUpstreamDetail('x'.repeat(300)).length).toBeLessThanOrEqual(201);
   });
 });

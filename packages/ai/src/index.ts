@@ -11,6 +11,8 @@ export {
   KIND_MECHANICS,
 } from './errors/kinds';
 export type { ErrorKind, ErrorMechanics } from './errors/kinds';
+export { sanitizeUpstreamDetail, REDACTED, DEFAULT_SANITIZE_MAX_LEN } from './errors/sanitize';
+export type { SanitizeDetailOptions, SanitizeRedactionPair } from './errors/sanitize';
 
 // ---- 配置 ----
 export { aiDefaultsSchema, defaultAiDefaults } from './config';

@@ -365,3 +365,56 @@ describe('模型维准入钩子（admitModel）与渠道钩子作用域', () => 
     expect(seenRids).toEqual(['req-rid']);
   });
 });
+
+describe('dispatchFailure 出站脱敏（单点收口——流式/非流式/任务三路共用）', () => {
+  function ctxOf() {
+    const chA = channel({ channelId: 1, channelName: 'ch-a' });
+    return {
+      prepared: preparedOf([candidateOf(1, 'real-1'), candidateOf(2, 'real-2')]),
+      requestId: 'req-s',
+      requestStartedAt: 0,
+      candidate: candidateOf(1, 'real-1'),
+      channel: chA,
+      channelAttempt: 1,
+    };
+  }
+
+  it('passthrough message：realModel → 对外名替换 + 内部寻址遮蔽（原始 message 不出站）', async () => {
+    const { deps } = setup();
+    const raw =
+      'deployment real-1 at https://internal-node-7.prod:8443/v1 not found (tried real-2)';
+    const outcome = await dispatchFailure(
+      deps,
+      ctxOf(),
+      upstreamError('invalid_request', { status: 400, message: raw }),
+    );
+    expect(outcome.kind).toBe('respond');
+    const { value } = outcome as { value: PassthroughDelivered };
+    // 两个候选的 realModel（real-1/real-2）都映射到各自对外名（此处同为 gpt-x）
+    expect(value.message).toBe('deployment gpt-x at [redacted] not found (tried gpt-x)');
+  });
+
+  it('事件面/日志保真：billing 信号与 span 不因脱敏改变；超长 message 截断', async () => {
+    const { deps } = setup();
+    const long = `real-1 ${'x'.repeat(600)}`;
+    const outcome = await dispatchFailure(
+      deps,
+      ctxOf(),
+      upstreamError('invalid_request', { status: 400, message: long }),
+    );
+    const { value } = outcome as { value: PassthroughDelivered };
+    expect(value.message?.startsWith('gpt-x x')).toBe(true);
+    expect(value.message?.length).toBeLessThanOrEqual(512);
+  });
+
+  it('message === kind 时仍不带 message 字段（无可脱敏面）', async () => {
+    const { deps } = setup();
+    const outcome = await dispatchFailure(
+      deps,
+      ctxOf(),
+      upstreamError('invalid_request', { status: 400 }),
+    );
+    const { value } = outcome as { value: PassthroughDelivered };
+    expect(value.message).toBeUndefined();
+  });
+});

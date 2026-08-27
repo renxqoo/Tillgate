@@ -13,12 +13,19 @@ export const REDACTED = '[redacted]';
 /** 单行 message 的出站截断默认值（可配置） */
 export const DEFAULT_SANITIZE_MAX_LEN = 512;
 
+/** 逐项配对替换（realModel 各自映射到自己的对外目录名——候选链多维替换） */
+export interface SanitizeRedactionPair {
+  needle: string;
+  replacement: string;
+}
+
 export interface SanitizeDetailOptions {
   /** 截断上限（字符数），默认 512 */
   maxLen?: number;
-  /** 需替换为对外名的内部字符串（split/join 字面替换，不做正则转义） */
-  redactions?: string[];
-  /** redactions 命中的替换目标（对外目录模型名）；缺省 '[redacted]' */
+  /** 需替换的内部字符串（split/join 字面替换，不做正则转义）：字符串项替换为
+   *  replacement（缺省 '[redacted]'），配对项各自指定对外名。 */
+  redactions?: Array<string | SanitizeRedactionPair>;
+  /** 字符串形态 redactions 的替换目标；缺省 '[redacted]' */
   replacement?: string;
 }
 
@@ -35,9 +42,14 @@ export function sanitizeUpstreamDetail(detail: string, opts: SanitizeDetailOptio
   let out = detail;
   // 1. 内部名 → 对外名（先于寻址剥除：对外名自身可能含点号，避免被 host 模式误吃）
   const to = opts.replacement ?? REDACTED;
-  for (const needle of opts.redactions ?? []) {
-    if (needle === '') continue;
-    out = out.split(needle).join(to);
+  for (const entry of opts.redactions ?? []) {
+    if (typeof entry === 'string') {
+      if (entry === '') continue;
+      out = out.split(entry).join(to);
+      continue;
+    }
+    if (entry.needle === '') continue;
+    out = out.split(entry.needle).join(entry.replacement);
   }
   // 2. 剥内部寻址
   out = out

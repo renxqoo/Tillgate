@@ -199,6 +199,21 @@ describe('sanitizeUpstreamDetail：三类脱敏（例外 3 内容层）', () => 
     );
   });
 
+  it('逐项配对 redactions：字符串项走缺省 replacement，对象项各自映射对外名', () => {
+    const out = sanitizeUpstreamDetail('fallback from gpt-4o-real to azure-deploy-x exhausted', {
+      redactions: [
+        { needle: 'gpt-4o-real', replacement: 'catalog-gpt-4o' },
+        { needle: 'azure-deploy-x', replacement: 'catalog-azure' },
+      ],
+    });
+    expect(out).toBe('fallback from catalog-gpt-4o to catalog-azure exhausted');
+    expect(
+      sanitizeUpstreamDetail('a secret-name b gpt-4o-real', {
+        redactions: ['secret-name', { needle: 'gpt-4o-real', replacement: 'gpt-x' }],
+      }),
+    ).toBe('a [redacted] b gpt-x');
+  });
+
   it('空串原样；空 redaction 项忽略', () => {
     expect(sanitizeUpstreamDetail('')).toBe('');
     expect(sanitizeUpstreamDetail('abc', { redactions: ['', 'b'] })).toBe('a[redacted]c');
