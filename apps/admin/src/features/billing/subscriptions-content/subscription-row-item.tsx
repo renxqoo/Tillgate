@@ -17,11 +17,12 @@ import { ArrowUpRightIcon, Loader2Icon, RefreshCwIcon, XCircleIcon } from 'lucid
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
-import { fmtDateTime, formatMoney, formatPoints } from '@/lib/formatters';
+import { fmtDateTime } from '@/lib/formatters';
 
 import type { AdminSubscriptionRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 import { ChangeSubscriptionDialog } from './change-subscription-dialog';
+import { MoneyPoints } from './money-points';
 import type { PlanOption } from './subscriptions-shared';
 
 // 状态 tone 映射留模块级；label 是 subscriptions 命名空间的 i18n key，渲染处用 t 解析
@@ -30,19 +31,6 @@ const STATUS_META = defineStatusMeta({
   1: { label: 'statusExpired', tone: 'warning' },
   2: { label: 'statusCancelled', tone: 'neutral' },
 });
-
-/** 钱 + 积分并列展示（纯展示层，积分 = 元 × 100）。 */
-function MoneyPoints({ value }: { value: string }) {
-  const tUi = useTranslations('ui');
-  return (
-    <span className="tabular-nums">
-      <span className="font-medium">¥{formatMoney(value)}</span>
-      <span className="ml-1.5 text-xs text-muted-foreground">
-        {formatPoints(value)} {tUi('points')}
-      </span>
-    </span>
-  );
-}
 
 export function SubscriptionRowItem({
   row,

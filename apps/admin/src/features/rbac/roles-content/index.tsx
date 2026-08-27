@@ -4,15 +4,8 @@
 // （共享表单弹窗在 role-form-dialog，授权树在 grant-tree）
 
 import type { PermissionNode } from '@tillgate/api-client';
-import {
-  Badge,
-  ConfirmDialog,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  RowActions,
-} from '@tillgate/ui';
+import { Badge, ConfirmDialog } from '@tillgate/ui';
 import { useState } from 'react';
-import { PencilIcon, Trash2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -20,62 +13,10 @@ import type { DataTableColumn } from '@/components/data-table';
 import { DataTable } from '@/components/data-table';
 import { useActionResult } from '@/components/action-toast';
 import { deleteRoleAction } from '@/server/rbac-actions';
-import { RoleFormDialog, type RoleRowWithGrants } from './role-form-dialog';
+import type { RoleRowWithGrants } from './role-form-dialog';
+import { RoleRowActions } from './role-row-actions';
 
 export { RoleCreateForm } from './role-create-form';
-
-/** 行操作（统一 RowActions 三点菜单）:按按钮权限显隐(admins:update/delete);
- * 删除对全角色开放——唯一硬闸 = 挂载管理员(预检禁用+计数提示,后端 role_in_use 兜底) */
-function RoleRowActions({
-  role,
-  nodes,
-  canUpdate,
-  canDelete,
-  onDelete,
-}: {
-  role: RoleRowWithGrants;
-  nodes: PermissionNode[];
-  canUpdate: boolean;
-  canDelete: boolean;
-  onDelete: (role: RoleRowWithGrants) => void;
-}) {
-  const t = useTranslations('roles');
-  const tc = useTranslations('common');
-  const [editOpen, setEditOpen] = useState(false);
-  const inUse = role.adminCount > 0;
-
-  if (!canUpdate && !canDelete) {
-    return <span className="text-xs text-muted-foreground">—</span>;
-  }
-
-  return (
-    <>
-      {canUpdate && (
-        <RoleFormDialog role={role} nodes={nodes} open={editOpen} onOpenChange={setEditOpen} />
-      )}
-      <RowActions label={tc('actions')}>
-        {canUpdate && (
-          <DropdownMenuItem onClick={() => setEditOpen(true)}>
-            <PencilIcon className="size-4" />
-            {tc('edit')}
-          </DropdownMenuItem>
-        )}
-        {canUpdate && canDelete && <DropdownMenuSeparator />}
-        {canDelete && (
-          <DropdownMenuItem
-            variant="destructive"
-            disabled={inUse}
-            title={inUse ? t('deleteBlockedHint', { count: role.adminCount }) : undefined}
-            onClick={() => onDelete(role)}
-          >
-            <Trash2Icon className="size-4" />
-            {tc('delete')}
-          </DropdownMenuItem>
-        )}
-      </RowActions>
-    </>
-  );
-}
 
 /** 角色清单（通用 DataTable;分页/搜索在页面层 ListPage） */
 export function RolesContent({

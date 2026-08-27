@@ -12,7 +12,6 @@ import * as z from 'zod';
 
 import {
   Button,
-  CopyButton,
   Dialog,
   DialogClose,
   DialogContent,
@@ -32,6 +31,8 @@ import type { AppCreated } from '@tillgate/api-client';
 
 import { actionResult } from '@/features/shared/action-result';
 import { createAppAction } from '@/server/actions/apps';
+
+import { CreatedField } from './created-field';
 
 interface CreateAppValues {
   name: string;
@@ -141,21 +142,5 @@ export function CreateAppDialog() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function CreatedField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <div className="flex items-center gap-2">
-        <code
-          className={`flex-1 break-all rounded bg-background/80 p-2 text-xs ${mono ? 'font-mono' : ''}`}
-        >
-          {value}
-        </code>
-        <CopyButton value={value} />
-      </div>
-    </div>
   );
 }

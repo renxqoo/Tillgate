@@ -22,8 +22,8 @@ const count = (s: string, needle: string) => s.split(needle).length - 1;
 
 describe('RBAC 行操作按钮权限显隐', () => {
   it('角色管理：编辑弹窗+菜单项挂 canUpdate,删除项挂 canDelete;皆无则占位 —', () => {
-    // 目录化拆分后行操作住 index.tsx(见 rule/component-split.md)
-    const s = src(join(feature('roles-content'), 'index.tsx'));
+    // 目录化拆分后行操作住 role-row-actions.tsx(见 rule/component-split.md)
+    const s = src(join(feature('roles-content'), 'role-row-actions.tsx'));
     // 弹窗渲染 + 菜单项两处守卫
     expect(count(s, '{canUpdate && (')).toBe(2);
     expect(count(s, '{canDelete && (')).toBe(1);
@@ -31,7 +31,7 @@ describe('RBAC 行操作按钮权限显隐', () => {
   });
 
   it('权限资源：编辑弹窗+菜单项挂 canUpdate,删除项挂 canDelete（子节点预检在内层）', () => {
-    const s = src(join(feature('permissions-content'), 'index.tsx'));
+    const s = src(join(feature('permissions-content'), 'node-row-actions.tsx'));
     expect(count(s, '{canUpdate && (')).toBe(2);
     expect(count(s, '{canDelete && (')).toBe(1);
     expect(s).toContain('disabled={hasChildren}');
@@ -67,7 +67,8 @@ describe('RBAC 行操作按钮权限显隐', () => {
     expect(timezone).toContain('{canUpdate ? ('); // 无权 → 只读展示,无选择器/保存钮
     const card = src(settingsFeature(join('integration-cards', 'integration-card.tsx')));
     expect(count(card, '{canManage ? (')).toBe(1); // 配置钮（标题行）
-    expect(count(card, '{input.canManage ? (')).toBe(1); // 启停钮（ToggleRow）
+    const toggle = src(settingsFeature(join('integration-cards', 'toggle-row.tsx')));
+    expect(count(toggle, '{input.canManage ? (')).toBe(1); // 启停钮（ToggleRow）
   });
 
   it('营销页：growth:update 计算下传;无权保存钮隐藏且三输入禁用', () => {

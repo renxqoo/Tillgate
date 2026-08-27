@@ -2,23 +2,12 @@ import { BookOpenTextIcon } from 'lucide-react';
 import { headers } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@tillgate/ui';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@tillgate/ui';
 
 import { BaseUrlBadge } from '@/features/public/base-url-badge';
-import { CodeBlock } from '@/features/public/code-block';
-import { highlight } from '@/features/public/highlight';
+
+import { CodeSample } from './code-sample';
+import { Section } from './section';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,12 +31,6 @@ const ENDPOINTS: Array<{ method: string; path: string; id: string }> = [
   { method: 'POST', path: '/oauth/token', id: 'oauth' },
 ];
 
-/** 服务端高亮包装：原始 code 供复制，shiki html 供展示 */
-async function CodeSample({ code, lang }: { code: string; lang?: string }) {
-  const html = await highlight(code, lang);
-  return <CodeBlock lang={lang} html={html} text={code} />;
-}
-
 /** 当前部署的站点地址（示例与徽章同源，复制即用）：反代场景取 x-forwarded-host */
 function siteOrigin(h: Headers): string {
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3001';
@@ -55,26 +38,6 @@ function siteOrigin(h: Headers): string {
     h.get('x-forwarded-proto') ??
     (/^(localhost|127\.|192\.168\.|10\.)/.test(host) ? 'http' : 'https');
   return `${proto}://${host}`;
-}
-
-function Section({
-  title,
-  desc,
-  children,
-}: {
-  title: string;
-  desc?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
-        {desc ? <CardDescription>{desc}</CardDescription> : null}
-      </CardHeader>
-      <CardContent className="space-y-3">{children}</CardContent>
-    </Card>
-  );
 }
 
 /** 逐端点示例代码（纯模板字符串，模块级构造以压平页面函数行数） */

@@ -5,8 +5,6 @@
 // 布局：字段按集成登记分行（相关字段同排、端口列收窄），连接测试紧随字段面，
 // step-up 确认区以分隔线贴近保存动作——避免全宽单列长表单。
 
-import { Loader2Icon } from 'lucide-react';
-import { Button, FieldDescription, FieldLabel, FormItem, Input, PasswordInput } from '@tillgate/ui';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -16,6 +14,9 @@ import { useActionResult } from '@/components/action-toast';
 import type { IntegrationSettingItem } from '@/server/settings-actions';
 import { testIntegrationAction, updateIntegrationAction } from '@/server/settings-actions';
 import { buildConfigPayload, i18nKey, payloadIsEmpty } from './integration-format';
+import { IntegrationField } from './integration-field';
+import { SmtpTestField } from './smtp-test-field';
+import { StepupField } from './stepup-field';
 
 /**
  * 弹窗字段分行登记（键=集成 key，行序=域内 specs 字段序）：相关字段同排两列等分。
@@ -29,9 +30,6 @@ const FIELD_ROWS: Record<string, readonly (readonly string[])[]> = {
   'payment.epay': [['pid', 'key'], ['gatewayUrl'], ['notifyUrl', 'returnUrl'], ['payType']],
   'payment.stripe': [['secretKey', 'webhookSecret'], ['successUrl', 'cancelUrl'], ['apiBase']],
 };
-
-/** secret 字段名集合（掩码回显只标已设置项；未设置的 secret 字段按规格名单标记） */
-const SECRET_FIELD_NAMES = new Set(['clientSecret', 'pass', 'secretKey', 'key', 'webhookSecret']);
 
 export function IntegrationFormDialog({
   item,
@@ -165,112 +163,4 @@ function rowClassName(row: readonly string[]): string | undefined {
   return row.includes('port')
     ? 'grid grid-cols-[minmax(0,1fr)_6rem] gap-3'
     : 'grid grid-cols-2 gap-3';
-}
-
-/** 单个集成字段（label+控件+secret 清除行）；id 契约与 label htmlFor/测试查询对齐 */
-function IntegrationField({
-  item,
-  field,
-  cleared,
-  onToggleClear,
-}: {
-  item: IntegrationSettingItem;
-  field: string;
-  cleared: ReadonlySet<string>;
-  onToggleClear: (field: string) => void;
-}) {
-  const t = useTranslations('settings.integrations');
-  const secret = item.secretsSet.includes(field) || SECRET_FIELD_NAMES.has(field);
-  const masked = item.config[field];
-  const id = `integration-${item.key}-${field}`;
-  return (
-    <FormItem>
-      <FieldLabel htmlFor={id}>
-        {t(`fields.${field}`)}
-        {secret ? <span className="ml-1 text-muted-foreground">(secret)</span> : null}
-      </FieldLabel>
-      {secret ? (
-        <PasswordInput
-          id={id}
-          name={field}
-          defaultValue=""
-          placeholder={masked != null ? t('secretKeepHint', { masked }) : t('secretUnsetHint')}
-          autoComplete="off"
-          maxLength={1024}
-        />
-      ) : (
-        <Input
-          id={id}
-          name={field}
-          type="text"
-          defaultValue=""
-          placeholder={masked ?? ''}
-          autoComplete="off"
-          maxLength={1024}
-        />
-      )}
-      {secret && masked != null ? (
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="ghost" size="sm" onClick={() => onToggleClear(field)}>
-            {cleared.has(field) ? t('clearSecretUndo') : t('clearSecret')}
-          </Button>
-          {cleared.has(field) ? <FieldDescription>{t('clearSecretHint')}</FieldDescription> : null}
-        </div>
-      ) : null}
-    </FormItem>
-  );
-}
-
-/** SMTP 连接测试行（仅 smtp 弹窗渲染——连接+认证校验；不提交表单、不走 step-up） */
-function SmtpTestField({
-  testing,
-  onTest,
-}: {
-  testing: boolean;
-  onTest: (form: HTMLFormElement) => void;
-}) {
-  const t = useTranslations('settings.integrations');
-  return (
-    <FormItem>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={testing}
-          onClick={(e) => {
-            const form = e.currentTarget.closest('form');
-            if (form != null) onTest(form);
-          }}
-        >
-          {testing ? <Loader2Icon className="animate-spin" /> : null}
-          {testing ? t('testing') : t('testConnection')}
-        </Button>
-        <FieldDescription className="flex-1 basis-64">{t('testHint')}</FieldDescription>
-      </div>
-    </FormItem>
-  );
-}
-
-/** step-up 码框（敏感写操作强制 TOTP——原生校验 6 位；窄输入+旁注贴近保存动作） */
-function StepupField({ itemId }: { itemId: string }) {
-  const t = useTranslations('settings.integrations');
-  return (
-    <FormItem gap={1.5}>
-      <FieldLabel htmlFor={`integration-stepup-${itemId}`}>{t('stepupCodeLabel')}</FieldLabel>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Input
-          id={`integration-stepup-${itemId}`}
-          name="totpCode"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          maxLength={6}
-          placeholder=""
-          required
-          pattern="\d{6}"
-          className="w-28 text-center font-mono"
-        />
-        <FieldDescription className="flex-1 basis-64">{t('stepupCodeHint')}</FieldDescription>
-      </div>
-    </FormItem>
-  );
 }

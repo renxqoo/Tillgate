@@ -17,40 +17,12 @@ import { GiftIcon, Loader2Icon, PencilIcon, Trash2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
-import { formatMoney, formatPoints } from '@/lib/formatters';
-
 import type { PlanRow } from '@tillgate/api-client';
 import { EditPlanDialog } from './edit-plan-dialog';
 import { GrantPackDialog } from './grant-pack-dialog';
-
-/** 钱 + 积分并列展示（纯展示层，积分 = 元 × 100）。 */
-function MoneyPoints({ value }: { value: string }) {
-  const tUi = useTranslations('ui');
-  return (
-    <span className="tabular-nums">
-      <span className="font-medium">¥{formatMoney(value)}</span>
-      <span className="ml-1.5 text-xs text-muted-foreground">
-        {formatPoints(value)} {tUi('points')}
-      </span>
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: number }) {
-  const t = useTranslations('plans');
-  if (status === 0) {
-    return <StatusPill tone="success" label={t('listed')} />;
-  }
-  return <StatusPill tone="neutral" label={t('unlisted')} />;
-}
-
-function KindBadge({ kind }: { kind: PlanRow['kind'] }) {
-  const t = useTranslations('plans');
-  if (kind === 'pack') {
-    return <StatusPill tone="accent" label={t('pack')} />;
-  }
-  return <StatusPill tone="info" label={t('subscription')} />;
-}
+import { KindBadge } from './kind-badge';
+import { MoneyPoints } from './money-points';
+import { StatusBadge } from './status-badge';
 
 export function PlanRowItem({
   plan,

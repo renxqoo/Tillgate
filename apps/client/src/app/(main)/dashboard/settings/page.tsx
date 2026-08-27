@@ -16,16 +16,9 @@ import { formatDateTime, formatMoney } from '@/features/shared/format';
 import { createClientApi } from '@/server/api';
 import { requireMe } from '@/server/session';
 
-export const dynamic = 'force-dynamic';
+import { InfoRow } from './info-row';
 
-function InfoRow({ label, value }: { readonly label: string; readonly value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-4 border-b py-2.5 text-sm last:border-b-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium break-all text-right">{value}</span>
-    </div>
-  );
-}
+export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
   const api = createClientApi();

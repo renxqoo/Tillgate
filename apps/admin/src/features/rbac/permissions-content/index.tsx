@@ -4,15 +4,8 @@
 // （弹窗在 node-edit-dialog / create-node-form，节点词表在 node-shared）
 
 import type { PermissionNode } from '@tillgate/api-client';
-import {
-  Badge,
-  ConfirmDialog,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  RowActions,
-} from '@tillgate/ui';
+import { Badge, ConfirmDialog } from '@tillgate/ui';
 import { useState } from 'react';
-import { PencilIcon, Trash2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -22,61 +15,9 @@ import { StatusPill } from '@/components/status-pill';
 import { useActionResult } from '@/components/action-toast';
 import { deletePermissionAction } from '@/server/rbac-actions';
 import { TYPE_ORDER } from './node-shared';
-import { NodeEditDialog } from './node-edit-dialog';
+import { NodeRowActions } from './node-row-actions';
 
 export { CreateNodeForm } from './create-node-form';
-
-/** 行操作（统一 RowActions 三点菜单）:按按钮权限显隐(admins:update/delete);
- * 删除全节点开放,子节点预检禁用（后端 permission_has_children 兜底） */
-function NodeRowActions({
-  node,
-  nodes,
-  canUpdate,
-  canDelete,
-  onDelete,
-}: {
-  node: PermissionNode;
-  nodes: PermissionNode[];
-  canUpdate: boolean;
-  canDelete: boolean;
-  onDelete: (node: PermissionNode) => void;
-}) {
-  const t = useTranslations('permissions');
-  const tc = useTranslations('common');
-  const [editOpen, setEditOpen] = useState(false);
-  const hasChildren = nodes.some((n) => n.parentId === node.id);
-
-  if (!canUpdate && !canDelete) {
-    return <span className="text-xs text-muted-foreground">—</span>;
-  }
-
-  return (
-    <>
-      {canUpdate && (
-        <NodeEditDialog node={node} nodes={nodes} open={editOpen} onOpenChange={setEditOpen} />
-      )}
-      <RowActions label={tc('actions')}>
-        {canUpdate && (
-          <DropdownMenuItem onClick={() => setEditOpen(true)}>
-            <PencilIcon className="size-4" />
-            {tc('edit')}
-          </DropdownMenuItem>
-        )}
-        {canUpdate && canDelete && <DropdownMenuSeparator />}
-        {canDelete && (
-          <DropdownMenuItem
-            disabled={hasChildren}
-            title={hasChildren ? t('deleteBlockedHint') : undefined}
-            onClick={() => onDelete(node)}
-          >
-            <Trash2Icon className="size-4" />
-            {tc('delete')}
-          </DropdownMenuItem>
-        )}
-      </RowActions>
-    </>
-  );
-}
 
 /** 资源清单（通用 DataTable;层级上下文经「父节点」列呈现,排序 目录→页面→按钮;分页/标题在页面层 ListPage） */
 export function PermissionsContent({
