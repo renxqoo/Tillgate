@@ -285,7 +285,7 @@ services:
       client-api:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:3001/']
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3001/']
       interval: 10s
       timeout: 3s
       retries: 5
@@ -309,7 +309,7 @@ services:
       admin-api:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:3002/']
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3002/']
       interval: 10s
       timeout: 3s
       retries: 5
