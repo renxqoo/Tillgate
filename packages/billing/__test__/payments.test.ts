@@ -199,6 +199,9 @@ describe('协议规则', () => {
     expect(() => assertTopupWithinLimit('0.5', '1', '1000')).toThrow();
     expect(() => assertTopupWithinLimit('2000', '1', '1000')).toThrow();
     expect(computeCreditAmount('10.5', '7.1')).toBe('74.55');
+    // B10：乘积超出落库尺度（>18 位小数）时按落库尺度 floor 收敛——
+    // 响应值与 numeric(38,18) 存储/入账值同源（全精度直出有 1e-18 级漂移）
+    expect(computeCreditAmount('1.01', '0.123456789012345678')).toBe('0.124691356902469134');
     expect(amountsMatch('10.00', '10')).toBe(true);
     expect(amountsMatch('10.01', '10')).toBe(false);
     expect(amountsMatch('abc', '10')).toBe(false);

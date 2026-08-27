@@ -4,7 +4,7 @@
  * 回调不重算——「渠道到账金额与入账金额解耦」的不变量源头。
  */
 import { BillingErrors } from '../errors.js';
-import { parsePositiveAmount } from '../money.js';
+import { Decimal, parsePositiveAmount } from '../money.js';
 
 /** 结构性金额输入校验（拒科学计数法/超尺度/负数/NaN） */
 export function isValidAmountInput(raw: string): boolean {
@@ -30,9 +30,17 @@ export function assertTopupWithinLimit(amount: string, min: string, max: string)
   if (value.greaterThan(max)) throw reject('above_max');
 }
 
-/** 入账额 = amount × rate（全精度不四舍五入——账本永不 round） */
+/**
+ * 入账额 = floor(amount × rate, 18 位小数)。乘积最多 20 位小数（2dp 面额 × 18dp
+ * 费率），落库列 numeric(38,18) 表示不了第 19-20 位——按落库尺度先行收敛，响应值
+ * 与存储/入账值同源（全精度直出会让响应 ≠ 账面 1e-18 级漂移）。floor 方向与佣金
+ * 路径一致（派生入账额宁可少不多；差额低于落库尺度不可表示）。
+ */
 export function computeCreditAmount(amount: string, rate: string): string {
-  return parsePositiveAmount(amount).times(parsePositiveAmount(rate)).toString();
+  return parsePositiveAmount(amount)
+    .times(parsePositiveAmount(rate))
+    .toDecimalPlaces(18, Decimal.ROUND_FLOOR)
+    .toString();
 }
 
 /** 回调金额核对：渠道实付与订单实付不等即拒（防「签名合法但金额篡改」） */
