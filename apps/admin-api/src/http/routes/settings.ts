@@ -47,5 +47,18 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
     },
   );
 
+  // SMTP 连通性探针：只读不落库（连接+认证，不发送邮件）——与渠道测试端点同免 step-up；
+  // 成功/失败都是探针结果（ok 字段），失败不抬 4xx/5xx
+  app.post(
+    '/v1/settings/integrations/smtp/test',
+    jsonBody(settingsContracts.integrationsProbe),
+    async (c) => {
+      const body = c.req.valid('json');
+      return c.json(
+        await integrations.probeSmtp(body.config != null ? { config: body.config } : {}),
+      );
+    },
+  );
+
   return app;
 }

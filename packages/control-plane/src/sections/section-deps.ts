@@ -9,6 +9,7 @@ import type { ControlPlaneEnv } from '../control-plane';
 import type { FxDeps } from '../application/fx/fx-shared';
 import type { UpdateBillingTimezoneDeps } from '../application/settings/update-billing-timezone';
 import type { UpdateIntegrationDeps } from '../application/integrations/update-integration';
+import type { ProbeSmtpDeps } from '../application/integrations/probe-smtp';
 import type { SourceCacheDeps } from '../application/catalog/fetch-source-models';
 import type { AuditSink, AuditTxSink } from '../ports/audit-sink';
 import type { VoucherStorage } from '../ports/voucher-storage';
@@ -51,5 +52,6 @@ export interface SectionDeps {
   readonly fxDeps: FxDeps;
   readonly settingsDeps: UpdateBillingTimezoneDeps;
   readonly integrationDeps: UpdateIntegrationDeps;
+  readonly smtpProbeDeps: ProbeSmtpDeps;
   readonly sourceDeps: SourceCacheDeps;
 }

@@ -71,6 +71,7 @@ export type { CreateAdminInput } from './application/admins/create-admin';
 
 // ---- 装配/桥接 port 契约（assembly 实现与 observability 桥消费）----
 export type { UpstreamProbe, ProbeTarget, ProbeOutcome } from './ports/upstream-probe';
+export type { SmtpProbe, SmtpProbeTarget } from './ports/smtp-probe';
 export type { SecretCipher } from './ports/secret-cipher';
 export type { CatalogSource, CatalogChannelGuard } from './ports/catalog-source';
 export type { ActiveMappingRow, EnabledModelRow } from './ports/model-store';

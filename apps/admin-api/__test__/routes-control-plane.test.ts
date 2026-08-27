@@ -512,6 +512,50 @@ describe('models + rate-cards + fx + catalog', () => {
     expect(badShape.status).toBe(400);
   });
 
+  it('SMTP 连通性探针：三态 config 透传 + 空体 200 + 形状 400（免 step-up）', async () => {
+    const probeSmtp = vi.fn(async () => ({ ok: true, durationMs: 12 }));
+    const app = controlPlaneApp({
+      settings: {
+        billingTimezone: {
+          read: async () => ({ timezone: null }),
+          update: async () => ({ timezone: 'UTC' }),
+        },
+        integrations: {
+          list: async () => ({ integrations: [] }),
+          update: async () => {
+            throw new Error('probe must not update');
+          },
+          probeSmtp,
+        },
+      },
+    });
+    const posted = await app.request('/v1/settings/integrations/smtp/test', {
+      method: 'POST',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ config: { host: 'smtp2.example.com', pass: null } }),
+    });
+    expect(posted.status).toBe(200);
+    expect(await posted.json()).toEqual({ ok: true, durationMs: 12 });
+    expect(probeSmtp).toHaveBeenCalledWith({ config: { host: 'smtp2.example.com', pass: null } });
+
+    // 空体 = 只测已保存配置（无 config 字段 → 用例收空对象）
+    const bare = await app.request('/v1/settings/integrations/smtp/test', {
+      method: 'POST',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(bare.status).toBe(200);
+    expect(probeSmtp).toHaveBeenCalledWith({});
+
+    // 契约层只拦形状：空串字段值 400
+    const badShape = await app.request('/v1/settings/integrations/smtp/test', {
+      method: 'POST',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ config: { host: '' } }),
+    });
+    expect(badShape.status).toBe(400);
+  });
+
   it('settings:integrations 未知 key 映射 404（integration_unknown）', async () => {
     const integrations = {
       list: async () => ({ integrations: [] }),

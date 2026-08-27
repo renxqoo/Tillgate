@@ -16,6 +16,8 @@ import {
   createMemoryFxStore,
   createMemoryDb,
   createStubProbe,
+  createStubSmtpProbe,
+  createMemoryIntegrationSettingsStore,
   createMemoryAdminStore,
   createMemoryEndpointStore,
   createMemoryPermissionStore,
@@ -54,6 +56,8 @@ function setup() {
   const operations = createMemoryOperationsStore();
   const audit = createMemoryAudit();
   const probe = createStubProbe();
+  const smtpProbe = createStubSmtpProbe();
+  const integrationSettings = createMemoryIntegrationSettingsStore();
   const roleStore = createMemoryRoleStore();
   const permissionStore = createMemoryPermissionStore();
   const endpointStore = createMemoryEndpointStore();
@@ -63,6 +67,7 @@ function setup() {
     cipher: fakeCipher,
     capabilities: { protocols: ['openai-compatible'], vendorProfiles: [] },
     probe: probe.probe,
+    smtpProbe: smtpProbe.probe,
     defaultProtocol: 'openai-compatible',
     importMaxChannels: 10,
     sources: [SOURCE],
@@ -88,6 +93,7 @@ function setup() {
       fx: fx.store,
       audit: audit.store,
       operations: operations.store,
+      integrationSettings: integrationSettings.store,
       role: roleStore,
       permission: permissionStore,
       admin: adminStore,
@@ -380,6 +386,23 @@ describe('createControlPlane facade', () => {
     controlPlane.catalog.listSources();
     await controlPlane.catalog.comparison('s1');
     await controlPlane.catalog.priceHistory({ externalName: 'none' });
+  });
+
+  it('settings.integrations.probeSmtp：装配线直达（写入 → 探针收到解密值）', async () => {
+    const s = setup();
+    await s.controlPlane.settings.integrations.update({
+      ctx: adminCtx(),
+      key: 'smtp',
+      config: {
+        host: 'smtp.example.com',
+        user: 'noreply@example.com',
+        pass: 'facade-pass',
+      },
+    });
+    await expect(s.controlPlane.settings.integrations.probeSmtp({})).resolves.toEqual({
+      ok: true,
+      durationMs: 7,
+    });
   });
 
   it('返回面不泄漏 Db/DbTx 类型痕迹（公开键不含 db/tx 字段）', () => {

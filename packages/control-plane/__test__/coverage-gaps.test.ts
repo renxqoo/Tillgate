@@ -28,6 +28,7 @@ import {
   createMemoryDb,
   createMemoryFxStore,
   createStubProbe,
+  createStubSmtpProbe,
   fakeCipher,
   uniqueViolation,
 } from './memory';
@@ -49,6 +50,7 @@ describe('facade 缺省构造（audit/voucher/cache/store 不注入 → postgres
       cipher: fakeCipher,
       capabilities: { protocols: ['openai-compatible'], vendorProfiles: [] },
       probe: createStubProbe().probe,
+      smtpProbe: createStubSmtpProbe().probe,
       defaultProtocol: 'openai-compatible',
       importMaxChannels: 10,
       sources: [],

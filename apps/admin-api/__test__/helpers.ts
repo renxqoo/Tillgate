@@ -287,6 +287,7 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
       integrations: {
         list: notWired,
         update: notWired,
+        probeSmtp: notWired,
       },
     },
     catalog: {

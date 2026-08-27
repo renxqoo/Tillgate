@@ -43,6 +43,7 @@ const ASSEMBLY_FACE = new Set([
   'adapters/identity-audit-bridge.ts',
   'adapters/redis-session-revocation.ts',
   'adapters/smtp-admin-mailer.ts',
+  'adapters/smtp-probe.ts',
 ]);
 
 describe('admin-api 架构门禁', () => {
@@ -54,6 +55,7 @@ describe('admin-api 架构门禁', () => {
       'adapters/identity-audit-bridge.ts',
       'adapters/redis-session-revocation.ts',
       'adapters/smtp-admin-mailer.ts',
+      'adapters/smtp-probe.ts',
       'adapters/upstream-probe.ts',
       'app.ts',
       'assembly.ts',

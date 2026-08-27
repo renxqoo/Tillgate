@@ -8,10 +8,12 @@ import { readBillingTimezone } from '../application/settings/read-billing-timezo
 import { updateBillingTimezone } from '../application/settings/update-billing-timezone';
 import { listIntegrations } from '../application/integrations/list-integrations';
 import { updateIntegration } from '../application/integrations/update-integration';
+import { probeSmtp } from '../application/integrations/probe-smtp';
 
 export function createSettingsSection({
   settingsDeps,
   integrationDeps,
+  smtpProbeDeps,
 }: SectionDeps): Pick<ControlPlane, 'settings'> {
   return {
     settings: {
@@ -22,6 +24,7 @@ export function createSettingsSection({
       integrations: {
         list: () => listIntegrations(integrationDeps),
         update: (input) => updateIntegration(integrationDeps, input),
+        probeSmtp: (input) => probeSmtp(smtpProbeDeps, input),
       },
     },
   };

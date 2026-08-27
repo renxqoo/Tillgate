@@ -48,6 +48,18 @@ function seedBindings(): Array<{ method: string; path: string; code: string }> {
   return tuples;
 }
 
+/** 迁移 0092 探针端点绑定（method, path, code）——从 SQL 文本解析 */
+function probeBinding(): { method: string; path: string; code: string } {
+  const sql = readFileSync(
+    join(import.meta.dirname, '../../../packages/db/migrations/0092_smtp_probe_endpoint.sql'),
+    'utf8',
+  );
+  const m =
+    /SELECT '(\w+)',\s*'([^']+)',\s*\(SELECT id FROM permissions WHERE code = '([^']+)'/.exec(sql);
+  expect(m).not.toBeNull();
+  return { method: m?.[1] ?? '', path: m?.[2] ?? '', code: m?.[3] ?? '' };
+}
+
 /** 非超管会话挂具：令牌 'tok' → 指定权限码（isSuper=false） */
 function appWithGrants(codes: string[], isSuper = false): Hono<SessionEnv> {
   const app = new Hono<SessionEnv>();
@@ -68,13 +80,14 @@ function appWithGrants(codes: string[], isSuper = false): Hono<SessionEnv> {
             : null,
         owner: async () => ({ status: 0, grants: { isSuper, codes } }),
       },
-      async (method, path) => matchBinding(seedBindings(), method, path),
+      async (method, path) => matchBinding([...seedBindings(), probeBinding()], method, path),
     ),
   );
   // 目标路由形状与 settings.ts 相同（本测试只验 ACL 面，不触 control-plane）
   app.get('/v1/settings/integrations', (c) => c.json({ ok: true }));
   app.put('/v1/settings/integrations/:key', (c) => c.json({ ok: true, key: c.req.param('key') }));
   app.post('/v1/settings/integrations/:key', (c) => c.json({ ok: true }));
+  app.post('/v1/settings/integrations/smtp/test', (c) => c.json({ ok: true }));
   // 错误面与 createAdminApp 同装配（ACL 拒绝错误需要目录渲染才能出 403 信封）
   app.onError((error, c) =>
     errorHandler({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES })(error, c),
@@ -143,6 +156,25 @@ describe('规格 D-6：迁移 0086 ACL 种子与实际路由的匹配面', () =>
       body: JSON.stringify({}),
     });
     expect(superAdmin.status).toBe(200);
+  });
+
+  it('0092 探针绑定：POST smtp/test → settings:integrations（持码放行；只读码 403）', async () => {
+    expect(probeBinding()).toEqual({
+      method: 'POST',
+      path: '/v1/settings/integrations/smtp/test',
+      code: 'settings:integrations',
+    });
+    const ok = await appWithGrants(['settings:integrations']).request(
+      '/v1/settings/integrations/smtp/test',
+      { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({}) },
+    );
+    expect(ok.status).toBe(200);
+    const denied = await appWithGrants(['settings:read']).request(
+      '/v1/settings/integrations/smtp/test',
+      { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({}) },
+    );
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ error: { code: 'admin.insufficient_permission' } });
   });
 
   it('路径段为空（PUT /v1/settings/integrations/）不命中 :key 绑定 → fail-closed', async () => {

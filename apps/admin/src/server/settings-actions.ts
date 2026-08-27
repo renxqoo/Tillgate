@@ -90,3 +90,30 @@ export async function getMarketingSignupGiftAction(): Promise<{ signupGiftAmount
     return { signupGiftAmount: null };
   }
 }
+
+/** SMTP 探针结果（成功/失败都是 200 探针结果；error 为传输层诊断如 EAUTH） */
+export interface IntegrationProbeResult {
+  ok: boolean;
+  durationMs: number;
+  error?: { code: string; message: string };
+}
+
+/**
+ * SMTP 连通性测试（连接+认证校验，不发送邮件）。config = 弹窗当前填写值
+ * （与保存同形三态；空 = 只测已保存配置）。失败在 action 内翻译成 error 字段。
+ */
+export async function testIntegrationAction(
+  key: string,
+  body: { config?: Record<string, string | null> },
+): Promise<{ result?: IntegrationProbeResult; error?: string }> {
+  const tc = await getTranslations('common');
+  try {
+    const result = await adminApi().post<IntegrationProbeResult>(
+      `/v1/settings/integrations/${key}/test`,
+      body,
+    );
+    return { result };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('saveFailed') };
+  }
+}

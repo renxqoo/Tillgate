@@ -558,6 +558,40 @@ describe('cookies-actions（壳语言/主题 cookie 读写）', () => {
       });
     });
 
+    it('testIntegrationAction：成功透传探针结果且 POST 路径/载荷正确；空体直传', async () => {
+      const PROBE = { ok: true, durationMs: 42 };
+      const { mod, calls } = await loadModule('../src/server/settings-actions', [
+        { status: 200, body: PROBE },
+      ]);
+      const res = await mod.testIntegrationAction('smtp', { config: { host: 'smtp.x' } });
+      expect(res).toEqual({ result: PROBE });
+      expect(last(calls)).toMatchObject({
+        method: 'POST',
+        url: 'http://localhost:8082/v1/settings/integrations/smtp/test',
+        body: { config: { host: 'smtp.x' } },
+      });
+      // 空体 = 只测已保存配置
+      await mod.testIntegrationAction('smtp', {});
+      expect(last(calls)).toMatchObject({ body: {} });
+    });
+
+    it('testIntegrationAction：非 2xx 错误信封映射为 {error: message}', async () => {
+      const { mod } = await loadModule('../src/server/settings-actions', [
+        {
+          status: 400,
+          body: {
+            error: {
+              code: 'control_plane.integration_config_incomplete',
+              message: 'Integration config incomplete',
+            },
+          },
+        },
+      ]);
+      await expect(mod.testIntegrationAction('smtp', {})).resolves.toEqual({
+        error: 'Integration config incomplete',
+      });
+    });
+
     it('updateBillingTimezoneAction：成功 {ok:true}；失败 {error: 信封 message}', async () => {
       const ok = await loadModule('../src/server/settings-actions', [{ status: 200, body: {} }]);
       await expect(ok.mod.updateBillingTimezoneAction('Asia/Shanghai')).resolves.toEqual({

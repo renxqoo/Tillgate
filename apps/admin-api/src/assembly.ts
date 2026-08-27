@@ -47,6 +47,7 @@ import { writeAudit, createBestEffortAuditSink } from '@tillgate/observability/c
 import { ADMIN_SESSION_ISSUER, type AdminApiConfig } from './config';
 import type { AuthGuard } from './http/routes/auth';
 import { createUpstreamProbe } from './adapters/upstream-probe';
+import { createSmtpProbe } from './adapters/smtp-probe';
 import { createAdminFundingResolver } from './adapters/funding-resolver';
 import { createIdentityAuditSinkBridge } from './adapters/identity-audit-bridge';
 import { createDynamicAdminMailer } from './adapters/dynamic-admin-mailer.js';
@@ -295,6 +296,7 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     cipher: createCipher(config.encryptionKey),
     capabilities: { protocols: vendorCatalog.protocols, vendorProfiles: vendorCatalog.vendors },
     probe: createUpstreamProbe(),
+    smtpProbe: createSmtpProbe(),
     defaultProtocol: 'openai-compatible',
     importMaxChannels: config.channelImportMax,
     sources: [

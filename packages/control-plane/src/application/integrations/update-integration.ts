@@ -9,7 +9,7 @@
 import { isConfigComplete } from '../../domain/integrations/completeness';
 import { withinRotationWindow } from '../../domain/integrations/rotation';
 import { maskIntegrationConfig } from '../../domain/integrations/masking';
-import { isValidFieldValue, specOf } from '../../domain/integrations/specs';
+import { specOf } from '../../domain/integrations/specs';
 import { isIntegrationKey } from '../../domain/integrations/keys';
 import type { IntegrationKey } from '../../domain/integrations/keys';
 import { controlPlaneErrors } from '../../errors';
@@ -23,6 +23,7 @@ import type {
 import { adminIdOf, type ControlContext } from '../context';
 import { emitAuditWithinTx } from '../audit';
 import type { IntegrationListItem } from './list-integrations';
+import { mergeIntegrationPlaintext, safeDecryptSecret } from './merge-plaintext';
 
 export interface UpdateIntegrationDeps {
   readonly db: Db;
@@ -40,8 +41,6 @@ export interface UpdateIntegrationInput {
   readonly config?: Readonly<Record<string, string | null>>;
 }
 
-const CIPHERTEXT_PREFIX = 'enc:';
-
 export async function updateIntegration(
   deps: UpdateIntegrationDeps,
   input: UpdateIntegrationInput,
@@ -50,7 +49,7 @@ export async function updateIntegration(
 
   // 明文视图：已有 secret 解密回明文，后续合并/校验/掩码/加密全部基于它；
   // 解密失败的存量密文保持密文形态并记入 undecryptable（原样回写、不二次加密）
-  const { merged, undecryptable } = mergePlaintext(deps, spec, {
+  const { merged, undecryptable } = mergeIntegrationPlaintext(deps.cipher, spec, {
     stored: existing?.config ?? {},
     submitted: input.config ?? {},
   });
@@ -200,84 +199,6 @@ function auditDetail(
 }
 
 /**
- * 明文视图合并：存量装载（secret 解密，失败记入 undecryptable 保持密文形态）
- * + 提交应用（三态校验）。不可解密密文原样回写、回显全遮。
- */
-function mergePlaintext(
-  deps: UpdateIntegrationDeps,
-  spec: ReturnType<typeof specOf>,
-  views: {
-    readonly stored: Readonly<Record<string, unknown>>;
-    readonly submitted: Readonly<Record<string, string | null>>;
-  },
-): { merged: Record<string, string>; undecryptable: Set<string> } {
-  const merged: Record<string, string> = {};
-  const undecryptable = new Set<string>();
-  for (const field of spec.fields) {
-    const value = views.stored[field.name];
-    if (typeof value !== 'string' || value.length === 0) continue;
-    if (!field.secret) {
-      merged[field.name] = value;
-      continue;
-    }
-    const plaintext = safeDecrypt(deps, value);
-    if (plaintext == null) {
-      undecryptable.add(field.name);
-      merged[field.name] = value;
-    } else {
-      merged[field.name] = plaintext;
-    }
-  }
-  applySubmitted(spec, { merged, undecryptable, submitted: views.submitted });
-  return { merged, undecryptable };
-}
-
-/** 提交应用：未知字段拒绝 / enc: 伪装拒绝（变体同拒）/ null 清除 / 值校验后覆盖 */
-function applySubmitted(
-  spec: ReturnType<typeof specOf>,
-  view: {
-    readonly merged: Record<string, string>;
-    readonly undecryptable: Set<string>;
-    readonly submitted: Readonly<Record<string, string | null>>;
-  },
-): void {
-  const { merged, undecryptable } = view;
-  for (const [name, value] of Object.entries(view.submitted) as [string, string | null][]) {
-    const field = spec.fields.find((f) => f.name === name);
-    if (field == null) {
-      throw controlPlaneErrors.business('integration_field_invalid', {
-        key: spec.key,
-        field: name,
-      });
-    }
-    if (value == null) {
-      Reflect.deleteProperty(merged, name);
-      undecryptable.delete(name);
-      continue;
-    }
-    if (isCiphertextLookalike(value)) {
-      throw controlPlaneErrors.business('integration_secret_encrypted', {
-        key: spec.key,
-        field: name,
-      });
-    }
-    if (!isValidFieldValue(field.kind, value)) {
-      throw controlPlaneErrors.business('integration_field_invalid', {
-        key: spec.key,
-        field: name,
-      });
-    }
-    merged[name] = value;
-    undecryptable.delete(name);
-  }
-}
-
-/** enc: 伪装密文判定（前导空白与大小写变体同拒） */
-function isCiphertextLookalike(value: string): boolean {
-  return value.trimStart().toLowerCase().startsWith(CIPHERTEXT_PREFIX);
-}
-
-/**
  * 轮换入窗：rotatable secret 字段值变更且旧值在场 → 旧密文进
  * previous_secrets 并刷新 rotatedAt。**非轮换写入不得退出窗口**
  * （退出条件 = 时间到期）；已过期窗口随下一次写入清空（存储自愈）。
@@ -301,7 +222,7 @@ function rotateSecrets(
     .filter((field) => {
       const storedValue = existing?.config[field.name];
       if (typeof storedValue !== 'string' || storedValue.length === 0) return false;
-      const storedPlain = safeDecrypt(deps, storedValue) ?? storedValue;
+      const storedPlain = safeDecryptSecret(deps.cipher, storedValue) ?? storedValue;
       return merged[field.name] != null && merged[field.name] !== storedPlain;
     })
     .map((field) => field.name);
@@ -344,13 +265,4 @@ function encryptSecrets(
       field.secret && !view.undecryptable.has(field.name) ? deps.cipher.encrypt(value) : value;
   }
   return stored;
-}
-
-function safeDecrypt(deps: UpdateIntegrationDeps, packed: string): string | null {
-  try {
-    const decrypted = deps.cipher.decrypt(packed);
-    return decrypted.length > 0 ? decrypted : null;
-  } catch {
-    return null;
-  }
 }

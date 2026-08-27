@@ -127,6 +127,7 @@ const ENDPOINTS: readonly string[] = [
   'POST /v1/redeem-batches',
   'POST /v1/redeem-batches/codes/:codeId/revoke',
   'POST /v1/roles',
+  'POST /v1/settings/integrations/smtp/test',
   'POST /v1/subscriptions/:id/cancel',
   'POST /v1/subscriptions/:id/change',
   'POST /v1/subscriptions/:id/grant',

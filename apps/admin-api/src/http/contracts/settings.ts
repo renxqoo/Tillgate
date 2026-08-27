@@ -15,4 +15,8 @@ export const settingsContracts = {
     enabled: z.boolean().optional(),
     config: z.record(z.string().min(1).max(64), z.string().min(1).max(1024).nullable()).optional(),
   }),
+  /** SMTP 连通性探针：弹窗当前填写值（与 update 同形三态；空 = 只测已保存配置） */
+  integrationsProbe: z.object({
+    config: z.record(z.string().min(1).max(64), z.string().min(1).max(1024).nullable()).optional(),
+  }),
 } as const;

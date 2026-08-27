@@ -75,4 +75,23 @@ export const settingsEndpoints = [
     response: { schema: integrationItemSchema },
     errors: [400, 401, 403, 404],
   },
+  {
+    method: 'post',
+    path: '/v1/settings/integrations/smtp/test',
+    tag: 'settings',
+    summary:
+      'SMTP 连通性探针（settings:integrations 权限；连接+认证校验，不发送邮件；测试弹窗当前填写值与存量合并——不落库；上游失败也是 200 探针结果）',
+    body: settingsContracts.integrationsProbe,
+    response: {
+      schema: z.object({
+        ok: z.boolean().describe('true = 连接与认证通过'),
+        durationMs: z.number().describe('探针耗时（ms）'),
+        error: z
+          .object({ code: z.string(), message: z.string() })
+          .optional()
+          .describe('失败诊断（nodemailer 传输层 code，如 EAUTH/ETIMEDOUT）'),
+      }),
+    },
+    errors: [400, 401, 403],
+  },
 ] as const;

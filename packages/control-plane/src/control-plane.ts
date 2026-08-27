@@ -27,6 +27,7 @@ import type { CatalogCache } from './ports/cache';
 import type { CatalogSource } from './ports/catalog-source';
 import type { SecretCipher } from './ports/secret-cipher';
 import type { UpstreamProbe } from './ports/upstream-probe';
+import type { SmtpProbe } from './ports/smtp-probe';
 import type { VoucherStorage } from './ports/voucher-storage';
 import type { ProviderCapabilities } from './domain/provider/provider';
 import type { ListResult } from './domain/list';
@@ -69,6 +70,11 @@ import type { RateCardHealth } from './application/rates/check-rate-card-health'
 import type { UpdateBillingTimezoneInput } from './application/settings/update-billing-timezone';
 import type { UpdateIntegrationInput } from './application/integrations/update-integration';
 import type { IntegrationListItem } from './application/integrations/list-integrations';
+import type {
+  ProbeSmtpDeps,
+  ProbeSmtpInput,
+  ProbeSmtpResult,
+} from './application/integrations/probe-smtp';
 import type { CatalogComparisonPayload } from './application/catalog/compare-catalog';
 import type { CatalogPriceHistoryEntry } from './application/catalog/catalog-price-history';
 import type { ImportCatalogInput, ImportCatalogResult } from './application/catalog/import-catalog';
@@ -114,6 +120,8 @@ export interface ControlPlaneEnv {
   readonly capabilities: ProviderCapabilities;
   /** 上游探针（assembly 用 ai 库包装：每次新建实例——内存态隔离） */
   readonly probe: UpstreamProbe;
+  /** SMTP 集成探针（assembly 用 nodemailer verify() 包装：连接+认证，不发邮件） */
+  readonly smtpProbe: SmtpProbe;
   /** 协议缺省（如 'openai-compatible'） */
   readonly defaultProtocol: string;
   /** 渠道批量导入单批上限 */
@@ -266,9 +274,11 @@ export interface ControlPlane {
       update(input: UpdateBillingTimezoneInput): Promise<{ timezone: string }>;
     };
     /** 第三方集成动态配置（integration_settings） */
-    integrations: {
+    readonly integrations: {
       list(): Promise<{ integrations: readonly IntegrationListItem[] }>;
       update(input: UpdateIntegrationInput): Promise<IntegrationListItem>;
+      /** SMTP 连通性探针（连接+认证，不发送邮件；不落库不留审计） */
+      probeSmtp(input: ProbeSmtpInput): Promise<ProbeSmtpResult>;
     };
   };
   readonly catalog: {
@@ -323,6 +333,16 @@ function resolveStores(env: ControlPlaneEnv): ResolvedStores {
   };
 }
 
+/** SMTP 探针依赖（读存量 + 解密 + 探针 port——只读面，无审计无时钟） */
+function smtpProbeDepsOf(env: ControlPlaneEnv, stores: ResolvedStores): ProbeSmtpDeps {
+  return {
+    db: env.db,
+    stores: { integrationSettings: stores.integrationSettings },
+    cipher: env.cipher,
+    probe: env.smtpProbe,
+  };
+}
+
 export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
   const audit = env.audit ?? createPostgresAuditSink(env.db);
   const auditTx = env.auditTx ?? postgresAuditTxSink;
@@ -339,6 +359,7 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
     auditTx,
     now: () => new Date(),
   };
+  const smtpProbeDeps = smtpProbeDepsOf(env, stores);
   const sourceDeps = { sources: env.sources, cache, cacheTtlMs: env.catalogTtlMs };
   const deps: SectionDeps = {
     env,
@@ -349,6 +370,7 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
     fxDeps,
     settingsDeps,
     integrationDeps,
+    smtpProbeDeps,
     sourceDeps,
   };
   return {

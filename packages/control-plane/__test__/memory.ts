@@ -27,6 +27,7 @@ import type {
 import type { AuditSink, AuditTxSink, AuditEntry } from '../src/ports/audit-sink';
 import type { VoucherStorage } from '../src/ports/voucher-storage';
 import type { UpstreamProbe, ProbeTarget, ProbeOutcome } from '../src/ports/upstream-probe';
+import type { SmtpProbe, SmtpProbeTarget } from '../src/ports/smtp-probe';
 import type { SecretCipher } from '../src/ports/secret-cipher';
 import type { ProviderPatchInput } from '../src/domain/provider/provider';
 import type { ModelInsertInput, ModelPatch } from '../src/ports/model-store';
@@ -961,6 +962,18 @@ export const fakeCipher: SecretCipher = {
   encrypt: (plaintext) => `fake-enc:${plaintext}`,
   decrypt: (packed) => packed.replace(/^fake-enc:/, ''),
 };
+
+/** SMTP 探针替身：记录目标并按配置回放结果（默认成功） */
+export function createStubSmtpProbe(override?: (target: SmtpProbeTarget) => ProbeOutcome) {
+  const calls: SmtpProbeTarget[] = [];
+  const probe: SmtpProbe = {
+    async probeSmtp(target) {
+      calls.push(target);
+      return override?.(target) ?? { ok: true, durationMs: 7 };
+    },
+  };
+  return { probe, calls };
+}
 
 /** 上下文工厂：管理员操作 */
 export function adminCtx(adminId = 1) {
