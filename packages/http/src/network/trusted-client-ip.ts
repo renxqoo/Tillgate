@@ -10,6 +10,7 @@
  *   - 部署责任：hops 必须等于真实代理层数；配错（代理后配 0 = 全员共享代理 IP，
  *     直连配 >0 = 恢复可伪造）属于部署错误，.env.example 有明确注释。
  */
+import { isIP } from 'node:net';
 import type { Context } from 'hono';
 
 /** Bun.serve 注入 env.server 的最小结构面（requestIP 取不可伪造的 socket 对端） */
@@ -43,7 +44,9 @@ export function trustedClientIp(input: TrustedClientIpInput): string {
         .map((s) => s.trim())
         .filter(Boolean);
       const candidate = parts[parts.length - hops];
-      if (candidate) return candidate;
+      // 选中跳必须是合法 IP 才可用：该值会进邮件模板/限流维度/爆破计数——
+      // 任意串（恶意 XFF 注入）不可外传，回退不可伪造的 socket 对端
+      if (candidate != null && isIP(candidate) !== 0) return candidate;
     }
   }
   const socket = input.socketAddress?.trim();
