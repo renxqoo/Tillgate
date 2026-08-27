@@ -7,4 +7,10 @@
 export interface UrlGuard {
   /** 不安全时抛错(与 ai.assertSafeUrl 同契约);返回解析出的 URL 供实现复用 */
   assert(url: string, opts: { allowLocal: boolean }): Promise<URL>;
+  /**
+   * 拨号层单地址判定(防 DNS rebinding 的钉子):在「实际发起连接的解析钩子」里
+   * 对本次解析出的每个地址调用(实现注入 ai.assertSafeAddress)。校验的就是拨号
+   * 地址本身——校验与拨号之间的二次解析窗口被结构性消除。
+   */
+  assertAddress(address: string, opts: { allowLocal: boolean }): void;
 }

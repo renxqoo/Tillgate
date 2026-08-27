@@ -3,6 +3,8 @@
  * 未知渠道类型、create 非 23505 错误透传、test 动词空事件表兜底。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { createNotifications } from '../src/notifications';
 import {
   createMemoryNotifyStore,
@@ -35,31 +37,44 @@ function facadeWith(overrides: Partial<Parameters<typeof createNotifications>[0]
 }
 
 describe('facade 默认装配路径', () => {
-  it('未注入 webhookDeliverer 时走默认 http 投递器(stub fetch 全链路:解密→签名→POST)', async () => {
-    const fetchCalls: Array<{ url: string; init: RequestInit }> = [];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string | URL, init?: RequestInit) => {
-        fetchCalls.push({ url: String(url), init: init ?? {} });
-        return new Response('ok', { status: 200 });
-      }),
-    );
-    const { facade, memory } = facadeWith(); // 不注 deliverer → 默认 http
-    memory.seedChannel({
-      name: 'wh',
-      type: 'webhook',
-      config: { url: 'https://hooks.example.test/h', secret: enc('whsec-default') },
-      events: ['billing_dead'],
-      status: 0,
+  it('未注入 webhookDeliverer 时走默认守卫拨号投递器(本地回声全链路:解密→签名→POST)', async () => {
+    // 默认投递器走 node 守卫拨号传输——本地回声服务实证 POST 实达
+    // (allowLocal 装配双门在 facadeWith 已开;IP 字面量不经 DNS,钉子语义归传输自测)
+    const hits: Array<{ url: string; headers: http.IncomingHttpHeaders; body: string }> = [];
+    const collect = (req: http.IncomingMessage, res: http.ServerResponse): void => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        hits.push({ url: req.url ?? '/', headers: req.headers, body });
+        res.writeHead(200);
+        res.end('ok');
+      });
+    };
+    const server = http.createServer(collect);
+    await new Promise<void>((resolve) => {
+      server.listen(0, '127.0.0.1', () => resolve());
     });
-    memory.seedOutbox({ event: 'billing_dead', payload: { requestId: 'r9' } });
-    const result = await facade.dispatchOnce({ ownerId: 'w1' });
-    expect(result).toEqual({ sent: 1, failed: 0 });
-    expect(fetchCalls).toHaveLength(1);
-    const fetchCall = defined(fetchCalls[0], 'fetchCalls[0]');
-    expect(fetchCall.url).toBe('https://hooks.example.test/h');
-    const headers = fetchCall.init.headers as Record<string, string>;
-    expect(headers['x-notify-event']).toBe('billing_dead');
+    try {
+      const { port } = server.address() as AddressInfo;
+      const { facade, memory } = facadeWith(); // 不注 deliverer → 默认守卫拨号传输
+      memory.seedChannel({
+        name: 'wh',
+        type: 'webhook',
+        config: { url: `http://127.0.0.1:${port}/h`, secret: enc('whsec-default') },
+        events: ['billing_dead'],
+        status: 0,
+      });
+      memory.seedOutbox({ event: 'billing_dead', payload: { requestId: 'r9' } });
+      const result = await facade.dispatchOnce({ ownerId: 'w1' });
+      expect(result).toEqual({ sent: 1, failed: 0 });
+      expect(hits).toHaveLength(1);
+      const hit = defined(hits[0], 'hits[0]');
+      expect(hit.url).toBe('/h');
+      expect(hit.headers['x-notify-event']).toBe('billing_dead');
+      expect(JSON.parse(hit.body).payload).toEqual({ requestId: 'r9' });
+    } finally {
+      server.close();
+    }
   });
 
   it('dispatchOnce 不传 ownerId:缺省 per-run 随机(多副本互斥由 DB 认领保证)', async () => {

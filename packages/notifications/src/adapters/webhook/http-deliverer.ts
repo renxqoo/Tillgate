@@ -1,12 +1,15 @@
 /**
- * WebhookDeliverer 的 fetch 实现:
- * SSRF 断言(注入 UrlGuard)→ 秒级时间戳 → HMAC 签名(domain)→ POST → res.ok。
+ * WebhookDeliverer 实现:
+ * SSRF 断言(注入 UrlGuard)→ 秒级时间戳 → HMAC 签名(domain)→ 守卫拨号传输 POST。
+ * 传输缺省 = createGuardedNodeTransport（拨号层逐地址断言——DNS rebinding 的
+ * 校验/拨号两次解析窗口结构性消除）;测试可注入替身传输。
  * 网络异常/超时收敛为 false(端口契约:布尔不抛)。
  * allowLocal 是装配层双门(env 允许且非生产)的结果值,本层不再二次判断。
  */
 import type { WebhookDeliverer, WebhookDeliveryInput } from '../../ports/webhook-deliverer';
 import type { UrlGuard } from '../../ports/url-guard';
 import { webhookBody, signWebhook, webhookHeaders } from '../../domain/delivery';
+import { createGuardedNodeTransport, type GuardedHttpPost } from './node-transport';
 
 export interface WebhookDelivererOptions {
   readonly guard: UrlGuard;
@@ -15,14 +18,19 @@ export interface WebhookDelivererOptions {
   /** dev/test 逃生门结果值(生产恒 false——装配层双门) */
   readonly allowLocal: boolean;
   readonly logger: { warn(obj: unknown, msg: string): void };
+  /** 传输注入点(缺省守卫拨号传输;测试替身用) */
+  readonly transport?: GuardedHttpPost;
 }
 
 export function createWebhookDeliverer(options: WebhookDelivererOptions): WebhookDeliverer {
+  const transport =
+    options.transport ?? createGuardedNodeTransport(options.guard, options.allowLocal);
   return {
     async deliver(input: WebhookDeliveryInput): Promise<boolean> {
       if (!input.url) return false;
+      let target: URL;
       try {
-        await options.guard.assert(input.url, { allowLocal: options.allowLocal });
+        target = await options.guard.assert(input.url, { allowLocal: options.allowLocal });
       } catch (error) {
         options.logger.warn(
           { url: input.url, error: (error as Error).message },
@@ -33,27 +41,20 @@ export function createWebhookDeliverer(options: WebhookDelivererOptions): Webhoo
       const timestamp = Math.floor(Date.now() / 1000);
       const body = webhookBody(input.event, timestamp, input.payload);
       const signature = signWebhook(input.secret, timestamp, body);
-      let res: Response;
-      try {
-        res = await fetch(input.url, {
-          method: 'POST',
-          // 守卫只校验初始 URL；3x 不自动跟随（过审 https 地址可 30x 跳内网/
-          // metadata，307/308 还保留 POST 体）——3x 视为投递失败，下轮重试
-          redirect: 'manual',
-          headers: {
-            ...webhookHeaders({
-              deliveryId: input.deliveryId,
-              event: input.event,
-              timestamp,
-              signature,
-            }),
-          },
-          body,
-          signal: AbortSignal.timeout(options.timeoutMs),
-        });
-      } catch {
-        return false; // 网络异常/超时:本轮失败可重试
-      }
+      const res = await transport({
+        url: target,
+        // 展开为普通对象字面量（interface 形态无隐式索引签名,传输入参按记录形收）
+        headers: {
+          ...webhookHeaders({
+            deliveryId: input.deliveryId,
+            event: input.event,
+            timestamp,
+            signature,
+          }),
+        },
+        body,
+        timeoutMs: options.timeoutMs,
+      });
       if (!res.ok) {
         options.logger.warn({ status: res.status, event: input.event }, 'webhook deliver failed');
       }

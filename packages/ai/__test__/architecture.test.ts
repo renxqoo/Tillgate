@@ -79,6 +79,7 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
       'UpstreamError',
       'aiDefaultsSchema',
       'allowAllUrls',
+      'assertSafeAddress',
       'assertSafeUrl',
       'assertSafeUrlSync',
       'canonicalStreamToClaudeStream',

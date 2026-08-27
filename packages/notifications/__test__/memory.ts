@@ -343,6 +343,7 @@ export const permissiveUrlGuard = {
   async assert(url: string): Promise<URL> {
     return new URL(url);
   },
+  assertAddress: () => {},
 };
 
 export const noopLogger = { warn: () => {} };

@@ -57,7 +57,12 @@ export { createAi, SUPPORTED_PROTOCOLS } from './create-ai';
 
 // ---- 厂商档案词表（admin 下拉/control-plane capabilities 单一真相）----
 export { vendorProfileNames } from './registry/vendor-profiles';
-export { assertSafeUrl, assertSafeUrlSync, allowAllUrls } from './transport/http-client';
+export {
+  assertSafeUrl,
+  assertSafeUrlSync,
+  assertSafeAddress,
+  allowAllUrls,
+} from './transport/http-client';
 
 // ---- 特征计数器（估算充分统计量，单一真相）----
 export { extractTextFeatures, TextFeaturesAccumulator } from './usage/features';

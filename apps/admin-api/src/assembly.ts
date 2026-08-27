@@ -10,7 +10,12 @@ import {
   createAuthFailureGuard,
   type Logger,
 } from '@tillgate/runtime';
-import { SUPPORTED_PROTOCOLS, vendorProfileNames, assertSafeUrl } from '@tillgate/ai';
+import {
+  SUPPORTED_PROTOCOLS,
+  assertSafeAddress,
+  assertSafeUrl,
+  vendorProfileNames,
+} from '@tillgate/ai';
 import { createIdentity, type Identity } from '@tillgate/identity';
 import type { AdminAppDeps } from './app';
 import {
@@ -345,7 +350,10 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
   const notifications: Notifications = createNotifications({
     db,
     cipher: createCipher(config.encryptionKey),
-    urlGuard: { assert: (url, opts) => assertSafeUrl(url, { allowLocal: opts.allowLocal }) },
+    urlGuard: {
+      assert: (url, opts) => assertSafeUrl(url, { allowLocal: opts.allowLocal }),
+      assertAddress: (address, opts) => assertSafeAddress(address, { allowLocal: opts.allowLocal }),
+    },
     logger: { warn: (obj, msg) => logger.warn(obj, msg) },
     webhookAllowLocalUrl: config.webhookAllowLocalUrl,
     config: {

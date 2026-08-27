@@ -10,7 +10,7 @@
 /* eslint-disable max-lines -- 装配根 composition root：线性依赖组装，行数棘轮与
    下方 max-lines-per-function 同口径（拆段/拆文件只会层层透传上下文） */
 import { createTransport } from 'nodemailer';
-import { assertSafeUrl, createAi } from '@tillgate/ai';
+import { assertSafeAddress, assertSafeUrl, createAi } from '@tillgate/ai';
 import type { Ai } from '@tillgate/ai';
 import { createCipher, createLogger } from '@tillgate/runtime';
 import type { Logger } from '@tillgate/runtime';
@@ -219,7 +219,10 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   const notifications: Notifications = createNotifications({
     db,
     cipher,
-    urlGuard: { assert: (url, opts) => assertSafeUrl(url, { allowLocal: opts.allowLocal }) },
+    urlGuard: {
+      assert: (url, opts) => assertSafeUrl(url, { allowLocal: opts.allowLocal }),
+      assertAddress: (address, opts) => assertSafeAddress(address, { allowLocal: opts.allowLocal }),
+    },
     emailSender,
     logger: { warn: (obj, msg) => logger.warn(obj, msg) },
     webhookAllowLocalUrl: config.webhookAllowLocalUrl,
