@@ -17,7 +17,7 @@ import {
   type OutputCapConfig,
 } from '@tillgate/inference';
 import type { AuthEnv } from '../middleware/api-key';
-import { toInferenceInput } from './inference-input';
+import { requestSignalOf, toInferenceInput } from './inference-input';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { encodeDelivered, sseResponse } from '../openai-envelope';
 import { GatewayErrors } from '../openai-error-face';
@@ -85,6 +85,8 @@ export function geminiNativeRoutes(deps: {
   inference: Inference;
   rateLimit?: RateLimitGate;
   outputCap?: OutputCapConfig;
+  /** 服务端 drain 信号（与客户端断连信号合成） */
+  drainSignal?: AbortSignal;
 }): Hono<AuthEnv> {
   return new Hono<AuthEnv>().post('/v1beta/models/:modelAction', async (c) => {
     const { model, stream, raw } = await readGeminiRequest(c);
@@ -104,7 +106,7 @@ export function geminiNativeRoutes(deps: {
         auth,
         body: canonical,
         endpoint: 'chat',
-        signal: c.req.raw.signal,
+        signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
       });
       const result = stream ? await deps.inference.stream(input) : await deps.inference.chat(input);
       if ('stream' in result && result.ok && result.status === 200) {

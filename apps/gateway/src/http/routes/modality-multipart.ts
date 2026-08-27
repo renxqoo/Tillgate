@@ -11,7 +11,7 @@ import { Hono, type Context } from 'hono';
 import type { Inference } from '@tillgate/inference';
 import { estimateAudioDurationSeconds } from '@tillgate/inference';
 import type { AuthEnv } from '../middleware/api-key';
-import { toInferenceInput } from './inference-input';
+import { requestSignalOf, toInferenceInput } from './inference-input';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { GatewayErrors } from '../openai-error-face';
 
@@ -140,7 +140,7 @@ function encodeMultipartResult(
 
 /** 三路由共用的处理工厂（multipart 解析 → 准入 → chat → 三态出站编码） */
 function multipartRoute(
-  deps: { inference: Inference; rateLimit?: RateLimitGate },
+  deps: { inference: Inference; rateLimit?: RateLimitGate; drainSignal?: AbortSignal },
   maxFileBytes: number,
   opts: {
     fileField: string;
@@ -171,7 +171,13 @@ function multipartRoute(
     });
     try {
       const result = await deps.inference.chat(
-        toInferenceInput({ requestId, auth, body, endpoint: opts.kind, signal: c.req.raw.signal }),
+        toInferenceInput({
+          requestId,
+          auth,
+          body,
+          endpoint: opts.kind,
+          signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
+        }),
       );
       return encodeMultipartResult(c, result, requestId);
     } catch (error) {
@@ -182,7 +188,7 @@ function multipartRoute(
 }
 
 export function modalityMultipartRoutes(
-  deps: { inference: Inference; rateLimit?: RateLimitGate },
+  deps: { inference: Inference; rateLimit?: RateLimitGate; drainSignal?: AbortSignal },
   limits: ModalityLimits = {},
 ): Hono<AuthEnv> {
   const imageMime = limits.imageMime ?? DEFAULT_IMAGE_MIME;

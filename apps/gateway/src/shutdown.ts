@@ -15,6 +15,8 @@ export interface GatewayShutdownDeps {
   inference: { close(): void };
   settleWake: { close(): Promise<void> };
   graceMs: number;
+  /** 宽限耗尽时的在途请求预算中止（drain 语义；透传 runtime createShutdown） */
+  drain?: { abort(): void; finalizeMs?: number };
   /** 退出函数注入（测试）；生产缺省走 runtime 的 process.exit */
   exit?: (code: number) => never;
   logger?: { info(obj: unknown, msg: string): void; error(obj: unknown, msg: string): void };
@@ -30,6 +32,7 @@ export function createGatewayShutdown(deps: GatewayShutdownDeps) {
     redis: deps.redis,
     db: { end: () => deps.closeDb() },
     graceMs: deps.graceMs,
+    ...(deps.drain != null ? { drain: deps.drain } : {}),
     // inference 退订先行（停接线再停存储）；settle-wake 无长连接（形状对齐）
     closeables: [
       { close: async () => deps.inference.close() },

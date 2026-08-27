@@ -64,6 +64,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `GATEWAY_CURRENCY` | `CNY` | 计费币种（3 字母） |
 | `GLOBAL_RPM` | `2000` | 全站每分钟请求闸（0 = 不限；生产硬顶 5000，超配钳回并打告警日志） |
 | `PREAUTH_IP_RPM` | `1200` | 预认证 per-IP 每分钟请求闸（鉴权前第一道闸，未认证洪水超限 429 且不写 request_logs；0 = 不设） |
+| `GATEWAY_DRAIN_FINALIZE_MS` | `5000` | 停机宽限耗尽 abort 在途请求后的收尾窗（信号结算/释放；之后强退） |
 | `AUTH_KEY_FAILURE_THRESHOLD` / `_WINDOW_S` / `_LOCK_S` | 5 / 600 / 600 | 同 Key 失败 5 次（10 分钟窗）锁 10 分钟 |
 | `AUTH_IP_FAILURE_LIMIT` / `_WINDOW_S` | 30 / 300 | 同 IP 失败 30 次即锁 |
 | `BILLING_RESERVATION_MAX` | `1000` | 单请求预扣上限（元；正金额十进制串，20 位整数 + 18 位小数；只拒绝不截断） |

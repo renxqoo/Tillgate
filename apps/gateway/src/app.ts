@@ -58,6 +58,11 @@ export interface GatewayAppDeps {
   rateLimit?: RateLimitGate;
   /** 输出上界口径（准入预占与 inference prepare 共用配置；缺省取包缺省） */
   outputCap?: OutputCapConfig;
+  /**
+   * 服务端 drain 信号（停机宽限耗尽时以 ServerDrainAbort abort——驱动
+   * server_draining 终态分类；与客户端断连信号在各入口合成）。
+   */
+  drainSignal?: AbortSignal;
   oauthIpGuard?: AuthFailureGuard;
   corsOrigins?: readonly string[];
   bodyLimitBytes?: number;
@@ -96,6 +101,16 @@ function mountPreauthChain(app: Hono<AuthEnv>, deps: GatewayAppDeps): void {
   });
   app.use('/v1/*', requestLog);
   app.use('/v1beta/*', requestLog);
+}
+
+/** 推理路由族共用依赖束（装配字段条件展开收口一处） */
+function inferenceRouteDepsOf(deps: GatewayAppDeps) {
+  return {
+    inference: deps.inference,
+    ...(deps.rateLimit != null ? { rateLimit: deps.rateLimit } : {}),
+    ...(deps.outputCap != null ? { outputCap: deps.outputCap } : {}),
+    ...(deps.drainSignal != null ? { drainSignal: deps.drainSignal } : {}),
+  };
 }
 
 // eslint-disable-next-line max-lines-per-function -- HTTP 装配平铺：中间件链与路由挂载顺序即契约
@@ -161,11 +176,7 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
   }
   app.route('/v1/models', modelsRoutes(deps.models));
 
-  const routeDeps = {
-    inference: deps.inference,
-    ...(deps.rateLimit != null ? { rateLimit: deps.rateLimit } : {}),
-    ...(deps.outputCap != null ? { outputCap: deps.outputCap } : {}),
-  };
+  const routeDeps = inferenceRouteDepsOf(deps);
   for (const endpoint of inferenceEndpoints) {
     app.use(endpoint.path, authMiddleware());
     app.route(endpoint.path, inferenceRoutes(routeDeps, endpoint));

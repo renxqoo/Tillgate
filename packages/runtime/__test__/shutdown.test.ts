@@ -58,6 +58,31 @@ describe('createShutdown', () => {
     expect(order).toEqual(['close', 'exit:1']);
   });
 
+  it('宽限耗尽 + drain 钩子：先 abort 在途请求预算，收尾窗后强退 exit(1)', async () => {
+    const { deps, order, logs } = fakeDeps({ closeCallsCallback: false });
+    let aborted = 0;
+    deps.drain = {
+      abort: () => {
+        aborted += 1;
+        order.push('drain-abort');
+      },
+      finalizeMs: 1_000,
+    };
+    createShutdown(deps)('SIGTERM');
+    // 宽限下界 1s 耗尽 → drain abort（不直接强退）
+    await new Promise((r) => {
+      setTimeout(r, 1_200);
+    });
+    expect(aborted).toBe(1);
+    expect(order).toEqual(['close', 'drain-abort']);
+    expect(logs.some((m) => m.includes('aborting in-flight'))).toBe(true);
+    // 收尾窗（信号结算/释放）后强退
+    await new Promise((r) => {
+      setTimeout(r, 1_000);
+    });
+    expect(order).toEqual(['close', 'drain-abort', 'exit:1']);
+  });
+
   it('二次信号不重复触发收口', async () => {
     const { deps, order } = fakeDeps({ closeCallsCallback: true });
     const shutdown = createShutdown(deps);

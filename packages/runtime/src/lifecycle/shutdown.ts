@@ -25,6 +25,16 @@ export interface ShutdownDeps {
   graceMs: number;
   /** 附加收口件（结算唤醒监听连接等；失败不阻断停机） */
   closeables?: Array<{ close(): Promise<void> }>;
+  /**
+   * 宽限耗尽时的在途请求预算中止（drain 语义）：abort 携带服务端 drain 标记
+   * （消费方以 ServerDrainAbort 类 reason 驱动 server_draining 终态分类与全额
+   * 释放），abort 后留 finalizeMs 收尾窗（信号结算/释放）再强退。
+   */
+  drain?: {
+    abort(): void;
+    /** 收尾窗 ms（<1000 按 1000 生效；缺省 5000） */
+    finalizeMs?: number;
+  };
   /** 退出函数（测试注入）；正常路径 0 / 强退 1 */
   exit?: (code: number) => never;
   /** 日志出口（缺省 console）；注入以统一日志面 */
@@ -51,6 +61,19 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => void {
     });
     setTimeout(
       () => {
+        if (deps.drain != null) {
+          // 宽限耗尽：先中止在途请求预算（drain 标记 → 终态分类/释放），留收尾窗再强退
+          log.error(`[${deps.serviceName}] drain grace expired, aborting in-flight requests`);
+          deps.drain.abort();
+          setTimeout(
+            () => {
+              log.error(`[${deps.serviceName}] drain finalize window expired, forcing exit`);
+              exit(1);
+            },
+            Math.max(1_000, deps.drain.finalizeMs ?? 5_000),
+          ).unref();
+          return;
+        }
         log.error(`[${deps.serviceName}] drain grace expired, forcing exit`);
         exit(1);
       },

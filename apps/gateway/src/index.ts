@@ -12,6 +12,7 @@ import type { GatewayAssembly } from './assembly';
 import { createGatewayApp } from './app';
 import type { GatewayAppDeps } from './app';
 import { gatewayDbBudget } from './db-budget.js';
+import { ServerDrainAbort } from '@tillgate/ai';
 import { createGatewayShutdown } from './shutdown';
 
 /** app 依赖组装（assembly + config → createGatewayApp 入参——纯字段搬运） */
@@ -64,7 +65,13 @@ async function main(): Promise<void> {
   // Redis fail-closed：熔断/限流/爆破共享存储连不上拒绝启动
   await assertRedisReachable(assembly.redis, 'gateway', config.redisUrl, 5_000);
 
-  const app = createGatewayApp(toAppDeps(assembly, config));
+  // 服务端 drain 控制器：宽限耗尽时以 ServerDrainAbort abort 在途请求预算——
+  // 终态归类 server_draining（全额释放）而非 request_cancelled（估算结算）
+  const drainController = new AbortController();
+  const app = createGatewayApp({
+    ...toAppDeps(assembly, config),
+    drainSignal: drainController.signal,
+  });
 
   const server = serveApp(app, { port: config.port }, () => {
     logger.info(
@@ -90,6 +97,11 @@ async function main(): Promise<void> {
     inference: assembly.inference,
     settleWake: assembly.settleWake,
     graceMs: config.shutdownGraceMs,
+    // 宽限耗尽 → abort 在途请求（server_draining 分类 + 信号结算收尾窗）
+    drain: {
+      abort: () => drainController.abort(new ServerDrainAbort()),
+      finalizeMs: config.drainFinalizeMs,
+    },
     logger,
   });
   process.on('SIGTERM', shutdown);

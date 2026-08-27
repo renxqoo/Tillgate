@@ -14,6 +14,7 @@ function withErrorFace<E extends AuthEnv>(app: Hono<E>): Hono<E> {
   app.onError(errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
   return app;
 }
+import { ServerDrainAbort, asServerDrainAbort } from '@tillgate/ai';
 import type { Inference, ChatDelivered } from '@tillgate/inference';
 import type { MiddlewareHandler } from 'hono';
 import {
@@ -133,18 +134,24 @@ function recordingGate() {
   return { gate: { limiter, globalRpm: null, preauthIpRpm: null } as never, calls };
 }
 
-function harness(inference: Inference) {
+function harness(inference: Inference, opts: { drainSignal?: AbortSignal } = {}) {
   const app = withErrorFace(new Hono<AuthEnv>());
   app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
   app.use('/v1beta/*', apiKeyMiddleware(READER, undefined, JWT));
-  for (const ep of inferenceEndpoints) app.route(ep.path, inferenceRoutes({ inference }, ep));
+  const routeDeps = {
+    inference,
+    ...(opts.drainSignal != null ? { drainSignal: opts.drainSignal } : {}),
+  };
+  for (const ep of inferenceEndpoints) {
+    app.route(ep.path, inferenceRoutes(routeDeps, ep));
+  }
   const embeddings = defined(
     inferenceEndpoints.find((e) => e.path === '/v1/embeddings'),
     'embeddings endpoint',
   );
-  app.route('/v1/engines/:model', enginesAliasRoutes({ inference }, embeddings));
-  app.route('/', geminiNativeRoutes({ inference }));
-  app.route('/', generationRoutes({ inference }));
+  app.route('/v1/engines/:model', enginesAliasRoutes(routeDeps, embeddings));
+  app.route('/', geminiNativeRoutes(routeDeps));
+  app.route('/', generationRoutes(routeDeps));
   app.route(
     '/oauth/token',
     oauthTokenRoutes({
@@ -660,6 +667,47 @@ describe('TPM 预占口径（B8：含输出上界；B7：模态族豁免）', ()
     expect(res.status).toBe(200);
     expect(calls.checkAll).toBe(1); // RPM 维照查
     expect(calls.reserveTpmAll).toHaveLength(0); // TPM 维不预占
+  });
+});
+
+describe('server_draining 生产者（drain 信号合成 + reason 透传）', () => {
+  it('drainSignal 注入时：inference 收到合成信号，abort reason 为 ServerDrainAbort（终态分类可用）', async () => {
+    const drain = new AbortController();
+    const seen: AbortSignal[] = [];
+    const inference = stubInference({
+      chat: async (input) => {
+        seen.push(input.signal as AbortSignal);
+        // 在途时触发宽限耗尽式 abort
+        drain.abort(new ServerDrainAbort());
+        return { ok: true, status: 200, body: {} };
+      },
+    });
+    const app = harness(inference, { drainSignal: drain.signal });
+    const res = await post(app, '/v1/chat/completions', { model: 'm', messages: [{}] });
+    expect(res.status).toBe(200);
+    const signal = defined(seen[0], 'seen[0]');
+    expect(signal.aborted).toBe(true);
+    expect(asServerDrainAbort(signal.reason)).not.toBeNull(); // drain 标记贯通
+    expect(signal.reason).toBeInstanceOf(ServerDrainAbort);
+  });
+
+  it('无 drainSignal 时信号原样透传（客户端断连语义不变——B1 契约保持）', async () => {
+    const seen: AbortSignal[] = [];
+    const inference = stubInference({
+      chat: async (input) => {
+        seen.push(input.signal as AbortSignal);
+        return { ok: true, status: 200, body: {} };
+      },
+    });
+    const app = harness(inference);
+    const client = new AbortController();
+    await app.request('/v1/chat/completions', {
+      method: 'POST',
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'm', messages: [{}] }),
+      signal: client.signal,
+    });
+    expect(seen[0]).toBe(client.signal); // 同一引用（不包一层）
   });
 });
 

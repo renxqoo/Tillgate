@@ -40,6 +40,7 @@ describe('缺省值与推导', () => {
     expect(c.oauth.tokenTtlSeconds).toBe(3_600);
     expect(c.output).toEqual({ defaultMaxOutputTokens: 4_096, exposureCap: 32_768 });
     expect(c.settleSignal).toEqual({ attempts: 5, baseDelayMs: 500 });
+    expect(c.drainFinalizeMs).toBe(5_000);
     expect(c.corsOrigins).toEqual([]);
   });
 

@@ -85,6 +85,8 @@ function createSchema(production: boolean) {
       /** SSRF 逃生门：仅非生产可用——生产误配 env 也恒关（与 admin-api 同口径） */
       GATEWAY_AI_ALLOW_LOCAL_URL: strictBooleanSchema(false),
       GATEWAY_SHUTDOWN_GRACE_MS: z.coerce.number().int().min(1_000).default(60_000),
+      /** 宽限耗尽 abort 在途请求后的收尾窗（信号结算/释放；再强退） */
+      GATEWAY_DRAIN_FINALIZE_MS: z.coerce.number().int().min(1_000).default(5_000),
       OTEL_TRACES_MODE: z.enum(['off', 'otlp']).default('off'),
       OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
       /** OTLP 推送鉴权(Bearer)——与 trace-receiver 共用同键同值;缺此值对生产接收端 = span 全部 401 拒收 */
@@ -172,6 +174,7 @@ export interface GatewayConfig {
   readonly upstreamConnectTimeoutMs: number;
   readonly aiAllowLocalUrl: boolean;
   readonly shutdownGraceMs: number;
+  readonly drainFinalizeMs: number;
   readonly otel: {
     mode: 'off' | 'otlp';
     endpoint?: string;
@@ -328,6 +331,7 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     upstreamConnectTimeoutMs: parsed.GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS,
     aiAllowLocalUrl: parsed.GATEWAY_AI_ALLOW_LOCAL_URL,
     shutdownGraceMs: parsed.GATEWAY_SHUTDOWN_GRACE_MS,
+    drainFinalizeMs: parsed.GATEWAY_DRAIN_FINALIZE_MS,
     otel: {
       metricsIntervalMs: parsed.OTEL_METRICS_INTERVAL_MS,
       ...(parsed.OTEL_TRACES_MODE === 'otlp' && parsed.OTEL_EXPORTER_OTLP_ENDPOINT != null
