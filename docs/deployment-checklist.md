@@ -16,7 +16,8 @@
 | `IDENTITY_CODE_PEPPER` / `CLIENT_CODE_PEPPER` | ≥16 随机（生产建议 ≥32） | admin-api / client-api 拒绝启动（v2 新增必填，两把 pepper 必须不同值——管理面/用户面分离） |
 | `REDIS_PASSWORD` | 强随机（compose 用它建 Redis `requirepass` 并拼 `REDIS_URL`） | 缺省 `root123` = Redis 裸奔弱口令（仅开发默认） |
 | `POSTGRES_PASSWORD` | 强随机（compose 用它拼 `DATABASE_URL`） | 缺省 `postgres`，数据目录卷沿用旧值时改键不生效——首次建库前设好 |
-| `TRACE_RECEIVER_TOKEN` | ≥16 字符随机串（openssl rand -hex 24） | 生产无此值 trace-receiver 拒绝启动（fail-fast，属预期）。另注意 compose.yml 各服务 `OTEL_TRACES_MODE` 固定 `'off'`（覆盖 env_file）——启用链路要同步改 compose 或去掉覆盖，否则配了 token 也不推流 |
+| `TRACE_RECEIVER_TOKEN` | ≥16 字符随机串（`openssl rand -hex 24`） | 生产无此值 Compose 插值和 trace-receiver 都会 fail-fast；启用链路只需再设 `OTEL_TRACES_MODE=otlp` |
+| `OAUTH_API_BASE` | 对外 client-api HTTPS 根地址 | client-api 生产启动拒绝，OAuth 回调白名单无法构建 |
 | `WORKER_HEALTH_TOKEN` | ≥16 字符随机串 | 不配 = `/health` 深度报告一律 403（`/livez` `/readyz` 不受影响） |
 | `SECURE_COOKIE=true` | 生产必设（默认即生产 true） | 显式配 `false` = client-api 拒绝启动；缺 Secure 位 cookie 明文链路可被截获 |
 | SMTP（`smtp` 集成行） | **动态配置**：admin 端 `/dashboard/settings` 卡片配置（或 `bun run integrations:import` 从存量 env 导入）；个人邮箱（QQ/163 开 SMTP 拿授权码）或企业邮箱 | 不配 = 管理员 2FA 与用户验证码功能 fail-closed（503，不降级单密码，属预期防线）；worker 告警邮件渠道不投递。**安全**：写入需 `settings:integrations` 权限（host 属出网点，变更留 `outboundEndpointChanged` 审计高亮） |
@@ -41,7 +42,7 @@ v2 变化：v1 清单中的 `INTERNAL_API_TOKEN`（BFF 内部令牌）与 `FREE_
 - [ ] **支付回调**：EPAY 后台 notify_url 与 Stripe webhook 指向 `https://<域名>/v1/payments/notify/epay|stripe`
       （nginx 已按该路径分流到 client-api；旧路径 404，漏配 = 充值不入账）。
 - [ ] **证书首签**（standalone，80 端口空闲时）：
-      `docker compose -f docker/compose.yml run --rm --entrypoint certbot -p 80:80 certbot certonly
+      `docker compose --env-file .env -f docker/compose.yml run --rm --entrypoint certbot -p 80:80 certbot certonly
       --standalone --cert-name gateway -d <域名>…`；续期走 webroot + `nginx -s reload`
       （两条命令模板在 compose.yml certbot 注释里）。无域名 IP 部署用 `docker/compose.server.yml`
       （自签证书 + 8443，certbot 归入 profile 永不启动），且所有 compose 命令带 `--env-file .env`。
@@ -64,9 +65,9 @@ v2 变化：v1 清单中的 `INTERNAL_API_TOKEN`（BFF 内部令牌）与 `FREE_
 - [ ] **PG 备份**：每日基础备份 + WAL 归档（资金账本 `billing_requests/billing_reservations`
       等不可丢）；每月做一次恢复演练（备份没验证过 = 没有备份）。HA 形态的 WAL 归档卷配置见
       [ha-deployment.md](ha-deployment.md) §4。
-- [ ] Redis 数据可丢（v2 worker 已无 Redis 依赖，结算唤醒走 PG LISTEN/NOTIFY；Redis 只承载
-      限流/爆破锁/会话吊销/OAuth state/定价缓存）——AOF/RDB 按需，非资金关键。
-- [ ] 迁移策略：生产用 `docker compose -f docker/compose.yml up migrate`
+- [ ] Redis 不是资金最终事实源，但 worker 的 BullMQ 结算调度与各 API 安全守卫依赖它；
+      开 AOF，HA 形态用主从 + Sentinel，资金确定性仍由 PG 状态机/对账兜底。
+- [ ] 迁移策略：生产用 `docker compose --env-file .env -f docker/compose.yml up migrate`
       （一次性服务；v2 变化：收敛为 `packages/db` 的 drizzle-kit migrate 单入口，v1 的
       identity/ledger/wallet 多段 provision 已并入迁移 SQL，幂等可重跑；server 形态带 `--env-file .env`）。
 - [ ] `request_logs` 为分区表（自迁移 0040 起 `PARTITION BY RANGE (created_at)`，
@@ -75,7 +76,8 @@ v2 变化：v1 清单中的 `INTERNAL_API_TOKEN`（BFF 内部令牌）与 `FREE_
 
 ## 五、监控与告警
 
-- [ ] `/readyz`（gateway :8080 / worker :8792）探活——compose healthcheck 已配；
+- [ ] `/readyz`（gateway/admin-api/worker）与 client-api `/healthz`就绪探针已纳入 Compose；
+      worker `/readyz` 同时验证 scheduler、PG 与 BullMQ Redis；
       `/health`（带 `x-health-token`）入监控面板（关注结算积压 pending/dead、
       `balance_low`、`reconcile_discrepancy` 告警事件——经 worker notify 渠道投递，
       `WORKER_NOTIFY_ENABLED=false` 会静音，生产保持 true）。
@@ -83,6 +85,9 @@ v2 变化：v1 清单中的 `INTERNAL_API_TOKEN`（BFF 内部令牌）与 `FREE_
       `http://trace-receiver:8793` + `TRACE_RECEIVER_TOKEN`，管理台「链路追踪」页查看）。
 - [ ] 审计留存：request_logs 月分区按 `REQUEST_LOG_RETENTION_DAYS`（默认 90 天）滚动、
       trace_spans 日分区 7 天；资金类审计建议长期归档策略。
+
+- [ ] 迁移后用 migrate 镜像内置脚本创建首个管理员，安全保存一次性密码；
+      未创建时管理面无法自我引导。
 
 ## 六、容量
 

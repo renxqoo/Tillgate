@@ -53,7 +53,7 @@ cp .env.example .env               # required keys only; everything else has saf
 # generate the required secrets (weak/empty values refuse to boot):
 for k in JWT_SECRET ADMIN_JWT_SECRET ENCRYPTION_KEY IDENTITY_CODE_PEPPER CLIENT_CODE_PEPPER CHANNEL_API_KEY_ENCRYPTION; do
   sed -i.bak -E "s|^#?[[:space:]]?${k}=.*|${k}=$(openssl rand -hex 32)|" .env; done; rm -f .env.bak
-docker compose -f docker/compose.dev.yml up -d   # postgres + redis
+docker compose --env-file .env -f docker/compose.dev.yml up -d   # postgres + redis
 bun packages/db/scripts/provision-fresh.ts   # fresh-db pre-provision (idempotent; required before first migrate)
 bun run db:migrate                 # schema (91 migrations, idempotent)
 cd apps/admin-api && bun scripts/create-admin.ts --email=admin@ai-gateway.local --password=admin12345 --apply && cd ../..
@@ -71,7 +71,7 @@ worker health `8792` · client console `3001` · admin console `3002`.
 ### Installation — Option 2: Docker deployment
 
 Full production stack behind nginx with TLS (all services containerized).
-Prerequisites: Docker 24+ with the compose plugin; DNS A records for two domains
+Prerequisites: Docker 24+ with Compose ≥ 2.24.4; DNS A records for two domains
 (e.g. `app.example.com` / `admin.example.com`) pointing at the server; ports 80/443 open.
 
 ```bash
@@ -82,25 +82,30 @@ git clone https://github.com/renxqoo/Tillgate.git && cd Tillgate
 cp .env.example .env && vim .env
 #   Must change: JWT_SECRET / ADMIN_JWT_SECRET / ENCRYPTION_KEY / IDENTITY_CODE_PEPPER /
 #   CLIENT_CODE_PEPPER / CHANNEL_API_KEY_ENCRYPTION (strong random),
-#   POSTGRES_PASSWORD / REDIS_PASSWORD;
+#   POSTGRES_PASSWORD / REDIS_PASSWORD / TRACE_RECEIVER_TOKEN / OAUTH_API_BASE;
 #   NODE_ENV=production. DATABASE_URL / REDIS_URL are injected by compose automatically.
+chmod 600 .env
 
 # 3) Start infrastructure + run one-time migration
-docker compose -f docker/compose.yml up -d postgres redis
-docker compose -f docker/compose.yml up --build migrate   # idempotent; exits when done
+docker compose --env-file .env -f docker/compose.yml up -d postgres redis
+docker compose --env-file .env -f docker/compose.yml up --build migrate
+# Bootstrap the first admin (prints a one-time strong password)
+docker compose --env-file .env -f docker/compose.yml run --rm --workdir /repo migrate \
+  bun --conditions=development apps/admin-api/scripts/create-admin.ts \
+  --email=admin@example.com --apply
 
 # 4) First TLS certificate (standalone; nginx not up yet)
-docker compose -f docker/compose.yml run --rm --entrypoint certbot -p 80:80 certbot \
+docker compose --env-file .env -f docker/compose.yml run --rm --entrypoint certbot -p 80:80 certbot \
   certonly --standalone --cert-name gateway \
   -d app.example.com -d admin.example.com \
   --email you@example.com --agree-tos --no-eff-email
 
 # 5) Bring up the full stack (first build takes ~10 min)
-docker compose -f docker/compose.yml up -d --build
+docker compose --env-file .env -f docker/compose.yml up -d --build
 
 # 6) Verify
 curl -s http://localhost/livez          # {"ok":true}
-docker compose -f docker/compose.yml ps # all Up (migrate Exited(0) is expected)
+docker compose --env-file .env -f docker/compose.yml ps # migrate Exited(0) is expected
 ```
 
 Post-deploy musts: point payment webhooks at
@@ -112,7 +117,7 @@ HA topology: [docs/ha-deployment.md](docs/ha-deployment.md).
 ### Usage
 
 1. Sign in to the **admin console** (`http://localhost:3002`) with the seeded admin account
-   (`admin@ai-gateway.local` by default; in production create admins via the invite flow).
+   (`admin@ai-gateway.local` by default; in production use the bootstrap admin created above).
    Add an upstream **channel** (provider API key) and a **model mapping** (public model name →
    real model × channels). Outbound calls pass a built-in SSRF guard (HTTPS only; loopback and
    private-network hosts are rejected, with per-address DNS resolution checks).

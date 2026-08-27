@@ -1,128 +1,117 @@
-# AGENTS.md —— 工程规范
+# Tillgate Agent Guide
 
-> 本文档是本仓库的**代码规范**：架构分层、各层写法、资金域专项纪律与质量门禁。
-> **冲突裁决**：运行代码与测试是「当前行为事实」，已批准的规则、DESIGN/ADR 是
-> 「目标契约」。二者冲突时必须先查明哪一方过时，不得机械认定规则或代码天然优先：
-> 代码违反仍有效的目标契约则修代码；规则/设计已过时则先更新文档，再修改受影响代码。
-> 全程中文注释；提交信息用英文 Conventional Commits（`feat` / `fix` / `docs` / `chore` / `refactor` + scope，一行主题说明动机与范围）。
-> docs/ 下未标注为目标契约的文档仅作导读；发现文档与实现漂移时必须在本次相关改动中
-> 统一，不允许以「代码永远正确」或「文档永远正确」跳过判断。
+Tillgate 是 TypeScript/Bun monorepo，提供 OpenAI 兼容的多供应商 LLM 网关、
+控制台、账号、计费、通知与可观测能力。
 
-## 0. 铁律（每条都是硬约束，违反 = 返工）
+## 事实来源
 
-1. **单向分层**：能力包内 `routes → application → domain`，存在真实边界时使用
-   `application → ports ← adapters → db`；依赖必须无环，禁止同一能力混用两套形态。
-2. **职责位置唯一**：业务规则只住 domain（纯函数），事务只住 application，
-   SQL 只住 `adapters/postgres`，表定义只住 `db`。
-3. **可变策略显式注入，领域常量单一来源**：部署或运营会改变的值（币种、失败策略参数、
-   开关、阈值）必须由配置/装配层注入；会影响资金、安全或跨进程一致性的配置必须**必填**，
-   不藏全局默认。协议不变量、封闭词表、数学边界和安全的 UI 默认值可以在代码中定义，
-   但同一真相只定义一次，放在最底层被依赖的包，禁止为满足“注入”而层层透传常量。
-4. **未实现 = bug**：不许「接口先行 / TODO 将来实现 / 占位」。写了接口必须有实现与调用方；
-   推迟实现的功能在文档里显式挂「待办」并说明后果。
-5. **一动词一文件**：一个用例/动词/规则一个文件；文件超 ~150 行先问自己是不是装了两件事
-   （~150 是设计警戒线，lint 硬阈值与超限处置见铁律 22）。
-   禁止 class 做依赖捕获（用 `createXxx(env)` 工厂闭包）；实现协议接口的真实多态
-   （如 `ai` 的 `ProtocolAdapter` 适配器族）不受此限。
-   前端组件域的展开细则（目录化形态/组件单一原则/拆分操作规程）见 `rule/component-split.md`。
-6. **改资金逻辑先读懂再动手**：先读 `packages/billing`（`src/domain/wallet`、
-   `src/domain/billing`、`src/application/billing` 及 `wallet.ts` / `settlement.ts` /
-   `billing.ts` 组装出口）的现有实现（代码与测试是当前行为证据），基于语义重写而不是
-   复制粘贴。发现与本任务强相关且可低风险修复的错误，要补回归测试并在 PR 里说明；
-   范围外或需要独立契约裁决的错误只报告影响并请求授权，禁止擅自扩大任务范围。
-7. **行为等价验证**：重构类改动必须有测试兜底且四门（typecheck / lint / test / build，
-   根 scripts：`bun run typecheck && bun run lint && bun run test && bun run build`）
-   全绿才算完成。
-8. **最终单一形态，迁移兼容必须可退出**：仓库收口后只保留一套实现；普通重构不写
-   无期限的旧路径别名、双轨字段或参数双收。Cookie、数据库、公共 API、事件格式等线上
-   迁移在无法原子切换时，允许最小范围的临时双读/双写或兼容读取，但方案必须写明兼容窗口、
-   观测指标、删除条件和回滚路径；完成切换后立即删除兼容层并恢复单轨。
-   大体量删除（整包 / 整应用）先开 issue 列清单等维护者确认。
-9. **配置不是包，发布不等于 workspace**：TypeScript / Vitest / Oxlint / Oxfmt / Turbo 配置放根目录，
-   不建 `tooling` workspace 包；所有 workspace 默认私有，只有经过明确批准且发布闭包完整的包才能独立发布。
-   子包的 `.oxlintrc.json` 必须 `extends` 根配置，只做文件级覆盖（`overrides.files`），禁止复制规则集。
-10. **按业务能力聚合**：一个能力一个包（`domain ← application`，按真实边界增加
-    `ports ← adapters`）；无真实边界的浅包必须合并，不保留永久编制（见铁律 11）。
-11. **边界必须可执行**：package、协议和未来插件边界不能只靠目录命名；显式 `exports`、依赖白名单、
-    无环检查、架构测试和发布闭包检查必须在 CI 中执行（当前由 `scripts/check-package-boundaries.ts`
-    与各包 vitest 契约测试承担）。没有真实边界的浅包必须合并，不保留永久编制。
-12. **数据面与观察面分离**（`ai` 硬约束）：上游响应逐块透传 C 端，不缓冲、不改写、不收完再转发；
-    触碰「不改写」的仅有透传例外清单三种情形（docs/project-structure-refactoring.md §3.6）：
-    跨协议最小必要转换（含错误体）、响应侧 model 字段替换（`responseModelRewrite` 可配置开关）、
-    错误出站三层（结构翻译成 OpenAI 信封、内容脱敏后保留
-    原文、细节只进日志关联 requestId）。计费取证、审计、trace、渠道健康（熔断/死凭据）一律经
-    `onEvent` 监听面旁路消费，不进热路径。`ai` 不持有跨请求运维状态；
-    观察 tap 丢失不得造成资损——兜底在 billing 状态机与 worker 对账哨兵，禁止在热路径同步结算换确定性。
-13. **按风险分级方案先行**：纯文案/样式、机械修正、局部明显 bug 等不改变外部契约的
-    低风险改动，无需单独创建方案文档，在提交说明或回归测试中写清动机即可；单模块行为变化
-    用 `IMPLEMENTATION.md` 的轻量方案；跨包、公共契约、并发/一致性、资金或不可逆数据变更，
-    必须先定稿 `DESIGN.md` + `IMPLEMENTATION.md` 再写实现。单项方向性决策用 ADR，放
-    `docs/adr/`，编号递增、只进不出。
-    复制旧代码的前提是**逐文件审计无可挑剔**（四条标准：① 正确性——边界、错误路径、静默吞错；
-    ② 契约符合——零跨请求状态、无策略数据、无隐藏默认；③ 实现质量——职责单一、无重复、
-    热路径预算；④ 依赖方向干净），审计发现记录在案并升级裁决。
-    实现中发现已批准目标契约有误，先改文档再改代码——文档与代码同步演进，禁止口头漂移。
-14. **测试目录约定**：包内测试统一放包根的 `__test__/` 目录，目录内**平铺**——
-    一律不建子目录（unit / contract / protocol 等分组不做），所有测试文件同级；
-    vitest include 覆盖 `__test__/*.test.ts` 与 `__test__/*.test.tsx`；React/UI 交互测试使用
-    `.test.tsx` 并按需要声明 jsdom/browser 环境，非 JSX 测试优先 `.test.ts`。测试内相对导入
-    `../src/`。需要真实凭证的上游集成测试以文件名区分（`*.real.test.ts`），默认门禁按文件名排除，
-    包内 `test:real` 脚本显式运行。跨应用 e2e 住仓库根 `e2e/`（结构见 `e2e/README.md`），不进 CI。
-15. **只提交自己的文件**：`git add` 必须逐个点名自己本次修改的路径，禁止
-    `git add -A` / `git add .` / `git commit -a`。多 agent/会话并行开发是常态——
-    工作区中他人的进行中文件（已修改或未跟踪）一律不得卷入自己的提交；
-    提交前用 `git status` 核对暂存区只含自己的变更。共享产物（`bun.lock`、
-    `generated/` 等多人共写文件）仅在本次变更确需它时一并提交，且必须先
-    `git diff` 确认内容只含自己触发的变更；混有他人未提交变更时不提交该文件，
-    留待对方收口或显式协调后再提交。
-16. **测试即规格**：契约、bug 回归、边界与异常场景是**强制测试项**——契约用测试锁死
-    （机制位与派生表逐项相等、词表封闭性、事件时序、判别联合穷举），每个修复的真 bug
-    一个回归用例（用例名注明编号与症状），边界与异常（零值/空/垃圾形状、超大输入、
-    截断、取消路径、超时矩阵、竞态）不可省；错误码表、方言矩阵、参数矩阵用表驱动遍历断言。
-    覆盖率阈值未达标时**只许补测试，禁止调低阈值换绿**。提交时如实报告覆盖率数字，
-    禁止只报"门禁全绿"隐瞒覆盖率——边界测试的价值在于抓 bug（本仓实践：补边界用例 usage 丢失、双哨兵、SSRF 绕过三个真 bug）。
-17. **授权范围内连续到生产可用**：任务一旦开始，不停顿、不把半成品留给用户确认
-    “是否继续”——持续推进直到本次授权范围内所有门禁与验收标准全过（typecheck/lint/test/build +
-    覆盖率阈值 + 行为对照清单）、无已知未修复缺陷、达到生产可用状态才算结束。
-    不得以“生产可用”为由擅自修改范围外模块、扩大外部副作用或替用户作方向性决定；
-    发现范围外缺陷时报告证据与影响，需要新授权或独立契约裁决则停止该分支。中途可以汇报进展，
-    但汇报不是停止点；上下文或会话受限时，确保工作状态已提交（git 可续），并在续接处
-    明确剩余任务清单，由下一次会话无缝接续直到完成。
-18. **错误 message 一律英文**：所有 throw 的错误 message 禁止写死中文——错误是程序间
-    流动的记录与日志事实，英文是词汇中性形态。中文只进代码注释、运维提示日志文案与
-    错误目录的 `zh` 字段（本地化机制见 `packages/errors/README.md` 与
-    `docs/adr/0001-errors-registry-ownership.md`：message/zh 双字段，
-    中文可读提示由消费方按目录渲染，不在抛出点硬编码）。
-19. **禁止无语义版本命名，不误伤真实协议版本**：内部模块、函数、文件不得用
-    `v1` / `v2` / `v3` 代替业务含义，应按职责或迁移目标命名；外部 API 路径（如 `/v1`）、
-    持久化/密文格式（如 `enc:v1`）、第三方协议版本、数据库迁移版本及行为对照证据不受此限。
-20. **UI 优先用现成组件，可复用的先进 ui 包**：写界面前先查 `packages/ui` 的既有
-    组件（含 `src/index.ts` 导出面），能用的禁止手写替代或内联复刻；ui 包没有时，
-    若该组件会被多处复用（跨页面/跨模块/多列表通用），先落到 `packages/ui` 目录并
-    从 `index.ts` 导出，再在业务侧引用——技术栈固定 shadcn 风格 + Tailwind CSS；
-    仅单处使用的一次性片段可直接写在 feature 内，不强行抽包。
-    组件怎么拆、怎么写好（目录形态/编排器与哑件/弹窗与表单范式）见 `rule/component-split.md`。
-21. **oxlint 是硬约束，修代码不修规则**：
-    - `bun run lint` 0 error 是一切改动的完成标准（并入铁律 7 四门）。
-    - lint 报错，只许修代码。
-    - 修复顺序：可自动修复类先 `bun run lint:fix`，再人工处理剩余；`--fix` 后
-      重跑 `bun run format` 与四门，不因自动修复豁免验证。
-    - 禁止修改根目录及子包的 `.oxlintrc.json`：不放宽阈值、不删规则、不扩大
-      ignorePatterns / overrides。
-    - 禁止把代码移入 ignored 目录（`generated/`、`migrations/`、`components/ui/`）。
-    - 豁免只许 `eslint-disable-next-line <规则名>` + 原因注释，逐处单独声明；
-      禁止不带规则名的 eslint-disable，禁止文件级豁免。
-    - 类型压制只许 `@ts-expect-error` + 原因注释；禁止 `@ts-ignore`、`@ts-nocheck`。
-    - 配置调整由维护者发起：先改本文 / 开 issue，再动配置文件。
-22. **行数超限：先分类再处置，禁止凑数拆分**：max-lines / max-lines-per-function
-    报错时按序执行：
-    ① 判形态：纯线性数据代码（schema → config 逐字段搬运、枚举穷举、表定义）→ 跳到 ③；
-    逻辑密集代码 → 进 ②。
-    ② 消职责（同铁律 5）：抽真实重复为共享模块、查表 / 映射替换长 if-else、配置性数据
-    独立成数据文件、按职责边界拆模块。拆分后每个单元必须能独立命名，且不回读对方内部状态。
-    ③ 豁免边界：**文件级 max-lines 零豁免**——任何源码文件超 400 行必须拆分，禁止
-    `eslint-disable max-lines`、禁止子包 override 豁免；豁免面只限测试文件（`__test__/`、`testing/` 已在根配置关停该规则）与生成物（generated/migrations 已 ignore）。
-    ④ 判阈值不合理：向维护者提出，先改本文 / 开 issue，再动配置。
-    ⑤ 禁止：内聚函数切成两段；拆到另一文件后互相 import；函数内中间状态上提到外层
-    作用域；多条语句挤进一行。
-    ⑥ 棘轮：文件级超限存量已清零，不得新增超限文件；触碰超限函数，不得新增其豁免数。
+- 当前代码、测试、`package.json` 和工具配置是当前行为的唯一事实。
+- README、DESIGN、ADR、注释和任务说明只能提供线索，不能代替对实现与测试的核对。
+- 文档与代码冲突时，不得猜测目标行为；报告具体差异，按用户本次授权处理。
+- 不得猜测脚本名、导出、环境变量、错误码、数据库字段或 HTTP 契约；使用前必须在仓库中查到定义和现有用法。
+
+
+## 开始修改前
+
+1. 运行 `git status --short`，识别已有修改；他人的工作不回滚、不格式化、不提交。
+2. 读受影响 workspace 的 `package.json`、`vitest.config.ts` 和现有 architecture 测试。
+3. 列出受影响面：公共导出、HTTP/DTO、持久化、配置、异步任务、前端入口和测试。
+4. 复用仓库内已有模式。不为局部问题引入新框架、新依赖或并行架构。
+
+## 代码地图
+
+- `apps/gateway`：推理公网入口，处理协议、鉴权、限流和装配。
+- `apps/admin-api` / `apps/client-api`：Hono HTTP 接口与能力装配。
+- `apps/admin` / `apps/client`：Next.js 前端；业务请求经 `@tillgate/api-client`，公共 UI 经 `@tillgate/ui`。
+- `apps/worker`：BullMQ 与定时后台任务。
+- `apps/trace-receiver`：OTLP 接收与批量写入。
+- `packages/billing`：钱包、账本、计价、订阅、支付、结算与恢复。
+- `packages/accounts` / `identity`：账号与身份能力。
+- `packages/inference` / `ai` / `control-plane`：推理编排、上游协议与模型/渠道配置。
+- `packages/notifications` / `observability`：通知 outbox 与观测能力。
+- `packages/db` / `errors` / `http` / `runtime`：数据库、错误、HTTP 和运行时基础设施。
+- `packages/api-client` / `ui`：前端可消费的 API 客户端与设计系统。
+
+## 边界与写法
+
+- packages 不得依赖 apps；workspace 依赖图必须无环。
+- 跨 workspace 导入必须命中目标 `package.json#exports`；禁止 `@tillgate/x/src/*`
+  与越出 workspace 根的相对导入。
+- `gateway` / `admin-api` / `client-api` 的 routes 位于 `src/http/routes`，只处理协议、
+  中间件、调用能力面与响应组装；不在 route 内写 SQL 或构建基础设施。
+- 分层能力包使用 `domain` / `application` / `ports` / `adapters`；SQL 实现在
+  `adapters` 的现有 Postgres 实现中，表定义在 `packages/db/src/schema`，事务编排可在 application 使用
+  `@tillgate/db` 提供的原语。
+- 不是所有包都使用同一目录形状。简单包与专用协议包保持已有结构；不得为了形式统一强行搬层。
+- 每个分层包的 import 白名单不完全相同，以该包 `architecture.test.ts` 为准；修改边界时同步更新契约测试。
+- 根入口只导出消费方所需的稳定面。Postgres 适配器、store 和装配细节放在已有
+  `./composition` 子入口或 app 装配层，不随意扩大根导出。
+- 优先使用函数、显式 `env`/`deps` 与结构化返回值。只在已有真实多态边界中继续使用 class。
+- 新建文件使用 kebab-case。代码注释使用中文，只解释契约、不变量或非显然约束，不复述代码。
+- 遵守 TypeScript strict：使用 `unknown` 并收窄，禁止显式 `any`、非空断言、
+  `@ts-ignore` 和 `@ts-nocheck`；类型导入使用 `import type`。
+- 部署可变值在对应 app `src/config.ts` 中用 zod 解析，再由 assembly 注入。
+  新配置必须同时核对消费方、配置测试和 `.env.example`。
+- 能力包的业务错误沿用其 `defineErrorCatalog` 目录，并提供英文 `message` 与中文 `zh`。
+  `throw` 的 message 使用英文；动态事实放 `context`/日志，不在抛出点自造本地化文案。
+- `packages/ai` 保持自有的上游错误契约，不得为了表面统一强制引入 `@tillgate/errors`。
+- 前端先搜索 `@tillgate/ui` 已有组件、hooks 和 formatting 子路径。可复用的通用组件放入 UI 包；
+  UI 包不引入 Next.js 专有依赖。
+- 遇到有bug、逻辑错误代码，如果阻塞当前任务流程，请及时停下来反馈，非阻塞在当前任务结束报告。
+
+
+## 高风险路径
+
+- `packages/billing` 是资金与计费事实源。修改前跟完整调用链，核对精度、币种、幂等键、
+  事务、并发认领、重试、结算与恢复路径。金额沿用现有 Decimal/十进制字符串模型，
+  不引入浮点运算。
+- 修改流式、用量或上游协议时，同时核对 `ai` 适配器/事件、`inference` 编排和
+  `gateway` 响应路径，保留取消、截断、超时、错误转换与 usage 证据。
+- 修改 HTTP DTO、公共导出、错误码、数据表、事件或环境键时，逐个搜索并处理所有生产者、
+  消费者、测试和导出面。数据库 schema 变更必须配套 `packages/db/migrations` SQL。
+- 迁移收口后只保留一套实现。普通重构不引入无期限的旧路径别名、双轨字段或参数双收。
+  实施前必须明确兼容窗口、观测指标、删除条件和回滚路径，切换完成后立即恢复单轨。
+  删除整包或整个应用前，先开 issue 列出清单并等待维护者确认。
+- 不得用隐式默认、静默 catch、无限期兼容双轨或同步外部调用掩盖一致性缺口。
+- 范围外缺陷只报告证据与影响。只有与当前任务直接相关且可低风险修复时，才随同
+  补回归测试。
+
+## 禁止操作
+
+- 不写 TODO 实现、占位返回、假成功或未被调用的接口；未完成的行为不得声称已完成。
+- 不要在业务代码中写mock数据
+- 不要在底层代码写固定常量
+- 不通过修改 `.oxlintrc.json`、降低 coverage threshold、扩大 ignore 或把代码搬入
+  `generated`/`migrations` 来换取门禁通过。
+- 不提交临时计划、研究笔记、调试输出、真实凭证或 PR 专用截图。
+- 不在未明确授权时运行 real/e2e 外部调用、生产迁移、删库/卷、`docker compose down`
+  或按名称模式批量终止进程。
+- 不做任务外重构，不顺手修复无关文件，不自行创建 PR 或提交。
+
+## 测试与验证
+
+- 测试布局以对应 `vitest.config.ts` 为准。大部分 workspace 使用平铺 `__test__`；
+  `packages/ui` 使用 `test/{unit,render,pack}`；e2e 按场景自持配置。
+- 修复 bug 必须先补能在旧实现上失败的回归测试。契约变更必须覆盖正常、边界、无效输入和失败路径。
+- 优先运行最小可信证明：相关测试文件、受影响 workspace 的 typecheck/lint/build、
+  相关 architecture 测试。
+- 完成代码改动前运行根四门：
+
+  ```bash
+  bun run typecheck && bun run lint && bun run test && bun run build
+  ```
+
+- 修改了可格式化文件时运行 `bun run format`，然后重跑受影响门禁。
+- 覆盖率使用 `bunx turbo run test:coverage --concurrency=1`；阈值以各 workspace
+  `vitest.config.ts` 为准，不降阈值。
+- `*.real.test.ts` 与 `e2e/` 不属于默认门禁。只在任务相关、依赖和凭证完整时运行；
+  选择命令前先读对应 package script 或场景 vitest 配置。
+- 无法运行的验证必须明确列出命令、缺失条件和已完成的替代检查；不得用“应该通过”代替结果。
+
+## 交付与提交
+
+- 最终回复列出改动、已运行的验证及结果、未运行的条件型测试和已知风险。
+- 只在用户明确要求时提交。`git add` 逐路径点名，禁止 `git add .`、`git add -A`、
+  `git commit -a`；提交前核对 staged diff 只含本任务文件。
+- commit 使用英文 Conventional Commits：`type(scope): subject`。一个提交只包含一个关注点。
+- 提交代码到github优先使用本地代理网络

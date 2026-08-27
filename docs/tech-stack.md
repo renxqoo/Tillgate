@@ -135,8 +135,8 @@ client-api┘
 
 **运维基线**：
 - 备份：PostgreSQL 每日 `pg_dump`（压缩+加密）至独立存储，保留 30 天；每周恢复演练；Redis AOF（仅缓存/队列，不作主账本——账务唯一事实源在 PG `billing`）。
-- 日志滚动：Docker json-file `max-size: 50m` / `max-file: 5`。
-- 健康检查：gateway `/livez` 只查进程、`/readyz` 查 PG+Redis、`/healthz` 查 PG；worker `/livez` `/readyz` 恒开放（compose healthcheck 用）+ `/health` 深报告（`x-health-token` 守卫，含 per-job 快照）。
+- 日志滚动：Docker json-file `max-size: 10m` / `max-file: 5`。
+- 健康检查：gateway `/readyz` 查 PG+Redis；worker `/readyz` 查 scheduler+PG+BullMQ Redis，`/health` 深报告由 `x-health-token` 守卫。
 
 ---
 

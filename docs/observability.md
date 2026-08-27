@@ -96,9 +96,8 @@ db:generate）；分区维护由 worker 定时执行（内置 advisory try-lock�
 ## 5. 链路启用
 
 链路追踪走内置 trace-receiver（PG 存储，管理台「链路追踪」页查询）。启用需：设置
-`TRACE_RECEIVER_TOKEN`、把对应服务的 `OTEL_TRACES_MODE` 从 compose 缺省 `off` 改为
-`otlp` 并将 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向 `http://trace-receiver:8793`（compose
-environment 覆盖 env_file，见 [configuration.md](configuration.md)）。
+`TRACE_RECEIVER_TOKEN`并在 `.env` 设 `OTEL_TRACES_MODE=otlp`。Compose 默认将
+`OTEL_EXPORTER_OTLP_ENDPOINT` 指向 `http://trace-receiver:8793`；外置接收端才需覆盖。
 
 ## 6. 韧性边界
 

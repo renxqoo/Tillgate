@@ -1,7 +1,7 @@
 # 组件拆分规范（rule/component-split.md）
 
-> 本文档是前端组件的**拆分与编写规范**，与 AGENTS.md 铁律 5（一动词一文件）、铁律 20（UI 优先复用）
-> 配套。判例均来自本仓真实代码（`apps/admin/src/features/channels/` 等）。
+> 本文档是前端组件的**拆分与编写规范**，与 AGENTS.md 的『一动词一文件』（§7 lint 与代码规模）、
+> 『UI 优先复用』（§6.4）配套。判例均来自本仓真实代码（`apps/admin/src/features/channels/` 等）。
 > 冲突时以 AGENTS.md 为准；本文是它在组件域的展开。
 
 ## 1. 组件单一原则
@@ -50,7 +50,7 @@ client 的 `orgs/`（orgs-shared / orgs-section / orgs-members / orgs-quota / or
 
 按序自问：
 
-1. **有没有既存组件可复用？**（铁律 20）`@tillgate/ui` 与 `@/components/*` 先查，
+1. **有没有既存组件可复用？**（AGENTS.md §6.4）`@tillgate/ui` 与 `@/components/*` 先查，
    `ConfirmDialog`/`FormDialog`/`RowActions`/`ListPage` 已经覆盖大量弹窗/行操作/列表范式，
    禁止手写替代。
 2. **是不是两个动词？** create/edit/import/delete 各自独立成文件。
@@ -62,7 +62,7 @@ client 的 `orgs/`（orgs-shared / orgs-section / orgs-members / orgs-quota / or
 
 - 行项的状态徽章/操作菜单拆出去后要回读行数据七八个字段——行是内聚单元，别碎成格子；
 - 强关联多阶段交互（如登录三态流程表单）在无独立 UI 契约裁决前保持整段（存量棘轮）；
-- 仅为绕过行数阈值把内聚函数切两段、拆出去后互相 import——禁止（铁律 22⑤）。
+- 仅为绕过行数阈值把内聚函数切两段、拆出去后互相 import——禁止（AGENTS.md §7 超限处置⑤）。
 
 ## 4. 怎么写好每一类组件
 
