@@ -21,6 +21,7 @@
    **worker 进程退出**。毒账单被 recover 反复重领 → 反复打崩。
 
 最小修复（~10 行，不动架构）：
+
 - `settle-failure.ts`：对 attempt/retryInMs 加 `Number.isFinite` 防护，非法值
   直接判死信（毒账单该进 dead 人工复核，不该杀进程）；
 - `settlement.ts` 批处理：`claims.map` 加 per-claim try/catch；`finishFailure`
@@ -36,6 +37,7 @@
 的突发拖累全部用户。
 
 对症方向（按性价比）：
+
 1. 生产 `DB_POOL_MAX` 按 PG `max_connections` 预算配足 + 前置 pgbouncer
    （transaction pooling，应用连接与 PG 后端解耦）；
 2. `admitRequest` 增加用户维度「并发信号量」（Redis，在碰 DB 前钳住单用户
@@ -103,12 +105,12 @@
   pgbouncer 前置 + 客户端连接池配置缓解，根因需专项（pg-pool 升级/
   @tillgate/db 池层替换为自管信号量队列候选）。
 
-
 ---
 
 ## 增补：bun-native 全栈形态实测（2026-08-26，Bun.serve + Bun.sql，未提交试用）
 
 ### 迁移内容（工作区未提交，等最终指令）
+
 - 驱动：pg → Bun SQL（drizzle-orm/bun-sql）；SQLSTATE 在错误的 `errno` 字段（pg 在 `code`）——db 包 pg-error 双字段探测收敛全部本地副本（billing real-pg / 订阅单活索引 / e2e kit）。
 - HTTP：@hono/node-server → Bun.serve（@tillgate/http `serveApp` 单一来源，env.server 注入供 requestIP 取 socket 对端）；client-api/admin-api/trace-receiver/gateway 四入口。
 - worker 唤醒：pg Client 事件机 → `sql.listen/unlisten`（Bun 内建断线重连+重订阅；自留启动失败退避）。
@@ -117,11 +119,13 @@
 - 语义差异（无资金影响）：Bun SQL 对 numeric 零解析为裸 '0'（pg 为定标串）——测试断言 Decimal 化；JSC Intl（¥ 符号、日期 ' at ' 分隔符）成为单形态真相。
 
 ### 结果
+
 - 四门全绿（typecheck/lint/test 34 任务/build 20）；real 套件全绿：db 6、billing 24、worker 3、observability 11、accounts 11、control-plane 9、identity 7、inference 5。
 - process-smoke 双形态（bun 源码/bun dist）通过：探针+鉴权+真实计费+SIGTERM+对账。
 - live-fire **77/80**：鉴权/注册攻击/计费薅羊毛/上游故障/毒账单全绿；**X1/X2/X11（并发三连）被 F-6 阻断**。
 
 ### F-6（已解：机制确认 + workaround，2026-08-26 深夜定案）
+
 - 症状：并发超过池连接数时，网关在途事务全体停在「下一条语句发出前」（PG 侧 idle in transaction/ClientRead，CPU 0% 纯等待），30s idleTimeout 收割转 500。
 - **精确触发条件（阈值扫描实证）：并发请求数 > 池 max 即触发检出排队，排队一旦发生，在途事务停摆；失败数恰好 = 池连接数**。20 并发全过 / 40 并发（池40）全挂 / 60 并发恰好挂 40 过 20。
 - 归因：Bun SQL 池「检出排队」路径丢失在途查询的响应唤醒（bun#38163/#38231 家族，上游 open）。
@@ -133,10 +137,10 @@
 
 分支：`feat/live-fire-hardening`（node dist + pg + @hono/node-server）vs `feat/bun-native`（bun dist + Bun.sql + Bun.serve）；同宿主（含 agent-work 并行负载）、同 80 用例、同 DB_POOL_MAX=210：
 
-| 场景 | node（池40） | node（池210） | bun-native（池40） | bun-native（池210） |
-|---|---|---|---|---|
-| X11 200 同瞬并发 | 8~25/200（pg-pool 建连超时 500） | **200/200 @735ms** | 0/200（检出排队→事务楔死） | **200/200 @779ms** |
-| 全量 live-fire | 79/80 | **80/80** | 77/80 | **80/80** |
+| 场景             | node（池40）                     | node（池210）      | bun-native（池40）         | bun-native（池210） |
+| ---------------- | -------------------------------- | ------------------ | -------------------------- | ------------------- |
+| X11 200 同瞬并发 | 8~25/200（pg-pool 建连超时 500） | **200/200 @735ms** | 0/200（检出排队→事务楔死） | **200/200 @779ms**  |
+| 全量 live-fire   | 79/80                            | **80/80**          | 77/80                      | **80/80**           |
 
 结论：两形态都需要「池 ≥ 峰值并发」才能扛 200 突发；失效模式不同（pg-pool 建连超时 vs Bun SQL 检出排队楔死）；满足该条件后吞吐同量级（735 vs 779ms，单样本）。bun-native 无兼容层、正确性/安全用例全绿，作为未上线仓库的候选形态成立；上游 bun#38163/#38231 修复后可解除池尺寸耦合。
 
@@ -144,13 +148,13 @@
 
 负载形态：10000 请求 = 2000 用户×5,curl 波次风暴（~2000 并发在途,受 macOS ulimit≈2666 约束）;池 210;预算门 limit=178(池−32 余量)。瓶颈在每请求端到端 ~0.5s(mock 上游+全链计费),纯 DB 侧远未饱和。
 
-| 指标 | node+池210 无门 | node+预算门 | bun-native+预算门 |
-|---|---|---|---|
-| 成功 | 520/10000 | 9720/10000(503×275=积压闸尾波正确触发) | **10000/10000 零 5xx** |
-| 吞吐 | 22 req/s | 83 req/s | **189 req/s** |
-| p50/p95/max | —/65s/65s | 9.7s/27s/36s | **5.4s/8.4s/11s** |
-| 结算排空 | — | 20s | 30s |
-| 资金核验 | — | usage 9720/9720,抽样精确全等,余额/在途零漂移 | usage 10000/10000,抽样精确全等(0.001554=5×0.0003108),余额/在途零漂移 |
+| 指标        | node+池210 无门 | node+预算门                                  | bun-native+预算门                                                    |
+| ----------- | --------------- | -------------------------------------------- | -------------------------------------------------------------------- |
+| 成功        | 520/10000       | 9720/10000(503×275=积压闸尾波正确触发)       | **10000/10000 零 5xx**                                               |
+| 吞吐        | 22 req/s        | 83 req/s                                     | **189 req/s**                                                        |
+| p50/p95/max | —/65s/65s       | 9.7s/27s/36s                                 | **5.4s/8.4s/11s**                                                    |
+| 结算排空    | —               | 20s                                          | 30s                                                                  |
+| 资金核验    | —               | usage 9720/9720,抽样精确全等,余额/在途零漂移 | usage 10000/10000,抽样精确全等(0.001554=5×0.0003108),余额/在途零漂移 |
 
 架构结论(两形态同构):**万级并发的正解是「入口预算门排队 + DB 并发钳制在池内」**——任何运行时的池检出队列都扛不住突发排队(node 塌陷吞吐,Bun SQL 楔死在途事务)。预算门(gateway db-budget 中间件,探针旁路,超时/溢出 fail-closed 503)落地后 bun-native 全面占优:吞吐 2.3×、尾延迟 3×、全量零拒。
 
@@ -158,24 +162,26 @@
 
 外部红队对 bun-native 分支的七项复审发现，逐条对代码与 bullmq 6.2.2 实装源码核实后全部确认，修复与回归如下（live-fire 81/81 = 80 原有 + 新增 B16；四门 34/34/34/20 全绿；db/worker 真实门 7/7、4/4、3/3）：
 
-| # | 发现（severity） | 核实结论 | 修复 | 回归 |
-|---|---|---|---|---|
+| #   | 发现（severity）                                                  | 核实结论                                                                                                                                                                                                                    | 修复                                                                                                                                                                                     | 回归                                                                                                                                              |
+| --- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | R-1 | jobId 去重×completed/failed 保留集 → 结算恢复链路确定性停摆（🔴） | 全链成立：unknown-failure→15s 退避落 60s 租约内→claim_lost 完结→recover 归还→sweep 对终态残留永久 no-op（lua `EXISTS jobIdKey` 恒跳过；stalled 崩溃路径同构）。**修正：6.x addBulk 对去重条目同返回 jobId，返回值不可探测** | `enqueueMany` 内建终态残留出口：addBulk 后逐 id getJob+getState，completed/failed 且 finishedOn 早于本批入队 → remove+重投（竞态完结不算残留）；处理面单一真相不变（sweep 仍不直接结算） | mock 形状测试；真 Redis 集成（完结后重投必须再送达 worker）；live-fire B16（真实结算→completed 残留→pg_notify 唤醒→job 重建 + 不重复计费，431ms） |
-| R-2 | worker 池不变量 RUNNER_COUNT=6 手工记账漂移（🟠） | 属实：notify 默认开 → 实际 7 tick；partitions/reconcile 持锁+工作双连接未记账；默认部署真实最坏 ≈19 vs 断言只算 16 | 断言移入 assembly 从 runner 注册表派生 + `TICK_CONN_DEMAND`（partitions/reconcile 记 2）+ margin 2；config 手工计数删除 | assembly 测试：并发 12（旧公式 20 放行）→ 23 > 20 必须拒绝；notify 静音+并发 10=20 恰好放行 |
-| R-3 | gateway 预算门 `Math.max(8, pool−32)` 小池反超池（🟠） | 属实：pool≤7 时 limit 8>池，预算门自制 F-6 楔死；默认池 10 恰好无害属巧合 | `gatewayDbBudget`：limit=max(1, min(max(8, pool−32), pool−2)) 永不越池；pool<2（预算放不进池）fail-fast；e2e strict 池 2 压力形态收敛 limit=1 不拒绝 | 表驱动矩阵（210→178 … 2→1；pool 1 抛错）+ live-fire strict 栈实跑 |
-| R-4 | pgSqlState errno 假阳性（🟠） | 属实且更大：`code` 字段 EPIPE 是存量假阳性，Bun 改造把面扩到 errno（EPERM/ELOOP）；调用方等值比较不受污染但返回契约被污染 | 词形收紧：5 位 [0-9A-Z] 且至少含一位数字（真实 SQLSTATE 子类恒含数字；HV/P0/XX 字母类保留） | 表驱动：EPERM/ELOOP/EPIPE/EACCES→null；HV00N/P0002/XX001 命中 |
-| R-5 | withSessionTryLock 解锁失败归还持锁连接（🟠） | 属实：unlock 抛错仍 release()，会话锁悬挂至 idleTimeout 且复用误命中 | 解锁失败 → `client.close()` 销毁保留连接（实测存在、未文档化，注释标注升级需回归）+ 可选 onDefect 钩子（assembly 对账哨兵注入）；签名收 `(db, {key,onDefect}, fn)` | 真 PG：fn 内杀持锁后端 → 结果不丢、onDefect 恰一次、pg_locks 归零、池健康可再获锁 |
-| R-6 | h.ts SSE done 恒真 + 双 decode（🔴 装置） | 属实：`? 'done':'done'` + 固定 150ms 不等收尾 → F9/F11 防挂死断言永不失败、eq(done,'done') 恒真；同 chunk 双 decode 损坏多字节 | settled promise 等 reader 真实 EOF；done 新增 `'stalled'`（30s 上限，悬挂从挂死套件变可失败断言）；单次 decode + EOF 冲刷 | live-fire 81/81（F9/F11 防挂死断言首次获得真实判定力） |
-| R-7 | load.ts 退出码漏精确性不变量（🔴 装置） | 属实：全部 dead-letter→零 usage→三不变量 0 自洽→exit 0 | 退出判定并入 usage===TOTAL、逐户全等、金额非零、首户笔数===PER | 判定行显式输出各分项 |
+| R-2 | worker 池不变量 RUNNER_COUNT=6 手工记账漂移（🟠）                 | 属实：notify 默认开 → 实际 7 tick；partitions/reconcile 持锁+工作双连接未记账；默认部署真实最坏 ≈19 vs 断言只算 16                                                                                                          | 断言移入 assembly 从 runner 注册表派生 + `TICK_CONN_DEMAND`（partitions/reconcile 记 2）+ margin 2；config 手工计数删除                                                                  | assembly 测试：并发 12（旧公式 20 放行）→ 23 > 20 必须拒绝；notify 静音+并发 10=20 恰好放行                                                       |
+| R-3 | gateway 预算门 `Math.max(8, pool−32)` 小池反超池（🟠）            | 属实：pool≤7 时 limit 8>池，预算门自制 F-6 楔死；默认池 10 恰好无害属巧合                                                                                                                                                   | `gatewayDbBudget`：limit=max(1, min(max(8, pool−32), pool−2)) 永不越池；pool<2（预算放不进池）fail-fast；e2e strict 池 2 压力形态收敛 limit=1 不拒绝                                     | 表驱动矩阵（210→178 … 2→1；pool 1 抛错）+ live-fire strict 栈实跑                                                                                 |
+| R-4 | pgSqlState errno 假阳性（🟠）                                     | 属实且更大：`code` 字段 EPIPE 是存量假阳性，Bun 改造把面扩到 errno（EPERM/ELOOP）；调用方等值比较不受污染但返回契约被污染                                                                                                   | 词形收紧：5 位 [0-9A-Z] 且至少含一位数字（真实 SQLSTATE 子类恒含数字；HV/P0/XX 字母类保留）                                                                                              | 表驱动：EPERM/ELOOP/EPIPE/EACCES→null；HV00N/P0002/XX001 命中                                                                                     |
+| R-5 | withSessionTryLock 解锁失败归还持锁连接（🟠）                     | 属实：unlock 抛错仍 release()，会话锁悬挂至 idleTimeout 且复用误命中                                                                                                                                                        | 解锁失败 → `client.close()` 销毁保留连接（实测存在、未文档化，注释标注升级需回归）+ 可选 onDefect 钩子（assembly 对账哨兵注入）；签名收 `(db, {key,onDefect}, fn)`                       | 真 PG：fn 内杀持锁后端 → 结果不丢、onDefect 恰一次、pg_locks 归零、池健康可再获锁                                                                 |
+| R-6 | h.ts SSE done 恒真 + 双 decode（🔴 装置）                         | 属实：`? 'done':'done'` + 固定 150ms 不等收尾 → F9/F11 防挂死断言永不失败、eq(done,'done') 恒真；同 chunk 双 decode 损坏多字节                                                                                              | settled promise 等 reader 真实 EOF；done 新增 `'stalled'`（30s 上限，悬挂从挂死套件变可失败断言）；单次 decode + EOF 冲刷                                                                | live-fire 81/81（F9/F11 防挂死断言首次获得真实判定力）                                                                                            |
+| R-7 | load.ts 退出码漏精确性不变量（🔴 装置）                           | 属实：全部 dead-letter→零 usage→三不变量 0 自洽→exit 0                                                                                                                                                                      | 退出判定并入 usage===TOTAL、逐户全等、金额非零、首户笔数===PER                                                                                                                           | 判定行显式输出各分项                                                                                                                              |
 
 附带修复（修复过程中实证的相邻缺陷）：worker.e2e.real 的 `isMissingTableError` 只查 `.code`——Bun SQL SQLSTATE 在 `.errno`（R-4 同家族），容错迁移回放自 bun 迁移起失效 + 装配 env 漏 REDIS_URL；改用 `pgSqlState` 后真实门 3/3 恢复。
 
 **遗留处置（2026-08-27 已落地，补丁方案）**：vitest 覆盖率门在 `--bun` 运行时下多 profile 合并必崩——Bun 运行时 bug [bun#39821](https://github.com/oven-sh/bun/issues/39821)（`Profiler.takePreciseCoverage` 产出零宽 range → `@bcoe/v8-coverage` 建树/合并无限递归）。**处置 = bun patch 消费者侧守卫**（`patches/@bcoe%2Fv8-coverage@1.0.2.patch`，`RangeTree.fromSortedRanges` 入口过滤 `startOffset >= endOffset` 的非根 range）：
+
 - 语义中立性双重验证：单文件数字补丁前后逐字节一致；db 包 pg-error 单文件 bun vs node（V8 原生 range）四维全等。
 - 否决路径记录：迁 istanbul（~4× 慢 + 21 包配置 + 阈值重基线风险）/ 升 Bun（生产承重版本不为工具链 bug 让位）/ 暂缓（Actions 恢复即红）。
 - **退出条件**（patch 文件头同步注明）：Bun 发版包含 [#39822](https://github.com/oven-sh/bun/pull/39822) 修复或 `@bcoe/v8-coverage` 合入等效守卫即删。
 
 修复过程顺带显形的两个真实缺口（崩溃自 bun 迁移起把覆盖率门整段隐藏，从未被测量过）：
+
 1. **Bun 采集的第二个独立缺陷（未修，上游待报）**：admin（Next.js）server-action 模块的语句命中在 bun 下整文件归零（同单测试文件 node 21 命中 / bun 0 命中；全包 node 93.34/85.44/92.63/95.87 vs bun 65.55/61.75/67.48/67.25）。处置：admin/client 两个 Next.js 前端的 vitest 脚本回归 node 形态（`bun x vitest`，测试本就 node 兼容——Next.js 前端的自然运行时），后端包保持 `--bun`。这不是绕过而是形态对位：bun-native 的目标是后端服务（Bun.serve/Bun.sql），前端测试工具链本无 Bun 依赖。
 2. **真实覆盖缺口（按铁律 16 补测试，不调阈值）**：db 的 `advisory-try-lock.ts`（0%→闭箱单测，R-5 行为锁：获锁/未获锁/fn 异常/解锁失败销毁+onDefect）；http 的 `db-budget.ts` 中间件（3.22%→行为规格：FIFO/溢出/超时/探针旁路/suggestDbBudget）与 `serve-app.ts`（0%→port=0 随机端口+fetch 往返+env.server 注入+close 收口）。
 

@@ -205,16 +205,16 @@ assembly 生产形态给 `createAi` 注入 `guardUrl = assertSafeUrl(url,
 
 ### 拆分（目标位置）
 
-| 文件 | 动作 |
-| --- | --- |
-| `packages/billing/src/domain/billing/settle-failure.ts` | NaN 防护（真 bug 根因修复） |
-| `packages/billing/src/application/settlement/`（+ postgres adapter） | 只读 `listDueRequestIds`（due 行 id 扫描，不认领；sweep/直驱共用） |
-| `apps/worker/src/queue/settlement-queue.ts` | 新增：BullMQ Queue/Worker/ioredis 装配工厂 |
-| `apps/worker/src/jobs/settlement.ts` | 重写：`createSettlementProcessor`（单条驱动）+ `createSettlementSweepJob`（due 扫描入队）；`createSettlementBatchJob` 删除（铁律 8 单轨） |
-| `apps/worker/src/wakeup/postgres-notify.ts` | 通知回调改定向入队；coalescing/drain 移除 |
-| `apps/worker/src/config.ts` | settle 段 + bullmq 四旋钮 |
-| `apps/worker/src/assembly.ts` | queue/processor/sweep 装配 + runners.settle 新语义 |
-| `apps/worker/src/shutdown.ts` / `index.ts` | 停机顺序 + queue/worker close |
+| 文件                                                                 | 动作                                                                                                                                      |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/billing/src/domain/billing/settle-failure.ts`              | NaN 防护（真 bug 根因修复）                                                                                                               |
+| `packages/billing/src/application/settlement/`（+ postgres adapter） | 只读 `listDueRequestIds`（due 行 id 扫描，不认领；sweep/直驱共用）                                                                        |
+| `apps/worker/src/queue/settlement-queue.ts`                          | 新增：BullMQ Queue/Worker/ioredis 装配工厂                                                                                                |
+| `apps/worker/src/jobs/settlement.ts`                                 | 重写：`createSettlementProcessor`（单条驱动）+ `createSettlementSweepJob`（due 扫描入队）；`createSettlementBatchJob` 删除（铁律 8 单轨） |
+| `apps/worker/src/wakeup/postgres-notify.ts`                          | 通知回调改定向入队；coalescing/drain 移除                                                                                                 |
+| `apps/worker/src/config.ts`                                          | settle 段 + bullmq 四旋钮                                                                                                                 |
+| `apps/worker/src/assembly.ts`                                        | queue/processor/sweep 装配 + runners.settle 新语义                                                                                        |
+| `apps/worker/src/shutdown.ts` / `index.ts`                           | 停机顺序 + queue/worker close                                                                                                             |
 
 ### 裁决（用户裁决/默认裁决）
 

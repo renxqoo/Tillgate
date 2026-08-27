@@ -178,4 +178,3 @@ src 顶层文件集合快照；`/composition` 只允许出现在 {assembly.ts, a
   解析后 `c.set('requestLogSummary', …)`）；request-log 中间件只从 context 取。
 - 语义变化：401/429（未到达路由）不再有 requestSummary——日志不为鉴权失败嗅探
   未授权 body，语义更安全。
-

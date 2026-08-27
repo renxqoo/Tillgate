@@ -3,7 +3,7 @@ import {
   bigint,
   bigserial,
   index,
-    numeric,
+  numeric,
   pgTable,
   timestamp,
   varchar,

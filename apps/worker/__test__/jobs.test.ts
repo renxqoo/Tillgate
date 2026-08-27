@@ -119,7 +119,8 @@ describe('jobs/settlement：直驱 job（runners.settle 确定性入口）', () 
       r3: 'claim_lost',
     };
     const h = settlementFace([claimOf('r1'), claimOf('r2'), claimOf('r3')], {
-      processClaim: async (claim: SettlementClaim) => outcomeByRequest[claim.requestId] ?? 'settled',
+      processClaim: async (claim: SettlementClaim) =>
+        outcomeByRequest[claim.requestId] ?? 'settled',
     });
     const run = createSettlementDirectJob({
       settlement: h.face,

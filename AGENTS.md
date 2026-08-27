@@ -10,7 +10,6 @@ Tillgate 是 TypeScript/Bun monorepo，提供 OpenAI 兼容的多供应商 LLM �
 - 文档与代码冲突时，不得猜测目标行为；报告具体差异，按用户本次授权处理。
 - 不得猜测脚本名、导出、环境变量、错误码、数据库字段或 HTTP 契约；使用前必须在仓库中查到定义和现有用法。
 
-
 ## 开始修改前
 
 1. 运行 `git status --short`，识别已有修改；他人的工作不回滚、不格式化、不提交。
@@ -58,7 +57,6 @@ Tillgate 是 TypeScript/Bun monorepo，提供 OpenAI 兼容的多供应商 LLM �
 - 前端先搜索 `@tillgate/ui` 已有组件、hooks 和 formatting 子路径。可复用的通用组件放入 UI 包；
   UI 包不引入 Next.js 专有依赖。
 - 遇到有bug、逻辑错误代码，如果阻塞当前任务流程，请及时停下来反馈，非阻塞在当前任务结束报告。
-
 
 ## 高风险路径
 

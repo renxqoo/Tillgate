@@ -286,13 +286,13 @@ branches 85.04 / funcs 96.75 / lines 95.61（≥90/85/90/90）。
 
 ### 拆分
 
-| 文件 | 动作 |
-| --- | --- |
-| `domain/wallet/exposure.ts` | 可用额表达式单一真相（domain 常量 + 断言复用） |
-| `ports/wallet-store.ts` + postgres/in-memory adapter | `conditionalReserve` 新动词 |
-| `application/wallet/authorize.ts` | 事务体改原子门（幂等/重放/owner 校验不变） |
-| `application/billing/authorize.ts` | 事务重排 + needsSerialization 门 |
-| `__test__/wallet-invariants.real.test.ts` 等 | 适配 + 新增快路径吞吐基准 |
+| 文件                                                 | 动作                                           |
+| ---------------------------------------------------- | ---------------------------------------------- |
+| `domain/wallet/exposure.ts`                          | 可用额表达式单一真相（domain 常量 + 断言复用） |
+| `ports/wallet-store.ts` + postgres/in-memory adapter | `conditionalReserve` 新动词                    |
+| `application/wallet/authorize.ts`                    | 事务体改原子门（幂等/重放/owner 校验不变）     |
+| `application/billing/authorize.ts`                   | 事务重排 + needsSerialization 门               |
+| `__test__/wallet-invariants.real.test.ts` 等         | 适配 + 新增快路径吞吐基准                      |
 
 ### 裁决（用户裁决/默认裁决）
 
@@ -323,4 +323,3 @@ branches 85.04 / funcs 96.75 / lines 95.61（≥90/85/90/90）。
 - [x] 四门全绿——根 typecheck/lint/test/build（34/34/34/20 任务）；
       billing 338 单测 + 20 real；装置修正：C2 后结算信号由长尾变瞬时脉冲，
       高并发用例前需排空静默（live-fire X2/X8 已内置）
-

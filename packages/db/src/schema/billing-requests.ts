@@ -3,7 +3,7 @@ import {
   boolean,
   check,
   index,
-    numeric,
+  numeric,
   pgTable,
   text,
   timestamp,
