@@ -52,6 +52,11 @@ export const channels = pgTable(
      */
     upstreamThreshold: numeric('upstream_threshold', { precision: 38, scale: 18 }),
     /**
+     * 用量证据缺陷计数：结算验收门对上游发票的钳制次数（谎报/虚报）。
+     * 计数 ≥ 装配阈值 → 熔断（status=3）。运营手动复位（调零）后可重新启用。
+     */
+    usageEvidenceDefects: bigint('usage_evidence_defects', { mode: 'number' }).notNull().default(0),
+    /**
      * 在途上游成本敞口（元）。路由选渠时原子累加本次上游预估，结算/释放时原子扣减。
      * 仅 upstream_budget > 0 的渠道启用（精确硬闸）；与 billing_requests.channel_reserved_amount 对应。
      */

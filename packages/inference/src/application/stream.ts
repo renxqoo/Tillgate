@@ -62,13 +62,13 @@ function startStreamLease(sc: StreamSettleCtx): void {
 }
 
 /** 终态收尾（后台）：收据（命中候选价 + 可信/估算 usage + 归属）→ signal 重试。结算重试期间续租不停（alive 保持到结算收尾）——200 已交付的请求不再因一次 DB 抖动被 recover 误释放成免费单；耗尽才停租约交 recover 兜底（有界损失 + 响亮日志） */
-async function settleStream(
+/** 流式终态收据 = 基础收据 + 流式覆写（中断标记/估算归属/证据字节/TTFT 观测） */
+function streamReceiptOf(
   sc: StreamSettleCtx,
-  terminal: Extract<UpstreamStreamEvent, { type: 'success' }>,
-): Promise<void> {
-  const { deps, ctx, startedAt, state } = sc;
-  const finality = usageForStream(terminal, ctx.prepared.inputEstimate, deps.defaults.estimate);
-  const receipt: UsageReceipt = {
+  finality: ReturnType<typeof usageForStream>,
+): UsageReceipt {
+  const { ctx, startedAt, state } = sc;
+  return {
     ...buildReceipt({
       requestId: ctx.requestId,
       auth: ctx.prepared.auth,
@@ -84,6 +84,9 @@ async function settleStream(
     streamAborted: finality.streamAborted,
     ...(finality.estimatedFor !== undefined ? { estimatedFor: finality.estimatedFor } : {}),
     ...(finality.bytesRelayed !== undefined ? { bytesRelayed: finality.bytesRelayed } : {}),
+    ...(finality.outputEvidenceBytes !== undefined
+      ? { outputEvidenceBytes: finality.outputEvidenceBytes }
+      : {}),
     ...(state.firstChunkAt > 0
       ? {
           // 上游锚点 = 本次渠道发起（换渠后即成功渠道）；客户端锚点 = 请求进入
@@ -93,6 +96,15 @@ async function settleStream(
         }
       : {}),
   };
+}
+
+async function settleStream(
+  sc: StreamSettleCtx,
+  terminal: Extract<UpstreamStreamEvent, { type: 'success' }>,
+): Promise<void> {
+  const { deps, ctx, state } = sc;
+  const finality = usageForStream(terminal, ctx.prepared.inputEstimate, deps.defaults.estimate);
+  const receipt = streamReceiptOf(sc, finality);
   const finalized = await signalSucceededWithRetry(
     {
       billing: deps.billing,

@@ -42,6 +42,8 @@ export interface InMemoryChannelRow {
   upstreamReserved: string;
   upstreamThreshold: string | null;
   status: number; // 0 启用 / 3 熔断
+  /** 用量证据缺陷计数（验收门；缺省 0） */
+  usageEvidenceDefects?: number;
 }
 
 /** plans 目录夹具行（与 port findPlan 形状一致） */
@@ -452,7 +454,7 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
       return Promise.resolve(row);
     },
 
-    casFinalizeSettled(_conn, claim) {
+    casFinalizeSettled(_conn, claim, settled) {
       const row = requests.get(claim.requestId);
       if (
         !row ||
@@ -468,6 +470,7 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
       row.claimOwner = null;
       row.claimToken = null;
       row.claimUntil = null;
+      row.waivedAmount = settled.waived;
       return Promise.resolve(true);
     },
 
@@ -796,6 +799,19 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
         return Promise.resolve(true);
       }
       return Promise.resolve(false);
+    },
+
+    recordUsageDefect(_conn, input) {
+      // 内存形态：缺陷计数存 channel 行扩展位（status 熔断语义与 postgres 同款）
+      const row = channelsMap.get(input.channelId);
+      if (!row) return Promise.resolve(null);
+      const defects = Number(row.usageEvidenceDefects ?? 0) + 1;
+      row.usageEvidenceDefects = defects;
+      if (row.status === 0 && defects >= input.threshold) {
+        row.status = 3;
+        return Promise.resolve({ defects, broken: true });
+      }
+      return Promise.resolve({ defects, broken: false });
     },
   };
 

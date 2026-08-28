@@ -181,7 +181,8 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
         quota: billingStore.quotaStore,
       }),
       channels: billingStore.channelStore,
-      failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
+      usageDefectBreaker: 5,
+    failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
       clock: () => new Date(),
       onError: () => {},
     });

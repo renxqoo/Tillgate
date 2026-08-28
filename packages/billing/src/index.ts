@@ -65,6 +65,27 @@ export type {
   SetCreditLimitInput,
   SetCreditLimitResult,
 } from './application/wallet/credit-line.js';
+export type { SetDebitFloorInput, SetDebitFloorResult } from './application/wallet/debit-floor.js';
+export type {
+  ApplyDefaultFloorInput,
+  ApplyDefaultFloorResult,
+} from './application/wallet/debit-floor.js';
+export {
+  DEBIT_FLOOR_DEFAULT_KEY,
+  parseDebitFloorDefault,
+} from './application/wallet/debit-floor.js';
+export {
+  BILLING_RESERVATION_POLICY_KEY,
+  parseReservationPolicySetting,
+  BILLING_RESERVATION_LIMIT_KEY,
+  DEFAULT_RESERVATION_LIMIT,
+  parseReservationLimitSetting,
+} from './application/billing/reservation-policy.js';
+export {
+  PLATFORM_CURRENCY_KEY,
+  DEFAULT_PLATFORM_CURRENCY,
+  parsePlatformCurrencySetting,
+} from './application/billing/platform-currency.js';
 export type { StatementQuery, StatementItemView } from './application/wallet/statement.js';
 export type {
   WalletStore,

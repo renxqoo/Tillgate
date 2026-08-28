@@ -13,7 +13,7 @@ import { createClaimUseCase, createRenewClaimsUseCase, type ClaimInput } from '.
 import type { SettlementClaim } from './claim.js';
 import { createFailureUseCase } from './failure.js';
 import { createProcessClaimUseCase } from './process.js';
-import { createSettleClaimUseCase } from './settle.js';
+import { createSettleClaimUseCase, createSettleClaimsBatchUseCase } from './settle.js';
 import type { SettleClaimResult } from './settle.js';
 import {
   createAbandonClaimsUseCase,
@@ -42,6 +42,8 @@ export interface SettlementDeps {
   walletStore: WalletStore;
   fundingRegistry: FundingRegistry;
   channels?: ChannelExposureStore;
+  /** 用量证据缺陷熔断阈值（装配必填——零写死） */
+  usageDefectBreaker: number;
   /** 失败策略参数（装配必填） */
   failurePolicy: SettleFailurePolicyConfig;
   /** 时钟（装配必填——零写死） */
@@ -55,6 +57,8 @@ export interface SettlementDeps {
    */
   outbox?: NotificationOutboxPort;
   onSettled?: Parameters<typeof createSettleClaimUseCase>[0]['onSettled'];
+  /** 验收门钳制观察钩子（提交后 best-effort——装配接日志/审计） */
+  onUsageDefect?: Parameters<typeof createSettleClaimUseCase>[0]['onUsageDefect'];
   /** 死信复核同事务审计 port（缺省丢弃——app 装配桥 observability writeAudit） */
   reviewAuditTx?: ReviewAuditTx;
   onDead?: (data: {
@@ -90,6 +94,12 @@ export interface SettlementApi {
     claimLeaseMs: number;
   }): Promise<void>;
   settleClaim(claim: SettlementClaim): Promise<SettleClaimResult>;
+  /**
+   * 批量结算：共享一个事务（账户行锁一次拿放——摊薄 platform_revenue 单行
+   * 串行化）。批内任一账单失败整批回滚上抛；调用方回退逐张 processClaim
+   * 隔离毒账单。空数组安全返回空。
+   */
+  settleClaims(claims: readonly SettlementClaim[]): Promise<SettleClaimResult[]>;
   processClaim(claim: SettlementClaim): Promise<'settled' | 'retried' | 'dead' | 'claim_lost'>;
   recover(input: { batchSize: number }): Promise<RecoveryRunResult>;
   abandonOwnedClaims(ownerId: string): Promise<number>;
@@ -108,8 +118,19 @@ export function createSettlementApi(deps: SettlementDeps): SettlementApi {
     store: deps.store,
     fundingRegistry: deps.fundingRegistry,
     channels: deps.channels,
+    usageDefectBreaker: deps.usageDefectBreaker,
     clock: deps.clock,
     onSettled: deps.onSettled,
+    onUsageDefect: deps.onUsageDefect,
+  });
+  const settleClaims = createSettleClaimsBatchUseCase({
+    store: deps.store,
+    fundingRegistry: deps.fundingRegistry,
+    channels: deps.channels,
+    usageDefectBreaker: deps.usageDefectBreaker,
+    clock: deps.clock,
+    onSettled: deps.onSettled,
+    onUsageDefect: deps.onUsageDefect,
   });
   const finishFailure = createFailureUseCase({
     store: deps.store,
@@ -146,6 +167,7 @@ export function createSettlementApi(deps: SettlementDeps): SettlementApi {
       deps.store.read((conn) => deps.store.listDueSettlementRequests(conn, input)),
     renewClaims: createRenewClaimsUseCase({ store: deps.store }),
     settleClaim,
+    settleClaims,
     processClaim: createProcessClaimUseCase({ settleClaim, finishFailure }),
     recover: createRecoverUseCase({
       store: deps.store,

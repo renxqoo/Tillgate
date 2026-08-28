@@ -54,6 +54,11 @@ export interface UsageReceipt {
   streamAborted: boolean;
   /** 模型映射 ID（= 实际成功模型） */
   mappingId: number;
+  /**
+   * 输出证据字节（流式 = 中继帧字节；非流式 = 响应体序列化 UTF-8 字节）——
+   * 结算验收门 B3 的证据上界：字节数 ≥ 输出 token 数为定理。旧收据缺省 = 无 B3。
+   */
+  outputEvidenceBytes?: number;
   /** 多模态策略快照指纹；纯文本为 null */
   billingPolicyFingerprint: string | null;
   /**

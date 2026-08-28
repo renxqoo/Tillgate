@@ -71,6 +71,11 @@ export interface UsageReceipt {
   estimatedFor?: EstimateAttribution;
   /** 触发估算的透传字节数（校准作业与审计数据源；非流式恒 0） */
   bytesRelayed?: number;
+  /**
+   * 输出证据字节（流式 = 中继帧字节；非流式 = 响应体序列化 UTF-8 字节）——
+   * billing 结算验收门 B3 的证据上界（字节 ≥ 输出 token 为定理）。
+   */
+  outputEvidenceBytes?: number;
   /** 首字延迟观测（流式专属；上游锚点=本次渠道发起，客户端锚点=请求进入） */
   upstreamTtftMs?: number;
   clientTtftMs?: number;
@@ -93,14 +98,18 @@ export interface ReceiptParams {
   usage: ReceiptUsage;
 }
 
-export function buildReceipt(params: ReceiptParams): UsageReceipt {
-  const { candidate } = params;
-  const units = measurementOf(candidate.pricingUnit ?? 'token').unitsOf(
-    params.body,
-    params.responseBody,
-  );
-  const { usage } = params;
-  const usageSnapshot: ReceiptUsageSnapshot = usage.estimated
+/**
+ * 非流式输出证据：响应体序列化 UTF-8 字节（JSON 键/转义只放大字节——安全方向，
+ * 字节 ≥ 输出 token 为定理）。响应体缺失（估算分支可缺）不装配 → 验收门 B3 缺省跳过。
+ */
+function nonStreamEvidenceBytes(usage: ReceiptUsage, responseBody: unknown): number | undefined {
+  if (usage.estimated || responseBody == null) return undefined;
+  return Buffer.byteLength(JSON.stringify(responseBody) ?? '', 'utf8');
+}
+
+/** usage → 落账快照（估算分支 cachedInputTokens 恒 0——估算不认缓存命中） */
+function usageSnapshotOf(usage: ReceiptUsage, units: number): ReceiptUsageSnapshot {
+  return usage.estimated
     ? {
         estimated: true,
         inputTokens: usage.inputTokens,
@@ -116,6 +125,17 @@ export function buildReceipt(params: ReceiptParams): UsageReceipt {
         ...((usage.cacheWriteTokens ?? 0) > 0 ? { cacheWriteTokens: usage.cacheWriteTokens } : {}),
         ...(units > 0 ? { units } : {}),
       };
+}
+
+export function buildReceipt(params: ReceiptParams): UsageReceipt {
+  const { candidate } = params;
+  const units = measurementOf(candidate.pricingUnit ?? 'token').unitsOf(
+    params.body,
+    params.responseBody,
+  );
+  const { usage } = params;
+  const outputEvidenceBytes = nonStreamEvidenceBytes(usage, params.responseBody);
+  const usageSnapshot = usageSnapshotOf(usage, units);
   return {
     requestId: params.requestId,
     userId: params.auth.userId,
@@ -141,5 +161,6 @@ export function buildReceipt(params: ReceiptParams): UsageReceipt {
     ...(candidate.pricingWindow != null ? { pricingWindow: candidate.pricingWindow } : {}),
     ...(usage.estimated ? { estimatedFor: 'usage_missing_nonstream' } : {}),
     ...(usage.estimated ? { bytesRelayed: 0 } : {}),
+    ...(outputEvidenceBytes !== undefined ? { outputEvidenceBytes } : {}),
   };
 }

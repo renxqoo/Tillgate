@@ -45,6 +45,8 @@ export interface StreamUsageVerdict {
   /** 估算收据必带归属（billing 验收白名单） */
   estimatedFor?: EstimateAttribution;
   bytesRelayed?: number;
+  /** 输出证据字节（验收门 B3）——可信/估算两分支都装配（帧字节 ≥ 输出 token 为定理） */
+  outputEvidenceBytes?: number;
   /** 流式中断标记（中断 + 可信累计 usage → 正常结算，不标中断） */
   streamAborted: boolean;
 }
@@ -60,7 +62,11 @@ export function usageForStream(
     // 可信累计 usage 优先，不标 stream_aborted——中断但有可信 usage = 按最新 usage
     // 正常结算（ai events.ts 头注「success.terminated → 网关标 stream_aborted」是
     // 早期口径，与本实现相抵时以本实现为准）。
-    return { usage: trustedOf(usage), streamAborted: false };
+    return {
+      usage: trustedOf(usage),
+      streamAborted: false,
+      ...(facts.bytesRelayed !== undefined ? { outputEvidenceBytes: facts.bytesRelayed } : {}),
+    };
   }
   return {
     usage: {
