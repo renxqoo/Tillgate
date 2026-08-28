@@ -14,13 +14,16 @@ import {
   type BillingEvent,
   type BillingQuote,
   type BillingQuoteCandidate,
+  type FundingReservationPolicy,
 } from '@tillgate/billing';
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
 import type { BillingPort, BillingSignal, QuoteCandidate, UsageReceipt } from '@tillgate/inference';
 
 export interface GatewayBillingConfig {
-  reservationLimit: string;
-  reservationPolicy: { mode: 'full' } | { mode: 'fixed'; amount: string };
+  /** 单笔预估敞口上限解析（每次 authorize 现读——TTL 缓存的 system_configs KV） */
+  resolveReservationLimit: () => Promise<string>;
+  /** 预扣策略解析（每次 authorize 现读——TTL 缓存的 system_configs KV，admin 动态调整） */
+  resolveReservationPolicy: () => Promise<FundingReservationPolicy>;
   /** 结算积压准入（bridge 级调用：authorize 前置闸；requestId 恒服务端生成，
    *  HTTP 面无客户端重放路径，桥级 admission 不破坏 billing 内部的重放免疫） */
   assertCapacity?: () => Promise<void>;
@@ -199,26 +202,39 @@ async function finalizeTpmReservation(
   }
 }
 
+/** authorize 体检出：动态风控值（策略/上限）现读 + 形状收窄后透传 */
+async function authorizeWithDynamicRisk(
+  api: GatewayBillingApi,
+  config: GatewayBillingConfig,
+  input: Parameters<BillingPort['authorize']>[0],
+): Promise<void> {
+  if (config.assertCapacity != null) await config.assertCapacity();
+  const [policy, reservationLimit] = await Promise.all([
+    config.resolveReservationPolicy(),
+    config.resolveReservationLimit(),
+  ]);
+  await api.authorize({
+    requestId: input.requestId,
+    userId: input.userId,
+    apiKeyId: input.apiKeyId,
+    appId: input.appId,
+    stream: input.stream,
+    quote: toQuote(input),
+    reservationLimit,
+    ...(policy.mode === 'fixed'
+      ? { reservationPolicy: { mode: 'fixed', amount: policy.amount } }
+      : {}),
+    authorizationTtlMs: input.authorizationTtlMs,
+  });
+}
+
 export function createGatewayBilling(
   api: GatewayBillingApi,
   config: GatewayBillingConfig,
 ): BillingPort {
   return {
     async authorize(input) {
-      if (config.assertCapacity != null) await config.assertCapacity();
-      await api.authorize({
-        requestId: input.requestId,
-        userId: input.userId,
-        apiKeyId: input.apiKeyId,
-        appId: input.appId,
-        stream: input.stream,
-        quote: toQuote(input),
-        reservationLimit: config.reservationLimit,
-        ...(config.reservationPolicy.mode === 'fixed'
-          ? { reservationPolicy: { mode: 'fixed', amount: config.reservationPolicy.amount } }
-          : {}),
-        authorizationTtlMs: input.authorizationTtlMs,
-      });
+      await authorizeWithDynamicRisk(api, config, input);
     },
 
     async signal(signal: BillingSignal) {
