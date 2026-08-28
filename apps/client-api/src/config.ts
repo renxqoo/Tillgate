@@ -36,7 +36,7 @@ function createSchema(production: boolean) {
     /** 邮箱验证码挑战：有效期/发送冷却/最大尝试次数 */
     CLIENT_CHALLENGE_TTL_MS: z.coerce.number().int().positive().default(600_000),
     CLIENT_CHALLENGE_COOLDOWN_MS: z.coerce.number().int().positive().default(60_000),
-    CLIENT_CHALLENGE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(10),
+    CLIENT_CHALLENGE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
     /** TOTP（MFA 预留词表；用户面暂不开放端点——identity 配置必填项） */
     CLIENT_TOTP_ISSUER: z.string().min(1).max(255).default('Tillgate'),
     /** 邮箱自助注册开关（关闭只留既有账号登录） */
