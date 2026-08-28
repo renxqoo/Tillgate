@@ -1,7 +1,7 @@
 /**
- * worker 进程入口（v1 index.ts 对位）：装配 → 启动调度/健康端点 → 信号注册。
+ * worker 进程入口：装配 → 启动调度/健康端点 → 信号注册。
  * 自启动守卫：test 环境（或 WORKER_NO_AUTOSTART=1）不自动启动——测试经
- * assembleWorker 装配后自行驱动（v1 同款隔离）。
+ * assembleWorker 装配后自行驱动。
  */
 import { loadWorkerConfig } from './config';
 import { assembleWorker } from './assembly';
@@ -19,7 +19,7 @@ if (autostart) {
 
   assembly.scheduler.start();
 
-  // 健康端点（0 = 关闭）：端口占用只告警不崩（v1 同款——旁路面）
+  // 健康端点（0 = 关闭）：端口占用只告警不崩（旁路面）
   const healthServer =
     config.health.port > 0
       ? startHealthServer(config.health.port, assembly.healthState, config.health.token)

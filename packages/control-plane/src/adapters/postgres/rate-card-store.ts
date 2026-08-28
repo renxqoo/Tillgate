@@ -1,7 +1,7 @@
 /**
- * rate_cards 费率卡 postgres 适配器（v1 rate-card.repo 等价迁移）。
+ * rate_cards 费率卡 postgres 适配器。
  * 不变量（application 在事务内调用保证）：每张卡恰有一行 scope='global' 兜底系数；
- * PATCH coefficient 只触碰 global 行——scope=model/group 覆写行永不被全局更新抹平（M1）。
+ * PATCH coefficient 只触碰 global 行——scope=model/group 覆写行永不被全局更新抹平。
  */
 import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { rateCardCoefficients, rateCards, users } from '@tillgate/db';
@@ -67,7 +67,7 @@ export const postgresRateCardStore: RateCardStore = {
     const [card] = rows;
     if (!card) return null;
     if (input.globalCoefficient !== undefined) {
-      // 只更新 scope='global' 行——model/group 覆写行隔离（M1 回归点）
+      // 只更新 scope='global' 行——model/group 覆写行隔离
       await db
         .update(rateCardCoefficients)
         .set({ coefficient: input.globalCoefficient })
@@ -196,7 +196,7 @@ export const postgresRateCardStore: RateCardStore = {
     return row?.coefficient ?? null;
   },
 
-  // ---- 网关热路径读（G1；users.rate_card_id 读侧 join——绑定写侧归 accounts） ----
+  // ---- 网关热路径读（users.rate_card_id 读侧 join——绑定写侧归 accounts） ----
 
   async findActiveCardByUser(db, userId) {
     const [card] = await db

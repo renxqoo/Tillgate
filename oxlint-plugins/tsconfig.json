@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // 插件 import 带 .ts 扩展名(oxlint 宿主按显式路径加载,Bun/Node 均要求显式后缀)
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "declaration": false,
+    // 本目录非 workspace,根 node_modules 只提升 @types/bun(自带 node 兼容层)
+    "types": ["bun"]
+  },
+  "include": ["**/*.ts"]
+}

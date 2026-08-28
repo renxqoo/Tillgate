@@ -1,5 +1,5 @@
 /**
- * 错误目录契约（ADR-0001 D1-D3）：业务错误定义由能力包自有、随包分发；
+ * 错误目录契约：业务错误定义由能力包自有、随包分发；
  * app face 装配期合成全量目录；http 只做 category 默认渲染——本包不含任何业务条目。
  */
 import { isErrorCategory, type ErrorCategory } from './category';
@@ -14,8 +14,8 @@ import {
 
 /**
  * 错误定义（能力包目录条目）：
- * 不含 HTTP status（零协议依赖，ADR-0001 D5）；message/zh 必填——结构性消灭
- * v1「登记缺中文静默英文」与「message 即 code 直达用户」缺陷类（E8/E9）。
+ * 不含 HTTP status（零协议依赖）；message/zh 必填——结构性消灭
+ * 「登记缺中文静默英文」与「message 即 code 直达用户」缺陷类。
  */
 export interface ErrorDefinition {
   readonly category: ErrorCategory;
@@ -34,7 +34,7 @@ export interface ErrorCatalog {
   has(code: string): boolean;
 }
 
-/** 绑定身份的完整目录条目（`entry()` 的返回；固化子类的零漂移构造材料，ADR-0001 D8） */
+/** 绑定身份的完整目录条目（`entry()` 的返回；固化子类的零漂移构造材料） */
 export interface CatalogEntry extends ErrorDefinition {
   /** 已签发的业务身份码（品牌类型——不可由目录外构造） */
   readonly code: BusinessCode;
@@ -57,7 +57,7 @@ export interface NamespacedErrorCatalog<N extends string, K extends string> exte
   business(key: K, context?: ErrorContext, opts?: ErrorOptions): BusinessError;
 }
 
-/** 单段标识符：小写蛇形（命名空间与 key 同规；点分连接后即身份码，DESIGN §3.3） */
+/** 单段标识符：小写蛇形（命名空间与 key 同规；点分连接后即身份码） */
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9_]*$/;
 
 function invalid(field: string, value: string): DefectError {
@@ -133,8 +133,8 @@ export function defineErrorCatalog<
 }
 
 /**
- * face 装配：合成多个（命名空间）目录为单一查询面（ADR-0001 D1）。
- * 命名空间重复在装配期失败——v1 跨包 code 冲突无门禁（E6）的结构修复。
+ * face 装配：合成多个（命名空间）目录为单一查询面。
+ * 命名空间重复在装配期失败，跨包 code 冲突在装配期即暴露。
  */
 export function composeErrorCatalogs(
   ...catalogs: NamespacedErrorCatalog<string, string>[]

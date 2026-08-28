@@ -10,8 +10,7 @@ export interface PaymentProviderPort {
   readonly name: 'epay' | 'stripe';
   /**
    * 下单可用面（resolveProvider/channels 过滤；handleNotify 不过滤——
-   * 「停用不停验签」：渠道停用后已下单回调仍验签归账，
-   * docs/integration-settings/DESIGN.md §5 D6）。
+   * 「停用不停验签」：渠道停用后已下单回调仍验签归账）。
    */
   accepting(): boolean;
   /** 创建渠道支付（返回支付跳转 URL；providerOrderId 商户侧单号） */
@@ -45,13 +44,13 @@ export interface PaymentOrderRow {
   createdAt: Date;
 }
 
-// ---- 管理面(admin-api P4 读侧 + 手动关单) ----
+// ---- 管理面(admin-api 读侧 + 手动关单) ----
 
 /** 订单排序白名单(wire 词表单一真相;admin-api contracts 引用不复制) */
 export const PAYMENT_ORDER_SORT_FIELDS = ['id', 'amount', 'status', 'createdAt'] as const;
 export type PaymentOrderSortField = (typeof PAYMENT_ORDER_SORT_FIELDS)[number];
 
-/** 管理订单行(v1 listAdminOrders 投影;用户列由左联带出) */
+/** 管理订单行(用户列由左联带出) */
 export interface AdminPaymentOrderRow {
   id: string;
   provider: string;
@@ -99,7 +98,7 @@ export interface PaymentOrderStore {
     conn: WalletConn,
     input: { userId: number; limit: number; offset: number },
   ): Promise<PaymentOrderRow[]>;
-  /** CAS 0→1（paid）；0 行 = 并发/乱序，返回 null 由调用方重读定夺 */
+  /** CAS 0→1（paid）；0 行 = 并发/乱序，返回 null 由调用方重读判定 */
   markPaid(
     tx: WalletConn,
     input: { orderId: string; paidAt: Date },
@@ -162,7 +161,7 @@ export interface RedeemCodeStore {
     input: { userId: number; limit: number; offset: number },
   ): Promise<Array<{ codeId: number; batchName: string; amount: string; usedAt: Date | null }>>;
 
-  // ---- 批次管理面（U6:admin-api P1 消费;明文永不落库/回显） ----
+  // ---- 批次管理面（admin-api 消费;明文永不落库/回显） ----
   listBatches(
     conn: WalletConn,
     input: {
@@ -189,7 +188,7 @@ export interface RedeemCodeStore {
   revokeCode(tx: WalletConn, input: { codeId: number }): Promise<boolean>;
 }
 
-/** 兑换批次行（U6 管理面） */
+/** 兑换批次行（管理面） */
 export interface RedeemBatchRecord {
   id: number;
   name: string;

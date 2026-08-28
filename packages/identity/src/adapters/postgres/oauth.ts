@@ -1,6 +1,6 @@
 /**
  * OAuth 绑定 store postgres 实现:绑定(锁内 onConflictDoNothing 双索引兜底 + 读回分类)、
- * 解绑(锁内 for update + 最后凭据守卫)。SQL 与 v1 oauth.ts 逐语义对齐。
+ * 解绑(锁内 for update + 最后凭据守卫)。
  */
 import { and, eq, ne } from 'drizzle-orm';
 import type { DbLike } from '@tillgate/db';

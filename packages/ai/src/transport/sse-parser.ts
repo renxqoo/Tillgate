@@ -3,8 +3,8 @@ import type { StreamError } from '../types';
 import { createSseEventReader, SseBoundaryTracker, type SseEvent } from './sse';
 
 /**
- * SSE 旁路扫描器（S1 重构）：基于统一解析原语（transport/sse）+
- * 四计数器特征累积（O(1) 内存，替代 v1 outputText 文本累积与 4MB CAP）。
+ * SSE 旁路扫描器：基于统一解析原语（transport/sse）+
+ * 四计数器特征累积（O(1) 内存，不累积正文文本）。
  * relay-stream 把上游 chunk 原样透传的同时 feed 给本扫描器——扫描结果用于
  * 计量（usage/估算特征）与心跳边界判定，绝不缓冲正文。
  */

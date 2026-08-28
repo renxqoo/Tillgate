@@ -1,11 +1,11 @@
 /**
- * 成功信封（v1 encodeResult/encodeGemini 迁移）：inference 交付三态 → HTTP Response。
- *   StreamDelivered（ok+stream）  → SSE 字节流原样直传（§3.6 数据面：不缓冲不改写；
+ * 成功信封：inference 交付三态 → HTTP Response。
+ *   StreamDelivered（ok+stream）  → SSE 字节流原样直传（数据面：不缓冲不改写；
  *                                  codec 端点的线格式转换流由 codec.encodeStream 先行）
  *   ChatDelivered rawBody         → 二进制 200 + 原始 content-type
  *   ChatDelivered body+status     → JSON（codec 端点 200 时先编码回外部线格式）
  *   PassthroughDelivered          → {status, code, message} 原样出站（上游 4xx 透传，
- *                                  ADR-0004——inference 已按线协议翻译）
+ *                                  inference 已按线协议翻译）
  * x-request-id 显式带：raw Response 不走 Hono 的 c.header 合并路径，缺它则流式客户端
  * 无法把账单/日志与本响应对齐（非流式 c.json 自动带）。
  */
@@ -57,7 +57,7 @@ export async function encodeDelivered(
     });
   }
   if ('passthrough' in result && result.passthrough) {
-    // ADR-0004：上游 4xx 原码 + 已翻译/脱敏的消息出站；code 走信封 message 位（线协议已由 inference 保持）
+    // 上游 4xx 原码 + 已翻译/脱敏的消息出站；code 走信封 message 位（线协议已由 inference 保持）
     return json(
       { error: { code: result.code, message: result.message ?? result.code } },
       result.status as ContentfulStatusCode,

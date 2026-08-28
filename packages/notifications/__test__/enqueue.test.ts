@@ -1,5 +1,5 @@
 /**
- * 入箱用例:词表门、dedupe 幂等(v1 balance-low 按键一行的机制面)、参数域。
+ * 入箱用例:词表门、dedupe 幂等、参数域。
  */
 import { describe, expect, it } from 'vitest';
 import { buildFacade } from './memory';

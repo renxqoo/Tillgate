@@ -1,4 +1,4 @@
--- request_logs 月分区（data-model §3.13 承诺：30 天滚动）。
+-- request_logs 月分区（30 天滚动）。
 -- 原表为普通无界表（写入量随网关流量线性增长）；换为 PARTITION BY RANGE (created_at)：
 --   - 分区表主键必须含分区键 → (id, created_at)；FK 不保留（日志表高频写入，
 --     引用完整性由写入方保证，去除每行两次 FK 检查亦为收益）

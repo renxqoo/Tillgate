@@ -1,5 +1,5 @@
 /**
- * 生成任务管理路由（P4;v1 routes/ops.ts generation-tasks 平移）：全量列表
+ * 生成任务管理路由：全量列表
  * + 已结算任务实扣金额页内批量回填（task.id ≠ 计费锚——回填走 store 的
  * request_id join,路由只组合）。词表/过滤在 inference 包与 contracts 层。
  */
@@ -24,7 +24,7 @@ export function opsTasksRoutes(deps: OpsTasksRoutesDeps) {
       limit: query.limit,
       offset: query.offset,
     });
-    // 已结算任务的实扣金额批量回填(v1 service 语义:settled 才查,页内批量消除 N+1)
+    // 已结算任务的实扣金额批量回填:settled 才查,页内批量消除 N+1
     const settled = result.rows
       .filter((row) => row.billingStatus === 'settled')
       .map((row) => row.taskId);

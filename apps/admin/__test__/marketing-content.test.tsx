@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
- * 营销参数卡权限显隐（2026-08-25 用户裁决 D1/D2）：无 growth:update →
+ * 营销参数卡权限显隐：无 growth:update →
  * 三个输入禁用、保存钮隐藏（只读表单）；持有时编辑面完整。
- * 敏感度维持 growth:update 不提级（同日用户裁决 D3）——本文件只锁显隐形态。
+ * 敏感度维持 growth:update 不提级——本文件只锁显隐形态。
  */
 import '@testing-library/jest-dom/vitest';
 

@@ -20,7 +20,7 @@ export function createFailureUseCase(env: {
   /** 失败策略参数（装配必填——最大尝试/退避不写死） */
   policy: SettleFailurePolicyConfig;
   /**
-   * 可靠通知（§5.4）：死信事实同事务入箱——append 抛错则死信处置整体回滚
+   * 可靠通知：死信事实同事务入箱——append 抛错则死信处置整体回滚
    * （行停留 processing，由租约恢复重试）。未注入时无通知副作用。
    */
   outbox?: NotificationOutboxPort;

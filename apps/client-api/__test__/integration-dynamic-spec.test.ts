@@ -1,9 +1,9 @@
 /**
- * 集成动态化 review 修复规格（B-1/B-2/B-3/B-4 的正式锁定）：
- * - captchaSiteKey 按 effective 下发（停用 = 注册闸门关闭，无防刷放行——DESIGN §4.2/D5）；
- * - 支付回调路由先 refresh 快照再验签（消除 latest 盲窗——DESIGN D9 修订）；
- * - mailerOverride 注入时 auto 口径与 main 基线一致（mailer != null——D8）；
- * - stripe 下单打到快照 apiBase（私有化网关语义——§3.2/§7.3）。
+ * 集成动态化行为规格：
+ * - captchaSiteKey 按 effective 下发（停用 = 注册闸门关闭，无防刷放行）；
+ * - 支付回调路由先 refresh 快照再验签（消除 latest 盲窗）；
+ * - mailerOverride 注入时 auto 口径与 main 基线一致（mailer != null）；
+ * - stripe 下单打到快照 apiBase（私有化网关语义）。
  */
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -359,6 +359,7 @@ describe('B-3 规格：mailerOverride 注入时 auto 口径 = mailer 在场（ma
       mailerOverride: {
         sendLoginCode: () => Promise.resolve(),
         sendPasswordResetLink: () => Promise.resolve(),
+        sendAdminInviteLink: () => Promise.resolve(),
       },
     });
     expect(stack.mailer).not.toBeNull();

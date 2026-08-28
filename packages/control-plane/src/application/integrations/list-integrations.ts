@@ -1,5 +1,5 @@
 /**
- * 集成设置管理面列表（DESIGN §4.1）：词表全量补齐（无行 = 未配置），
+ * 集成设置管理面列表：词表全量补齐（无行 = 未配置），
  * secret 字段解密后掩码回显——响应永不包含明文或密文。
  */
 import { maskIntegrationConfig } from '../../domain/integrations/masking';

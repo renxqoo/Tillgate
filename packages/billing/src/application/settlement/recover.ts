@@ -71,7 +71,7 @@ export function createRecoverUseCase(env: RecoverEnv) {
   }
 
   return async function recover(input: { batchSize: number }): Promise<RecoveryRunResult> {
-    // 装配必填注入：毒行隔离的写入通道（console 直写是隐藏 I/O——铁律 3）
+    // 装配必填注入：毒行隔离的写入通道（console 直写是隐藏 I/O）
     const noteError = env.onError;
     const expired = await releaseExpired(
       {

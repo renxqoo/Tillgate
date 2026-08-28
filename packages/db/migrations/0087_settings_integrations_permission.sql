@@ -1,4 +1,4 @@
--- 0087：集成设置写权限拆分（安全加固 review H1/H2——docs/integration-settings/DESIGN.md §6 修订）。
+-- 0087：集成设置写权限拆分（安全加固）。
 -- 动机：SMTP host / captcha verifyUrl / oauth.base 等「出网点」字段动态化后，持有
 -- settings:update 的角色即可外带 secret（改收件地址）或拦截密码重置邮件——把集成
 -- 凭据写入收窄到独立权限码 settings:integrations（超管不受影响；运营角色需显式授予）。

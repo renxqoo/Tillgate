@@ -1,5 +1,5 @@
 /**
- * 支付验签密钥轮换双读窗 E2E（docs/integration-settings/DESIGN.md §5 D6 收口项）：
+ * 支付验签密钥轮换双读窗 E2E：
  * 密钥轮换后，窗口内旧 key 签名的回调仍验签归账（在途订单不丢）；
  * 窗口外旧 key 拒收、新 key 恒通。全链 = client-api 动态包装层 → 快照
  * verifyKeys → billing 验签序列（协议面矩阵在 packages/billing 单测）。

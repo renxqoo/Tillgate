@@ -1,10 +1,10 @@
 'use client';
 
-// 集成单卡（哑件）：标题左、配置按钮右上与标题对齐（用户裁决）；内容面
-// 状态徽章 + 启停按钮 + Turnstile 停用联动警告（DESIGN §5 D11）。
-// 卡面不显示配置字段值（2026-08-25 用户裁决：与 2FA/TOTP 卡同形态，配置收进弹窗）。
+// 集成单卡（哑件）：标题左、配置按钮右上与标题对齐；内容面
+// 状态徽章 + 启停按钮 + Turnstile 停用联动警告。
+// 卡面不显示配置字段值（与 2FA/TOTP 卡同形态，配置收进弹窗）。
 // 无 settings:integrations 权限：配置/启停操作位隐藏，保留状态只读展示
-// （2026-08-25 用户裁决 D1；权威判定在 admin-api ACL）。
+// （权限判定权威在 admin-api ACL）。
 
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tillgate/ui';
 import {
@@ -12,7 +12,6 @@ import {
   CreditCardIcon,
   GitBranchIcon,
   GlobeIcon,
-  Loader2Icon,
   MailIcon,
   ShieldAlertIcon,
   WalletIcon,
@@ -26,6 +25,7 @@ import type { IntegrationSettingItem } from '@/server/settings-actions';
 import { updateIntegrationAction } from '@/server/settings-actions';
 import { IntegrationFormDialog } from './integration-form-dialog';
 import { INTEGRATION_ICON, i18nKey } from './integration-format';
+import { ToggleRow } from './toggle-row';
 import { CodeConfirmDialog } from '../code-confirm-dialog';
 
 const ICONS: Record<string, LucideIcon> = {
@@ -47,7 +47,7 @@ export function IntegrationCard({
   item: IntegrationSettingItem;
   /** 注册送礼开启（Turnstile 停用联动警告的数据源） */
   signupGiftOn: boolean;
-  /** 当前管理员已绑定验证器（ADR-0011——未绑定者敏感按钮置灰引导绑定） */
+  /** 当前管理员已绑定验证器（未绑定者敏感按钮置灰引导绑定） */
   totpEnabled: boolean;
   /** settings:integrations 持有者可见配置/启停操作位（隐藏时保留状态只读展示） */
   canManage: boolean;
@@ -76,7 +76,7 @@ export function IntegrationCard({
         // 确认成功即关弹窗（失败保持开——可换码重试）
         setStepupOpen(false);
         if (current.key === 'captcha.turnstile' && !next && signupGiftOn) {
-          // Turnstile 加固（DESIGN §5 D11）：警告不阻断——停用已生效，风险显式留痕
+          // Turnstile 加固：警告不阻断——停用已生效，风险显式留痕
           toast.warning(t('captchaWarning'));
         }
       } catch {
@@ -90,7 +90,7 @@ export function IntegrationCard({
   return (
     <Card className="flex h-full w-full flex-col">
       <CardHeader>
-        {/* 用户裁决：设置按钮放卡片右上方、与标题垂直对齐 */}
+        {/* 设置按钮放卡片右上方、与标题垂直对齐 */}
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <Icon className="size-4" /> {t(`cards.${i18nKey(current.key)}`)}
@@ -141,41 +141,5 @@ export function IntegrationCard({
         onConfirm={(code) => toggleEnabled(code)}
       />
     </Card>
-  );
-}
-
-/** 启停按钮 + 状态行（哑件拆分——主组件复杂度收口，铁律 22 ②）；canManage=false 只渲染状态行 */
-function ToggleRow(input: {
-  enabled: boolean;
-  configured: boolean;
-  pending: boolean;
-  totpEnabled: boolean;
-  stepupTitle: string | undefined;
-  onRequestToggle: () => void;
-  canManage: boolean;
-}) {
-  const t = useTranslations('settings.integrations');
-  return (
-    <div className="flex items-center gap-3">
-      {input.canManage ? (
-        <Button
-          variant={input.enabled ? 'destructive' : 'default'}
-          size="sm"
-          disabled={input.pending || !input.totpEnabled || (!input.enabled && !input.configured)}
-          title={input.stepupTitle}
-          onClick={input.onRequestToggle}
-        >
-          {input.pending && <Loader2Icon className="animate-spin" />}
-          {input.enabled ? t('disable') : t('enable')}
-        </Button>
-      ) : null}
-      <span className="text-sm text-muted-foreground">
-        <span className={input.enabled ? 'text-green-600' : ''}>
-          {input.enabled ? t('enabledState') : t('disabledState')}
-        </span>
-        <span className="mx-1">·</span>
-        <span>{input.configured ? t('configuredState') : t('unconfiguredState')}</span>
-      </span>
-    </div>
   );
 }

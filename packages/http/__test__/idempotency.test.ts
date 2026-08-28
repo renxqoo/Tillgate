@@ -4,7 +4,7 @@ import { operationId } from '../src/idempotency/operation-id';
 import { errorHandler } from '../src/errors/handler';
 
 /**
- * T1 回归（v1 idempotency-key.test 迁移）：客户端幂等键与系统自然键的命名空间隔离。
+ * 客户端幂等键与系统自然键的命名空间隔离。
  * 系统键（signup-gift:{id} 等）一律含 ':'；客户键必须被限制在不含 ':' 的安全字符集内——
  * 否则任何登录用户可用 `idempotency-key: signup-gift:<受害者id>` 完成一次购买，
  * 永久占用该键，使受害者首次登录的礼金发放撞主键 → 登录 500。

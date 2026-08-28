@@ -2,7 +2,7 @@
  * admin-api(管理面)wire DTO——GENERATED——禁止手改。
  *
  * 单一事实源:apps/admin-api/src/http/openapi registry → generated/openapi.json
- * (contract → OpenAPI → generated client 生成链;DESIGN §3.4)。重生成:
+ * (contract → OpenAPI → generated client 生成链)。重生成:
  *   cd apps/admin-api && bun run generate:openapi && cd ../../packages/api-client && bun run generate:dto
  * 文件为纯声明聚合(单一职责 = 管理面 wire 形状快照)。
  */
@@ -41,6 +41,28 @@ export interface AdminRow {
   twoFactorEnabled: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  /** 是否已设置密码(false = 待激活,邀请邮件可发/可重发) */
+  hasPassword: boolean;
+}
+
+/** 创建管理员响应（资料行 + 邀请邮件投递结果） */
+export interface AdminCreatedRow {
+  id: number;
+  email: string;
+  displayName: string | null;
+  /** 角色 FK（roles.id） */
+  roleId: number;
+  /** 角色 code（展示用;名称经 /v1/roles 解析） */
+  role: string;
+  /** 0 正常 / 1 封禁 / 2 注销 */
+  status: number;
+  twoFactorEnabled: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  /** 是否已设置密码(false = 待激活,邀请邮件可发/可重发) */
+  hasPassword: boolean;
+  /** 邀请邮件是否已投递（SMTP/地址未配置或投递失败 = false） */
+  inviteSent: boolean;
 }
 
 // ── settings ─────────────────────────────────────
@@ -106,7 +128,6 @@ export interface PermissionNode {
 export interface AdminCreateBody {
   email: string;
   displayName?: string;
-  password: string;
   roleId: number;
 }
 
@@ -149,7 +170,7 @@ export interface AdminUserRow {
 export interface AdminTransactionRow {
   id: number;
   userId: number;
-  /** 交易类型(v2 wire:billing statement transactionKind) */
+  /** 交易类型(billing statement transactionKind) */
   type: string;
   amount: string;
   balanceAfter: string;
@@ -157,7 +178,7 @@ export interface AdminTransactionRow {
   refId: string | null;
   remark: string | null;
   createdAt: string;
-  /** 操作管理员(v2 presenter 恒 null——无来源列) */
+  /** 操作管理员(恒 null——无来源列) */
   createdBy: number | null;
 }
 
@@ -169,7 +190,7 @@ export interface AdminChannelRow {
   providerId: number;
   name: string;
   baseUrlOverride: string | null;
-  /** 模型白名单(DB jsonb 数组;DTO 面沿 v1 快照口径 string | null——数组线上形态在 admin 表单边界转换) */
+  /** 模型白名单(DB jsonb 数组;DTO 面为 string | null——数组线上形态在 admin 表单边界转换) */
   models: string | null;
   weight: number;
   priority: number;
@@ -177,7 +198,7 @@ export interface AdminChannelRow {
   failCount: number;
   /** 记录面逻辑删除时刻(回收站);null = 在册 */
   deletedAt: string | null;
-  /** 冷却截止(v2 无列来源,恒 null) */
+  /** 冷却截止(无列来源,恒 null) */
   cooldownUntil: string | null;
   rpmLimit: number | null;
   tpmLimit: number | null;
@@ -190,10 +211,10 @@ export interface AdminChannelRow {
   /** 剩余 = 进货 - 已消耗(元,string) */
   upstreamRemaining: string;
   createdAt: string;
-  /** 更新时间(v2 无列来源,恒 null) */
+  /** 更新时间(无列来源,恒 null) */
   updatedAt: string;
   providerName: string;
-  /** 供应商 baseUrl(v2 无列来源,恒 null) */
+  /** 供应商 baseUrl(无列来源,恒 null) */
   providerBaseUrl: string;
   /** 已绑定模型清单(绑定名投影) */
   boundModels: { externalName: string; realModel: string }[];
@@ -282,9 +303,9 @@ export interface AdminModelRow {
   billingConfig?: { strategy?: string; params?: { unitPrice?: string; selector?: string; prices?: Record<string, string> } } | null;
   isFree: boolean;
   contextLength: number | null;
-  /** 兜底模型清单(v2 无来源,恒 null) */
+  /** 兜底模型清单(无来源,恒 null) */
   fallbackModels: string | null;
-  /** 参数规则(v2 无来源,恒 null) */
+  /** 参数规则(无来源,恒 null) */
   paramRules: string | null;
   billingPolicy: Record<string, unknown> | null;
   rpmLimit: number | null;
@@ -347,9 +368,9 @@ export interface AdminKeyRow {
   /** 计费来源:NULL=余额;非空=扣该订阅额度。 */
   subscriptionId: number | null;
   userId: number;
-  /** 用户邮箱(v2 accounts 行无用户 join,恒 null) */
+  /** 用户邮箱(accounts 行无用户 join,恒 null) */
   userEmail: string | null;
-  /** 用户展示名(v2 accounts 行无用户 join,恒 null) */
+  /** 用户展示名(accounts 行无用户 join,恒 null) */
   userDisplayName: string | null;
   rpmLimit: number | null;
   tpmLimit: number | null;
@@ -433,7 +454,7 @@ export interface AdminBatchRow {
   amount: string;
   total: number;
   usedCount: number;
-  /** 创建管理员 id 的字符串投影(v1 wire 形状) */
+  /** 创建管理员 id 的字符串投影 */
   createdBy: string;
   createdAt: string;
 }
@@ -510,7 +531,7 @@ export interface LogRow {
   userId: number;
   /** 用户名(displayName 优先,其次 email;LEFT JOIN users,可能为 null) */
   userName: string | null;
-  /** v2 无来源列,恒 null */
+  /** 无来源列,恒 null */
   apiKeyId: number | null;
   method: string;
   path: string;
@@ -518,7 +539,7 @@ export interface LogRow {
   errorCode: string | null;
   durationMs: number;
   requestSummary: { model: string; stream: boolean; max_tokens: number; messageCount: number } | null;
-  /** 重试次数(v1 快照口径;v2 presenter 暂不输出——展示兜底为 1 次) */
+  /** 重试次数(快照口径;presenter 暂不输出——展示兜底为 1 次) */
   attempts: number;
   /** 来源 IP(X-Forwarded-For 首段 / X-Real-IP / socket,鉴权前记录) */
   sourceIp: string | null;
@@ -564,7 +585,7 @@ export interface AuditLogRow {
   id: number;
   adminId: number | null;
   actor: string | null;
-  /** 管理员标识(v2 无 join 来源,恒 null) */
+  /** 管理员标识(无 join 来源,恒 null) */
   adminSubject: string | null;
   action: string;
   targetType: string;

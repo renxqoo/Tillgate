@@ -1,6 +1,6 @@
 /**
- * 管理员认证路由（P2;v1 routes/auth.ts 平移）：登录（可选 2FA 邮箱码两步流）/验码/登出。
- * 编排语义（v1 auth.service 逐条映射 v2 能力包）：
+ * 管理员认证路由：登录（可选 2FA 邮箱码两步流）/验码/登出。
+ * 编排语义：
  *   - 爆破双闸（(email,ip) 哈希键 + ip）= runtime Redis 守卫;不可达 fail-closed 503;
  *     锁维度 (email,ip) 且正确密码永远放行——纯 email 锁可被匿名者用于锁死管理员（DoS 开关）
  *   - 密码鉴别 = identity.passwords.authenticate（哑哈希防枚举,统一 401）
@@ -25,6 +25,7 @@ import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { authContracts } from '../contracts/auth';
+import type { AdminInvitePort } from './admins';
 
 /** 爆破守卫形状（runtime createKeyBruteForceGuard/createAuthFailureGuard 产物;
  * ip 守卫的 recordSuccess 可选——AuthFailureGuard 形态） */
@@ -38,7 +39,7 @@ export interface AuthRoutesDeps {
   readonly identity: Pick<Identity, 'passwords' | 'challenges' | 'sessions' | 'mfa'>;
   readonly admins: Pick<ControlPlane['admins'], 'findByEmail' | 'find' | 'touchLastLogin'>;
   readonly guards: { emailIp: AuthGuard; ip: AuthGuard };
-  /** 登录三审计（后置旁路,失败不阻断——v1 recordAudit best-effort 语义） */
+  /** 登录三审计（后置旁路,失败不阻断——best-effort） */
   readonly loginAudit: (entry: {
     action: 'auth.login.invalid_credentials' | 'auth.login.2fa_challenge' | 'auth.login.success';
     adminId: number | null;
@@ -49,6 +50,8 @@ export interface AuthRoutesDeps {
   readonly trustedProxyHops: number;
   /** SMTP 是否已配置（2FA 开启前置——fail-closed,不静默降级） */
   readonly mailerConfigured: () => boolean;
+  /** 邀请令牌消费面（POST /v1/auth/reset-password——新建管理员设置初始密码） */
+  readonly invites: Pick<AdminInvitePort, 'consume'>;
   readonly sessionTtlSec: number;
 }
 
@@ -57,7 +60,10 @@ interface LoginPayload {
   adminId: number;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 登录族装配平铺:路由表 + 凭证鉴别/2FA 共享闭包为 v1 平移语义(存量棘轮)
+/** 邀请令牌统一拒绝(无效/过期/已用/已激活/封禁——同一口径,不泄漏原因) */
+const invalidResetToken = () => AdminErrors.business('admin_reset_token_invalid', {});
+
+// eslint-disable-next-line max-lines-per-function -- 登录族装配平铺:路由表 + 凭证鉴别/2FA 共享闭包保留存量语义(棘轮)
 export function authRoutes(deps: AuthRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
@@ -77,7 +83,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
 
   /** 凭证鉴别共享段（login 与 login/totp 同口径）:守卫闸 → 密码 → 资料漂移 →
    *  状态 → 成功清零计数;失败计双闸 + 审计。返回 adminId,拒绝路径统一抛业务错 */
-  // eslint-disable-next-line max-lines-per-function -- 凭证鉴别链(守卫/密码/漂移/状态/计数/审计)语义连续,拆段即互相回读(存量棘轮)
+  // eslint-disable-next-line max-lines-per-function -- 凭证鉴别链(守卫/密码/漂移/状态/计数/审计)语义连续,拆段即互相回读
   const authenticateCredentials = async (
     body: { email: string; password: string },
     ip: string,
@@ -87,7 +93,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
   }> => {
     const guardKey = sha256Hex(`${body.email}:${ip}`);
 
-    // 守卫不可达 fail-closed（Redis 必配,P2 起）
+    // 守卫不可达 fail-closed（Redis 必配）
     let byKey: { locked: boolean; retryAfterSec: number };
     let byIp: { locked: boolean; retryAfterSec: number };
     try {
@@ -151,6 +157,28 @@ export function authRoutes(deps: AuthRoutesDeps) {
     await deps.identity.sessions.logout(c.get('sessionToken'), 'admin');
     return c.json({ ok: true });
   });
+
+  // 消费邀请令牌设置初始密码(公开端点——ACL PUBLIC_ROUTES 直通):
+  // 校验链任一失败统一 400 admin_reset_token_invalid(不泄漏具体原因——令牌
+  // 无枚举面,但「目标已激活」与「封禁」等状态不外泄);成功不自动登录
+  // (对齐 C 端找回交互,跳登录页手动登录)。旧链接在对方设密后即作废
+  // (消费期「目标无密码」校验——泄露链接改不了已激活账号的密码)。
+  app.post('/v1/auth/reset-password', jsonBody(authContracts.resetPassword), async (c) => {
+    const body = c.req.valid('json');
+    const adminId = await deps.invites.consume(body.token);
+    if (adminId == null) throw invalidResetToken();
+    const account = await deps.admins.find(adminId);
+    if (account == null || account.status !== 0) throw invalidResetToken();
+    const activated = await deps.identity.passwords.exists({ userIds: [adminId] });
+    if (activated.length > 0) throw invalidResetToken();
+    await deps.identity.passwords.reset({
+      userId: adminId,
+      realm: 'admin',
+      newPassword: body.password,
+    });
+    return c.json({ ok: true });
+  });
+
   app.post('/v1/auth/login', async (c) => {
     const body = authContracts.login.parse(await c.req.json());
     const ip = clientIpOf(c);

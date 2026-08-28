@@ -1,7 +1,6 @@
 /**
- * 过账结构校验行为规格（迁移自旧仓 domain/wallet/__tests__/posting.test.ts 复式定律部分；
- * 敞口守卫拆至 exposure.test.ts、指纹拆至 fingerprint.test.ts——旧「undefined 丢弃同指纹」
- * 用例随 B4 修复反转）。
+ * 过账结构校验行为规格（复式定律部分）；
+ * 敞口守卫在 exposure.test.ts、指纹在 fingerprint.test.ts。
  */
 import { describe, expect, it } from 'vitest';
 import { isDefectError } from '@tillgate/errors';

@@ -1,7 +1,7 @@
 /**
- * 集成字段规格表（DESIGN §3.2）：同一真相驱动写入校验、掩码回显、完整性判定与导入分组。
+ * 集成字段规格表：同一真相驱动写入校验、掩码回显、完整性判定与导入分组。
  * secret = 加密落库（enc:v1 内嵌 config jsonb）；rotatable = 变更时旧值进双读窗
- * （仅支付验签字段——DESIGN §5 D6 收窄）；required = configured 完整性必填项。
+ * （仅支付验签字段）；required = configured 完整性必填项。
  */
 import { EPAY_PAY_TYPES } from '@tillgate/billing';
 
@@ -99,7 +99,7 @@ export function specOf(key: IntegrationKey): IntegrationSpec {
 /** 字段形状校验（纯函数；长度上限与空白串拒绝对所有 kind 生效） */
 export function isValidFieldValue(kind: IntegrationFieldKind, value: string): boolean {
   if (value.length === 0 || value.length > INTEGRATION_FIELD_MAX_LENGTH) return false;
-  if (value.trim().length === 0) return false; // 空白串 = 无效值（review 修复：R3）
+  if (value.trim().length === 0) return false; // 空白串 = 无效值
   switch (kind) {
     case 'text':
       return true;
@@ -118,8 +118,8 @@ function isValidHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
-    // SSRF 探测面收窄（review 修复 H1/H3）：拒绝回环/私网/链路本地字面量
-    // （e2e/私有化经 store 直种绕过本层；DNS 级 rebinding 不在本层范围——DESIGN §6 修订）
+    // SSRF 探测面收窄：拒绝回环/私网/链路本地字面量
+    // （e2e/私有化经 store 直种绕过本层；DNS 级 rebinding 不在本层范围）
     return !isPrivateNetworkHost(parsed.hostname);
   } catch {
     return false;

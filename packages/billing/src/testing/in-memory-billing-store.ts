@@ -1,5 +1,5 @@
 /**
- * 内存版计费链路 stand-in（§5.6 类别 2）：BillingStore + SubscriptionQuotaStore +
+ * 内存版计费链路 stand-in：BillingStore + SubscriptionQuotaStore +
  * ChannelExposureStore + FundingSourceResolver 的行为等价实现，供 application
  * 在无 PG 环境下的契约测试（默认门禁）；真实 PG 语义（CAS 竞态/守卫原子 UPDATE/
  * advisory lock）由 *.real.test.ts 验证。
@@ -100,7 +100,7 @@ export interface InMemoryBillingWorld {
   /** 账户侧协作 port（users/orgs/凭证改绑的内存实现） */
   accountContext: AccountContextStore;
   /**
-   * 事务回滚模拟（§5.4 边界测试）：全部夹具集合的深快照。与钱包 stand-in 的
+   * 事务回滚模拟（边界测试）：全部夹具集合的深快照。与钱包 stand-in 的
    * snapshotForTest 配对，由测试的 rollbackable 事务壳在异常时一并还原——
    * 模拟 PG 的整事务回滚（内存 stand-in 本身无回滚语义）。
    */
@@ -645,7 +645,7 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
       return row ? { ...row } : null;
     },
 
-    // ---- 管理读侧面（U6 stand-in;users 富化为合成值——join 语义归 pg 适配器） ----
+    // ---- 管理读侧面（stand-in;users 富化为合成值——join 语义归 pg 适配器） ----
     listAdminPlans: (_conn, query) => {
       const all = [...plansCatalog.values()]
         .filter((row) => query.q === undefined || row.name.includes(query.q))

@@ -1,6 +1,6 @@
 /**
- * 组织/成员/邀请用例(MIGRATION §1.2):席位不变量、邀请全矩阵、复活语义、
- * owner 保护、B5 回归(active-only 设限)、订阅绑定守卫。
+ * 组织/成员/邀请用例:席位不变量、邀请全矩阵、复活语义、
+ * owner 保护、active-only 设限回归、订阅绑定守卫。
  */
 import { describe, expect, it } from 'vitest';
 import { defined } from './defined.js';

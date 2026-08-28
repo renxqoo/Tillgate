@@ -1,7 +1,8 @@
 # @tillgate/worker —— 后台任务应用
 
 七类后台 job 的调度与进程生命周期壳（结算/恢复/生成轮询/佣金/告警/对账/分区）；
-业务全部来自能力包 facade，本 app 无业务 HTTP。Redis 全退出（v1 BullMQ 唤醒 → PG `LISTEN settle-wake`）。
+业务全部来自能力包 facade，本 app 无业务 HTTP。结算调度由 BullMQ/Redis 承载，
+PG `LISTEN settle-wake` 作低延迟门铃，PG 状态机与恢复扫描作确定性兜底。
 
 设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md) · 相关 [ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)
 
@@ -9,7 +10,7 @@
 
 - **七 job**（v1 八循环对位；缺省值唯一真相在 config）：settle 结算扫描（30s）、recover 滞留恢复（15s）、generation 生成任务轮询（5s，含 music 代执行）、referral 佣金日结（1h，7 日回补）、notify 告警投递（15s，`WORKER_NOTIFY_ENABLED` 可关）、reconcile 周期对账（1h，advisory lock 单副本 + 差异告警入箱）、partitions 分区维护（1h；trace 保留 7 天 / 请求日志 90 天）
 - **低延迟唤醒**：PG `LISTEN settle-wake` 消费端（生产端 = gateway `pg_notify` 纯门铃；`WORKER_SETTLE_WAKE` 可关，丢失由兜底扫描覆盖）
-- **健康端点**（独立 HTTP，`WORKER_HEALTH_PORT` 缺省 `8792`，0 = 关闭）：`/livez` `/readyz` 恒开放（compose healthcheck 用）；`/health` 深度报告需请求头 `x-health-token`（timingSafeEqual；`WORKER_HEALTH_TOKEN` 未配置 = 恒 403）
+- **健康端点**（独立 HTTP，`WORKER_HEALTH_PORT` 缺省 `8792`，0 = 关闭）：`/livez` 反映进程存活，`/readyz` 验证 scheduler+PG+BullMQ Redis；`/health` 深度报告需请求头 `x-health-token`（timingSafeEqual；`WORKER_HEALTH_TOKEN` 未配置 = 恒 403）
 - **优雅停机**：停收批次 → 在途宽限（`WORKER_SHUTDOWN_GRACE_MS` 15s）→ 归还本副本认领 → 连接收口
 
 ## 目录结构（src/）

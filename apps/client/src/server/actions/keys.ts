@@ -71,8 +71,8 @@ const EXPORT_PAGE_SIZE = 100;
 const EXPORT_MAX_KEYS = 1000;
 
 /**
- * B18 增强：导出当前列表全量——经 list 动词循环翻页取满 total，而非仅当前页 20 条。
- * 页面级导出语义保留（G1 筛选契约落地前列表无筛选，导出即全部 Key）。
+ * 导出当前列表全量——经 list 动词循环翻页取满 total，而非仅当前页 20 条。
+ * 页面级导出语义（列表当前无筛选，导出即全部 Key）。
  */
 export async function exportKeysAction(): Promise<{ error?: string; rows?: KeyRow[] }> {
   try {

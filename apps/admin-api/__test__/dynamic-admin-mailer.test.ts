@@ -1,7 +1,7 @@
 /**
  * 动态管理面邮件（集成设置驱动）单元规格（mock nodemailer + stub reader；
  * 独立文件——vi.resetModules 换代模块注册表，与错误面渲染测试互不污染）。
- * 规格锁（DESIGN §5 D4/D7）：发送面走 resolve() 严格读；SMTP 未生效 =
+ * 规格锁:发送面走 resolve() 严格读；SMTP 未生效 =
  * undeliverable_challenge；传输器随配置指纹重建（同指纹复用、变指纹重建）；
  * 管理面不发找回链接（端口合规空实现）。
  */
@@ -71,6 +71,7 @@ async function buildMailer(reader: IntegrationSettingsReader) {
   const mailer = createDynamicAdminMailer({
     reader,
     brand: BRAND,
+    inviteParams: { ttlMinutes: 30 },
     emailParams: { ttlMinutes: 5, maxAttempts: 5 },
     now: () => new Date(0),
   });
@@ -125,5 +126,21 @@ describe('dynamic-admin-mailer（集成设置驱动）', () => {
         ttlMinutes: 15,
       }),
     ).rejects.toThrow(/does not send reset links/);
+  });
+
+  it('管理员邀请:生效即发送(模板渲染链接);未生效同码 undeliverable_challenge', async () => {
+    const { state, reader } = stubReader();
+    state.smtp = SMTP_ON(465);
+    const { mailer, sent } = await buildMailer(reader);
+    const url = 'https://admin.example.com/reset-password?token=t';
+    await mailer.sendAdminInviteLink('new@tillgate.dev', url, { locale: 'zh', ttlMinutes: 30 });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ to: 'new@tillgate.dev' });
+    expect(String(defined(sent[0], 'sent[0]').html)).toContain('设置登录密码');
+
+    state.smtp = SMTP_OFF;
+    await expect(
+      mailer.sendAdminInviteLink('new@tillgate.dev', url, { locale: 'zh', ttlMinutes: 30 }),
+    ).rejects.toMatchObject({ code: 'identity.undeliverable_challenge' });
   });
 });

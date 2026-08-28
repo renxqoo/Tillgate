@@ -1,6 +1,6 @@
 /**
- * 订阅读面（plans/user_subscriptions 属 billing；用户面列表动词暂缺——MIGRATION §8
- * 待办迁 billing facade，本适配器是过渡读面）。语义对齐 v1：目录只列上架 subscription
+ * 订阅读面（plans/user_subscriptions 属 billing；用户面列表动词暂缺，
+ * 本适配器是过渡读面）。目录只列上架 subscription
  * 档；我的订阅 50 行封顶、个人有效订阅优先、id 倒序。
  */
 import { and, asc, desc, eq, gt, inArray, sql } from 'drizzle-orm';
@@ -14,7 +14,7 @@ export interface SubscriptionRead {
   orgSubscriptions(orgIds: readonly number[]): Promise<Map<number, OrgSubscriptionInfo>>;
 }
 
-/** 我的订阅行数封顶（v1 口径——历史订阅翻旧账走账单，不在此翻页） */
+/** 我的订阅行数封顶（历史订阅翻旧账走账单，不在此翻页） */
 const MY_SUBSCRIPTIONS_CAP = 50;
 
 // eslint-disable-next-line max-lines-per-function -- 读模型工厂:三个查询方法的 SQL 列投影平铺(列定义即数据)
@@ -39,7 +39,7 @@ export function createSubscriptionRead(db: Db): SubscriptionRead {
     },
 
     async mySubscriptions(userId) {
-      // 个人有效订阅（status=0 且未到期且非组织）排最前，其余按 id 倒序——v1 排序口径
+      // 个人有效订阅（status=0 且未到期且非组织）排最前，其余按 id 倒序
       const personalActiveFirst = sql`(case when ${userSubscriptions.status} = 0
         and ${userSubscriptions.endAt} > clock_timestamp()
         and ${userSubscriptions.orgId} is null then 0 else 1 end)`;

@@ -1,7 +1,7 @@
 /**
- * 分区维护 job（v1 tasks/partition-maintenance.ts 语义平移；DDL 与 advisory
- * try-lock 内建在 observability 适配器——天然多副本安全）。trace 日分区与
- * request_logs 月分区两个动作、同节奏（v1 两个独立循环共用一个 interval env）。
+ * 分区维护 job（DDL 与 advisory try-lock 内建在 observability 适配器——
+ * 天然多副本安全）。trace 日分区与 request_logs 月分区两个动作、同节奏
+ * （共用一个 interval env）。
  */
 interface PartitionJobResult {
   traces: { created: string[]; dropped: string[] };

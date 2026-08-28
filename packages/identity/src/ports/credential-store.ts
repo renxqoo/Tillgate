@@ -1,6 +1,6 @@
 /**
- * 凭据持久化 port(标识绑定 + 密码行)。每动词 db: DbLike 首参参与调用方事务
- * (总纲 §5.4);行投影不含秘密列。实现见 adapters/postgres/credentials.ts、
+ * 凭据持久化 port(标识绑定 + 密码行)。每动词 db: DbLike 首参参与调用方事务;
+ * 行投影不含秘密列。实现见 adapters/postgres/credentials.ts、
  * passwords.ts;内存替身见 testing/in-memory-identity-store.ts。
  */
 import type { DbLike } from '@tillgate/db';
@@ -15,7 +15,7 @@ export interface CredentialStore {
   /**
    * 绑定标识(insert onConflictDoNothing + 读回分类):created = 新落行;replay =
    * 同用户重挂(幂等);taken = 他人占用。契约:调用方须已持 `identity.user:{userId}`
-   * advisoryLock(application 的 runTx 临界区内,铁律 2)。
+   * advisoryLock(application 的 runTx 临界区内)。
    */
   registerCredential(
     db: DbLike,
@@ -31,10 +31,10 @@ export interface CredentialStore {
     input: NormalizedIdentifier,
   ): Promise<{ userId: number; passwordHash: string } | null>;
 
-  /** 读取存储哈希(B04:调用方在锁内临界区读→验→改) */
+  /** 读取存储哈希(调用方在锁内临界区读→验→改) */
   loadPasswordHash(db: DbLike, userId: number): Promise<string | null>;
 
-  /** 换哈希(SQL now();行消失 = false;B04:调用方在锁内读→验→改) */
+  /** 换哈希(SQL now();行消失 = false;调用方在锁内读→验→改) */
   updatePassword(db: DbLike, input: { userId: number; passwordHash: string }): Promise<boolean>;
 
   /** 重置/设初始密码(upsert;SQL now();调用方持锁) */
@@ -45,4 +45,7 @@ export interface CredentialStore {
     db: DbLike,
     userId: number,
   ): Promise<{ kind: 'email' | 'phone'; value: string } | null>;
+
+  /** 批量查询已设密码的 userId 子集(列表投影单查防 N+1;空入参返回空) */
+  findPasswordUserIds(db: DbLike, userIds: readonly number[]): Promise<number[]>;
 }

@@ -7,7 +7,7 @@ import {
 } from '../src/network/trusted-client-ip';
 
 /**
- * XFF 信任模型（TRUSTED_PROXY_HOPS）——v1 trusted-client-ip.test 全部迁移：
+ * XFF 信任模型（TRUSTED_PROXY_HOPS）：
  * 「取 XFF 首段」可被客户端任意伪造（换 XFF 即绕过登录限流/authfail 计数），
  * 因此 hops=0 完全忽略代理头；hops=N 取右数第 N 跳（信任的第一层代理看到的客户端）。
  */

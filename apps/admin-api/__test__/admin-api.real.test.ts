@@ -6,7 +6,7 @@ import { createAdminApp } from '../src/app';
 
 /**
  * 真实 PG 冒烟(默认门禁按文件名排除;DATABASE_URL 不可达优雅跳过):
- * 装配 → 探针(经真实 pg 池) → 收口。业务行为等价由能力包 real 测试与 v1 规格
+ * 装配 → 探针(经真实 pg 池) → 收口。业务行为等价由能力包 real 测试与
  * 契约测试承担——本文件只锁「装配件在真实依赖形态下可启动」。
  */
 
@@ -67,6 +67,9 @@ describe('admin-api 真实 PG 冒烟', () => {
         authGuards: assembly.authGuards,
         trustedProxyHops: config.trustedProxyHops,
         mailerConfigured: assembly.mailerConfigured,
+        invites: assembly.invites,
+        sendInviteLink: assembly.sendInviteLink,
+        inviteLinkBase: assembly.inviteLinkBase,
         loginAudit: assembly.loginAudit,
         stepupAudit: assembly.stepupAudit,
         twoFactorAudit: assembly.twoFactorAudit,

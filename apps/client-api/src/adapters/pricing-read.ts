@@ -1,8 +1,8 @@
 /**
  * 定价读面（gateway catalog-port 同款的 app-face join）：control-plane 只读目录
  * store + billing pickCoefficient 快照形态转换 + Redis 共享缓存（多副本一份，
- * 30s 可配；缓存故障 fail-open 直查库——v1 语义）。
- * 计费时区同源 system_configs（进程内 TTL 缓存；目录形状 v2 = 富化行带分时段窗口）。
+ * 30s 可配；缓存故障 fail-open 直查库）。
+ * 计费时区同源 system_configs（进程内 TTL 缓存；目录形状 = 富化行带分时段窗口）。
  */
 import { eq } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
@@ -13,7 +13,7 @@ import type { RateCardCoefficientSnapshot } from '@tillgate/billing';
 import type { BaseCatalog, PricingEnrichedRow } from '../http/presenters/pricing.js';
 import { scheduleWindowsOf } from '../http/presenters/pricing.js';
 
-/** 缓存键带版本号——目录形状变更时递增失效存量（v2 = 富化行带 schedule 窗口） */
+/** 缓存键带版本号——目录形状变更时递增失效存量（当前形状 = 富化行带 schedule 窗口） */
 const CACHE_KEY = 'client:pricing:catalog:v2';
 
 /** system_configs 计费时区键（与网关热路径读取器、admin settings 路由同一约定） */
@@ -69,7 +69,7 @@ export function createPricingRead(
       db,
       models.map((m) => m.externalName),
     );
-    // ActiveMappingRow → 富化投影（billingConfig → schedule 窗口；缓存形状 = v2）
+    // ActiveMappingRow → 富化投影（billingConfig → schedule 窗口）
     const projected = new Map<string, PricingEnrichedRow>();
     for (const [name, row] of enriched.entries()) {
       const schedule = scheduleWindowsOf(row.billingConfig);
@@ -111,7 +111,7 @@ export function createPricingRead(
 
   return {
     async baseCatalog() {
-      // 缓存故障 fail-open：任何 redis 异常吞掉直查库（v1 语义）
+      // 缓存故障 fail-open：任何 redis 异常吞掉直查库
       try {
         const cached = await redis.get(CACHE_KEY);
         if (cached != null) {

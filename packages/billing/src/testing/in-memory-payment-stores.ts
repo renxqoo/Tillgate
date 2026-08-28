@@ -1,7 +1,7 @@
 /**
- * 内存版支付与兑换 stand-in（§5.6 类别 2）：PaymentOrderStore / RedeemCodeStore /
+ * 内存版支付与兑换 stand-in：PaymentOrderStore / RedeemCodeStore /
  * RateCounterPort 的行为等价实现，供 application/{payments,redemption} 在无 PG
- * 环境下的契约测试（默认门禁）；真实 PG 语义（唯一约束竞态/并发同码）随 apps 波验证。
+ * 环境下的契约测试（默认门禁）；真实 PG 语义（唯一约束竞态/并发同码）由 *.real.test.ts 验证。
  */
 import type {
   PaymentOrderStore,
@@ -124,7 +124,7 @@ export function createInMemoryPaymentStores() {
       return Promise.resolve();
     },
     listAdminOrders: (_conn, input) => {
-      // q 双锚:v1 语义——订单 uuid 精确命中或用户显示名精确匹配
+      // q 双锚:订单 uuid 精确命中或用户显示名精确匹配
       const matched = [...orders.values()].filter((row) => {
         if (input.q === undefined) return true;
         return row.id === input.q || row.displayName === input.q;

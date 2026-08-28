@@ -40,7 +40,12 @@ describe.skipIf(url == null)('wallet 快路径（真 PG）', () => {
   /** 独立用户 + 充值（内部账 double-entry 经 wallet.credit） */
   async function freshUser(amount: string): Promise<number> {
     const id = 900_000_000 + Math.floor(Math.random() * 90_000_000);
-    await wallet.credit({ userId: id, amount, refType: 'test', refId: `fp-credit-${id}-${runTag}` });
+    await wallet.credit({
+      userId: id,
+      amount,
+      refType: 'test',
+      refId: `fp-credit-${id}-${runTag}`,
+    });
     return id;
   }
 
@@ -52,9 +57,30 @@ describe.skipIf(url == null)('wallet 快路径（真 PG）', () => {
   it('authorize 三档守卫（完整链;信用/现金/超额拒/#over 负余额）', async () => {
     const id = await freshUser('10');
     // 信用口径:8 过;现金口径:2 过;超额:拒 insufficient_balance;#over:负余额过
-    expect((await wallet.authorize({ userId: id, amount: '8', refType: 'test', refId: `fp-3a-${runTag}` })).status).toBe('active');
-    expect((await wallet.authorize({ userId: id, amount: '2', refType: 'test', refId: `fp-3b-${runTag}`, allowCredit: false })).status).toBe('active');
-    await expect(wallet.authorize({ userId: id, amount: '0.001', refType: 'test', refId: `fp-3c-${runTag}` })).rejects.toMatchObject({ code: 'billing.insufficient_balance' });
+    expect(
+      (
+        await wallet.authorize({
+          userId: id,
+          amount: '8',
+          refType: 'test',
+          refId: `fp-3a-${runTag}`,
+        })
+      ).status,
+    ).toBe('active');
+    expect(
+      (
+        await wallet.authorize({
+          userId: id,
+          amount: '2',
+          refType: 'test',
+          refId: `fp-3b-${runTag}`,
+          allowCredit: false,
+        })
+      ).status,
+    ).toBe('active');
+    await expect(
+      wallet.authorize({ userId: id, amount: '0.001', refType: 'test', refId: `fp-3c-${runTag}` }),
+    ).rejects.toMatchObject({ code: 'billing.insufficient_balance' });
     expect(
       (
         await wallet.authorize({
@@ -68,7 +94,11 @@ describe.skipIf(url == null)('wallet 快路径（真 PG）', () => {
     ).toBe('active');
     // 自清:释放全部持有
     for (const refId of [`fp-3a-${runTag}`, `fp-3b-${runTag}`, `fp-3d-${runTag}#over`]) {
-      await wallet.release({ refType: refId.endsWith('#over') ? 'billing' : 'test', refId, reason: 'fastpath test cleanup' });
+      await wallet.release({
+        refType: refId.endsWith('#over') ? 'billing' : 'test',
+        refId,
+        reason: 'fastpath test cleanup',
+      });
     }
   });
 
@@ -76,9 +106,15 @@ describe.skipIf(url == null)('wallet 快路径（真 PG）', () => {
     const { sql } = await import('drizzle-orm');
     const id = await freshUser('5');
     const accountId = await store.transaction((tx) => store.ensureUserAccount(tx, id, 'CNY'));
-    await db.execute(sql`update wallet_accounts set status = 'frozen' where id = ${accountId}::uuid`);
-    expect(await gate({ accountId, amount: '1', guardKind: 'credit', collectOverage: false })).toBeNull();
-    expect(await gate({ accountId, amount: '1', guardKind: 'credit', collectOverage: true })).toBeNull();
+    await db.execute(
+      sql`update wallet_accounts set status = 'frozen' where id = ${accountId}::uuid`,
+    );
+    expect(
+      await gate({ accountId, amount: '1', guardKind: 'credit', collectOverage: false }),
+    ).toBeNull();
+    expect(
+      await gate({ accountId, amount: '1', guardKind: 'credit', collectOverage: true }),
+    ).toBeNull();
   });
 
   it('无限额 50 并发 authorize：钱包原子门串行吞吐（in_flight 精确、全部成功）', async () => {
@@ -103,6 +139,10 @@ describe.skipIf(url == null)('wallet 快路径（真 PG）', () => {
     // 阈值取 3s(≈15×加速)——留机器负载余量,只锁量级不锁毫秒。
     expect(wall).toBeLessThan(3_000);
     // 清场:释放全部持有(走 release 语义,防跨用例残留)
-    await Promise.all(refIds.map((refId) => wallet.release({ refType: 'test', refId, reason: 'fastpath bench cleanup' })));
+    await Promise.all(
+      refIds.map((refId) =>
+        wallet.release({ refType: 'test', refId, reason: 'fastpath bench cleanup' }),
+      ),
+    );
   });
 });

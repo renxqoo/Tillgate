@@ -104,7 +104,7 @@ export function BillingTimezoneCard({ canUpdate }: { canUpdate: boolean }) {
         <CardDescription>{t('billingTimezoneDescription')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* 无 settings:update：隐藏选择器与保存钮，只读展示当前值（2026-08-25 用户裁决 D1） */}
+        {/* 无 settings:update：隐藏选择器与保存钮，只读展示当前值 */}
         {canUpdate ? (
           <div className="flex items-center gap-2">
             <NativeSelect

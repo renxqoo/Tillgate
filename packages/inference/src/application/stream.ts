@@ -142,7 +142,7 @@ async function awaitDecisiveEvent(
           settled = true;
           resolve(event);
         }
-        // 后台结算不得反噬数据面：意外异常经 onError 观察 + 停租（铁律：回调
+        // 后台结算不得反噬数据面：意外异常经 onError 观察 + 停租（回调
         // fire-and-forget 不外溢；正常路径 settle 内部自停租）
         void settleStream(sc, event).catch((error) => crashStreamSettle(sc, error));
         return;
@@ -176,7 +176,7 @@ function markDecisiveSpan(
   }
 }
 
-/** 上游调用 → 决定性事件整段包 upstream.attempt span（v1 attempt-stream 等价；终态后台结算在此上下文里发起——settle_signal 自然挂本 span 之下） */
+/** 上游调用 → 决定性事件整段包 upstream.attempt span（终态后台结算在此上下文里发起——settle_signal 自然挂本 span 之下） */
 async function streamUpstreamWithSpan(
   deps: ExecutionDeps,
   ctx: AttemptContext,
@@ -219,7 +219,7 @@ async function streamUpstreamWithSpan(
 }
 
 /**
- * 流式尝试（v1 attempt-stream.ts 迁移）：first_chunk/failed/success 决定性事件锚定
+ * 流式尝试：first_chunk/failed/success 决定性事件锚定
  * 换渠窗口；上线后管道立即交还路由，终态监听与续租保命在后台进行。
  */
 export function createStreamAttempt(deps: ExecutionDeps) {

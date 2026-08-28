@@ -1,6 +1,6 @@
 /**
  * Application 域规则:scope 限制项校验(models 条数/条目长度、rpm/tpm 上界注入)。
- * v1 上界:models ≤100 条、每条 ≤64 字符、rpm ≤1e6、tpm ≤1e8(写死 → policy 注入)。
+ * 上界缺省:models ≤100 条、每条 ≤64 字符、rpm ≤1e6、tpm ≤1e8(经 policy 注入)。
  */
 import { FIELD_LIMITS } from './fields.js';
 import { parseRateLimit } from './limits.js';

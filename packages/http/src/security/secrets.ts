@@ -1,6 +1,6 @@
 /**
- * 一次性密钥生成与哈希组件(v1 secrets.ts 迁移;encryptCurrent 不迁——runtime
- * createCipher 已接管 enc:v1,http 不得依赖 runtime)。
+ * 一次性密钥生成与哈希组件(只做生成与哈希;加密由 runtime createCipher 的
+ * enc:v1 信封承担,http 不得依赖 runtime)。
  *
  * 安全设计:
  *   - 明文只在创建/生成时下发一次
@@ -8,9 +8,6 @@
  *   - 鉴权/兑换时对输入明文再次哈希后比对
  *
  * 纯函数、无 I/O(node:crypto 随机数除外),便于单测。
- * C5 搬迁记录:api-key/app 凭证生成器(generateApiKey/generateClientId/
- * generateClientSecret/maskKey/sha256Hex)已随消费者迁入
- * @tillgate/accounts(domain/credentials);RC- 兑换码留待 billing 波次带走。
  */
 
 import { randomBytes } from 'node:crypto';

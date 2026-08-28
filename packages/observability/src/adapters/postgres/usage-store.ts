@@ -14,9 +14,9 @@ import type {
 import { escapeLikePattern } from './search';
 
 /**
- * usage_logs 运维查询的 PG 适配(v1 usage-log.repo 管理面族逐语义平移):
+ * usage_logs 运维查询的 PG 适配:
  * 管理列表 / 概览三段 / 分组聚合 / 按日趋势 / 渠道首字延迟。
- * 聚合口径与 v1 逐条对照——排序稳定序、bigint 回传字符串映射、
+ * 聚合口径:排序稳定序、bigint 回传字符串映射、
  * 趋势日界 at time zone 'Asia/Shanghai' 与 day-window 纯函数同口径。
  */
 

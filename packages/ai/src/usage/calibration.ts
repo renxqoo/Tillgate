@@ -1,7 +1,7 @@
 /**
  * token 估算固定配置（单一真相，数据驱动，按「供应商+模型」为主粒度）。
  *
- * 权重按「字符类别」而非单一 charPerToken：实测（2026-08，scripts/token-estimate-accuracy.mts）
+ * 权重按「字符类别」而非单一 charPerToken：实测（2026-08）
  * 各供应商 tokenizer 对中文约 1.5 字/token、英文约 0.9 词/token，与「1 字=1 token / 1 词=1 token」
  * 的直觉常数偏差显著。
  *
@@ -56,7 +56,6 @@ export interface TokenEstimateCalibration {
  * 固定校准配置（唯一配置来源，代码内常量）：
  * defaults 初始值来自 2026-08 实测；MiniMax-M3 的 tokensPerByte 来自
  * 2026-08-16 生产 trace 15 个样本（33.7 字节/token 中位）。
- * 需要重新校准时用 scripts/token-estimate-accuracy.mts 实测后改这里。
  */
 export const DEFAULT_TOKEN_ESTIMATE_CALIBRATION: TokenEstimateCalibration = {
   defaults: { cjk: 0.7, word: 1.1, number: 1.0, symbol: 1.0 },

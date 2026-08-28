@@ -2,111 +2,14 @@
 
 // 目录动作条：搜索 × 价格/状态筛选 + 一键跟进 + 拉取元信息 + 密钥补录与导入按钮（值全受控，动作回调上抛编排器）
 
-import { Button, Input } from '@tillgate/ui';
-import { ArrowDownIcon, ArrowUpIcon, Loader2Icon, StoreIcon } from 'lucide-react';
+import { Input } from '@tillgate/ui';
 import { useTranslations } from 'next-intl';
 
 import { fmtDateTime } from '@/lib/formatters';
+import { CatalogImportArea } from './catalog-import-area';
 import type { PriceFilter, StateFilter } from './catalog-filter';
-
-/** 筛选按钮组（价格/状态两组共用：options 为 [值, label] 平铺，激活项高亮） */
-function FilterButtonGroup<K extends string>({
-  options,
-  active,
-  onSelect,
-}: {
-  options: ReadonlyArray<readonly [K, string]>;
-  active: K;
-  onSelect: (k: K) => void;
-}) {
-  return (
-    <div className="flex gap-1 text-xs">
-      {options.map(([k, label]) => (
-        <button
-          key={k}
-          type="button"
-          onClick={() => onSelect(k)}
-          className={`rounded-md px-2 py-1 ${active === k ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** 一键跟进：把涨价/降价方向的漂移行全选（动作逻辑在编排器 applyDiff） */
-function FollowDiffButtons({
-  onApplyDiff,
-}: {
-  onApplyDiff: (kind: 'price_up' | 'price_down') => void;
-}) {
-  const t = useTranslations('modelMarket');
-  return (
-    <div className="flex gap-1">
-      <Button
-        size="sm"
-        variant="outline"
-        className="h-7 text-xs"
-        onClick={() => onApplyDiff('price_up')}
-      >
-        <ArrowUpIcon className="mr-1 size-3" /> {t('followUp')}
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        className="h-7 text-xs"
-        onClick={() => onApplyDiff('price_down')}
-      >
-        <ArrowDownIcon className="mr-1 size-3" /> {t('followDown')}
-      </Button>
-    </div>
-  );
-}
-
-/** 导入动作区：渠道未就绪时补录密钥 + 导入按钮（pending/选中计数受控，提交回调上抛） */
-function CatalogImportArea({
-  needsKey,
-  channelReady,
-  sourceName,
-  apiKey,
-  onApiKeyChange,
-  pending,
-  selectedCount,
-  sourceKind,
-  onImport,
-}: {
-  needsKey: boolean;
-  channelReady: boolean;
-  sourceName: string;
-  apiKey: string;
-  onApiKeyChange: (v: string) => void;
-  pending: boolean;
-  selectedCount: number;
-  sourceKind: 'channel' | 'reference';
-  onImport: () => void;
-}) {
-  const t = useTranslations('modelMarket');
-  return (
-    <div className="ml-auto flex items-center gap-2">
-      {needsKey && !channelReady ? (
-        <Input
-          type="password"
-          placeholder={t('apiKeyPlaceholder', { source: sourceName })}
-          value={apiKey}
-          onChange={(e) => onApiKeyChange(e.target.value)}
-          className="w-72"
-        />
-      ) : null}
-      <Button disabled={pending || selectedCount === 0} onClick={onImport}>
-        {pending ? <Loader2Icon className="mr-1 animate-spin" /> : <StoreIcon className="mr-1" />}
-        {sourceKind === 'reference'
-          ? t('importDraftCount', { count: selectedCount })
-          : t('importSelectedCount', { count: selectedCount })}
-      </Button>
-    </div>
-  );
-}
+import { FilterButtonGroup } from './filter-button-group';
+import { FollowDiffButtons } from './follow-diff-buttons';
 
 export function CatalogToolbar({
   query,

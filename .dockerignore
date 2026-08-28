@@ -18,3 +18,4 @@ e2e
 scripts
 apps/*/test-results
 apps/*/playwright-report
+docker/nginx/certs-server

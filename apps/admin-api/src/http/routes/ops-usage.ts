@@ -1,8 +1,8 @@
 /**
- * 用量与统计路由（P4;v1 routes/ops.ts usage-logs/stats 族平移）：
+ * 用量与统计路由：
  * 用量明细 / 概览 / 分组聚合 / 按日趋势 / 渠道首字延迟。
  * 语义全部经 observability.usage facet（SQL 在包 adapter;北京日界口径在包内）。
- * hours 收口逐字随迁 v1（Math.min/max + NaN→24,不走 zod 400——容错语义）。
+ * hours 收口为容错语义（Math.min/max + NaN→24,不走 zod 400）。
  */
 import { Hono } from 'hono';
 import type { Observability } from '@tillgate/observability';
@@ -17,7 +17,7 @@ export interface OpsUsageRoutesDeps {
   readonly now: () => Date;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function opsUsageRoutes(deps: OpsUsageRoutesDeps) {
   const app = new Hono<SessionEnv>();
   const { usage } = deps.observability;
@@ -65,7 +65,7 @@ export function opsUsageRoutes(deps: OpsUsageRoutesDeps) {
   });
 
   app.get('/v1/analytics/channel-ttft', async (c) => {
-    // v1 容错收口:非数/缺省 → 24,越界钳到 [1, 720](不 400)
+    // hours 容错收口:非数/缺省 → 24,越界钳到 [1, 720](不 400)
     const hours = Math.min(720, Math.max(1, Number(c.req.query('hours')) || 24));
     return c.json(await usage.channelTtft({ hours, now: deps.now() }));
   });

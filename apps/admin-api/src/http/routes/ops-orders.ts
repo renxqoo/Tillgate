@@ -1,8 +1,8 @@
 /**
- * 支付订单管理路由（P4;v1 routes/ops.ts payment-orders 族平移）：管理列表
+ * 支付订单管理路由：管理列表
  * + 手动关单（close 无请求体——admin 前端直调;关单理由装配注入零写死）。
  * 关单失败（已付/已入账/已关/不存在）经 billing 目录 order_state_conflict
- * 渲染 409（v1 conflict 语义）。
+ * 渲染 409。
  */
 import { Hono } from 'hono';
 import type { PaymentAdminApi } from '@tillgate/billing';
@@ -13,7 +13,7 @@ import { toOrderWireRow } from '../presenters/ops';
 
 export interface OpsOrdersRoutesDeps {
   readonly paymentAdmin: PaymentAdminApi;
-  /** 手动关单的 failureReason 留痕文案（审计数据,装配层显式持有——铁律 3） */
+  /** 手动关单的 failureReason 留痕文案（审计数据,装配层显式持有） */
   readonly orderCloseReason: string;
 }
 

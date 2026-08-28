@@ -1,10 +1,10 @@
 /**
  * 通知渠道形状规则(纯函数):类型词表、config 形状、订阅词表、掩码与加密侧归一。
- * 校验口径 = v1 路由 zod + 服务层 assertChannelInput 的合并收口(B1):
- *  - config 形状独立于 type 校验(url+secret 或 recipients 非空——zod refine 语义);
- *  - type 在场时再按类型跨校验(webhook→url+secret / email→recipients,服务层语义);
+ * 校验口径:
+ *  - config 形状独立于 type 校验(url+secret 或 recipients 非空);
+ *  - type 在场时再按类型跨校验(webhook→url+secret / email→recipients);
  *  - wire 级细则(url ≤255/secret 16..255/recipients ≤20/邮箱格式)归 admin-api 契约,
- *    本层只承结构性形状(IMPLEMENTATION §1.3)。
+ *    本层只承结构性形状。
  */
 import { isNotifyEvent, type NotifyEvent } from './events';
 
@@ -81,7 +81,7 @@ function configError(config: unknown, type: unknown): ChannelShapeError | null {
 
 /**
  * 结构校验:返回首个违规项,null = 通过(字段序:name → status → events → type → config)。
- * 类型收窄为「字段在场才校验」——PATCH 部分更新语义(type 缺席不触发跨校验,v1 语义)。
+ * 类型收窄为「字段在场才校验」——PATCH 部分更新语义(type 缺席不触发跨校验)。
  */
 export function validateChannelShape(input: ChannelShapeInput): ChannelShapeError | null {
   return (
@@ -123,8 +123,8 @@ export function maskChannelConfig(config: Record<string, unknown>): Record<strin
 }
 
 /**
- * 写入侧加密归一:客户端提交的 secret 一律当明文加密(禁止伪装内部 enc:* 密文——
- * v1 语义);空字符串/缺席原样返回(config 整体替换口径,PUT 语义)。
+ * 写入侧加密归一:客户端提交的 secret 一律当明文加密(禁止伪装内部 enc:* 密文);
+ * 空字符串/缺席原样返回(config 整体替换口径,PUT 语义)。
  */
 export function encryptChannelConfig(
   config: Record<string, unknown> | undefined,

@@ -1,4 +1,4 @@
-/** facade admins 面装配（G2——从 control-plane.ts 抽出以守 500 行指引） */
+/** facade admins 面装配 */
 import type { Db } from '@tillgate/db';
 import type { AdminAccess } from '../../domain/rbac';
 import type {

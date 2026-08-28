@@ -1,10 +1,10 @@
 /**
- * POST /oauth/token —— App JWT 签发（client_credentials 流；v1 oauth-token.ts 迁移，
- * A1 修复：凭证校验走 accounts verifyAppClient，SQL 不进 app）。
- * 签发口径与验证口径逐字段配对：app_id = apps.app_id 字符串（R-E2，v1 为数字主键）；
+ * POST /oauth/token —— App JWT 签发（client_credentials 流；凭证校验走 accounts
+ * verifyAppClient，SQL 不进 app）。
+ * 签发口径与验证口径逐字段配对：app_id = apps.app_id 字符串；
  * iss/aud 显式；scope 全量入令牌（rpm/tpm 限流 + models 白名单的执行依据）。
  * 爆破防护：IP 维 + client:{clientId} 维双锁（IP 可轮换，按 clientId 才能挡撞 secret）。
- * 失败 401 用 OAuth 标准错误形（invalid_client，非 OpenAI 信封——A9）。
+ * 失败 401 用 OAuth 标准错误形（invalid_client，非 OpenAI 信封）。
  */
 import { Hono } from 'hono';
 import type { Context } from 'hono';
@@ -118,7 +118,7 @@ function clientIpOf(deps: OAuthTokenDeps, c: Context): string {
 export function oauthTokenRoutes(deps: OAuthTokenDeps): Hono {
   return new Hono().post('/', async (c) => {
     const ip = clientIpOf(deps, c);
-    // 支持 form / JSON / Basic Auth 三种凭证传递；Basic 兜底仅在 form/JSON 缺凭证时整体改用（v1 覆写语义）
+    // 支持 form / JSON / Basic Auth 三种凭证传递；Basic 兜底仅在 form/JSON 缺凭证时整体改用
     const creds = await extractCredentials(c);
     const { grantType } = creds;
     const fromBasic =
@@ -158,7 +158,7 @@ export function oauthTokenRoutes(deps: OAuthTokenDeps): Hono {
       });
     }
 
-    // app_id = apps.app_id（R-E2：与鉴权端 resolveApp(appId) 同键配对）
+    // app_id = apps.app_id（与鉴权端 resolveApp(appId) 同键配对）
     const token = await signAppJwt(deps, app);
     return c.json({ access_token: token, token_type: 'Bearer', expires_in: deps.tokenTtlSeconds });
   });

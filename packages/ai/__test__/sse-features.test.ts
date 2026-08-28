@@ -50,7 +50,7 @@ describe('usage/features：四计数器（S1 修复的计量基础）', () => {
         symbolCount: a.symbolCount + b.symbolCount,
       }));
     expect(acc.snapshot()).toEqual(sum);
-    // "hel"+"lo" 是两个片段 = 2 个词段（与 v1 逐片段调用一致），整段才是 1 段——口径显式锁定
+    // "hel"+"lo" 是两个片段 = 2 个词段，整段才是 1 段——口径显式锁定
     expect(sum.wordSegments).toBe(2);
   });
 

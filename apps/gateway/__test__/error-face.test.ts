@@ -1,7 +1,7 @@
 /**
- * 错误面契约（v1 app.test「mapErrorToHttp 7 类」+ security-fixes「脱敏」语义迁移）：
+ * 错误面契约：
  * 组合目录封闭 / status 分派链（category 默认 + face override 502）/ 信封形状 /
- * 上游细节脱敏（§3.6 内容层）。
+ * 上游细节脱敏（内容层）。
  */
 import { describe, expect, it } from 'vitest';
 import { renderError } from '@tillgate/http';

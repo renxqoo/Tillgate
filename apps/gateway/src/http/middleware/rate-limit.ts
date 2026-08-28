@@ -1,12 +1,12 @@
 /**
- * 限流闸（v1 rate-limit/gate.ts 迁移；机制归 @tillgate/runtime limiter，策略在此）：
+ * 限流闸（机制归 @tillgate/runtime limiter，策略在此）：
  * 并罚制——任一维（key/user RPM、key/user/global TPM）超限即 429，不做凭证>用户择优；
  * 维度串不外泄（Retry-After 头表达等待）；TPM 预占失败必须 releaseTpm（TTL 兜底）。
  *
- * v2 裁决（IMPLEMENTATION §1 A10，R-E3）：模型维 TPM（v1 reserveModelDims）与渠道维
- * TPM 预占不在本波——前者需目录候选映射 id（inference 内部解析），后者需请求作用域
- * TPM 生命周期（admitChannel 钩子无 requestId 维）。渠道维 RPM 经 assembly 注入的
- * admitChannel 钩子保留（production-hardening「渠道超限换渠」语义）。
+ * 范围说明：模型维 TPM 与渠道维 TPM 预占不在本闸——前者需目录候选映射 id
+ * （inference 内部解析），后者需请求作用域 TPM 生命周期（admitChannel 钩子无
+ * requestId 维）。渠道维 RPM 经 assembly 注入的 admitChannel 钩子保留
+ * （渠道超限换渠语义）。
  */
 import { randomUUID } from 'node:crypto';
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
@@ -64,7 +64,7 @@ function tpmDimsOf(
 }
 
 /** 请求准入（路由入口调用）：RPM 多维原子检查 + TPM 预占；拒绝抛 gateway.rate_limit_exceeded。
- *  准入整段包 rate_limit.admit span（v1 等价；拒绝 = ERROR + 异常记录）。 */
+ *  准入整段包 rate_limit.admit span（拒绝 = ERROR + 异常记录）。 */
 export async function admitRequest(
   gate: RateLimitGate | undefined,
   input: AdmitInput,
@@ -95,7 +95,7 @@ export async function admitRequest(
       if (tpmDims.length > 0) {
         const tpm = await gate.limiter.reserveTpmAll(tpmDims, input.requestId);
         if (!tpm.allowed) {
-          // RPM 已计数不撤销（v1 同语义：并罚不留回滚路径）；TPM 未预占无需释放
+          // RPM 已计数不撤销（并罚不留回滚路径）；TPM 未预占无需释放
           throw GatewayErrors.business('rate_limit_exceeded', {
             retryAfterSec: tpm.retryAfterSec ?? 60,
           });

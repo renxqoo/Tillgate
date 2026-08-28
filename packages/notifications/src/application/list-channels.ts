@@ -1,6 +1,6 @@
 /**
  * 渠道列表:全量行,secret 恒掩码(密文不回显——任何管理会话/库转储都不该拿到
- * 可伪造通知的 secret,v1 语义)。
+ * 可伪造通知的 secret)。
  */
 import type { DbLike } from '@tillgate/db';
 import type { NotifyStore } from '../ports/notify-store';

@@ -1,6 +1,6 @@
 /**
  * 渠道进货凭证解析（纯函数）：data URL → 字节 + MIME 白名单 + 大小上限。
- * 存储是 I/O 边界（ports/voucher-storage）；本文件只做形状与配额裁决。
+ * 存储是 I/O 边界（ports/voucher-storage）；本文件只做形状与配额校验。
  */
 import { controlPlaneErrors } from '../../errors';
 

@@ -1,9 +1,8 @@
 /**
  * Accept-Language 协商内核 + BFF 出口语言(仅 ./next 子入口导出)。
  *
- * D1 同语义副本:孪生实现在 @tillgate/http/src/errors/locale.ts(发布闭包裁决,
- * 总纲 §7.3 顺序一;api-client 禁止依赖私有包)。两侧语义必须同步演进,
- * 测试向量与 http 包 locale.test.ts 锁步一致(IMPLEMENTATION §1.2)。
+ * 同语义副本:孪生实现在 @tillgate/http/src/errors/locale.ts(api-client 禁止依赖
+ * 私有包)。两侧语义必须同步演进,测试向量与 http 包 locale.test.ts 锁步一致。
  *
  * 支持语言固定为 en | zh,默认英文。zh-CN/zh-TW/zh-HK 等全部归并为 zh,
  * en-* 归并为 en;其余语言不命中,回落默认。

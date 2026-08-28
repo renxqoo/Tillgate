@@ -171,7 +171,7 @@ export class MiniMaxAdapter implements ProtocolAdapter {
   });
 }
 
-/** base_resp 信封错误（HTTP 200 也可能是错误）：MiniMax 码 → kind（v1 码表迁移） */
+/** base_resp 信封错误（HTTP 200 也可能是错误）：MiniMax 码 → kind 映射 */
 function minimaxEnvelopeError(body: unknown): UpstreamError | null {
   const envelope = asRecord(asRecord(body)?.base_resp);
   if (!envelope) return null;

@@ -1,7 +1,7 @@
 /**
- * P4 ops 读侧 wire 投影:用量行 / 生成任务行 / 支付订单行 → v1 wire 形状。
+ * ops 读侧 wire 投影:用量行 / 生成任务行 / 支付订单行 → wire 形状。
  * 时间口径:任务行 port 侧是 epoch ms(包内惯例),wire 转 ISO 字符串
- * (v1 JSON 序列化 Date 的产物——前端按 ISO 消费,保持兼容);
+ * (前端按 ISO 消费,保持兼容);
  * Date 列一律 iso() 收口(货币金额保持十进制字符串)。
  */
 import type { UsageAdminRow } from '@tillgate/observability';

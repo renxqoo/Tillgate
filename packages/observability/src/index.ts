@@ -1,14 +1,14 @@
 /**
  * @tillgate/observability 公共出口:可观测能力(OTel 装配、链路追踪、审计存储查询、请求日志)。
  * 出口面刻意极小且由 __test__/architecture.test.ts 快照锁定——adapters/适配器/drizzle 行类型
- * 不出包(§5.3);SQL 只在 adapters/postgres,OTel SDK 只在 telemetry(架构测试强制)。
+ * 不出包;SQL 只在 adapters/postgres,OTel SDK 只在 telemetry(架构测试强制)。
  */
 
 // ---- facade ----
 export { createObservability } from './observability';
 export type { Observability, ObservabilityEnv } from './observability';
 
-// ---- 错误目录(§11:码表封闭性由架构测试锁定)----
+// ---- 错误目录(码表封闭性由架构测试锁定)----
 export { observabilityErrors } from './errors';
 
 // ---- telemetry(OTel 装配;零 DB)----

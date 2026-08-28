@@ -171,6 +171,11 @@ export function createInMemoryIdentityStore(clock: Clock): InMemoryIdentityStore
       return { kind: first.kind as 'email' | 'phone', value: first.value };
     },
 
+    async findPasswordUserIds(_db, userIds) {
+      const wanted = new Set(userIds);
+      return state.passwords.filter((p) => wanted.has(p.userId)).map((p) => p.userId);
+    },
+
     async beginChallenge(_db, input): Promise<BeginChallengeOutcome> {
       const now = clock.now().getTime();
       const live = liveChallenge(input.kind, input.identifier, input.userId);

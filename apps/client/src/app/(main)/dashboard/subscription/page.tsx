@@ -26,7 +26,7 @@ export default async function SubscriptionPage() {
   let orgs: OrgRow[] = [];
   let subError: string | null = null;
   let plansError: string | null = null;
-  // 布局已 requireMe；本页再守卫一次并直接取 isEnterprise（B10：去掉 v1 的重复 /v1/me 拉取）
+  // 布局已 requireMe；本页再守卫一次并直接取 isEnterprise（不重复拉取 /v1/me）
   const me = await requireMe(api);
   const isEnterprise = me.isEnterprise === true;
 
@@ -37,7 +37,7 @@ export default async function SubscriptionPage() {
     subError = error instanceof ApiError ? error.message : t('loadFailed');
   }
 
-  // B2 修复在 server/plans.ts 单点：limit=100（v1 page_size 形态被忽略截断）
+  // limit=100 查询形态单点在 server/plans.ts（page_size 形态会被忽略截断）
   const plansResult = await fetchPlans(api, isEnterprise, t('loadFailed'));
   ({ plans, error: plansError } = plansResult);
 

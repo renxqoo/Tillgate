@@ -125,13 +125,12 @@ export function createAuthorizeUseCase(env: BillingEnv) {
         appId: input.appId ?? null,
       });
 
-      // F4：每日限额是 SUM 口径，READ COMMITTED 看不见并发未提交行——按 user 串行化。
-      // 2026-08-26 快路径增量：串行按需——仅限额配置存在时取 advisory（SUM 口径需要），
+      // 每日限额是 SUM 口径，READ COMMITTED 看不见并发未提交行——按 user 串行化。
+      // 串行按需——仅限额配置存在时取 advisory（SUM 口径需要），
       // 默认路径（限额全 NULL）跳过，同用户并发由钱包原子门（conditionalReserve）
       // 单语句串行。订阅 reserve（tryReserveQuota）自身条件安全，probe 过期由
       // 守卫输家干净回滚兜底。限额 NULL→设置 的配置瞬间可能漏判一次（非资损，落档）。
-      const needsSerialization =
-        source.userDailyLimit != null || source.keyDailyLimit != null;
+      const needsSerialization = source.userDailyLimit != null || source.keyDailyLimit != null;
       if (needsSerialization) {
         await store.advisoryLockAuthorizeUser(tx, input.userId);
       }
@@ -152,7 +151,7 @@ export function createAuthorizeUseCase(env: BillingEnv) {
         now,
       });
 
-      // fixed 首版只作用纯 PAYG。套餐仍完整预留，否则实际超出固定额的部分会被
+      // fixed 只作用纯 PAYG。套餐仍完整预留，否则实际超出固定额的部分会被
       // 错误转扣钱包，而不是核销套餐额度。
       const fundingTarget =
         source.subscriptionId == null

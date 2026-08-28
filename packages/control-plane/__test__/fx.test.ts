@@ -1,5 +1,5 @@
 /**
- * fx 用例（v1 fx.test.ts 服务级用例等价迁移，fetch 全 mock 不打真 ECB）：
+ * fx 用例（fetch 全 mock 不打真 ECB）：
  * 冷启动懒拉 / TTL 跳过 / force 绕过 / 点差不叠覆盖 / 覆盖冻结与清除 / 校验拒绝 / 拉取失败降级。
  */
 import { describe, expect, it } from 'vitest';
@@ -14,11 +14,11 @@ import type { FxDeps } from '../src/application/fx/fx-shared';
 import { adminCtx, createMemoryAudit, createMemoryDb, createMemoryFxStore } from './memory';
 
 function ecbFetch(rate: number | 'fail', calls: { n: number } = { n: 0 }): FetchLike {
-  return (async () => {
+  return async () => {
     calls.n += 1;
     if (rate === 'fail') return new Response('boom', { status: 500 });
     return new Response(JSON.stringify({ rates: { CNY: rate } }), { status: 200 });
-  });
+  };
 }
 
 function setup(fetchImpl: FetchLike) {
@@ -80,7 +80,7 @@ describe('fx 状态与懒拉', () => {
 
   it('manual 行记录操作管理员；覆盖清除后立即补 auto 行（失败容忍）', async () => {
     const { deps, fx } = setup(ecbFetch(7.2));
-    await fxState(deps); // 初始懒拉落第一根 auto 行（v1 流程）
+    await fxState(deps); // 初始懒拉落第一根 auto 行
     await setFxOverride(deps, { ctx: adminCtx(9), rate: '7.5' });
     expect(fx.rates.at(-1)).toMatchObject({ mode: 'override', operatorAdminId: 9 });
     await clearFxOverride(deps, { ctx: adminCtx(9) });

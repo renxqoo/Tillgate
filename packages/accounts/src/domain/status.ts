@@ -2,7 +2,7 @@
  * 账号状态词汇(accounts 域内使用形态)。
  * 物理真相是 db 包的 ACCOUNT_STATUS(users/admins 共用)——本处不 import db
  * (domain 零基础设施依赖),同一性由 __test__/domain-contract.test.ts 逐项相等锁定
- * (AGENT.md §10.1 机制位与派生表逐项相等)。
+ * (机制位与派生表逐项相等)。
  */
 export const USER_STATUS = { ACTIVE: 0, BANNED: 1, DELETED: 2 } as const;
 

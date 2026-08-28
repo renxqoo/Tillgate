@@ -1,5 +1,5 @@
 /**
- * 模型映射域契约（v1 routes/models.ts zod 面平移）。
+ * 模型映射域契约。
  * 金额仅精确十进制字符串（unitPrice 收窄 number→string）;token/限流走有界 number。
  */
 import * as z from 'zod';

@@ -1,6 +1,6 @@
 /**
  * 模型映射 presenter：ModelRecord → AdminModelRow（api-client DTO 快照形状）。
- * channelIds 由列表用例回显（无绑定 = 空数组——v1 语义）。
+ * channelIds 由列表用例回显（无绑定 = 空数组）。
  */
 import type { BillingConfig } from '@tillgate/control-plane';
 import { normalizeAmount } from '@tillgate/billing';

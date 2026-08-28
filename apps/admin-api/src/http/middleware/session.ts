@@ -1,7 +1,7 @@
 /**
  * 管理面会话中间件（Bearer）：Authorization: Bearer <JWT> → identity admin realm
  * 全链校验（HS256 验签 + issuer/realm 比对 + jti 吊销 + 锚点线）→ 属主回查
- * （v2 findAccess：状态 + isSuper + active 码集合一条 join）→ 注入会话变量。
+ * （findAccess 一条 join：状态 + isSuper + active 码集合）→ 注入会话变量。
  * 失败统一 401 不区分原因（不泄漏管理账号状态）。
  * 无 Cookie 无 CSRF：管理台类客户端自持 Bearer，凭据不经浏览器自动携带。
  */
@@ -49,7 +49,7 @@ export function sessionMiddleware(sessions: SessionValidator): MiddlewareHandler
     if (!Number.isInteger(adminId) || adminId < 1) {
       throw HttpErrors.business('unauthorized');
     }
-    // 属主回查（装配缺省不回查 = 纯会话校验形态;生产装配必注入——v1 B01 收敛口径）
+    // 属主回查（装配缺省不回查 = 纯会话校验形态;生产装配必注入）
     if (sessions.owner != null) {
       const access = await sessions.owner(adminId);
       if (access == null || access.status !== 0) {
@@ -66,7 +66,7 @@ export function sessionMiddleware(sessions: SessionValidator): MiddlewareHandler
 }
 
 /** 路由层调用上下文派生：会话已注入 adminId，此处只是「HTTP 请求 → 用例上下文」
- *  的形状转换（v1 routes/ctx.ts adminCtxOf 平移）——不放业务参数。 */
+ *  的形状转换——不放业务参数。 */
 export function controlContextOf(c: Context<SessionEnv>): ControlContext {
   return { requestId: c.get('requestId'), actor: { kind: 'admin', id: c.get('adminId') } };
 }

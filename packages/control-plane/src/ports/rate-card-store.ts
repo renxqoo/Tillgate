@@ -27,9 +27,9 @@ export type RateCardSortField = 'id' | 'name' | 'status' | 'createdAt';
 export type RateCardUserSortField = 'id' | 'subject' | 'createdAt';
 
 /**
- * 用户费率卡上下文（G1，gateway P5 波）：绑卡 + 系数行全集（model/group/global）。
- * 卡停用（status≠0）也如实返回——「停用卡拒绝新请求」的裁决在消费方（v1 403
- * rate_card_disabled 语义）。
+ * 用户费率卡上下文：绑卡 + 系数行全集（model/group/global）。
+ * 卡停用（status≠0）也如实返回——「停用卡拒绝新请求」（403 rate_card_disabled）
+ * 由消费方抛出。
  */
 export interface UserRateCardContext {
   readonly cardId: number;
@@ -52,7 +52,7 @@ export interface RateCardStore {
   findById(db: DbLike, rateCardId: number): Promise<RateCardRecord | null>;
   /**
    * 更新卡面 + 全局系数（同事务）：globalCoefficient 非 undefined 时只更新
-   * scope='global' 行——model/group 覆写行隔离（M1 静默价格漂移回归点）。
+   * scope='global' 行——model/group 覆写行隔离（防静默价格漂移）。
    * 0 行 = 卡不存在。
    */
   updateWithGlobal(
@@ -63,7 +63,7 @@ export interface RateCardStore {
       globalCoefficient?: string;
     },
   ): Promise<{ id: number; name: string } | null>;
-  /** 绑定用户数（跨域只读 users.rateCardId——accounts 波次后改经 facade） */
+  /** 绑定用户数（跨域直读 users.rateCardId） */
   countBoundUsers(db: DbLike, rateCardId: number): Promise<number>;
   /** 硬删（系数行先于卡行——FK NO ACTION；存在性由返回值表达） */
   deleteCard(db: DbLike, input: { rateCardId: number }): Promise<boolean>;
@@ -79,7 +79,7 @@ export interface RateCardStore {
   ): Promise<ListResult<RateCardUserRow>>;
   /** 健康自检：全局兜底系数是否存在（「每卡恰一全局行」约束） */
   findGlobalCoefficient(db: DbLike, rateCardId: number): Promise<string | null>;
-  // ---- 网关热路径读（G1，gateway P5 波；users.rate_card_id 读侧 join——绑定事实归 accounts 写侧） ----
+  // ---- 网关热路径读（users.rate_card_id 读侧 join——绑定事实归 accounts 写侧） ----
   /** 用户绑定的费率卡 + 系数行全集；未绑卡返回 null */
   findActiveCardByUser(db: DbLike, userId: number): Promise<UserRateCardContext | null>;
 }

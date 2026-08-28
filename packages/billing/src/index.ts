@@ -1,8 +1,7 @@
 /**
  * @tillgate/billing 公共出口。
- * U0 基座（金额/指纹）+ U1 钱包垂直（domain 定律 + application 动词）。
- * facade createBilling 与 ./settlement 子入口随后续迁移单元开放——不预建空壳（铁律 4）。
- * adapters/postgres 不从根出口导出：装配走 ./composition（总纲 §5.3）。
+ * 金额/指纹基座 + 钱包垂直（domain 定律 + application 动词）。
+ * adapters/postgres 不从根出口导出：装配走 ./composition。
  */
 
 // ---- facade（收口） ----
@@ -12,7 +11,7 @@ export type { Billing, CreateBillingConfig, BillingStores } from './billing.js';
 // ---- 领域错误目录 ----
 export { BillingErrors } from './domain/errors.js';
 
-// ---- 金额（DESIGN §2.2 全包唯一金额契约） ----
+// ---- 金额（全包唯一金额契约） ----
 export {
   Decimal,
   toStorage,
@@ -22,7 +21,7 @@ export {
   parseNonNegativeAmount,
 } from './domain/money.js';
 
-// ---- 命令指纹（DESIGN §2.3 全包唯一指纹契约） ----
+// ---- 命令指纹（全包唯一指纹契约） ----
 export {
   canonicalJson,
   fingerprintOf,
@@ -31,7 +30,7 @@ export {
 } from './domain/fingerprint.js';
 export type { FingerprintValue } from './domain/fingerprint.js';
 
-// ---- 钱包定律（U1a：复式过账 / 出账口径 / 冻结单状态机 / 白名单） ----
+// ---- 钱包定律（复式过账 / 出账口径 / 冻结单状态机 / 白名单） ----
 export { OUTSIDE_ACCOUNT, REVENUE_ACCOUNT } from './domain/wallet/accounts.js';
 export type { AccountRef, AccountSnapshot } from './domain/wallet/accounts.js';
 export {
@@ -52,7 +51,7 @@ export type { AuthorizationStatus, AuthorizationSnapshot } from './domain/wallet
 export { isAuditKind, validatePosting, legBalanceAfter } from './domain/wallet/posting.js';
 export type { TransactionKind, PostingLegSpec, PostingSpec } from './domain/wallet/posting.js';
 
-// ---- 钱包动词（U1b：application 编排 + 存储 port） ----
+// ---- 钱包动词（application 编排 + 存储 port） ----
 export { createWalletApi } from './application/wallet/wallet.js';
 export { BILLING_REF_TYPE } from './application/wallet/authorize.js';
 export type { WalletApi, WalletEnv } from './application/wallet/wallet.js';
@@ -74,7 +73,7 @@ export type {
   StatementItemRow,
 } from './ports/wallet-store.js';
 
-// ---- 计价域（U2a：rating——计量/定价策略/预扣策略/公式/收据） ----
+// ---- 计价域（rating——计量/定价策略/预扣策略/公式/收据） ----
 export {
   PRICE_PER_MILLION,
   calcAmount,
@@ -131,7 +130,7 @@ export type {
   BillingQuote,
 } from './domain/rating/types.js';
 
-// ---- 计费域（U2a：billing——状态机/限额/分配/失败策略/订阅闸） ----
+// ---- 计费域（billing——状态机/限额/分配/失败策略/订阅闸） ----
 export { isTerminal } from './domain/billing/reservation.js';
 export type { BillingStatus } from './domain/billing/reservation.js';
 export { allocateSettlement } from './domain/billing/settle-allocation.js';
@@ -156,7 +155,7 @@ export type {
   SubscriptionGateInput,
 } from './domain/billing/subscription-availability.js';
 
-// ---- 计费授权链（U2b：authorize/signal/admission/reserveChannel + 资金瀑布） ----
+// ---- 计费授权链（authorize/signal/admission/reserveChannel + 资金瀑布） ----
 export {
   createBillingApi,
   createBillingAdmission,
@@ -202,12 +201,12 @@ export type {
   SubscriptionSnapshot,
   ChannelExposureStore,
 } from './ports/funding-ports.js';
-// 事务参与 port（§5.4）：可靠通知同事务入箱——app assembly 桥接 notifications outbox
+// 事务参与 port：可靠通知同事务入箱——app assembly 桥接 notifications outbox
 export type { NotificationOutboxPort, OutboxFact } from './ports/notification-outbox.js';
 export { reserveDecision, budgetRemaining } from './domain/billing/channel-exposure.js';
 export type { ChannelReserveDecision } from './domain/billing/channel-exposure.js';
 
-// ---- 结算与恢复（U3：./settlement 窄子入口的装配体） ----
+// ---- 结算与恢复（./settlement 窄子入口的装配体） ----
 export { createSettlementApi } from './application/settlement/settlement.js';
 export type {
   SettlementApi,
@@ -233,7 +232,7 @@ export { usageLogProjection } from './application/settlement/usage-projection.js
 export type { UsageProjectionInput } from './application/settlement/usage-projection.js';
 export { createRecordDiscrepanciesUseCase } from './application/settlement/record-discrepancies.js';
 
-// ---- worker 消费面（worker 波）：佣金日结 / 对账差异落表 / 结算唤醒通道 ----
+// ---- worker 消费面（佣金日结 / 对账差异落表 / 结算唤醒通道） ----
 export { createReferralCommissionUseCase } from './application/referral-commission.js';
 export type {
   ReferralCommissionDeps,
@@ -247,7 +246,7 @@ export type {
 } from './ports/reconcile-store.js';
 export { SETTLE_WAKE_CHANNEL } from './domain/billing/settle-wake.js';
 
-// ---- 订阅生命周期与幂等操作档案（U4） ----
+// ---- 订阅生命周期与幂等操作档案 ----
 export {
   renewalStart,
   periodEnd,
@@ -276,7 +275,7 @@ export type {
 export type { SubscriptionRow } from './ports/billing-store.js';
 export type { AccountContextStore } from './ports/account-context.js';
 
-// ---- 管理读侧面（U6：plans 目录 / 订阅管理列表 / 兑换批次 / 死信复核） ----
+// ---- 管理读侧面（plans 目录 / 订阅管理列表 / 兑换批次 / 死信复核） ----
 export type { PlansApi } from './billing.js';
 export type { ListPlansQuery } from './application/plans/list-plans.js';
 export type { CreatePlanInput } from './application/plans/create-plan.js';
@@ -304,7 +303,7 @@ export type {
 } from './application/redeem-batches/redeem-batches.js';
 export type { RedeemBatchRecord, RedeemCodeRecord } from './ports/payment-ports.js';
 
-// ---- 支付与兑换（U5） ----
+// ---- 支付与兑换 ----
 export {
   isValidAmountInput,
   assertTopupWithinLimit,

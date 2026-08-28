@@ -7,18 +7,18 @@ import { createAdminShutdown } from './shutdown';
 
 /**
  * 管理控制面入口：config → assembly → app → serve → 信号接线（三段式,不自行拼装依赖）。
- * 部署：单副本低流量管理面;P2 登录波起 Redis 必配。
+ * 部署：单副本低流量管理面;Redis 必配。
  */
 
 const config = loadAdminApiConfig();
 const assembly = assembleAdminApi(config);
-// ping 绑定在进程装配面:app.ts 不接触 Db 类型(P5:非装配代码只持闭包与纯契约)
+// ping 绑定在进程装配面:app.ts 不接触 Db 类型(非装配代码只持闭包与纯契约)
 const app = createAdminApp({
   pingDb: () => ping(assembly.db),
   // DB 并发预算门:管理面批量脚本(调账/导出)入口排队,防打满小池(余量 2 给探针)
   dbBudget: suggestDbBudget(assembly.dbPool.poolMax, 2),
   logger: assembly.logger,
-  // P2:会话验证 + 属主回查（admins 行存在且 status=0——封禁/注销即刻失效,D8/W3）
+  // 会话验证 + 属主回查（admins 行存在且 status=0——封禁/注销即刻失效）
   sessions: {
     validate: assembly.identity.sessions.validate,
     owner: (adminId) => assembly.controlPlane.admins.findAccess(adminId),
@@ -40,13 +40,16 @@ const app = createAdminApp({
   notifications: assembly.notifications,
   generationTasks: assembly.generationTasks,
   paymentAdmin: assembly.paymentAdmin,
-  // 关单留痕文案 = 审计数据(v1 同字面),装配层显式持有(铁律 3)
+  // 关单留痕文案 = 审计数据,装配层显式持有
   orderCloseReason: '管理员手动关闭',
-  // P2 登录面编排件
+  // 登录面编排件
   identity: assembly.identity,
   authGuards: assembly.authGuards,
   trustedProxyHops: config.trustedProxyHops,
   mailerConfigured: assembly.mailerConfigured,
+  invites: assembly.invites,
+  sendInviteLink: assembly.sendInviteLink,
+  inviteLinkBase: assembly.inviteLinkBase,
   loginAudit: assembly.loginAudit,
   stepupAudit: assembly.stepupAudit,
   twoFactorAudit: assembly.twoFactorAudit,

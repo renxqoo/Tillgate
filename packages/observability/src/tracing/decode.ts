@@ -5,7 +5,7 @@ import type { SpanRow } from './types';
  * OTLP/HTTP JSON(ExportTraceServiceRequest)→ SpanRow[]。
  *
  * 纯函数、无 IO:接收端调用;单测覆盖畸形输入。
- * 结构级错误(非对象/缺 resourceSpans)抛 `observability.invalid_otlp_payload`(400 语义,G6);
+ * 结构级错误(非对象/缺 resourceSpans)抛 `observability.invalid_otlp_payload`(400 语义);
  * 单个 span 级畸形(非法 id/时间)跳过并计数(不因一条坏数据丢整批)。
  */
 
@@ -67,7 +67,7 @@ function nanoToDate(value: unknown): Date | null {
 
 /**
  * 领域属性提升:OTel attributes → 索引列(计费关联点查入口)。
- * 写侧长度门宽松(不丢合法数据);读侧点查另有 regex 白名单(防注入)——两道闸各司其职(B5 口径)。
+ * 写侧长度门宽松(不丢合法数据);读侧点查另有 regex 白名单(防注入)——两道闸各司其职。
  */
 
 /** string 提取门:是 string 且不超 maxLen 才收,否则 null */

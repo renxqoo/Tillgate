@@ -1,5 +1,5 @@
 /**
- * 供应商用例（v1 providers.test.ts 等价迁移 + 逻辑删除回收站，HTTP 断言 → facade 断言）：
+ * 供应商用例（含逻辑删除回收站，HTTP 断言 → facade 断言）：
  * 协议词表校验不触库 / 重名 409 / 404 族 / 软删-回收站-恢复-名称复用 / 审计动作。
  */
 import { describe, expect, it } from 'vitest';

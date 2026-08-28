@@ -77,7 +77,7 @@ export function createTransferUseCase(env: WalletEnv) {
         if (from === undefined) {
           throw new DefectError('transfer.from_lock_missing', 'billing.wallet_invariant');
         }
-        // B7：出账守卫仅在 from 为用户引用时触达，userId 取窄化后的真值（不携带误导 0）
+        // 出账守卫仅在 from 为用户引用时触达，userId 取窄化后的真值（不携带误导 0）
         if (from.kind === 'user' && 'userId' in input.from) {
           assertCanDebit(from, amount, input.from.userId, { allowCredit: input.allowCredit });
         }

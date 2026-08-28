@@ -10,7 +10,7 @@ export default defineConfig({
       },
     },
 
-    // 铁律 14：包根 __test__/ 平铺，include 固定；真实 Redis 集成用例文件内 skipIf
+    // 包根 __test__/ 平铺，include 固定；真实 Redis 集成用例文件内 skipIf
     include: ['__test__/*.test.ts'],
     environment: 'node',
     coverage: {

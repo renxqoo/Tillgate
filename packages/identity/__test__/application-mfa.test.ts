@@ -1,5 +1,5 @@
 /**
- * MFA 用例测试(v1 mfa.test 迁移):挂起/确认两段注册、恢复码 HMAC 哈希落库、
+ * MFA 用例测试:挂起/确认两段注册、恢复码 HMAC 哈希落库、
  * 步号单调防重放、恢复码单次消费、disable 守卫、cipher 密文落库。
  */
 import { describe, expect, it } from 'vitest';

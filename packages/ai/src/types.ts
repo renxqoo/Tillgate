@@ -1,5 +1,5 @@
 /**
- * packages/ai 外部契约类型（v2 平参数 API，见 IMPLEMENTATION.md §1）。
+ * packages/ai 外部契约类型（平参数 API）。
  * 本包只做「可靠调用上游并产出结构化事件」，不含任何业务知识。
  */
 import type { AiEvent } from './events';
@@ -210,7 +210,7 @@ export type GenerationFileProbeResult =
 /**
  * URL 守卫（SSRF 策略注入点）：抛错 = 拒绝。机制固定在包内（卡在网络出口），
  * 缺省策略 = 机械基线（`assertSafeUrl`）；测试/本地调试注入 `allowAllUrls`。
- * 出口信任锚在运营面（ADR-0010），不再有 hostname 白名单形态。
+ * 出口信任锚在运营面，无 hostname 白名单形态。
  */
 export type UrlGuard = (url: string) => Promise<void>;
 

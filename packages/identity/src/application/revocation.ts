@@ -1,7 +1,7 @@
 /**
- * 会话吊销锚点(B01 收敛:单一真相 = identity_session_anchors,realm 泛化)。
+ * 会话吊销锚点(单一真相 = identity_session_anchors,realm 泛化)。
  * advance = 原语(改密/重置内部同事务调用);revoke = 带审计的动词;
- * validAt = 读校验(realm 白名单 fail-closed,B08 修复——v1 读路径 fail-open)。
+ * validAt = 读校验(realm 白名单 fail-closed,不走 fail-open)。
  */
 import { auditEvent } from '../domain/audit-events.js';
 import { assertUserId, guardRealm } from '../domain/identifier.js';

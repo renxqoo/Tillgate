@@ -53,7 +53,7 @@ export default async function BillingPage() {
   const locale = await getLocale();
   const api = createClientApi();
   await requireMe(api);
-  // 订单列表（信封只 rows 无 total——G3：去页码条，按「最近 20 笔」展示）+ 渠道目录
+  // 订单列表（信封只 rows 无 total——去页码条，按「最近 20 笔」展示）+ 渠道目录
   // （渠道端点失败则空——表单自显充值码提示）
   const [ordersData, channelsData] = await Promise.all([
     api

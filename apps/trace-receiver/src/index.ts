@@ -13,7 +13,7 @@ import { createReceiverApp } from './app';
 
 const config = loadTraceReceiverConfig();
 const { logger, otel, db, store, batcher } = assembleReceiver(config);
-// ping 绑定在进程装配面:app.ts 不接触 Db 类型(P5:非装配代码只持闭包与纯契约)
+// ping 绑定在进程装配面:app.ts 不接触 Db 类型,非装配代码只持闭包与纯契约
 const app = createReceiverApp({
   pingDb: () => ping(db),
   store,

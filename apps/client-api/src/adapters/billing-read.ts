@@ -1,7 +1,6 @@
 /**
- * billing 表只读面（app-face join；accounts referralOverview 注释明示「totalCommission
- * 拆归 app 组合 G2，billing facade」）：邀请佣金累计和 = inviter 账户上 refType=referral
- * 且 refId 前缀 referral-commission: 的正向腿求和（v1 口径）。
+ * billing 表只读面（app-face join）：邀请佣金累计和 = inviter 账户上 refType=referral
+ * 且 refId 前缀 referral-commission: 的正向腿求和。
  */
 import { and, eq, gt, like, sql } from 'drizzle-orm';
 import { walletAccounts, walletLegs, walletTransactions, type Db } from '@tillgate/db';

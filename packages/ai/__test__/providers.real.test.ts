@@ -4,8 +4,7 @@ import type { AiEvent, CallOptions, ChannelDesc, UpstreamError } from '../src/in
 import { defined } from './defined.js';
 
 /**
- * 真实供应商集成测试（MiniMax + DeepSeek）——v1 `ai-getway/packages/ai/test/real/providers.test.ts`
- * 的逐用例移植（IMPLEMENTATION.md §4.8）。
+ * 真实供应商集成测试（MiniMax + DeepSeek）。
  *
  * ⚠️ 本测试发起真实上游调用，会产生（极少）费用。
  * 仅在配置了 *_API_KEY 时运行；CI 默认 skip（无 key 自动跳过）。
@@ -18,39 +17,16 @@ import { defined } from './defined.js';
  *   DeepSeek：DEEPSEEK_API_KEY + DEEPSEEK_BASE_URL 必填；DEEPSEEK_MODEL 可选（默认 deepseek-chat）
  * 任一变量声明即视为启用该供应商，缺必填项直接 fail（防半配置静默跑错环境）。
  *
- * ── v1 → v2 语义映射（旧用例语义保持，API 形状随 §1 契约演进）──
- * 1. 装配：`createAi(config, memoryDeps())` → `createAi(defaults)`——v2 无存储依赖注入点
- *    （breakerStorage/deadCredentialStorage 随熔断/死凭据跨请求状态整体裁决移除：
- *    铁律 12「ai 不持有跨请求运维状态」+ IMPLEMENTATION §0-3.6；机制位改由 kind→派生表
- *    单点得出，§3.2）。配置键 `breaker` / `deadCredential` 同因移除。
- * 2. `allowLocalUrl: false` 配置键已移除：v2 缺省 URL 守卫即机械基线
- *    （https-only + 禁私网/回环 + DNS 逐地址判定，IMPLEMENTATION §3.3/§4.6）——
- *    不注入 guardUrl = 旧 false 行为。v2 新增 `stream.firstByteTimeoutMs` 首字节预算。
- * 3. 调用：`ai.chat({ channel, request, ctx })` → `ai.chat(channel, request, opts)`——
- *    旧 RequestCtx 四字段（requestId/model/providerName/endpoint）平铺为 CallOptions，
- *    v2 全可选（缺省 randomUUID / request.model / 不带 / 'chat'）；本测试显式传全量。
- * 4. 结果判别联合：旧 `status:'success'|'empty'|'error'` → `ok:true` | `ok:false`
- *    （empty 语义 = `ok:false && empty===true`，error.kind='empty_completion'）。
- * 5. 错误：旧自由字符串 `error.code` → 封闭词表 `error.kind`（§3.2；厂商原码在
- *    `error.vendorCode`）；机制位 retryable/circuitTrip/deadCredential 同名保留（派生表）。
- * 6. 事件：旧 `ai.onEvent` → `ai.subscribe`（chat 事件仅走全局面）；流式旧
- *    `handle.onEvent` → `result.events.subscribe`（per-call 面：first_chunk 缓冲重放 +
- *    终态缓冲重放，attempt_start 等流前事件经全局面观察——见 events.ts 头注释时序契约）。
- * 7. usage 口径（usage/normalize.ts 头注释）：estimated:false 仅在供应商真实 usage 归一
- *    成功时出现；v2 库内零估算回退——chat 结果 / success 事件的 usage 在上游未给可信
- *    usage 时为 undefined（估算归消费方，success.outputFeatures 为充分统计量数据源）。
- *    旧断言 `if (usage) expect(estimated).toBe(false)` 语义不变。
- * 8. `stream_options:{include_usage:true}`：v2 由 openai-compatible 适配器对一切流式请求
- *    强制注入（含 continuous_usage_stats，计费完整性优先，见 adapter 头注释）——本测试
- *    仍显式传 include_usage，验证用户传入与强制注入合并不冲突（其余键透传）。
- * 9. 错误帧断言：v1 出站错误帧带 v1 code；v2 failEarly 合成帧形如
- *    `{"error":{"code":"<kind>","type":"<vendorCode>",...}}`（stream-report.ts）——
- *    「透传文本包含错误码」断言从 error.code 改为 error.kind。
- *
- * v1 有、v2 裁决移除的行为（本文件不再覆盖，出处附节号）：
- * - 熔断/死凭据存储配置与注入（IMPLEMENTATION §3.2「机制位派生表」、§0 三不变量之三：
- *   渠道健康归订阅者旁路消费）——invalid_api_key 的 deadCredential:true 旗标断言保留
- *   （派生表真实验证），但不再有「连续达阈值停止路由」的库内状态可配。
+ * 调用契约要点（详见 src 对应模块头注释）：
+ * - 结果判别：ok:true | ok:false（empty 语义 = ok:false && empty===true，
+ *   error.kind='empty_completion'）。
+ * - 事件：chat 事件走 ai.subscribe 全局面；流式 per-call 面 result.events.subscribe
+ *   （first_chunk/终态缓冲重放，attempt_start 等流前事件经全局面观察）。
+ * - usage：estimated:false 仅在供应商真实 usage 归一成功时出现；上游未给可信 usage 时
+ *   为 undefined（估算归消费方，success.outputFeatures 为充分统计量数据源）。
+ * - include_usage 由 openai-compatible 适配器对一切流式请求强制注入；本测试仍显式传，
+ *   验证用户传入与强制注入合并不冲突（其余键透传）。
+ * - CallOptions 全字段可选（缺省 randomUUID / request.model / 'chat'）；本测试显式传全量。
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -185,7 +161,7 @@ function channel(p: ProviderConfig): ChannelDesc {
   return { baseUrl: p.baseUrl, apiKey: p.apiKey, protocol: 'openai-compatible' };
 }
 
-/** 旧 RequestCtx 四字段平铺为 v2 CallOptions（显式传全量，验证平铺契约） */
+/** CallOptions 显式传全量四字段（requestId/model/providerName/endpoint 平铺契约） */
 function opts(p: ProviderConfig, tag: string): CallOptions {
   return {
     requestId: `real-${p.name}-${tag}-${Date.now()}`,
@@ -195,7 +171,7 @@ function opts(p: ProviderConfig, tag: string): CallOptions {
   };
 }
 
-/** v2 判别联合 → 旧 status 词汇（empty 语义 = ok:false && empty） */
+/** 判别联合 → status 词汇（empty 语义 = ok:false && empty） */
 function statusOf(r: { ok: boolean; empty?: boolean }): 'success' | 'empty' | 'error' {
   if (r.ok) return 'success';
   return r.empty === true ? 'empty' : 'error';
@@ -323,7 +299,7 @@ describeOrSkip('真实供应商集成', () => {
           expect(successEv.bytesRelayed ?? 0).toBeGreaterThan(0);
         } else if (failedEv?.type === 'failed') {
           // 供应商错误（额度耗尽/key 失效等）：验证错误帧透传 + failed 事件
-          // （v2 failEarly 合成帧 code 字段 = kind，见文件头注释第 9 条）
+          // （failEarly 合成帧 code 字段 = kind，见文件头注释第 9 条）
           console.log(`[${p.name}] stream 供应商错误（已透传错误帧）:`, failedEv.error.kind);
           expect(text).toContain(failedEv.error.kind);
         } else {
@@ -507,7 +483,7 @@ describeOrSkip('真实供应商集成 · 扩展场景', () => {
         expect(result.ok).toBe(false);
         if (!result.ok) {
           // 供应商应返回 401（或 403/带特征的 400）——deadCredential 旗标是路由停用依据
-          // （v2 机制位由 kind→派生表单点派生，§3.2；库内无死凭据存储，阈值归消费方）
+          // （机制位由 kind→派生表单点派生；库内无死凭据存储，阈值归消费方）
           expect(result.error.kind).toBe('invalid_api_key');
           expect(result.error.deadCredential).toBe(true);
           expect(result.error.retryable).toBe(false);

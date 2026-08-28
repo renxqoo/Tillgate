@@ -1,9 +1,9 @@
 /**
- * 观测域契约（v1 tracing.ts + ops.ts audit/logs/usage/stats 子集 zod 面平移）。
+ * 观测域契约。
  * tracing 参数守卫在存储侧（regex 白名单——防注入）;这里只收口径与长度。
  * usage 排序白名单单一真相 = observability 包 USAGE_SORT_FIELDS（不复制两份）。
  * estimated 是字符串布尔显式解析（'true'/'1' → true——coerce.boolean 会把
- * 'false' 变 true,v1 陷阱在 contracts 层收口）。
+ * 'false' 变 true,在 contracts 层收口）。
  */
 import * as z from 'zod';
 import { USAGE_SORT_FIELDS } from '@tillgate/observability';

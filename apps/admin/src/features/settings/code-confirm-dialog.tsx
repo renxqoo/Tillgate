@@ -1,8 +1,8 @@
 'use client';
 
 // 6 位码确认小弹窗（受控哑件——只收码,确认即回调;提交/错误呈现由调用方编排）：
-// variant=totp = TOTP step-up（ADR-0011,集成写入/启停）;variant=email =
-// 邮箱码自证（admin-email-2fa D2=A,2FA 开关确认）。
+// variant=totp = TOTP step-up（集成写入/启停）;variant=email =
+// 邮箱码自证（2FA 开关确认）。
 // email 变体可携带 sendCode：输入框与「发送验证码」倒计时钮同排——可点态用
 // 主题主色（Button 默认 variant）,冷却禁用态走 Button 内建主题感知样式,
 // 不写死颜色。无效码由原生表单校验拦截（required + pattern）。

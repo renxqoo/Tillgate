@@ -1,14 +1,14 @@
 /**
- * 真实 PostgreSQL 集成(IMPLEMENTATION §4 real 门):postgres 适配器的 SQL 语义
- * 只能以真实 PG 验证(§5.6 本地可替代依赖)——唯一冲突翻译、CAS 竞态单赢家、
+ * 真实 PostgreSQL 集成(real 门):postgres 适配器的 SQL 语义
+ * 只能以真实 PG 验证——唯一冲突翻译、CAS 竞态单赢家、
  * FOR UPDATE 席位串行化、onConflictDoUpdate 复活、clock_timestamp 写入、
  * ilike 转义、审计同事务落库。
  *
- * 运行约定:DB_TEST_URL(优先)或 DATABASE_URL 缺失时整组 skip(铁律 14,与 db 包同约定)。
+ * 运行约定:DB_TEST_URL(优先)或 DATABASE_URL 缺失时整组 skip(与 db 包同约定)。
  * 目标库必须是专用测试库(本文件重建 schema 并 truncate)。
  * schema 建法:账号域 DDL fixture(与 packages/db schema 定义同拍维护)——
  * 迁移链暂不能从空库装起(依赖 identity-core/wallet/ledger 的 provision 链先建外部表,
- * 总纲 §9 P0 已在案;「空库升级」归 P3 收口,届时本 fixture 可退役)。
+ * 待空库可直接装起后本 fixture 可退役)。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
@@ -339,7 +339,7 @@ function realHarness(db: Db): TestHarness {
       patch: { referralCommissionRate: '0.15' },
       adminId: 8,
     });
-    // PG numeric(38,18) 定标尾零——金额断言用 Decimal 等值(v1 测试规约)
+    // PG numeric(38,18) 定标尾零——金额断言用 Decimal 等值
     expect(new Decimal(second.signupGiftAmount).eq('3.5')).toBe(true);
     expect(new Decimal(second.referralCommissionRate).eq('0.15')).toBe(true);
     expect(second.updatedBy).toBe(8);

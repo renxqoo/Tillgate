@@ -1,5 +1,5 @@
 /**
- * env → DB 导入（docs/integration-settings/DESIGN.md §7.2、§8）：
+ * env → DB 导入：
  * 计划分组语义（完整导入/半配跳过/全空未配置）、幂等（insert-if-absent 不覆盖）、
  * 落行密文与 enabled、system 审计。
  */

@@ -2,9 +2,9 @@
  * 授权预扣额推导（纯函数）：候选链取最贵（fallback 更贵不得透支），再过单请求上限。
  *
  * 四道保守：输入按上界、单价取贵（缓存命中量未知）、候选取最贵、超限只拒绝不截断。
- * R6 免费口径一致性：explicitlyFree 是「授权 0 元、不校验余额」的开关，
+ * 免费口径一致性：explicitlyFree 是「授权 0 元、不校验余额」的开关，
  * 若候选价格非全零，结算会按价格实扣——授权与结算两套口径结构性拒绝。
- * B2 修复：组装 estimateMaxCost 必须传 cacheWritePrice（贵价口径覆盖缓存写价——
+ * 组装 estimateMaxCost 必须传 cacheWritePrice（贵价口径覆盖缓存写价——
  * Anthropic 写价 1.25×/2× 可超输入价）；免费一致性检查同步纳入写价。
  */
 import { Decimal } from '../money.js';
@@ -74,7 +74,7 @@ export function calculateRequired(quote: BillingQuote, reservationLimit: string)
       maxOutputTokens: quote.maxOutputTokens,
       inputPrice: candidate.inputPrice,
       cacheInputPrice: candidate.cacheInputPrice,
-      // B2：缓存写价进贵价口径（缺省由 estimateMaxCost 回落输入价）
+      // 缓存写价进贵价口径（缺省由 estimateMaxCost 回落输入价）
       cacheWritePrice: candidate.cacheWritePrice,
       outputPrice: candidate.outputPrice,
       unitPrice: candidate.unitPrice ?? '0',

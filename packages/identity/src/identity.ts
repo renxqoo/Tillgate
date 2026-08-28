@@ -1,8 +1,8 @@
 /**
- * createIdentity facade:唯一装配面(总纲 §5.3——app 只见 facade 与稳定契约)。
+ * createIdentity facade:唯一装配面(app 只见 facade 与稳定契约)。
  * 内部组装 postgres store、jose 令牌与内置 OAuth provider 适配器;装配级可覆盖件
  * 显式可选(测试替身注入)。返回面不泄漏 Db/DbTx/drizzle 行类型/供应商 SDK。
- * cipher/logger/clock 经 port 注入——本包不编译依赖 runtime(DESIGN §5)。
+ * cipher/logger/clock 经 port 注入——本包不编译依赖 runtime。
  */
 import type { Db, TxRetryPolicy } from '@tillgate/db';
 import { resolveConfig, validateOauthCreds, type IdentityConfigInput } from './domain/config.js';
@@ -55,6 +55,7 @@ import { verifyMfa } from './application/verify-mfa';
 import { verifyTotpOnly } from './application/verify-totp-only';
 import { disableTotp } from './application/disable-totp';
 import { findOAuthUser } from './application/find-oauth-user';
+import { findPasswordUserIds } from './application/find-passwords';
 import { linkOAuth, type LinkOAuthResult } from './application/link-oauth';
 import { unlinkOAuth } from './application/unlink-oauth';
 import { oauthAuthorize, type OAuthAuthorizeInput } from './application/oauth-authorize';
@@ -106,6 +107,8 @@ export interface Identity {
     authenticate(input: AuthenticatePasswordInput): Promise<{ userId: number }>;
     change(input: ChangePasswordInput): Promise<{ invalidBefore: string }>;
     reset(input: ResetPasswordInput): Promise<{ invalidBefore: string }>;
+    /** 读面:批量返回已设密码的 userId 子集(邀请激活态投影;空入参返回空) */
+    exists(input: { userIds: readonly number[] }): Promise<number[]>;
   };
   readonly challenges: {
     begin(input: BeginChallengeInput): Promise<BeginChallengeResult>;
@@ -116,7 +119,7 @@ export interface Identity {
     enrollTotp(input: { userId: number; label?: string }): Promise<EnrollTotpResult>;
     confirmTotp(input: { userId: number; code: string }): Promise<{ recoveryCodes: string[] }>;
     verify(input: { userId: number; code: string }): Promise<{ method: 'totp' | 'recovery' }>;
-    /** 仅 TOTP 的 step-up 验证（ADR-0011）——不消费恢复码，重放口径同 verify */
+    /** 仅 TOTP 的 step-up 验证——不消费恢复码，重放口径同 verify */
     verifyTotpOnly(input: { userId: number; code: string }): Promise<void>;
     disableTotp(input: { userId: number; code?: string }): Promise<{ disabled: boolean }>;
     /** 读面:注册状态(pending=已发起未确认,不参与登录验证;confirmed=生效) */
@@ -197,6 +200,7 @@ export function buildIdentityContext(params: CreateIdentityParams): IdentityUseC
   };
 }
 
+// eslint-disable-next-line max-lines-per-function -- facade 动词绑定平铺(注册即数据;拆分只会层层透传 ctx)
 export function createIdentity(params: CreateIdentityParams): Identity {
   const ctx = buildIdentityContext(params);
   return {
@@ -207,6 +211,8 @@ export function createIdentity(params: CreateIdentityParams): Identity {
       authenticate: (input) => authenticatePassword(ctx, input),
       change: (input) => changePassword(ctx, input),
       reset: (input) => resetPassword(ctx, input),
+      // 读面:批量返回已设密码的 userId 子集(纯读无临界区)
+      exists: (input) => findPasswordUserIds(ctx, input),
     },
     challenges: {
       begin: (input) => beginChallenge(ctx, input),

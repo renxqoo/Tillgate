@@ -1,6 +1,5 @@
 /**
- * 滑动窗口限流器（v1 ai-getway packages/core/src/redis/rate-limiter.ts 平移；
- * gateway P5 波裁决 C-G5——机制归 runtime，策略归 app）：
+ * 滑动窗口限流器（机制归 runtime，策略归 app）：
  *   维度自由组合（key:N / channel:N / user:N…）；RPM = ZSET 滑动窗口
  *   （score=timestamp ms，member=requestId，精度优于固定窗口无边界突刺）；
  *   TPM = actual+reserved 双计数预占（结算时 worker 回填 actual，失败释放 reserved）。
@@ -159,7 +158,7 @@ export interface SlidingWindowLimiterOptions {
   failMode?: 'open' | 'closed';
 }
 
-// eslint-disable-next-line max-lines-per-function -- 资金域限流器工厂（v1 平移存量）：4 个单用途 inner helper + 6 方法装配面单体内聚；拆出模块级需为 4-5 参 helper 全部铺设参数对象（受 max-params=3 约束），透传噪音大于结构收益（铁律 22⑥ 存量棘轮）
+// eslint-disable-next-line max-lines-per-function -- 资金域限流器工厂：4 个单用途 inner helper + 6 方法装配面单体内聚；拆出模块级需为 4-5 参 helper 全部铺设参数对象（受 max-params=3 约束），透传噪音大于结构收益
 export function createSlidingWindowLimiter(
   redis: Redis,
   options: SlidingWindowLimiterOptions = {},

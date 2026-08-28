@@ -1,20 +1,16 @@
 /**
- * 管理端 动态 RBAC 权限模型（ADR-0008;docs/admin-rbac-dynamic/DESIGN）。
+ * 管理端 动态 RBAC 权限模型。
  *
  * enforced 码注册表 = 种子(0082)与 admin-api guard 声明的单一真相;动态角色/授权
- * 住 DB（roles/role_permissions/permissions 树）。静态矩阵已随切换退役。
+ * 住 DB（roles/role_permissions/permissions 树）。
  */
-// ══════════════════════════════════════════════════════════════════════════
-// v2（ADR-0008）：动态角色 + 权限树。以下为 v2 面;上方 静态矩阵在 admin-api
-// 切换 guard(codes) 后（）整段删除,不共存出仓库。
-// ══════════════════════════════════════════════════════════════════════════
 
 /**
  * enforced 码注册表（单一真相 = 本清单;0082 种子与 admin-api guard 声明都是消费方）。
- * 规约 `<域>:<动词>`;逐端点挂码清单见 docs/admin-rbac-dynamic/DESIGN §2。
+ * 规约 `<域>:<动词>`。
  * 启动对账：本清单 ⊆ DB permissions active enforced 节点,缺即拒启。
  */
-/** 权限域词表（8 域封闭——路由组域归属,docs/admin-rbac-dynamic/DESIGN §2） */
+/** 权限域词表（8 域封闭——路由组域归属） */
 export const PERMISSION_DOMAINS = [
   'users',
   'funds',
@@ -73,7 +69,7 @@ export const ENFORCED_CODES = [
   // settings
   'settings:read',
   'settings:update',
-  // 第三方集成凭据写入（独立码——出网点收窄，DESIGN §6 修订）
+  // 第三方集成凭据写入（独立码——出网点收窄）
   'settings:integrations',
   // admins（admins/roles/permissions 管理面共用）
   'admins:read',

@@ -1,6 +1,5 @@
 /**
- * 冻结单状态机守卫行为规格（旧仓经 service 集成测试间接覆盖；U1a 起以纯函数直测锁死
- * 状态机分岔——U1b 的 CAS 语义依赖这些断言）。
+ * 冻结单状态机守卫行为规格（纯函数直测锁死状态机分岔——CAS 语义依赖这些断言）。
  */
 import { describe, expect, it } from 'vitest';
 import { isBusinessError } from '@tillgate/errors';

@@ -1,5 +1,5 @@
 /**
- * HTTP 契约测试（内存替身驱动 app.request）：MIGRATION §6 行为对照清单的 app 层断言。
+ * HTTP 契约测试（内存替身驱动 app.request）：app 层行为断言。
  * 能力语义（事务/并发/资金不变量）归各能力包契约测试；此处锁 wire——状态码、
  * 信封、错误码映射（FaceOverride 表）、分页与凭证一次性下发语义。
  */
@@ -104,7 +104,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       trustedProxyHops: 0,
       captcha: null,
       registerLimiter: {
-        // 按键计数(真实 Redis 计数器语义;v1 桩为全局单计数,找回密码多键并发后失真);
+        // 按键计数(与真实 Redis 计数器语义一致——每键独立计数,找回密码多键并发不串扰);
         // forceRegisterLimit 旋钮模拟注册 IP 键已超限(测试不依赖键格式实现细节)
         hit: (key: string) => {
           if (state.forceRegisterLimit && key.startsWith('register:')) {

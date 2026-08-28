@@ -1,7 +1,7 @@
 /**
  * server 读取面行为规格：
- *  - B2 回归：套餐目录查询形态必须是 ?page=1&limit=100（v1 的 page_size 被
- *    strict 契约忽略导致套餐截断）且不携带 sort_by（G4）；
+ *  - 套餐目录查询形态必须是 ?page=1&limit=100（page_size 形态会被 strict
+ *    契约忽略导致套餐截断）且不携带 sort_by；
  *  - 企业/个人过滤（allowSeats）；
  *  - highlight（shiki 双主题产出 CSS 变量 html）。
  */

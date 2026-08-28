@@ -1,7 +1,7 @@
 /**
- * HTTP app（协议适配层；v1 app.ts 迁移）：错误信封收口 + 请求链 + 路由挂载。
+ * HTTP app（协议适配层）：错误信封收口 + 请求链 + 路由挂载。
  * 业务一律来自能力 facade——本层零业务规则（错误 face 映射是协议契约，不是规则）。
- * app 非 assembly 代码不引用 Db/DbTx/composition（P5；架构测试机器锁定）。
+ * app 非 assembly 代码不引用 Db/DbTx/composition（架构测试机器锁定）。
  */
 import { Hono } from 'hono';
 import {
@@ -69,7 +69,7 @@ export interface GatewayAppDeps {
   logger?: { error(obj: unknown, msg: string): void };
 }
 
-// eslint-disable-next-line max-lines-per-function -- HTTP 装配平铺：中间件链与路由挂载顺序即契约（铁律 22 ①）
+// eslint-disable-next-line max-lines-per-function -- HTTP 装配平铺：中间件链与路由挂载顺序即契约
 export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
 
@@ -82,7 +82,7 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
   );
 
   app.notFound((c) => {
-    // /v1/ 前缀文案区分（v1 语义）；统一 http.not_found 目录码
+    // /v1/ 前缀文案区分；统一 http.not_found 目录码
     throw HttpErrors.business('not_found', {
       path: c.req.path,
       detail: c.req.path.startsWith('/v1/') ? 'path not found' : 'not found',

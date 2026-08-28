@@ -1,7 +1,7 @@
 /**
- * 渠道资金用例（v1 channel-funds.test.ts 语义等价迁移）：
+ * 渠道资金用例：
  * 幂等（同键同参重放回执/同键异参冲突）/ 进货复活熔断 / 调账守卫 / 凭证字节不进指纹。
- * 审计与业务同事务（§5.4/G3）：写失败回滚业务、重放不重复审计（dedupe 单事实）。
+ * 审计与业务同事务：写失败回滚业务、重放不重复审计（dedupe 单事实）。
  */
 import { describe, expect, it } from 'vitest';
 import { defined } from './defined';
@@ -60,7 +60,7 @@ function setup() {
   return { base, channels, operations, voucher, audit };
 }
 
-/** 回滚语义世界（§5.6 类型 2）：审计写失败 → 业务快照恢复（PG ROLLBACK 等价） */
+/** 回滚语义世界：审计写失败 → 业务快照恢复（PG ROLLBACK 等价） */
 function setupRollback() {
   const world = setup();
   const snapshot = () => {
@@ -112,7 +112,7 @@ describe('进货（幂等 operations 用例）', () => {
     expect(defined(operations.rows.get('op-recharge-1')).receipt).toMatchObject({
       rechargeId: first.rechargeId,
     });
-    expect(audit.entries.filter((e) => e.action === 'channel.recharge')).toHaveLength(1); // 重放不重复审计（§5.4 dedupe 单事实）
+    expect(audit.entries.filter((e) => e.action === 'channel.recharge')).toHaveLength(1); // 重放不重复审计（dedupe 单事实）
   });
 
   it('同键异参 → operation_conflict；坏键形状 → invalid_operation_id', async () => {

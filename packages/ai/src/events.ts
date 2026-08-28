@@ -14,16 +14,15 @@ import type {
  *   - 流式：attempt_start* → [param_adjustment] → first_chunk（一次性，TTFB 权威锚点）
  *     → [stream_error…] → [aborted?] → success（done/success 一定最后发出）
  *
- * 计费语义（requirements 5.11）：
+ * 计费语义：
  *   - usage 是 success 终态的随行状态：任何帧带的非 null usage 均视为累计值，
- *     最新者胜出（scanner 逐帧捕获，随 done/success 事件一次性流出——独立 'usage'
- *     流事件已按死代码裁决移除：包内零生产、inference 零消费，见 IMPLEMENTATION §3.3）
+ *     最新者胜出（scanner 逐帧捕获，随 done/success 事件一次性流出；无独立 'usage' 流事件）
  *   - success.terminated !== undefined → 流式中断，网关标 stream_aborted
  *   - 中断且 success.usage 为空 → 账务进入 uncertain，禁止把未知缓存命中估成 0 后直接扣费
  *     （中断但有可信累计 usage → 按最新 usage 正常结算）
  *
  * 回调契约：fire-and-forget——观察者异常被吞（不反噬数据面）、不得阻塞、不得做 IO
- * （重活入队，outbox 侧消费）；回调必须微秒级（并发预算见 IMPLEMENTATION.md §3.1）。
+ * （重活入队，outbox 侧消费）；回调必须微秒级。
  */
 export type AiEvent =
   | { type: 'attempt_start'; requestId: string; channelKey: string; attempt: number; atMs: number }
@@ -53,8 +52,8 @@ export type AiEvent =
       /** 已透传给客户端的字节数（仅流式；取消且 usage 缺失时的估算佐证） */
       bytesRelayed?: number;
       /**
-       * 输出内容特征四计数器（仅流式；替代 v1 outputText 文本累积——O(1) 内存，
-       * 估算层充分统计量）。usage 缺失或取消时估算输出 token 的数据源。
+       * 输出内容特征四计数器（仅流式；O(1) 内存，估算层的充分统计量）。
+       * usage 缺失或取消时估算输出 token 的数据源。
        */
       outputFeatures?: TextTokenFeatures;
       /** [DONE] 哨兵是否到达（区分自然完成与终止后断开） */

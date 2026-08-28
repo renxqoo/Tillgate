@@ -1,14 +1,14 @@
 /**
- * 动态 RBAC 旅程 e2e（ADR-0008;docs/admin-rbac-dynamic/IMPLEMENTATION §4——全真装配）。
+ * 动态 RBAC 旅程 e2e（全真装配）。
  * 旅程专属行 e2e-rbacv2-* 前缀,结束自清理（角色/节点/管理员行直删）。
  *
  * 覆盖面：
- *   §H 动态建角色 → 绑码 → 挂管理员 → 读放行/写拒绝（码级判定真装配）;
- *   §I 改绑即时生效（同令牌）+ 授权审计 diff（role.updated added/removed）;
- *   §J custom 权限节点全生命周期:创建（码形状/父子守卫）→ 绑定生效（仅显示层门控
+ *   H 动态建角色 → 绑码 → 挂管理员 → 读放行/写拒绝（码级判定真装配）;
+ *   I 改绑即时生效（同令牌）+ 授权审计 diff（role.updated added/removed）;
+ *   J custom 权限节点全生命周期:创建（码形状/父子守卫）→ 绑定生效（仅显示层门控
  *      语义:custom 码不在 enforced 注册表,不参与接口判定——403 仍由 enforced 码拦）
  *      → 停用 kill-switch → 删除守卫;
- *   §K enforced 全字段放开（停用/删除 200）+ 接口绑定守卫（先解绑）+ 角色停用
+ *   K enforced 全字段放开（停用/删除 200）+ 接口绑定守卫（先解绑）+ 角色停用
  *      整组下线 + super 角色全锁 + 内置角色可删(唯一硬闸=被使用);
  *   §M 绑定全字段更新:path/method 迁移下一请求生效（旧组合 fail-closed）、
  *      终态 (method,path) 撞他绑 409、空 body 400。
@@ -305,7 +305,7 @@ describe('K. enforced 锁 + 角色停用 kill-switch + super/内置守卫', () =
     });
     expect(touchSuper.status).toBe(403);
     expect((await call(w(), `/v1/roles/${superRole.id}`, { method: 'DELETE' })).status).toBe(403);
-    // 内置角色不再 role_immutable(用户裁决反转):挂载临时管理员 → 删除撞 role_in_use;
+    // 内置角色不再 role_immutable:挂载临时管理员 → 删除撞 role_in_use;
     // 不直接删未挂载内置,避免破坏种子行
     const builtinStamp = Date.now();
     const [builtinHolder] = await w()

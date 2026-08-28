@@ -37,7 +37,7 @@ import {
   type TotpEnrollView,
 } from '@/server/totp-actions';
 
-// eslint-disable-next-line max-lines-per-function -- TOTP 开通/关闭双流程卡（二维码/验证/恢复码三阶段）平铺，拆分需抽阶段子组件（存量棘轮）
+// eslint-disable-next-line max-lines-per-function -- TOTP 开通/关闭双流程卡（二维码/验证/恢复码三阶段）平铺，拆分需抽阶段子组件
 export function TotpCard({ totpEnabled }: { readonly totpEnabled: boolean }) {
   const t = useTranslations('settings.totp');
   const ts = useTranslations('settings');

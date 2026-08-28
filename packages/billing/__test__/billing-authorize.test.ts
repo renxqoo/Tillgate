@@ -1,6 +1,5 @@
 /**
- * 计费授权链契约测试（内存 stand-in；迁移自旧仓 service/__tests__/{billing,
- * billing-limits}.test.ts 行为规格主干；真实 PG 的 CAS/advisory 语义在 U3 真实套件）。
+ * 计费授权链契约测试（内存 stand-in；真实 PG 的 CAS/advisory 语义由真实套件覆盖）。
  * 覆盖：授权瀑布（PAYG/订阅切分/免费快路径/重放/不足/日限）、signal 四事件、
  * reserveChannel 三模式、积压准入。
  */

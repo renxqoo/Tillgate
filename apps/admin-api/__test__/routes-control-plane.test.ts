@@ -5,8 +5,7 @@ import { AdminErrors } from '../src/http/error-face';
 import { authHeader, fakeDeps } from './helpers';
 
 /**
- * 控制面域契约（v1 providers/channels/channel-funds/models/rate-cards/fx/catalog
- * 测试行为规格子集）:CRUD 状态码 / 词表 4xx 命名空间码 / 列表白名单 / 幂等键透传。
+ * 控制面域契约:CRUD 状态码 / 词表 4xx 命名空间码 / 列表白名单 / 幂等键透传。
  */
 
 const providerRow = {
@@ -513,6 +512,50 @@ describe('models + rate-cards + fx + catalog', () => {
     expect(badShape.status).toBe(400);
   });
 
+  it('SMTP 连通性探针：三态 config 透传 + 空体 200 + 形状 400（免 step-up）', async () => {
+    const probeSmtp = vi.fn(async () => ({ ok: true, durationMs: 12 }));
+    const app = controlPlaneApp({
+      settings: {
+        billingTimezone: {
+          read: async () => ({ timezone: null }),
+          update: async () => ({ timezone: 'UTC' }),
+        },
+        integrations: {
+          list: async () => ({ integrations: [] }),
+          update: async () => {
+            throw new Error('probe must not update');
+          },
+          probeSmtp,
+        },
+      },
+    });
+    const posted = await app.request('/v1/settings/integrations/smtp/test', {
+      method: 'POST',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ config: { host: 'smtp2.example.com', pass: null } }),
+    });
+    expect(posted.status).toBe(200);
+    expect(await posted.json()).toEqual({ ok: true, durationMs: 12 });
+    expect(probeSmtp).toHaveBeenCalledWith({ config: { host: 'smtp2.example.com', pass: null } });
+
+    // 空体 = 只测已保存配置（无 config 字段 → 用例收空对象）
+    const bare = await app.request('/v1/settings/integrations/smtp/test', {
+      method: 'POST',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(bare.status).toBe(200);
+    expect(probeSmtp).toHaveBeenCalledWith({});
+
+    // 契约层只拦形状：空串字段值 400
+    const badShape = await app.request('/v1/settings/integrations/smtp/test', {
+      method: 'POST',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ config: { host: '' } }),
+    });
+    expect(badShape.status).toBe(400);
+  });
+
   it('settings:integrations 未知 key 映射 404（integration_unknown）', async () => {
     const integrations = {
       list: async () => ({ integrations: [] }),
@@ -553,7 +596,7 @@ describe('models + rate-cards + fx + catalog', () => {
     });
     const sources = await app.request('/v1/model-catalog/sources', { headers: authHeader() });
     expect(await sources.json()).toMatchObject({ sources: [{ id: 'models-dev' }] });
-    // P6/D1:词表端点 = 装配注入面原样透传(fakeDeps 默认词表;真源封闭性锁在 ai 包)
+    // 词表端点 = 装配注入面原样透传(fakeDeps 默认词表;真源封闭性锁在 ai 包)
     const words = await app.request('/v1/vendor-catalog', { headers: authHeader() });
     expect(words.status).toBe(200);
     expect(await words.json()).toEqual({

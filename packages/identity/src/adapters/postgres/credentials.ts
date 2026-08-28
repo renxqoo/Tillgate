@@ -1,6 +1,6 @@
 /**
  * 凭据 store postgres 实现:标识绑定(advisoryLock + onConflictDoNothing + 读回分类)
- * 与凭据查询。SQL 与 v1 identity-core 逐语义对齐(IMPLEMENTATION §4 口径 9)。
+ * 与凭据查询。
  */
 import { and, eq, sql } from 'drizzle-orm';
 import type { DbLike } from '@tillgate/db';

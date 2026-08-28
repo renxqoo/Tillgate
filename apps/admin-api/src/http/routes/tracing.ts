@@ -1,7 +1,7 @@
 /**
- * 链路追踪路由（v1 routes/tracing.ts 平移）：recent（errorsOnly/service/
+ * 链路追踪路由：recent（errorsOnly/service/
  * minDuration/requestId 过滤）/单 trace 瀑布/按 requestId 关联/渠道拓扑/存储统计。
- * 参数守卫在 tracing 存储（regex 白名单——防注入;observability S1 信封承接）。
+ * 参数守卫在 tracing 存储（regex 白名单——防注入;列表信封由 observability 承接）。
  */
 import { Hono } from 'hono';
 import type { Observability } from '@tillgate/observability';
@@ -40,7 +40,7 @@ export function tracingRoutes(deps: TracingRoutesDeps) {
   );
 
   app.get('/v1/tracing/topology', async (c) => {
-    // hours 钳位 1..168（存储侧同钳——双重钳位无害;v1 语义）
+    // hours 钳位 1..168（存储侧同钳——双重钳位无害）
     const hours = Math.min(168, Math.max(1, Number(c.req.query('hours')) || 24));
     const channels = await traces.topology(hours);
     return c.json({ hours, channels });

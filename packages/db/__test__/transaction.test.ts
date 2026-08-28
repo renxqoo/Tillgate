@@ -1,13 +1,11 @@
 /**
- * 事务壳(IMPLEMENTATION.md §4):瞬态重试、退避节奏、钩子吞错、耗尽语义。
- * 行为等价锚点:注入 v1 等价策略 { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 }
- * 时,重试触发/上限/退避公式与 v1 三份拷贝逐字一致(D1)。
+ * 事务壳:瞬态重试、退避节奏、钩子吞错、耗尽语义。
  */
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import type { Db } from '../src/client.js';
 import { runTx } from '../src/transaction.js';
 
-/** v1 行为等价策略 */
+/** 测试注入的重试策略 */
 const V1_POLICY = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 } as const;
 
 /** 模拟 pg 瞬态错误(drizzle 包装形态:code 在 cause 里) */

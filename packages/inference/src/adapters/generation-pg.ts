@@ -1,5 +1,5 @@
 /**
- * 生成任务的 postgres 存储（generation_tasks 表；gateway P5 波 C-G9——表已在
+ * 生成任务的 postgres 存储（generation_tasks 表——表已在
  * db migration 0053/0054 落库，本适配器实现本包 GenerationTaskStore port 的
  * 生产形态，与 createRedisHealthStore 同为根出口装配件）。
  *
@@ -124,7 +124,7 @@ function mapAdminRow(row: {
   };
 }
 
-/** 管理面全量列表（v1 listAdminTasks 平移）：kind/status 过滤 + 账单状态左联 */
+/** 管理面全量列表：kind/status 过滤 + 账单状态左联 */
 async function adminListTasks(
   db: Db,
   input: Parameters<GenerationTaskStore['adminList']>[0],

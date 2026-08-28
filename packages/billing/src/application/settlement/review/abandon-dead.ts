@@ -1,7 +1,7 @@
 /**
- * 死信弃单（U6）：CAS dead→released + 三路归还（钱包授权/订阅配额/渠道敞口——
- * 复用 U3 releaseAllReservations，与 recover①② 同一实现）。归还失败回滚整个事务
- * （state_conflict，不是 404——v1 语义）。审计与业务同事务（注入 port）。
+ * 死信弃单：CAS dead→released + 三路归还（钱包授权/订阅配额/渠道敞口——
+ * 复用 releaseAllReservations，与 recover①② 同一实现）。归还失败回滚整个事务
+ * （state_conflict，不是 404）。审计与业务同事务（注入 port）。
  */
 import { BillingErrors } from '../../../domain/errors.js';
 import type { ChannelExposureStore } from '../../../ports/funding-ports.js';

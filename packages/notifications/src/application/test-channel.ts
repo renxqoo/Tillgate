@@ -1,6 +1,6 @@
 /**
  * 测试事件入箱:渠道首订阅事件 + {test:true, channel:name} 载荷;dedupeKey `test:{id}:{now-ms}`
- * (同毫秒连点被幂等吞并——by design 单发不重,B2 留档)。实际投递由 dispatch 轮询。
+ * (同毫秒连点被幂等吞并——by design 单发不重)。实际投递由 dispatch 轮询。
  */
 import type { Db } from '@tillgate/db';
 import type { NotifyStore } from '../ports/notify-store';

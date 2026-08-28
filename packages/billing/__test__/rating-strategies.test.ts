@@ -1,6 +1,5 @@
 /**
- * 策略注册表行为规格（计量/定价策略/预扣策略/系数挑选——迁移自旧仓对应测试，
- * 按源语义改写；错误断言换目录码）。
+ * 策略注册表行为规格（计量/定价策略/预扣策略/系数挑选；错误断言换目录码）。
  */
 import { describe, expect, it } from 'vitest';
 import { isBusinessError } from '@tillgate/errors';

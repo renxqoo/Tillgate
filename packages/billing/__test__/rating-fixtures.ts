@@ -1,4 +1,4 @@
-/** rating 测试共享夹具：候选/报价/收据构造器（迁移自旧仓 fixtures.ts）。 */
+/** rating 测试共享夹具：候选/报价/收据构造器。 */
 import type {
   BillingQuote,
   BillingQuoteCandidate,

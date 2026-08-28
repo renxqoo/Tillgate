@@ -1,9 +1,9 @@
 /**
- * 邀请管理路由（P3;v1 routes/referrals.ts 平移）：关系列表（双方邮箱/状态）、
+ * 邀请管理路由：关系列表（双方邮箱/状态）、
  * 作弊封禁/恢复、三类返利流水（佣金/邀请注册奖励/注册赠送——wallet 流水投影）。
  * 封禁语义：worker 停止派奖（inviterActive 已消费）,历史入账不动。
- * 关系列表 v2 去 wallet 化（accounts B3/G3——commissionTotal 不再出列,
- * 资金投影改走 payouts 端点,billing referralPayouts 单一真相）。
+ * 关系列表不含 wallet 投影（commissionTotal 不出列,
+ * 资金投影走 payouts 端点,billing referralPayouts 单一真相）。
  */
 import { Hono } from 'hono';
 import type { AccountUseCases } from '@tillgate/accounts';

@@ -1,5 +1,5 @@
 /**
- * 全局 ACL 中间件（ADR-0009:执行面数据化——接口→权限绑定住 DB,单一事实源）。
+ * 全局 ACL 中间件。
  *
  * 流程（挂在全部路由之前,与协议栈之后）：
  *   1. 公开白名单（探针/登录族——结构性端点,代码侧声明）→ 直接放行,不做会话；
@@ -10,8 +10,8 @@
  *      已绑定 → granted(grants, code) 判定,无权 403 insufficient_permission。
  *
  * 每请求一次绑定表查询（~百行小表,管理面 QPS 下无感;缓存挂账）。
- * 旧 guardFactory（逐端点代码声明）随之退役——绑定与其种子由 0084 迁移接管。
  */
+
 import type { MiddlewareHandler } from 'hono';
 import { granted } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
@@ -35,6 +35,7 @@ export const PUBLIC_ROUTES: readonly { method: string; path: string }[] = [
   { method: 'POST', path: '/v1/auth/login' },
   { method: 'POST', path: '/v1/auth/login/totp' },
   { method: 'POST', path: '/v1/auth/login/verify' },
+  { method: 'POST', path: '/v1/auth/reset-password' },
 ];
 
 /** 自身白名单:有会话即放行（不做码判定）——me 族 + logout */
@@ -77,7 +78,7 @@ export function createAclMiddleware(
     const method = c.req.method === 'HEAD' ? 'GET' : c.req.method;
     const { path } = c.req;
 
-    // 只守护 /v1/* 管理面:非 v1 未知路径放行走 404（不泄漏路由清单——v1 语义保留）
+    // 只守护 /v1/* 管理面:其余前缀的未知路径放行走 404（不泄漏路由清单）
     if (!path.startsWith('/v1/')) {
       await next();
       return;

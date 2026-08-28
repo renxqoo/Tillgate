@@ -1,4 +1,4 @@
-/** 管理面用户列表:q 模糊(subject/email/displayName)+ status/enterprise 过滤 + 排序分页(v1 listAdminUsers) */
+/** 管理面用户列表:q 模糊(subject/email/displayName)+ status/enterprise 过滤 + 排序分页 */
 import type { PageResult, UserProfile } from '../ports/account-store.js';
 import { USER_SORT_FIELDS, clampListQuery, resolveSort } from './list-query.js';
 import type { UseCaseContext } from './context.js';

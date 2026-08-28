@@ -2,14 +2,7 @@
 
 import { useState, useTransition } from 'react';
 
-import {
-  EyeIcon,
-  EyeOffIcon,
-  Loader2Icon,
-  LockIcon,
-  MailIcon,
-  ShieldCheckIcon,
-} from 'lucide-react';
+import { EyeIcon, EyeOffIcon, Loader2Icon, LockIcon, MailIcon } from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
@@ -33,10 +26,11 @@ import {
 } from '@tillgate/ui';
 
 import { actionResult } from '@/features/shared/action-result';
-import { registerAction, registerVerifyAction } from '@/server/actions/auth';
+import { registerAction } from '@/server/actions/auth';
 
 import { OAuthButtons } from './oauth-buttons';
 import type { OAuthOption } from './oauth-options';
+import { RegisterCodeStep } from './register-code-step';
 import { TurnstileWidget } from './turnstile-widget';
 
 interface RegisterValues {
@@ -45,84 +39,9 @@ interface RegisterValues {
   confirmPassword: string;
 }
 
-/**
- * 注册第二步步的邮箱验证码卡（模块级组件）：code 状态随本组件自持，
- * 返回/重新进入时随卸载归零（与原「返回时清 code」语义一致）。
- */
-function RegisterCodeStep({
-  challenge,
-  affCode,
-  onBack,
-}: {
-  challenge: string;
-  affCode: string | null;
-  onBack: () => void;
-}) {
-  const t = useTranslations('auth');
-  const [pending, startTransition] = useTransition();
-  const [code, setCode] = useState('');
-
-  return (
-    <Card className="[--card-spacing:--spacing(7)] py-[33px] shadow-sm">
-      <CardHeader className="text-center">
-        <CardTitle className="text-xl">{t('codeTitle')}</CardTitle>
-        <CardDescription>{t('codeSentRegister')}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form
-          method="post"
-          noValidate
-          onSubmit={(e) => {
-            e.preventDefault();
-            startTransition(async () => {
-              const res = await registerVerifyAction(challenge, code, affCode);
-              actionResult(res ?? {}, t('verifyFailed'));
-              // 成功会 redirect，不会回到这里
-            });
-          }}
-          className="space-y-4"
-        >
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="register-code">{t('codeLabel')}</FieldLabel>
-              <InputGroup>
-                <InputGroupAddon>
-                  <ShieldCheckIcon />
-                </InputGroupAddon>
-                <InputGroupInput
-                  id="register-code"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  placeholder={t('codePlaceholder')}
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  autoFocus
-                />
-              </InputGroup>
-              <FieldDescription>{t('codeNoticeRegister')}</FieldDescription>
-            </Field>
-          </FieldGroup>
-          <Button type="submit" disabled={pending || code.length !== 6} className="w-full">
-            {pending && <Loader2Icon className="animate-spin" />}
-            {t('verifyAndRegister')}
-          </Button>
-          <button
-            type="button"
-            className="w-full cursor-pointer text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
-            onClick={onBack}
-          >
-            {t('backToRegister')}
-          </button>
-        </form>
-      </CardContent>
-    </Card>
-  );
-}
-
 // 主表单：三个 Controller 字段为逐项平铺的模板（email/密码/确认密码 + 人机验证装配），
 // 超限源于表单字段模板的线性长度而非逻辑密度（验证码步已抽为 RegisterCodeStep）
-// eslint-disable-next-line max-lines-per-function -- 表单字段 Controller 模板逐项平铺，逻辑密度低（铁律 22①）
+// eslint-disable-next-line max-lines-per-function -- 表单字段 Controller 模板逐项平铺，逻辑密度低
 export function RegisterForm({
   oauthOptions = [],
   captchaSiteKey = null,
@@ -193,8 +112,7 @@ export function RegisterForm({
         <CardDescription>{t('registerDesc')}</CardDescription>
       </CardHeader>
       <CardContent>
-        <form
-          method="post" noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form method="post" noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FieldGroup>
             <Controller
               control={form.control}
@@ -265,6 +183,7 @@ export function RegisterForm({
                       id="register-confirm"
                       type="password"
                       autoComplete="new-password"
+                      placeholder={t('confirmPasswordPlaceholder')}
                       {...field}
                     />
                   </InputGroup>

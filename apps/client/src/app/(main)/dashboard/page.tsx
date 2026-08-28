@@ -71,7 +71,7 @@ export default async function DashboardPage() {
     byModel: [],
   };
 
-  // Key 总数（信封 total——B4 修复：v1 首页 100 条内计数在 Key 超量后低估）
+  // Key 总数（信封 total——按单页 100 条计数会在 Key 超量后低估）
   try {
     const keysData = await api.list<{ status: number }>('/v1/keys', { pageSize: 100 });
     data.totalKeys = keysData.total;
@@ -81,7 +81,7 @@ export default async function DashboardPage() {
   }
 
   // 近 14 天按日费用（/v1/usage/summary 按日聚合，日界 = 后端 CLIENT_USAGE_TZ；
-  // 起点取起始日 00:00、序列按日补零——B21 修复：首日不再半桶、无消费日不再从图上消失）
+  // 起点取起始日 00:00、序列按日补零——首日不再半桶、无消费日不再从图上消失）
   try {
     const from = trendWindowFrom(TREND_WINDOW_DAYS, DISPLAY_TZ);
     const summary = await api.get<UsageSummaryPage>(`/v1/usage/summary?from=${from.toISOString()}`);
@@ -90,13 +90,13 @@ export default async function DashboardPage() {
       dayRows.length > 0
         ? fillDailyCostSeries({ rows: dayRows, days: TREND_WINDOW_DAYS, timeZone: DISPLAY_TZ })
         : [];
-    // 今日费用：DISPLAY_TZ 日界推导（v1 +8h 硬编码近似——B8 修复）
+    // 今日费用：DISPLAY_TZ 日界推导（显式时区，不用 +8h 硬编码近似）
     data.todayCost = todayCost(dayRows, DISPLAY_TZ);
   } catch {
     // 用量不可达时图表留空
   }
 
-  // 按模型聚合（模型分布卡片；信封单形态 {rows}——B5 修复）
+  // 按模型聚合（模型分布卡片；信封单形态 {rows}）
   try {
     const byModel = await api.get<UsageByModelPage>('/v1/usage/by-model');
     data.byModel = byModel.rows ?? [];

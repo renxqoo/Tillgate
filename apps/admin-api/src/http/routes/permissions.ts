@@ -1,5 +1,5 @@
 /**
- * 权限资源路由（动态 RBAC 权限树管理面——docs/admin-rbac-dynamic/DESIGN §5;admins 域码）。
+ * 权限资源路由（动态 RBAC 权限树管理面;admins 域码）。
  * GET tree = 平铺节点（前端自组树）;custom 节点 CRUD,enforced 节点仅展示字段可改。
  */
 import { Hono } from 'hono';
@@ -32,7 +32,7 @@ function nodeWire(node: PermissionNode) {
   };
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function permissionsRoutes(deps: PermissionsRoutesDeps) {
   const app = new Hono<SessionEnv>();
 

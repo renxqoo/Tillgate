@@ -1,5 +1,5 @@
 /**
- * 流式首帧探测（D3：流式空完成判定 + #6643 同类首帧错误识别）。
+ * 流式首帧探测：流式空完成判定 + 首帧错误识别。
  *
  * 用途：chatStream 拿到 200 Response 后、交给 relayStream 之前，预读首个 chunk。
  *   - 上游立即 EOF（无任何 data 帧）→ 空完成，可在 withRetry 内按 empty 重试（≤ emptyCompletionRetries）。
@@ -60,10 +60,7 @@ interface ByteReader {
  * 回放式 rest：first 已被预读，包装流先吐 first 再按需续读原始 reader
  * （pull 驱动——与 pipeTo/手动读都兼容；取消透传给原始 reader 归还上游连接）。
  */
-function replayRestStream(
-  reader: ByteReader,
-  firstChunk: Uint8Array,
-): ReadableStream<Uint8Array> {
+function replayRestStream(reader: ByteReader, firstChunk: Uint8Array): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(firstChunk);
@@ -127,7 +124,7 @@ export async function peekFirstChunk(
 }
 
 /**
- * 首帧错误检测（#6643 同类）：首 chunk 内含完整 `data: {"error": ...}` 帧时，
+ * 首帧错误检测：首 chunk 内含完整 `data: {"error": ...}` 帧时，
  * 把扫描器捕获的错误帧还原为 body 形状并做无状态码分类。
  * 只看首帧（与 peek 同界）——错误帧跨 chunk 分割时检测不到，
  * 退回 relay-stream 的中流错误帧语义（terminated）兜底。
@@ -138,7 +135,7 @@ export function firstChunkStreamError(first: Uint8Array): UpstreamError | null {
 }
 
 /**
- * 首帧错误体的信封还原（B-F3 修复配套）：create-ai 的 mapError 拿到的是
+ * 首帧错误体的信封还原：create-ai 的 mapError 拿到的是
  * 原始 SSE 文本（"data: {...}\n\n"），tryParseJson 对该前缀恒失败会把
  * vendorCode 丢成 status 兜底（insufficient_quota → invalid_request 误分类）。
  * 此处用扫描器剥壳还原 {error:{code,type,message}} 形状供厂商错误表查表。

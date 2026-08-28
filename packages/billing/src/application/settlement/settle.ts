@@ -2,13 +2,13 @@
  * settleClaim 用例：单张认领的结算编排——钱的落定（一个事务）。
  *
  *   认领复验（五元组 + 租约）→ 幂等回查（认领失效时 usage_logs 判 already_settled）
- *   → 归属/G1 估算/渠道一致性校验 → 金额（domain computeAmounts 双口径）
+ *   → 归属/估算/渠道一致性校验 → 金额（domain computeAmounts 双口径）
  *   → 分配（domain allocateSettlement：优先级序消耗，PAYG 超额走补充授权）
  *   → 逐源 source.settle + 明细 markSettled
  *   → usage_logs 投影落库 → 渠道敞口归还 → CAS settled → 进货额度扣减（熔断）
  *
  * 本文件只有编排；分配/失败策略/解码守卫全部是 domain 纯函数。
- * 不变量红灯（原 WalletInvariantError 家族）以 DefectError 表达——自动进死信家族。
+ * 不变量红灯以 DefectError 表达——自动进死信家族。
  */
 import { DefectError } from '@tillgate/errors';
 import { BillingErrors } from '../../domain/errors.js';
@@ -108,7 +108,7 @@ export function createSettleClaimUseCase(env: SettleEnv) {
         });
       }
       settledUserId = billing.userId;
-      // G1：估算 usage 只允许归属「用户取消 ∪ 完成缺 usage」
+      // 估算 usage 只允许归属「用户取消 ∪ 完成缺 usage」
       if (receipt.usage.estimated && !isAttributedEstimate(receipt)) {
         throw invariant('settle_estimated_usage');
       }
@@ -202,7 +202,7 @@ export function createSettleClaimUseCase(env: SettleEnv) {
         });
       }
 
-      // 结算成功事实不入通知 outbox（v2 口径，v1 同款）：notifications 词表无
+      // 结算成功事实不入通知 outbox：notifications 词表无
       // 「结算成功」成员——无告警消费场景；可观测走 usage_logs 投影与 onSettled
       // 钩子（best-effort）。可靠入箱只有死信路径（failure 用例，billing_dead）。
       return {

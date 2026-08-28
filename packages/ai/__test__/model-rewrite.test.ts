@@ -1,5 +1,5 @@
 /**
- * model-rewrite 单元分支（§3.6 例外 2 的逐行状态机）：
+ * model-rewrite 单元分支（逐行状态机）：
  * 非法/无 model 载荷、嵌套 model 自愈回退、超行上限、CRLF、UTF-8 跨 chunk 劈开、flush 尾行。
  */
 import { describe, expect, it } from 'vitest';

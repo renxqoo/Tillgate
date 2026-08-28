@@ -1,5 +1,5 @@
 /**
- * 投递循环用例(v1 runNotifyDispatchOnce 语义,内存 store 承载 CAS/租约/退避):
+ * 投递循环用例(内存 store 承载 CAS/租约/退避):
  * 终态化/退避/上限/租约过期/fail-closed 链/并行渠道/循环上限。
  */
 import { describe, expect, it } from 'vitest';

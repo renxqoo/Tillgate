@@ -3,7 +3,7 @@ import { decodeOtlpJson } from '../src/tracing/decode';
 import { observabilityErrors } from '../src/errors';
 import { defined } from './defined';
 
-/** 最小合法 OTLP/JSON ExportTraceServiceRequest 构造器(v1 otlp-decode.test 平移+边界补齐) */
+/** 最小合法 OTLP/JSON ExportTraceServiceRequest 构造器 */
 function otlpSpan(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     traceId: 'a'.repeat(32),
@@ -131,7 +131,7 @@ describe('decodeOtlpJson', () => {
     expect(row.parentSpanId).toBeNull();
   });
 
-  // ---- B5 口径边界补齐(截断/提升列门与字面量语义)----
+  // ---- 边界口径(截断/提升列门与字面量语义)----
 
   it('提升列长度/类型门:requestId>64、channel>64、model>128 置 null;userId 非正整数置 null;别名键同判', () => {
     const { rows } = decodeOtlpJson(

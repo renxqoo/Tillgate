@@ -1,6 +1,6 @@
 /**
  * billing-store 的订阅生命周期 + 操作档案方法族（plans/user_subscriptions/
- * ledger_operations）——按聚合边界拆分（铁律 5）。
+ * ledger_operations）——按聚合边界拆分。
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { ledgerOperations, plans, userSubscriptions, type Db, type DbTx } from '@tillgate/db';

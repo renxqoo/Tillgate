@@ -95,7 +95,7 @@ describe('isUnsafeIpv6：保留段全枚举（含 IPv4-mapped 压缩形）', () 
     'ff02::1', // 组播
     '::ffff:127.0.0.1',
     '::ffff:10.0.0.1', // mapped dotted
-    '::ffff:7f00:1', // mapped 压缩 hex（v1 绕过面）
+    '::ffff:7f00:1', // mapped 压缩 hex
     'FE80::1', // 大写归一
   ];
   const safe: string[] = ['2001:db8::1', '2606:4700::1111', '::ffff:1.1.1.1'];

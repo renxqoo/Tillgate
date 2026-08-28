@@ -1,7 +1,7 @@
 /**
- * 优雅停机组装（目标树显式文件;runtime createShutdown 承担编排件本体）：
+ * 优雅停机组装（runtime createShutdown 承担编排件本体）：
  * server.close → otel flush → closeables → redis → db,宽限上界强制退出。
- * P2 登录波装配后 Redis 收口恢复（守卫双闸/jti 吊销面连接 quit）。
+ * Redis 收口（守卫双闸/jti 吊销面连接 quit）。
  */
 import type { AppServer } from '@tillgate/http';
 import type { Db } from '@tillgate/db';
@@ -13,7 +13,7 @@ import type { OtelHandle } from '@tillgate/observability';
 export interface AdminShutdownDeps {
   readonly server: AppServer;
   readonly otel: OtelHandle;
-  /** P2:Redis 连接收口（守卫双闸/jti 吊销面;quit 优雅断连） */
+  /** Redis 连接收口（守卫双闸/jti 吊销面;quit 优雅断连） */
   readonly redis: { quit(): Promise<unknown> };
   readonly db: Db;
   readonly graceMs: number;

@@ -1,6 +1,6 @@
 /**
  * 滑动窗口限流器（真实 Redis；REDIS_URL 未配置整套 skip——同 redis-integration 门禁口径）。
- * 行为规格 = v1 gateway production-hardening/final-hardening 用例的机制段（策略段归 app）。
+ * 只测限流机制本身（策略段归 app）。
  */
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { Redis } from 'ioredis';

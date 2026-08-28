@@ -51,7 +51,7 @@ export function completionsRequestToChat(req: unknown): Json {
 /** 规范形 chat 非流式响应 → legacy completions 响应 */
 export function chatResponseToCompletions(res: unknown): Json {
   const r = asJson(res) ?? {};
-  // B7 修复：n>1 时全 choice 返回（v1 只取 choices[0] 丢弃其余）
+  // n>1 时返回全部 choice（不只取 choices[0] 丢弃其余）
   const choices = asArray(r.choices).map((c, i) => {
     const choice = asJson(c) ?? {};
     const message = asJson(choice.message) ?? {};

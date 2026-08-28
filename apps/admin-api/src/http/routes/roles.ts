@@ -1,5 +1,5 @@
 /**
- * 角色管理路由（动态 RBAC——docs/admin-rbac-dynamic/DESIGN §5;admins 域码守护）。
+ * 角色管理路由（动态 RBAC;admins 域码守护）。
  * 审计:created/updated（detail 含 added/removed 授权 diff——安全取证主观察面）/deleted。
  */
 import { Hono } from 'hono';
@@ -18,7 +18,7 @@ export interface RolesRoutesDeps {
   postAudit: PostAudit;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function rolesRoutes(deps: RolesRoutesDeps) {
   const app = new Hono<SessionEnv>();
 

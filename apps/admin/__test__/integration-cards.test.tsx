@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 /**
- * 集成设置卡交互规格（docs/integration-settings/DESIGN.md §4.1/§5 D11、§9）：
- * 词表次序渲染（SMTP 独立卡——2026-08-25 二次裁决推翻首裁「挂 2FA 卡」：
+ * 集成设置卡交互规格：
+ * 词表次序渲染（SMTP 独立卡——
  * 系统级配置与个人自助分离，门控粒度对齐 settings:integrations）；卡面不显示
  * 配置字段值（配置收进弹窗，secret 掩码只在弹窗 placeholder 回显）；启停走
  * update 动作；Turnstile 停用在注册送礼开启时出警告（不阻断）；表单三态组装
  * （空=缺席、勾选清除=null）；无 settings:integrations 权限时配置/启停操作位
- * 隐藏（2026-08-25 用户裁决 D1，状态只读保留）。
+ * 隐藏（状态只读保留）。
  */
 import '@testing-library/jest-dom/vitest';
 
@@ -18,10 +18,15 @@ import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 
 const updateIntegration = vi.fn();
+const testIntegration = vi.fn();
 
 vi.mock('@/server/settings-actions', async () => {
   const actual = await vi.importActual<object>('@/server/settings-actions');
-  return { ...actual, updateIntegrationAction: (...args: unknown[]) => updateIntegration(...args) };
+  return {
+    ...actual,
+    updateIntegrationAction: (...args: unknown[]) => updateIntegration(...args),
+    testIntegrationAction: (...args: unknown[]) => testIntegration(...args),
+  };
 });
 
 vi.mock('sonner', () => ({
@@ -96,7 +101,7 @@ describe('integration-format 纯函数', () => {
 describe('IntegrationCard 交互', () => {
   it('卡面不显示配置字段值：明文与掩码值均不出现；配置按钮在标题行', async () => {
     renderCard(epayItem);
-    // 2026-08-25 用户裁决：卡面无配置字段值（与 2FA/TOTP 卡同形态）
+    // 卡面无配置字段值（与 2FA/TOTP 卡同形态）
     expect(screen.queryByText('****k-9')).not.toBeInTheDocument();
     expect(screen.queryByText('1001')).not.toBeInTheDocument();
     expect(screen.queryByText('https://pay.example.test')).not.toBeInTheDocument();
@@ -198,5 +203,76 @@ describe('IntegrationCard 交互', () => {
     expect(screen.getByText('Enabled')).toBeInTheDocument();
     expect(screen.getByText('Configured')).toBeInTheDocument();
     expect(screen.getByText(/disabling captcha removes register anti-abuse/i)).toBeInTheDocument();
+  });
+});
+
+describe('SMTP 弹窗测试连接（连接+认证校验，不发送邮件）', () => {
+  const smtpItem: IntegrationSettingItem = {
+    ...epayItem,
+    key: 'smtp',
+    config: { host: 'smtp.example.com', port: '465', user: 'ops', pass: '****s-9', from: null },
+    secretsSet: ['pass'],
+  };
+
+  it('仅 smtp 渲染测试钮；提交当前填写值并按成功结果 toast', async () => {
+    testIntegration.mockResolvedValue({ result: { ok: true, durationMs: 87 } });
+    renderCard(smtpItem);
+    await userEvent.click(screen.getByRole('button', { name: 'Configure' }));
+    // 只改 host：其余留空（secret 留空=保持——payload 只含 host）
+    await userEvent.type(screen.getByLabelText('SMTP host'), 'smtp2.example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Test connection' }));
+    await waitFor(() => {
+      expect(testIntegration).toHaveBeenCalledWith('smtp', {
+        config: { host: 'smtp2.example.com' },
+      });
+    });
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith(
+        'SMTP connection succeeded (87 ms) — configuration works',
+      );
+    });
+  });
+
+  it('空表单 = 只测已保存配置（空体提交）', async () => {
+    testIntegration.mockResolvedValue({ result: { ok: true, durationMs: 12 } });
+    renderCard(smtpItem);
+    await userEvent.click(screen.getByRole('button', { name: 'Configure' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Test connection' }));
+    await waitFor(() => {
+      expect(testIntegration).toHaveBeenCalledWith('smtp', {});
+    });
+  });
+
+  it('探针结果 ok:false → toast.error 携传输层诊断；action 层失败同面', async () => {
+    testIntegration.mockResolvedValue({
+      result: { ok: false, durationMs: 30, error: { code: 'EAUTH', message: '535 auth failed' } },
+    });
+    renderCard(smtpItem);
+    await userEvent.click(screen.getByRole('button', { name: 'Configure' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Test connection' }));
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('SMTP connection failed', {
+        description: '535 auth failed',
+      });
+    });
+
+    // action 层失败（ApiError 已翻译成 error 字段）
+    cleanup();
+    vi.clearAllMocks();
+    testIntegration.mockResolvedValue({ error: 'integration config incomplete' });
+    renderCard({ ...epayItem, key: 'smtp', config: {}, secretsSet: [] });
+    await userEvent.click(screen.getByRole('button', { name: 'Configure' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Test connection' }));
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('SMTP connection failed', {
+        description: 'integration config incomplete',
+      });
+    });
+  });
+
+  it('非 SMTP 弹窗不渲染测试钮（epay 配置弹窗）', async () => {
+    renderCard(epayItem);
+    await userEvent.click(screen.getByRole('button', { name: 'Configure' }));
+    expect(screen.queryByRole('button', { name: 'Test connection' })).not.toBeInTheDocument();
   });
 });

@@ -1,12 +1,12 @@
 /**
- * gateway 配置（v1 config.ts 语义迁移）：env schema + 缺省 + 生产 fail-fast。
- * 铁律 3：一切可变值装配注入且必填/显式缺省——本层是缺省值唯一真相。
- * 环境键名与 v1 保持一致（运维接口连续性）；v2 演进见 MIGRATION §3。
+ * gateway 配置：env schema + 缺省 + 生产 fail-fast。
+ * 一切可变值装配注入且必填/显式缺省——本层是缺省值唯一真相。
+ * 环境键名保持稳定（运维接口连续性）。
  */
 import * as z from 'zod';
 import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
 
-/** 正金额（20 位整数 + 18 位小数、非零）——v1 positiveDecimal 同形 */
+/** 正金额（20 位整数 + 18 位小数、非零） */
 const positiveDecimal = z
   .string()
   .regex(/^\d{1,20}(\.\d{1,18})?$/, 'must be a positive decimal string')
@@ -24,7 +24,7 @@ function isValidTimezone(tz: string): boolean {
   }
 }
 
-/** 字节量（"10MB" 形）——v1 同形 */
+/** 字节量（"10MB" 形） */
 const byteSize = z.string().regex(BYTES_RE, 'must be like "10MB"');
 
 /** 字节单位换算表（与 BYTES_RE 的封闭词表 b/kb/mb/gb 一一对应） */
@@ -43,7 +43,7 @@ const bytesOf = (v: string): number => {
   return Math.floor(Number(m[1]) * factor);
 };
 
-// eslint-disable-next-line max-lines-per-function -- env schema 逐键平铺的纯配置数据（铁律 22 ①）
+// eslint-disable-next-line max-lines-per-function -- env schema 逐键平铺的纯配置数据
 function createSchema(production: boolean) {
   return z
     .object({
@@ -51,6 +51,9 @@ function createSchema(production: boolean) {
       GATEWAY_PORT: z.coerce.number().int().min(1).max(65_535).default(8_080),
       DATABASE_URL: z.string().url(),
       REDIS_URL: z.string().url(),
+      REDIS_SENTINELS: z.string().min(1).optional(),
+      REDIS_SENTINEL_NAME: z.string().min(1).optional(),
+      REDIS_SENTINEL_PASSWORD: z.string().min(1).optional(),
       DB_POOL_MAX: z.coerce.number().int().min(1).max(300).default(10),
       GATEWAY_CURRENCY: z.string().length(3).default('CNY'),
       ADMISSION_MAX_PENDING: z.coerce.number().int().min(1).default(10_000),
@@ -116,6 +119,13 @@ function createSchema(production: boolean) {
           message: 'required when BILLING_RESERVATION_MODE=fixed',
         });
       }
+      if (v.REDIS_SENTINELS != null && v.REDIS_SENTINEL_NAME == null) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['REDIS_SENTINEL_NAME'],
+          message: 'required when REDIS_SENTINELS is configured',
+        });
+      }
     });
 }
 
@@ -124,6 +134,14 @@ export interface GatewayConfig {
   readonly port: number;
   readonly databaseUrl: string;
   readonly redisUrl: string;
+  readonly redisTopology:
+    | { readonly kind: 'direct' }
+    | {
+        readonly kind: 'sentinel';
+        readonly sentinels: string;
+        readonly sentinelName: string;
+        readonly sentinelPassword?: string;
+      };
   readonly dbPoolMax: number;
   readonly currency: string;
   readonly admissionMaxPending: number;
@@ -171,8 +189,8 @@ export interface GatewayConfig {
 }
 
 /**
- * accounts 装配 policy（部署定值：v1 等价值——网关只消费鉴权读模型，但 policy
- * 必填且形状 fail-fast；铁律 3：装配层是缺省值唯一真相）
+ * accounts 装配 policy（部署定值：网关只消费鉴权读模型，但 policy
+ * 必填且形状 fail-fast；装配层是缺省值唯一真相）
  */
 export const ACCOUNTS_POLICY = {
   invitationTtlMs: 7 * 24 * 3_600_000,
@@ -181,14 +199,14 @@ export const ACCOUNTS_POLICY = {
   amountLimitUpper: '1000000000000',
   rpmLimitMax: 1_000_000,
   tpmLimitMax: 100_000_000,
-  /** App scope.models 白名单上界（v1 等价 100） */
+  /** App scope.models 白名单上界 */
   scopeModelsMax: 100,
   referralInviteeLimit: 100,
   listPage: { page: 1, limit: 20, maxLimit: 100 },
   banDefaultReason: 'administrator banned account',
 } as const;
 
-/** billing 钱包词表白名单（v1 等价值；billing guards 必填） */
+/** billing 钱包词表白名单（billing guards 必填） */
 export const BILLING_GUARDS = {
   refTypes: ['billing', 'topup', 'admin', 'gift'],
   currencies: ['CNY', 'USD'],
@@ -203,7 +221,7 @@ const mimeSetOf = (raw: string): Set<string> =>
       .filter(Boolean),
   );
 
-/** 废弃键告警（v1 语义：用户级限流无兜底默认——残留键提示迁移） */
+/** 废弃键告警（用户级限流无兜底默认——残留键提示迁移） */
 const DEPRECATED_KEYS = [
   'DEFAULT_USER_RPM',
   'DEFAULT_USER_TPM',
@@ -221,7 +239,24 @@ function requireFixedAmount(amount: string | undefined): string {
   return amount;
 }
 
-// eslint-disable-next-line max-lines-per-function -- env → GatewayConfig 逐字段搬运的纯配置映射（铁律 22 ①）
+/** Redis 拓扑收窄：schema 已保证 Sentinel 节点在场时主名必定在场。 */
+function redisTopologyOf(parsed: {
+  REDIS_SENTINELS?: string;
+  REDIS_SENTINEL_NAME?: string;
+  REDIS_SENTINEL_PASSWORD?: string;
+}): GatewayConfig['redisTopology'] {
+  if (parsed.REDIS_SENTINELS == null) return { kind: 'direct' };
+  return {
+    kind: 'sentinel',
+    sentinels: parsed.REDIS_SENTINELS,
+    sentinelName: parsed.REDIS_SENTINEL_NAME as string,
+    ...(parsed.REDIS_SENTINEL_PASSWORD != null
+      ? { sentinelPassword: parsed.REDIS_SENTINEL_PASSWORD }
+      : {}),
+  };
+}
+
+// eslint-disable-next-line max-lines-per-function -- env → GatewayConfig 逐字段搬运的纯配置映射
 export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
   // 弃用键：告警后剔除出解析输入（过滤式构造替代动态 delete，行为等价）
   const deprecated = new Set<string>(DEPRECATED_KEYS);
@@ -243,7 +278,7 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     CHANNEL_API_KEY_ENCRYPTION: encryption,
   });
 
-  // 生产 GLOBAL_RPM 硬顶（超配钳到 5000 并告警——v1 静默钳制加可见性）
+  // 生产 GLOBAL_RPM 硬顶（超配钳到 5000 并告警）
   let globalRpm: number | null = parsed.GLOBAL_RPM > 0 ? parsed.GLOBAL_RPM : null;
   if (parsed.NODE_ENV === 'production' && globalRpm != null && globalRpm > 5_000) {
     console.warn(`[gateway] GLOBAL_RPM ${globalRpm} clamped to 5000 in production`);
@@ -255,6 +290,7 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     port: parsed.GATEWAY_PORT,
     databaseUrl: parsed.DATABASE_URL,
     redisUrl: parsed.REDIS_URL,
+    redisTopology: redisTopologyOf(parsed),
     dbPoolMax: parsed.DB_POOL_MAX,
     currency: parsed.GATEWAY_CURRENCY,
     admissionMaxPending: parsed.ADMISSION_MAX_PENDING,

@@ -1,5 +1,5 @@
 /**
- * P3 契约测试：营销配置 GET/PUT（金额/费率正则拒收）+ 邀请关系列表信封/q 透传 +
+ * 契约测试：营销配置 GET/PUT（金额/费率正则拒收）+ 邀请关系列表信封/q 透传 +
  * 封禁/恢复动词（patch+adminId）+ 三类返利流水（kind 词表外 400、分页信封）。
  * 业务语义本体在 accounts/billing 包测试;此处锁定 wire 形状与编排透传。
  */
@@ -52,7 +52,7 @@ describe('marketing', () => {
       adminId: ADMIN_ID,
     });
 
-    // v1 正则边界:负数/超 18 位小数/费率 >1 一律拒收
+    // 正则边界:负数/超 18 位小数/费率 >1 一律拒收
     for (const bad of [
       { signupGiftAmount: '-1', referralSignupBonus: '2', referralCommissionRate: '0.5' },
       {

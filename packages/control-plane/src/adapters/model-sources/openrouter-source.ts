@@ -1,6 +1,6 @@
 /**
  * OpenRouter 目录源（channel 型：真实上游，OpenAI 兼容面，全量——免费过滤在消费方）。
- * 拉取地址与超时由装配注入（铁律 3）；价格口径归一在 mapOpenAiCompatibleCatalog
+ * 拉取地址与超时由装配注入；价格口径归一在 mapOpenAiCompatibleCatalog
  * （每 token → 每百万 ×1e6）。
  */
 import { mapOpenAiCompatibleCatalog } from '../../domain/catalog/catalog';

@@ -5,7 +5,7 @@ import { USAGE_SORT_FIELDS } from '../src/usage/types';
 import type { UsageStatsStore } from '../src/usage/types';
 
 /**
- * usage 运维读侧口径测试(v1 ops-logs.service 行为规格的口径面):
+ * usage 运维读侧口径测试:
  * 北京日界纯函数边界 / 概览派生(failedCount/successRate 舍入)/ bigint 字符串
  * → number 映射 / 趋势窗口计算 / TTFT 窗口换算。SQL 行为由 postgres.real.test.ts 承担。
  */
@@ -14,7 +14,7 @@ const noRows = async () => {
   throw new Error('not wired');
 };
 
-/** 最小 store 替身:各方法默认拒绝,按用例覆写(v1 repo 语义的内存镜像) */
+/** 最小 store 替身:各方法默认拒绝,按用例覆写 */
 function fakeStore(overrides: Partial<UsageStatsStore> = {}): UsageStatsStore {
   return {
     adminList: noRows as UsageStatsStore['adminList'],

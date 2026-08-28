@@ -2,7 +2,7 @@
  * 费率卡系数解析（纯函数半）：
  *   解析优先级 model（按映射）> group（按 pricing_group）> global（卡级兜底）> '1'（无卡/无行）。
  * 快照装载（DB 查询）归 adapters——口径必须一致，消费方不得自行查询系数表。
- * 费率卡配置的管理面归 control-plane（IMPLEMENTATION §2）；billing 只消费只读快照。
+ * 费率卡配置的管理面归 control-plane；billing 只消费只读快照。
  */
 export interface RateCardCoefficientSnapshot {
   rateCardId: number;

@@ -1,8 +1,8 @@
 /**
- * 真实 PostgreSQL 集成(IMPLEMENTATION.md §4):SAVEPOINT 退化、真实唯一冲突、
- * advisory lock、池生命周期。资金级边界行为必须真实 PG 语义(总纲 §5.6)。
+ * 真实 PostgreSQL 集成:SAVEPOINT 退化、真实唯一冲突、
+ * advisory lock、池生命周期。资金级边界行为必须真实 PG 语义。
  *
- * 运行约定:DB_TEST_URL(优先)或 DATABASE_URL 缺失时整组 skip(与 ai 包 *.real.test.ts 同约定(铁律 14));
+ * 运行约定:DB_TEST_URL(优先)或 DATABASE_URL 缺失时整组 skip(与 ai 包 *.real.test.ts 同约定);
  * 只在独立 scratch schema(tillgate_db_test)内造对象,结束即删,不触碰库内既有对象。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -158,10 +158,13 @@ const POOL = {
     };
     const result = await withSessionTryLock(
       db,
-      { key, onDefect: (error, defectKey) => {
-        void error;
-        defects.push({ key: defectKey });
-      } },
+      {
+        key,
+        onDefect: (error, defectKey) => {
+          void error;
+          defects.push({ key: defectKey });
+        },
+      },
       async () => {
         // fn 走池连接;持锁者是 withSessionTryLock 内部的保留连接——杀死它,
         // 后续 unlock 语句必然失败(连接已死),进入解锁失败处置分支

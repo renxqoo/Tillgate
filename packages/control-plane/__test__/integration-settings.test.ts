@@ -1,5 +1,5 @@
 /**
- * 集成设置域与写用例（docs/integration-settings/DESIGN.md §8）：
+ * 集成设置域与写用例：
  * 词表封闭（↔ 迁移 CHECK）、完整性矩阵、掩码、字段三态合并、轮换入窗、
  * enabled⇒完整性不变量、enc: 伪装拒绝、同事务审计（含回滚与 Turnstile 标志）。
  */
@@ -303,7 +303,7 @@ describe('updateIntegration（字段三态 + 不变量 + 轮换 + 审计）', ()
   });
 });
 
-// ── review 修复规格（红测移植：A-1/A-3/R3/R4/R5/M8/H1 形状守卫）────────────────────
+// ── 形状守卫规格 ────────────────────
 
 /** 已轮换的 stripe 行（t0 起窗）——窗口保留规格共用装置 */
 function rotatedStripeRow(): IntegrationSettingsRow {

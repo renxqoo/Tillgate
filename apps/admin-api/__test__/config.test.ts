@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { loadAdminApiConfig } from '../src/config';
 
 /**
- * 配置契约（DESIGN §2.4）：缺省显式持有;秘密三道门;生产/显式 fail-fast。
+ * 配置契约:缺省显式持有;秘密三道门;生产/显式 fail-fast。
  * 表驱动:BASE 全量合法 → 逐键扰动断言缺省或拒绝。
  */
 
@@ -37,8 +37,32 @@ describe('loadAdminApiConfig', () => {
       expect.arrayContaining(['billing', 'topup', 'admin', 'gift', 'referral']),
     );
     expect(config.dbPool.poolMax).toBe(10);
+    expect(config.redisTopology).toEqual({ kind: 'direct' });
     // OTel 缺省:非生产 memory
     expect(config.otelMode).toBe('memory');
+  });
+
+  it('Redis Sentinel 拓扑需要主名并完整传递鉴权', () => {
+    expect(() => loadAdminApiConfig({ ...BASE, REDIS_SENTINELS: 's1:26379' })).toThrowError(
+      expect.objectContaining({
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: ['REDIS_SENTINEL_NAME'] }),
+        ]),
+      }),
+    );
+    expect(
+      loadAdminApiConfig({
+        ...BASE,
+        REDIS_SENTINELS: 's1:26379,s2:26379',
+        REDIS_SENTINEL_NAME: 'mymaster',
+        REDIS_SENTINEL_PASSWORD: 'sentinel-secret',
+      }).redisTopology,
+    ).toEqual({
+      kind: 'sentinel',
+      sentinels: 's1:26379,s2:26379',
+      sentinelName: 'mymaster',
+      sentinelPassword: 'sentinel-secret',
+    });
   });
 
   it('CORS 白名单逗号拆分与 trim', () => {

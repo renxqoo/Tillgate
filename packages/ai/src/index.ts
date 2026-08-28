@@ -1,9 +1,8 @@
 /**
- * @tillgate/ai 公共出口（P1 阶段：契约面——类型、错误归一、配置）。
- * createAi 装配壳与传输/协议/管线在 P2-P4 落地后进入本出口（IMPLEMENTATION.md §5）。
+ * @tillgate/ai 公共出口：类型契约、错误归一、配置、createAi 装配与传输/协议/管线。
  */
 
-// ---- 错误归一（§3.2 单一真相）----
+// ---- 错误归一（单一真相）----
 export {
   UpstreamError,
   isUpstreamError,
@@ -54,7 +53,7 @@ export type {
 // ---- 装配与传输 ----
 export { createAi, SUPPORTED_PROTOCOLS } from './create-ai';
 
-// ---- 厂商档案词表（admin 下拉/control-plane capabilities 单一真相;admin-api P6 接缝）----
+// ---- 厂商档案词表（admin 下拉/control-plane capabilities 单一真相）----
 export { vendorProfileNames } from './registry/vendor-profiles';
 export { assertSafeUrl, assertSafeUrlSync, allowAllUrls } from './transport/http-client';
 
@@ -62,7 +61,7 @@ export { assertSafeUrl, assertSafeUrlSync, allowAllUrls } from './transport/http
 export { extractTextFeatures, TextFeaturesAccumulator } from './usage/features';
 export { estimateAudioDurationSeconds } from './usage/media-duration';
 
-// ---- 入站协议翻译（app HTTP 面消费：外部线格式 ↔ 规范 chat 形；§3.6 透传例外 1）----
+// ---- 入站协议翻译（app HTTP 面消费：外部线格式 ↔ 规范 chat 形）----
 export {
   completionsRequestToChat,
   chatResponseToCompletions,

@@ -1,6 +1,6 @@
 /**
  * 用例调用上下文：请求链路锚 + 操作发起者（审计归属的唯一来源——幂等指纹/审计行统一从此取）。
- * traceParent 观测锚待 observability 波次补（G3），不预留空字段。
+ * 不预留未消费的观测锚字段（traceParent 等），接口只声明真实消费面。
  */
 
 export type Actor =

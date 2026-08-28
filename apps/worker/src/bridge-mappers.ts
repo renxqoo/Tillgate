@@ -1,7 +1,6 @@
 /**
- * 装配桥接的形状映射（原 assembly.ts 内联函数,为守住装配根文件规模上限拆出;
- * 语义零变化——纯函数逐字段搬运）:
- * - toBillingEvent:inference 蛇形信号 → billing 点分事件（两包同源 v1 词表;与 gateway 桥同款映射）
+ * 装配桥接的形状映射（纯函数逐字段搬运）:
+ * - toBillingEvent:inference 蛇形信号 → billing 点分事件（与 gateway 桥同款映射）
  * - toChannelCandidate:control-plane 渠道行 → inference 候选形状（连接信息同源映射）
  */
 import type { BillingSignal, ChannelCandidate } from '@tillgate/inference';
@@ -29,7 +28,7 @@ export function toBillingEvent(signal: BillingSignal): BillingEvent {
       return {
         type: 'request.succeeded',
         requestId: signal.requestId,
-        // 收据两包同源（v1 receipt 迁移 twin）——结构直传
+        // 收据两包同源——结构直传
         receipt: signal.receipt as unknown as BillingEvent extends { receipt: infer R } ? R : never,
       };
     }

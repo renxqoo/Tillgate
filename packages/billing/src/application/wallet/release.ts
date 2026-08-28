@@ -40,7 +40,7 @@ export function createReleaseUseCase(env: WalletEnv) {
         });
       }
       if (current.status !== 'active') {
-        // released 重放幂等（旧仓活路径语义：不比对释放指纹）；settled/expired 是真拒绝
+        // released 重放幂等（不比对释放指纹）；settled/expired 是真拒绝
         if (current.status === 'released') {
           return {
             authorizationId: current.id,
@@ -57,7 +57,7 @@ export function createReleaseUseCase(env: WalletEnv) {
         fingerprint,
       );
       if (!released) throw new DefectError('release.cas_lost', 'billing.wallet_invariant');
-      // B13：释放预占不动资金——容忍风控冻结（裸锁只取在途快照；settle 仍拒绝冻结账户）
+      // 释放预占不动资金——容忍风控冻结（裸锁只取在途快照；settle 仍拒绝冻结账户）
       const [holder] = await store.lockAccounts(tx, [released.accountId]);
       if (!holder) throw new DefectError('release.holder_missing', 'billing.wallet_invariant');
       await store.setInFlight(

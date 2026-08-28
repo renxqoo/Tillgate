@@ -5,7 +5,7 @@ import { DefectError } from '@tillgate/errors';
  * AES-256-GCM 对称加解密工厂（渠道上游 Key 落库加密）。
  * 密钥由装配方提供（如 ENCRYPTION_KEY ≥32 字符），装配一次派生一次（SHA-256 → 32 字节 key）。
  *
- * 密文格式：enc:v1:<ivHex>:<tagHex>:<cipherHex>——与 v1 存量落库行逐字节兼容（同密钥互解）。
+ * 密文格式：enc:v1:<ivHex>:<tagHex>:<cipherHex>——存量落库行同格式（同密钥互解）。
  * v1 是格式标记，非密钥世代（单 key 单格式）：
  *   - iv：12 字节随机（每次加密不同）
  *   - tag：16 字节 GCM 认证标签（防篡改）
@@ -43,7 +43,7 @@ function parsePackedCiphertext(packed: string): PackedCiphertext {
 }
 
 export function createCipher(encryptionKey: string): Cipher {
-  // 空密钥 fail-fast：SHA-256 会把空串安静派生成合法 key——配置缺陷不得静默通过（P3 加固）
+  // 空密钥 fail-fast：SHA-256 会把空串安静派生成合法 key——配置缺陷不得静默通过
   if (encryptionKey.length === 0) {
     throw new DefectError(
       'encryption key must not be empty (check ENCRYPTION_KEY)',

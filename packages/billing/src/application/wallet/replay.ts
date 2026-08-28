@@ -24,7 +24,7 @@ export async function replayLegged(
   currency: string,
   fingerprint: string,
   kind: 'credit' | 'refund',
-  /** 已规范化的命令金额——回执与首笔同形（B12：不回读带符号腿金额，refund 腿为负） */
+  /** 已规范化的命令金额——回执与首笔同形（不回读带符号腿金额，refund 腿为负） */
   commandAmount: string,
 ): Promise<ReplayedLegReceipt> {
   const accountId = await store.findUserAccountId(conn, userId, currency);

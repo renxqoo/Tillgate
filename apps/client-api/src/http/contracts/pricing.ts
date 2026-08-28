@@ -1,6 +1,6 @@
 /**
- * 公开定价契约：宽松查询解析（q/free/page/pageSize——公共端点非法值回落默认而非 400，
- * v1 语义）。单页上界 500（目录可达数千，列表永不无界返回）。
+ * 公开定价契约：宽松查询解析（q/free/page/pageSize——公共端点非法值回落默认而非 400）。
+ * 单页上界 500（目录可达数千，列表永不无界返回）。
  */
 export const PRICING_MAX_PAGE_SIZE = 500;
 export const PRICING_DEFAULT_PAGE_SIZE = 100;

@@ -6,7 +6,8 @@ import * as z from 'zod';
 import { adminsContracts } from '../contracts/admins';
 import { idPathParam, listQuery, paginatedOf, type OpenApiEndpoint } from './shared';
 
-/** 管理员资料行（列表/创建/更新共用投影——不含密码/2FA 密钥列） */
+/** 管理员资料行（列表/创建/更新共用投影——不含密码/2FA 密钥列;
+ *  hasPassword = 激活态(邀请邮件是否还有意义——待激活标记/重发按钮显隐) */
 export const adminRowSchema = z
   .object({
     id: z.number(),
@@ -18,10 +19,21 @@ export const adminRowSchema = z
     twoFactorEnabled: z.boolean(),
     lastLoginAt: z.string().nullable(),
     createdAt: z.string(),
+    hasPassword: z.boolean().describe('是否已设置密码(false = 待激活,邀请邮件可发/可重发)'),
   })
   .meta({
     id: 'AdminRow',
     description: '管理员资料行（GET/POST /v1/admins,PATCH /v1/admins/:id）',
+  });
+
+/** 创建响应 = 资料行 + 邀请邮件投递结果（失败不回滚——列表重发补救） */
+export const adminCreatedSchema = adminRowSchema
+  .extend({
+    inviteSent: z.boolean().describe('邀请邮件是否已投递（SMTP/地址未配置或投递失败 = false）'),
+  })
+  .meta({
+    id: 'AdminCreated',
+    description: '创建管理员响应（资料行 + 邀请邮件投递结果）',
   });
 
 export const adminsEndpoints: readonly OpenApiEndpoint[] = [
@@ -40,10 +52,19 @@ export const adminsEndpoints: readonly OpenApiEndpoint[] = [
     method: 'post',
     path: '/v1/admins',
     tag: 'admins',
-    summary: '创建管理员（资料行 + identity 凭据双动词,凭据被占即补偿回滚）',
+    summary: '创建管理员（邀请制:资料行 + email 凭据 + 邀请邮件;凭据被占即补偿回滚）',
     body: adminsContracts.create,
-    response: { schema: adminRowSchema, status: 201 },
+    response: { schema: adminCreatedSchema, status: 201 },
     errors: [400, 403, 409],
+  },
+  {
+    method: 'post',
+    path: '/v1/admins/:id/resend-invite',
+    tag: 'admins',
+    summary: '重发邀请邮件（仅待激活管理员;60s 冷却;SMTP/地址未配置 503）',
+    params: [idPathParam('管理员 id')],
+    response: { schema: z.object({ ok: z.literal(true) }) },
+    errors: [400, 403, 404, 409, 429, 503],
   },
   {
     method: 'patch',

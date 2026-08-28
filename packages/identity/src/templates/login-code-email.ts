@@ -39,7 +39,7 @@ export const MAIL_BASE_STYLE = {
 export const MAIL_FONT_FAMILY =
   "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei','Helvetica Neue',Arial,sans-serif;";
 
-/** 用途×语言文案(标题词 + 引导句)——查表替分支堆叠(铁律 22 ②);
+/** 用途×语言文案(标题词 + 引导句)——查表替分支堆叠;
  * two_factor_toggle=管理端「邮箱验证码二次登录」开关确认(admin-email-2fa)。 */
 function copyOf(
   en: boolean,
@@ -84,7 +84,9 @@ export function renderLoginCodeEmail(
   const sentAt = now.toLocaleString(en ? 'en-US' : 'zh-CN', { hour12: false });
   const copy = copyOf(en, ctx.purpose === 'two_factor_toggle', brand);
 
-  const subject = en ? `[${brand}] ${copy.subjectWord} ${code}` : `【${brand}】${copy.subjectWord} ${code}`;
+  const subject = en
+    ? `[${brand}] ${copy.subjectWord} ${code}`
+    : `【${brand}】${copy.subjectWord} ${code}`;
 
   const text = en
     ? [

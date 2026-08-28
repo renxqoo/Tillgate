@@ -1,8 +1,8 @@
 /**
- * 统一分页信封与列表查询构造(R10,api-contract §4):
+ * 统一分页信封与列表查询构造:
  *   - 所有记录列表接口统一 ?page=&limit=
  *   - 默认不传 sort_by → 后端按各表 fallback(通常 created_at desc)排序
- * 框架无关纯函数;错误降级展示归页面层(DESIGN §2.2)。
+ * 框架无关纯函数;错误降级展示归页面层。
  */
 
 /** 统一分页 envelope({rows,total,page,limit},配套 ?page=&limit= 查询参数) */

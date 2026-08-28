@@ -68,7 +68,7 @@ export interface UsageReceipt {
    */
   pricingWindow?: string | null;
   /**
-   * 估算结算归属（政策拍板）：用户侧取消 ∪ 完成缺 usage。
+   * 估算结算归属：用户侧取消 ∪ 完成缺 usage。
    * usage.estimated=true 时必填且必须属于 ESTIMATE_ATTRIBUTIONS（验收结构性把关）。
    */
   estimatedFor?: EstimateAttribution;
@@ -83,7 +83,7 @@ export type UserSideCancel = (typeof USER_SIDE_CANCELS)[number];
 /**
  * 允许估算结算的全部归属：用户取消三态归一 + 缺 usage / 部分交付细分。
  *
- * 计费政策（2026-08-21 拍板）：**部分交付即计费**——上游已处理即扣 input、
+ * 计费政策：**部分交付即计费**——上游已处理即扣 input、
  * 已交付输出按文本加扣（含上游故障截断的流：渠道成本已发生，网关不吸收损失）；
  * 零交付（first_chunk 前失败）不扣，走换渠/释放。
  */

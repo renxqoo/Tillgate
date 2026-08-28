@@ -17,10 +17,10 @@ import {
   type InMemoryIdentityStore,
 } from './in-memory-identity-store.js';
 
-/** v1 等价事务重试(装配缺省由 app 持有;测试用等价值断行为) */
+/** 事务重试(装配缺省由 app 持有;测试用等价值断行为) */
 export const V1_TX_RETRY: TxRetryPolicy = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 };
 
-/** 测试配置:v1 消费面等价值(挑战 6 位/300s/60s/5 次;双 realm;宽词表) */
+/** 测试配置:消费面等价值(挑战 6 位/300s/60s/5 次;双 realm;宽词表) */
 export const TEST_CONFIG: IdentityConfigInput = {
   identifiers: ['email', 'phone', 'username'],
   providers: ['github', 'google'],
@@ -91,6 +91,18 @@ export function createInMemoryMailer(): InMemoryMailer {
         to,
         code: url,
         ip: ctx.ip,
+        ...(ctx.locale != null ? { locale: ctx.locale } : {}),
+      });
+    },
+    async sendAdminInviteLink(to, url, ctx) {
+      if (fail) {
+        fail = false;
+        throw new Error('smtp delivery failed');
+      }
+      sent.push({
+        to,
+        code: url,
+        ip: '',
         ...(ctx.locale != null ? { locale: ctx.locale } : {}),
       });
     },

@@ -31,10 +31,11 @@ describe('client-api config', () => {
     expect(c.CLIENT_API_PORT).toBe(8081);
     expect(c.CLIENT_CURRENCY).toBe('CNY');
     expect(c.REGISTER_ENABLED).toBe(true);
-    expect(c.REGISTER_IP_LIMIT_PER_HOUR).toBe(5);
+    expect(c.CLIENT_CHALLENGE_MAX_ATTEMPTS).toBe(10);
+    expect(c.REGISTER_IP_LIMIT_PER_HOUR).toBe(10);
     expect(c.REDEEM_PER_MINUTE_LIMIT).toBe(10);
     expect(c.CLIENT_TOPUP_ORDERS_PER_MINUTE).toBe(10);
-    expect(c.LOGIN_FAILURE_THRESHOLD).toBe(5);
+    expect(c.LOGIN_FAILURE_THRESHOLD).toBe(10);
     expect(c.CLIENT_PASSWORD_MIN_LENGTH).toBe(10);
     expect(c.CLIENT_USAGE_TZ).toBe('Asia/Shanghai');
     expect(c.PRICING_CACHE_TTL_MS).toBe(30_000);
@@ -78,8 +79,8 @@ describe('client-api config', () => {
   });
 
   describe('组配置全-or-无', () => {
-    // CAPTCHA/SMTP/OAuth/EPAY/STRIPE 凭据组校验已随 env 迁移迁入 integration_settings
-    // 写入侧（control-plane update/import 用例——docs/integration-settings/DESIGN.md §5 D5）
+    // CAPTCHA/SMTP/OAuth/EPAY/STRIPE 凭据组校验在 integration_settings
+    // 写入侧（control-plane update/import 用例）
     it('sentinel 无主名拒绝', () => {
       rejectLoad({ REDIS_SENTINELS: 'h1:26379' }, /REDIS_SENTINEL_NAME/);
     });

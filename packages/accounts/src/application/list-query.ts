@@ -1,5 +1,5 @@
 /**
- * 列表查询公共件:分页钳制与排序白名单解析(D2 收敛;v1 散在各 repo/zod)。
+ * 列表查询公共件:分页钳制与排序白名单解析。
  * 排序字段是封闭词表;实现契约:任意排序附 desc(id) 稳定 tiebreaker。
  */
 import type { ListQuery, SortSpec } from '../ports/account-store.js';

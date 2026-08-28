@@ -1,6 +1,6 @@
 /**
- * 钱包动词真实 PostgreSQL 契约（迁移自旧仓 service/__tests__/wallet*.test.ts 行为规格）：
- * 触发器不变量同盟、真实唯一冲突、CAS 竞态、B1/B12/B13 回归。默认门禁排除（铁律 14），
+ * 钱包动词真实 PostgreSQL 契约：
+ * 触发器不变量同盟、真实唯一冲突、CAS 竞态、幂等竞速回归。默认门禁排除，
  * 经 `bun run test:real`（DB_TEST_URL / DATABASE_URL）显式运行。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -127,7 +127,7 @@ async function expectBusinessCode(fn: () => Promise<unknown>): Promise<string> {
         h.api.settle({ refType: 'billing', refId: 'b2', amount: '1' }),
       ),
     ).toBe('billing.account_frozen');
-    // B13：冻结账户的 active 冻结单仍可释放——只归还 in_flight，不动资金
+    // 冻结账户的 active 冻结单仍可释放——只归还 in_flight，不动资金
     const released = await h.api.release({ refType: 'billing', refId: 'b2', reason: 'risk_hold' });
     expect(released).toMatchObject({ releasedAmount: '5', replayed: false });
     expect(defined((await h.api.accounts(userId))[0]).inFlight).toBe('0');

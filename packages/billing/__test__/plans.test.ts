@@ -1,5 +1,5 @@
 /**
- * 套餐目录管理契约测试（U6;内存 stand-in;v1 plans.test.ts 行为规格）：
+ * 套餐目录管理契约测试（内存 stand-in）：
  * kind×周期一致性 / kind 不可变 / 删除守卫（含历史订阅引用 → plan_in_use）。
  */
 import { describe, expect, it } from 'vitest';

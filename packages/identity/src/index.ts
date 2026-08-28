@@ -82,3 +82,7 @@ export {
   renderPasswordResetEmail,
   type PasswordResetEmailContext,
 } from './templates/password-reset-email.js';
+export {
+  renderAdminInviteEmail,
+  type AdminInviteEmailContext,
+} from './templates/admin-invite-email.js';

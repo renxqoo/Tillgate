@@ -1,7 +1,7 @@
 /**
- * 标识绑定:一个标识一个账号;同用户重挂 = 幂等重放(B23:重放不改密码,设初始密码走
- * passwords.reset);他人占用 = identifier_taken。密码策略在此单源校验(B18/D2)。
- * 审计同事务写入(§5.4 事务参与;回滚即无审计行)。
+ * 标识绑定:一个标识一个账号;同用户重挂 = 幂等重放(重放不改密码,设初始密码走
+ * passwords.reset);他人占用 = identifier_taken。密码策略在此单源校验。
+ * 审计同事务写入(回滚即无审计行)。
  */
 import { advisoryLock, runTx } from '@tillgate/db';
 import { auditEvent } from '../domain/audit-events.js';
@@ -54,7 +54,7 @@ export async function registerCredential(
         credentialId: outcome.credentialId,
         replayed: outcome.status === 'replay',
       };
-      // 审计同事务写入(§5.4):回滚即无审计行,写入失败随事务回滚
+      // 审计同事务写入:回滚即无审计行,写入失败随事务回滚
       await auditWithinTx(
         tx,
         ctx,

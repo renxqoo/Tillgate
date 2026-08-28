@@ -10,6 +10,8 @@ const addBulk = vi.fn(async () => []);
 const workerClose = vi.fn(async () => {});
 const queueClose = vi.fn(async () => {});
 const disconnect = vi.fn();
+const ping = vi.fn(async () => 'PONG');
+const redisCtorArgs: unknown[][] = [];
 const workerOn = vi.fn();
 /**
  * jobId → getJob 返回形状：state 'missing'=getJob 返回 null；无登记=缺省活 job
@@ -21,11 +23,11 @@ const queueAdd = vi.fn(async () => ({}));
 
 vi.mock('ioredis', () => ({
   default: class FakeIORedis {
-    constructor(
-      public readonly url: string,
-      public readonly options: unknown,
-    ) {}
+    constructor(...args: unknown[]) {
+      redisCtorArgs.push(args);
+    }
     disconnect = disconnect;
+    ping = ping;
   },
 }));
 
@@ -52,12 +54,12 @@ vi.mock('bullmq', () => ({
 }));
 
 import { createSettlementQueue, SETTLEMENT_QUEUE_NAME } from '../src/queue/settlement-queue';
-import IORedis from 'ioredis';
 import { Queue, Worker } from 'bullmq';
 
 /** Worker 构造第 n 次调用注册的 processor(mock.calls[n][1]) */
 function processorOf(callIndex: number) {
-  const { calls } = (Worker as unknown as { mock: { calls: Array<[unknown, unknown, unknown]> } }).mock;
+  const { calls } = (Worker as unknown as { mock: { calls: Array<[unknown, unknown, unknown]> } })
+    .mock;
   const [, registered] = defined(calls[callIndex], `worker ctor call #${callIndex}`);
   return registered as (job: { data: { requestId: string } }) => Promise<void>;
 }
@@ -77,24 +79,63 @@ function harness(process: (id: string) => Promise<string>) {
 beforeEach(() => {
   vi.clearAllMocks();
   jobStates.clear();
+  redisCtorArgs.length = 0;
+  ping.mockResolvedValue('PONG');
 });
 
 describe('queue/settlement-queue：BullMQ 装配（mock 面）', () => {
   it('构造参数透传：ioredis maxRetriesPerRequest=null、prefix/concurrency', () => {
     harness(async () => 'settled');
-    const ctor = IORedis as unknown as new (url: string, options: unknown) => { url: string; options: unknown };
-    const fake = new ctor('redis://localhost:6379/0', { maxRetriesPerRequest: null });
-    expect(fake.url).toBe('redis://localhost:6379/0');
-    expect(fake.options).toEqual({ maxRetriesPerRequest: null });
-    expect(Worker).toHaveBeenCalledWith(
-      SETTLEMENT_QUEUE_NAME,
-      expect.any(Function),
-      { connection: expect.anything(), prefix: '{test}', concurrency: 3 },
-    );
+    expect(redisCtorArgs).toEqual([
+      ['redis://localhost:6379/0', { maxRetriesPerRequest: null, enableOfflineQueue: true }],
+    ]);
+    expect(Worker).toHaveBeenCalledWith(SETTLEMENT_QUEUE_NAME, expect.any(Function), {
+      connection: expect.anything(),
+      prefix: '{test}',
+      concurrency: 3,
+    });
     expect(Queue).toHaveBeenCalledWith(SETTLEMENT_QUEUE_NAME, {
       connection: expect.anything(),
       prefix: '{test}',
     });
+  });
+
+  it('Sentinel 构造参数携 master/双密码/db，不再直连 redis 服务名', () => {
+    createSettlementQueue({
+      redisUrl: 'redis://:data-pass@redis:6379/4',
+      sentinels: 's1:26379,s2:26379',
+      sentinelName: 'mymaster',
+      sentinelPassword: 'sentinel-pass',
+      prefix: '{test}',
+      concurrency: 1,
+      maxAttempts: 3,
+      backoffBaseMs: 100,
+      process: async () => 'settled',
+      logger: { info: () => {}, error: () => {} },
+    });
+    expect(redisCtorArgs).toEqual([
+      [
+        expect.objectContaining({
+          sentinels: [
+            { host: 's1', port: 26379 },
+            { host: 's2', port: 26379 },
+          ],
+          name: 'mymaster',
+          password: 'data-pass',
+          db: 4,
+          sentinelPassword: 'sentinel-pass',
+          maxRetriesPerRequest: null,
+          enableOfflineQueue: true,
+        }),
+      ],
+    ]);
+  });
+
+  it('ping 是 BullMQ Redis readiness 真实出口', async () => {
+    const face = harness(async () => 'settled');
+    await expect(face.ping()).resolves.toBeUndefined();
+    ping.mockRejectedValueOnce(new Error('redis down'));
+    await expect(face.ping()).rejects.toThrow(/redis down/);
   });
 
   it('enqueueMany：jobId=requestId + attempts/backoff 一次性形状；空数组零调用', async () => {
@@ -104,7 +145,11 @@ describe('queue/settlement-queue：BullMQ 装配（mock 面）', () => {
       {
         name: 'settle',
         data: { requestId: 'r1' },
-        opts: expect.objectContaining({ jobId: 'r1', attempts: 7, backoff: { type: 'exponential', delay: 250 } }),
+        opts: expect.objectContaining({
+          jobId: 'r1',
+          attempts: 7,
+          backoff: { type: 'exponential', delay: 250 },
+        }),
       },
       {
         name: 'settle',
@@ -135,7 +180,11 @@ describe('queue/settlement-queue：BullMQ 装配（mock 面）', () => {
       expect(queueAdd).toHaveBeenCalledWith(
         'settle',
         { requestId: id },
-        expect.objectContaining({ jobId: id, attempts: 7, backoff: { type: 'exponential', delay: 250 } }),
+        expect.objectContaining({
+          jobId: id,
+          attempts: 7,
+          backoff: { type: 'exponential', delay: 250 },
+        }),
       );
     }
   });
@@ -164,10 +213,10 @@ describe('queue/settlement-queue：BullMQ 装配（mock 面）', () => {
     });
     const registered = workerOn.mock.calls.filter(([event]) => event === 'failed');
     expect(registered).toHaveLength(1);
-    const handler = defined(
-      defined(registered[0], 'failed handler')[1],
-      'failed handler fn',
-    ) as (job: unknown, error: Error) => void;
+    const handler = defined(defined(registered[0], 'failed handler')[1], 'failed handler fn') as (
+      job: unknown,
+      error: Error,
+    ) => void;
     handler({ id: 'job-1', attemptsMade: 3 }, new Error('exhausted'));
     expect(errors).toHaveLength(1);
   });

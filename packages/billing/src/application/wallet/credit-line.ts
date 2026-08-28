@@ -1,7 +1,7 @@
 /**
  * setCreditLimit 动词：授信地板——审计交易（credit_line 单零腿 + creditLimitAfter 回执）
  * + 覆盖校验（新授信必须盖住负余额与全部在途）。
- * B1 修复：唯一冲突兜底不再把输入当回执——重读存储交易，指纹比对通过后返回**存储的**
+ * 唯一冲突兜底不把输入当回执——重读存储交易，指纹比对通过后返回**存储的**
  * creditLimitAfter（稳定回执），同键异额命令吃 idempotency_conflict。
  */
 import { DefectError } from '@tillgate/errors';
@@ -80,7 +80,7 @@ export function createSetCreditLimitUseCase(env: WalletEnv) {
       });
     } catch (error) {
       if (store.isUniqueViolation(error)) {
-        // B1 回归锚点：并发同键输家必须重读 + 指纹比对——同键异额在此吃 409，
+        // 并发同键输家必须重读 + 指纹比对——同键异额在此吃 409，
         // 绝不把自己的输入当回执返回
         const existing = await store.read((conn) =>
           store.findTransaction(conn, refType, refId, 'credit_line'),

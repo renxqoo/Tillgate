@@ -1,5 +1,5 @@
 /**
- * U1b 补充边界（分支封口）——从 wallet.test 拆出（文件行数上限，铁律 5）。
+ * 钱包动词补充边界——从 wallet.test 拆出（控制文件行数）。
  */
 import { describe, expect, it } from 'vitest';
 import { isDefectError } from '@tillgate/errors';
@@ -155,7 +155,7 @@ describe('U1b 补充边界（分支封口）', () => {
       (await rejection(() => api.refund({ userId, amount: '1', refType: 'admin', refId: 'hk13' })))
         .code,
     ).toBe('billing.account_frozen');
-    // 冻结账户的 active 冻结单仍可释放（在途归还）——旧仓语义：查询/释放预占不受限
+    // 冻结账户的 active 冻结单仍可释放（在途归还）——查询/释放预占不受限
     const released = await api.release({ refType: 'billing', refId: 'hk11', reason: 'risk_hold' });
     expect(released.releasedAmount).toBe('3');
     expect(defined((await api.accounts(userId))[0]).inFlight).toBe('0');

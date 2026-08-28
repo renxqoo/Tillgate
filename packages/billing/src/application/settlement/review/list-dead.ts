@@ -1,4 +1,4 @@
-/** 死信列表（U6;limit 钳位 1..200——复核面人工分页口径） */
+/** 死信列表（limit 钳位 1..200——复核面人工分页口径） */
 import type { BillingStore, DeadCaseRow } from '../../../ports/billing-store.js';
 
 export function listDead(

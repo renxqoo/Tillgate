@@ -1,5 +1,5 @@
 /**
- * OAuth client_credentials 凭证校验(v1 /oauth/token:client_id + sha256(secret) 双等值,
+ * OAuth client_credentials 凭证校验(/oauth/token:client_id + sha256(secret) 双等值,
  * status=0 + 属主 status=0 守卫)。查无统一 null——调用方翻译 invalid_client(不区分原因)。
  */
 import { sha256Hex } from '../domain/credentials.js';

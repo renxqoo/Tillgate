@@ -1,5 +1,5 @@
 /**
- * 生成任务轮询用例（v1 service/generation/poll.ts 212 行语义平移；worker app
+ * 生成任务轮询用例（worker app
  * 提供节奏与 billing signal 桥，本用例拥有状态机推进规则）：
  *
  *   ① 超时扫描   expires_at 到期的在途任务 → CAS expired + request_failed 释放（不扣）
@@ -9,7 +9,7 @@
  *                failed → CAS 终态 + request_failed 释放
  *   ③ task_execute 同步阻塞型上游由 worker 代执行（网关只登记不调上游）
  *
- * 资金不变量（顺序即语义，v1 §4.3 对位）：
+ * 资金不变量（顺序即语义）：
  *   succeeded = 先信号后终态——信号（实扣）是权威动作，失败保留任务行下轮重试
  *   （上游查询幂等 + 信号指纹幂等）——「宁可晚交付，不可漏收费」；billing 已
  *   入结算态（settlement_pending/settled）则跳过信号直接终态化（信号已落地、
@@ -35,7 +35,7 @@ export interface GenerationPollConfig {
   expireReason: string;
   /** 代执行（task_execute）上游调用总预算 ms */
   executeDeadlineMs: number;
-  /** 代执行同渠道重试次数（v1 maxRetries=2 对位） */
+  /** 代执行同渠道重试次数 */
   executeMaxRetries: number;
 }
 
@@ -68,7 +68,7 @@ function receiptOf(task: GenerationTaskActiveRow, durationMs: number): UsageRece
   return { ...template, usage: { ...template.usage, units }, durationMs };
 }
 
-/** 续租宽限常数（v1 同值）：expires_at 余量 + 30s，下限 config.leaseMs */
+/** 续租宽限常数：expires_at 余量 + 30s，下限 config.leaseMs */
 const LEASE_GRACE_MS = 30_000;
 
 /** 单任务异常记录面（缺省 console；worker 装配注入结构化日志） */

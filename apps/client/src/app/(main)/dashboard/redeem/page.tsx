@@ -62,7 +62,7 @@ export default async function RedeemPage({ searchParams }: PageProps) {
   let loadError: string | null = null;
   let hasMore = false;
   try {
-    // 信封只 rows 无 total（G3 族）——「加载更多」按满页判断续读
+    // 信封只 rows 无 total——「加载更多」按满页判断续读
     const qs = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
     const result = await api.get<RedeemHistoryPage>(`/v1/redeem/history?${qs.toString()}`);
     // catch 形参按 catch-error-name 规则命名为 error，外层改名为 loadError：原写法

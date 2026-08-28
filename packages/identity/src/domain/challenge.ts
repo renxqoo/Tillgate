@@ -1,5 +1,5 @@
 /**
- * 统一挑战纯函数层:码哈希(HMAC-SHA256 pepper,B13)、码生成、参数覆盖界、payload 界、
+ * 统一挑战纯函数层:码哈希(HMAC-SHA256 pepper)、码生成、参数覆盖界、payload 界、
  * 投递通道映射。一个抽象多种业务(登录码/注册验证/找回),机制对所有 kind 通用。
  */
 import { createHmac, randomInt, randomUUID } from 'node:crypto';
@@ -21,8 +21,8 @@ export function channelFor(kind: IdentifierKind): DeliveryChannel | null {
 
 /**
  * 码哈希:HMAC-SHA256(pepper, `${code}:${challengeId}`)。
- * pepper 为服务端密钥(装配注入)——6 位码空间仅 10^6,v1 无 pepper 的裸 sha256
- * 在库泄露后可秒级离线枚举(B13);challengeId 即盐,同码不同行哈希不同。
+ * pepper 为服务端密钥(装配注入)——6 位码空间仅 10^6,无 pepper 的裸 sha256
+ * 在库泄露后可秒级离线枚举;challengeId 即盐,同码不同行哈希不同。
  */
 export function codeHashOf(code: string, challengeId: string, pepper: string): string {
   return createHmac('sha256', pepper).update(`${code}:${challengeId}`).digest('hex');
@@ -44,7 +44,7 @@ function invalid(field: string, bounds: { min: number; max: number }, value: num
   });
 }
 
-/** 覆盖参数界(v1 语义):值未给用缺省;给了必须整数且在界内 */
+/** 覆盖参数界:值未给用缺省;给了必须整数且在界内 */
 // eslint-disable-next-line max-params -- 覆盖语义五要素(值/缺省/字段名/上下界)各有其位,导出 API 且测试规格以位置参数锁定,改 options 放大 diff
 export function boundedOverride(
   value: number | undefined,
@@ -91,7 +91,7 @@ export function serializePayload(
   return payload;
 }
 
-/** 恢复码哈希:HMAC-SHA256(pepper, code)——与挑战码同一 pepper 口径(B13) */
+/** 恢复码哈希:HMAC-SHA256(pepper, code)——与挑战码同一 pepper 口径 */
 export function recoveryCodeHashOf(code: string, pepper: string): string {
   return createHmac('sha256', pepper).update(code).digest('hex');
 }

@@ -231,6 +231,10 @@
           },
           "createdAt": {
             "type": "string"
+          },
+          "hasPassword": {
+            "type": "boolean",
+            "description": "是否已设置密码(false = 待激活,邀请邮件可发/可重发)"
           }
         },
         "required": [
@@ -242,9 +246,82 @@
           "status",
           "twoFactorEnabled",
           "lastLoginAt",
-          "createdAt"
+          "createdAt",
+          "hasPassword"
         ],
         "description": "管理员资料行（GET/POST /v1/admins,PATCH /v1/admins/:id）"
+      },
+      "AdminCreatedRow": {
+        "x-domain": "admins",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number"
+          },
+          "email": {
+            "type": "string"
+          },
+          "displayName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "roleId": {
+            "type": "number",
+            "description": "角色 FK（roles.id）"
+          },
+          "role": {
+            "type": "string",
+            "description": "角色 code（展示用;名称经 /v1/roles 解析）"
+          },
+          "status": {
+            "type": "number",
+            "description": "0 正常 / 1 封禁 / 2 注销"
+          },
+          "twoFactorEnabled": {
+            "type": "boolean"
+          },
+          "lastLoginAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "hasPassword": {
+            "type": "boolean",
+            "description": "是否已设置密码(false = 待激活,邀请邮件可发/可重发)"
+          },
+          "inviteSent": {
+            "type": "boolean",
+            "description": "邀请邮件是否已投递（SMTP/地址未配置或投递失败 = false）"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "displayName",
+          "roleId",
+          "role",
+          "status",
+          "twoFactorEnabled",
+          "lastLoginAt",
+          "createdAt",
+          "hasPassword",
+          "inviteSent"
+        ],
+        "description": "创建管理员响应（资料行 + 邀请邮件投递结果）"
       },
       "IntegrationSettingItem": {
         "x-domain": "settings",
@@ -509,11 +586,6 @@
             "minLength": 1,
             "maxLength": 64
           },
-          "password": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          },
           "roleId": {
             "type": "integer",
             "minimum": 1,
@@ -522,7 +594,6 @@
         },
         "required": [
           "email",
-          "password",
           "roleId"
         ],
         "description": "创建管理员请求体（POST /v1/admins;字段真相 = contracts zod——角色词表封闭,密码策略单源在 identity）"
@@ -736,7 +807,7 @@
           },
           "type": {
             "type": "string",
-            "description": "交易类型(v2 wire:billing statement transactionKind)"
+            "description": "交易类型(billing statement transactionKind)"
           },
           "amount": {
             "type": "string"
@@ -786,7 +857,7 @@
                 "type": "null"
               }
             ],
-            "description": "操作管理员(v2 presenter 恒 null——无来源列)"
+            "description": "操作管理员(恒 null——无来源列)"
           }
         },
         "required": [
@@ -835,7 +906,7 @@
                 "type": "null"
               }
             ],
-            "description": "模型白名单(DB jsonb 数组;DTO 面沿 v1 快照口径 string | null——数组线上形态在 admin 表单边界转换)"
+            "description": "模型白名单(DB jsonb 数组;DTO 面为 string | null——数组线上形态在 admin 表单边界转换)"
           },
           "weight": {
             "type": "number"
@@ -869,7 +940,7 @@
                 "type": "null"
               }
             ],
-            "description": "冷却截止(v2 无列来源,恒 null)"
+            "description": "冷却截止(无列来源,恒 null)"
           },
           "rpmLimit": {
             "anyOf": [
@@ -919,14 +990,14 @@
           },
           "updatedAt": {
             "type": "string",
-            "description": "更新时间(v2 无列来源,恒 null)"
+            "description": "更新时间(无列来源,恒 null)"
           },
           "providerName": {
             "type": "string"
           },
           "providerBaseUrl": {
             "type": "string",
-            "description": "供应商 baseUrl(v2 无列来源,恒 null)"
+            "description": "供应商 baseUrl(无列来源,恒 null)"
           },
           "boundModels": {
             "type": "array",
@@ -1386,7 +1457,7 @@
                 "type": "null"
               }
             ],
-            "description": "兜底模型清单(v2 无来源,恒 null)"
+            "description": "兜底模型清单(无来源,恒 null)"
           },
           "paramRules": {
             "anyOf": [
@@ -1397,7 +1468,7 @@
                 "type": "null"
               }
             ],
-            "description": "参数规则(v2 无来源,恒 null)"
+            "description": "参数规则(无来源,恒 null)"
           },
           "billingPolicy": {
             "anyOf": [
@@ -2082,7 +2153,7 @@
                 "type": "null"
               }
             ],
-            "description": "用户邮箱(v2 accounts 行无用户 join,恒 null)"
+            "description": "用户邮箱(accounts 行无用户 join,恒 null)"
           },
           "userDisplayName": {
             "anyOf": [
@@ -2093,7 +2164,7 @@
                 "type": "null"
               }
             ],
-            "description": "用户展示名(v2 accounts 行无用户 join,恒 null)"
+            "description": "用户展示名(accounts 行无用户 join,恒 null)"
           },
           "rpmLimit": {
             "anyOf": [
@@ -2457,7 +2528,7 @@
           },
           "createdBy": {
             "type": "string",
-            "description": "创建管理员 id 的字符串投影(v1 wire 形状)"
+            "description": "创建管理员 id 的字符串投影"
           },
           "createdAt": {
             "type": "string"
@@ -2808,7 +2879,7 @@
                 "type": "null"
               }
             ],
-            "description": "v2 无来源列,恒 null"
+            "description": "无来源列,恒 null"
           },
           "method": {
             "type": "string"
@@ -2864,7 +2935,7 @@
           },
           "attempts": {
             "type": "number",
-            "description": "重试次数(v1 快照口径;v2 presenter 暂不输出——展示兜底为 1 次)"
+            "description": "重试次数(快照口径;presenter 暂不输出——展示兜底为 1 次)"
           },
           "sourceIp": {
             "anyOf": [
@@ -3092,7 +3163,7 @@
                 "type": "null"
               }
             ],
-            "description": "管理员标识(v2 无 join 来源,恒 null)"
+            "description": "管理员标识(无 join 来源,恒 null)"
           },
           "action": {
             "type": "string"
@@ -4464,6 +4535,99 @@
             }
           },
           "503": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/reset-password": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "消费邀请令牌设置初始密码（一次性链接;已激活/封禁/失效统一 400 不泄漏原因）",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 128
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "token",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "消费邀请令牌设置初始密码（一次性链接;已激活/封禁/失效统一 400 不泄漏原因） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
             "description": "错误响应（统一信封 { error: { code, message, context? } }）",
             "content": {
               "application/json": {
@@ -8596,7 +8760,7 @@
         "tags": [
           "admins"
         ],
-        "summary": "创建管理员（资料行 + identity 凭据双动词,凭据被占即补偿回滚）",
+        "summary": "创建管理员（邀请制:资料行 + email 凭据 + 邀请邮件;凭据被占即补偿回滚）",
         "requestBody": {
           "required": true,
           "content": {
@@ -8609,11 +8773,11 @@
         },
         "responses": {
           "201": {
-            "description": "创建管理员（资料行 + identity 凭据双动词,凭据被占即补偿回滚） 成功响应",
+            "description": "创建管理员（邀请制:资料行 + email 凭据 + 邀请邮件;凭据被占即补偿回滚） 成功响应",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AdminRow"
+                  "$ref": "#/components/schemas/AdminCreatedRow"
                 }
               }
             }
@@ -8730,6 +8894,307 @@
             }
           },
           "409": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admins/:id/resend-invite": {
+      "post": {
+        "tags": [
+          "admins"
+        ],
+        "summary": "重发邀请邮件（仅待激活管理员;60s 冷却;SMTP/地址未配置 503）",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "管理员 id",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "重发邀请邮件（仅待激活管理员;60s 冷却;SMTP/地址未配置 503） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
             "description": "错误响应（统一信封 { error: { code, message, context? } }）",
             "content": {
               "application/json": {
@@ -29557,6 +30022,199 @@
             }
           },
           "404": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/settings/integrations/smtp/test": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "SMTP 连通性探针（settings:integrations 权限；连接+认证校验，不发送邮件；测试弹窗当前填写值与存量合并——不落库；上游失败也是 200 探针结果）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "config": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1024
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SMTP 连通性探针（settings:integrations 权限；连接+认证校验，不发送邮件；测试弹窗当前填写值与存量合并——不落库；上游失败也是 200 探针结果） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "description": "true = 连接与认证通过"
+                    },
+                    "durationMs": {
+                      "type": "number",
+                      "description": "探针耗时（ms）"
+                    },
+                    "error": {
+                      "description": "失败诊断（nodemailer 传输层 code，如 EAUTH/ETIMEDOUT）",
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "durationMs"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
             "description": "错误响应（统一信封 { error: { code, message, context? } }）",
             "content": {
               "application/json": {

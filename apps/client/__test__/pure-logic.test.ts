@@ -2,7 +2,7 @@
  * 纯逻辑层行为规格：URL 工具（list-query/next-url/auth-url/oauth-fragment）、
  * 展示格式化（format/money-tone/initials/theme-boot）、域内纯推导
  * （sidebar-items/key-params/topup-schema/order-status/kpi/app-config）。
- * 边界与异常按 §10.1.3：垃圾形状不抛、越界回落、白名单封闭。
+ * 边界与异常约定：垃圾形状不抛、越界回落、白名单封闭。
  */
 import { describe, expect, it } from 'vitest';
 

@@ -1,5 +1,5 @@
 /**
- * 模型目录路由（v1 routes/models.ts 迁移）：GET /v1/models(/:model)。
+ * 模型目录路由：GET /v1/models(/:model)。
  * 数据源 = control-plane 只读目录（listEnabledMappings）；白名单过滤（App JWT scope）；
  * 三协议形状（anthropic-version / x-goog-api-key 头探测）；404 不泄漏目录。
  */

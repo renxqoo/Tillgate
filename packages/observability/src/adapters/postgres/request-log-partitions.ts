@@ -3,14 +3,13 @@ import { withSessionTryLock, type Db } from '@tillgate/db';
 
 /**
  * request_logs 月分区维护(当月+次月预建;超保留期 DETACH+DROP)。
- * v1 worker partition-maintenance 平移;advisory try-lock 内置(未获锁 = 跳过,G7)。
- * 锁键逐字保留 v1(`ai-gateway:request-log-partition`):迁移重叠期新旧 worker 互斥(S3)。
+ * advisory try-lock 内置(未获锁 = 跳过)。
  *
  * ⚠️ request_logs 是手写迁移管理的分区母表(db schema 注释:禁 db:generate)——
  * 本函数是运行时 ensure/maintain 的唯一入口,分区命名 `request_logs_YYYY_MM`。
- * bun-native:专用连接为 Bun SQL reserve;unsafe(text, params) 承接 v1 的
- * client.query 逐句文本(DDL 不接受绑定参数——边界串是服务端 to_char/date_trunc
- * 产物,字符集受限,与 v1 同等内联信任)。
+ * bun-native:专用连接为 Bun SQL reserve;unsafe(text, params) 逐句执行文本
+ * (DDL 不接受绑定参数——边界串是服务端 to_char/date_trunc
+ * 产物,字符集受限,可安全内联)。
  */
 export interface RequestLogPartitionOptions {
   retentionDays: number;
@@ -36,7 +35,10 @@ export async function maintainRequestLogPartitions(
 }
 
 /** 锁已持有后的维护本体;语句走独立专用连接(锁是跨进程互斥,不要求同连接执行) */
-async function runOnReserved(db: Db, opts: RequestLogPartitionOptions): Promise<RequestLogPartitionResult> {
+async function runOnReserved(
+  db: Db,
+  opts: RequestLogPartitionOptions,
+): Promise<RequestLogPartitionResult> {
   const client = await db.$client.reserve();
   try {
     const table = 'request_logs';
@@ -85,9 +87,10 @@ async function ensureMonthlyPartitions(client: SQL, table: string): Promise<stri
               (date_trunc('month', now()) + (($1::int + 1)::text || ' month')::interval)::date::text as e`,
       [String(i)],
     );
-    const exists = await client.unsafe<Array<{ ok: boolean }>>(`select to_regclass($1) is not null as ok`, [
-      `public.${name}`,
-    ]);
+    const exists = await client.unsafe<Array<{ ok: boolean }>>(
+      `select to_regclass($1) is not null as ok`,
+      [`public.${name}`],
+    );
     if (!exists[0]?.ok) {
       const [boundsRow] = bounds;
       if (boundsRow === undefined) {

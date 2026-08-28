@@ -57,7 +57,13 @@ export function PasswordForm({ onSuccess }: { onSuccess?: () => void }) {
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="old-password">{t('oldPasswordLabel')}</FieldLabel>
-              <Input id="old-password" type="password" autoComplete="current-password" {...field} />
+              <Input
+                id="old-password"
+                type="password"
+                autoComplete="current-password"
+                placeholder={t('oldPasswordPlaceholder')}
+                {...field}
+              />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
           )}
@@ -68,7 +74,13 @@ export function PasswordForm({ onSuccess }: { onSuccess?: () => void }) {
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="new-password">{t('newPasswordLabel')}</FieldLabel>
-              <Input id="new-password" type="password" autoComplete="new-password" {...field} />
+              <Input
+                id="new-password"
+                type="password"
+                autoComplete="new-password"
+                placeholder={t('newPasswordPlaceholder')}
+                {...field}
+              />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
           )}
@@ -79,7 +91,13 @@ export function PasswordForm({ onSuccess }: { onSuccess?: () => void }) {
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="confirm-password">{t('confirmPasswordLabel')}</FieldLabel>
-              <Input id="confirm-password" type="password" autoComplete="new-password" {...field} />
+              <Input
+                id="confirm-password"
+                type="password"
+                autoComplete="new-password"
+                placeholder={t('confirmPasswordPlaceholder')}
+                {...field}
+              />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
           )}

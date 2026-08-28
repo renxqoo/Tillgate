@@ -1,15 +1,14 @@
 /**
- * E2E 共享装置（v1 e2e-kit 迁移；重构方案 §933：搬文件与启动装置、断言语义不变）。
+ * E2E 共享装置。
  *
- * 与 v1 kit 的形态差异（MIGRATION §8 在案）：
- * - 库：共享 dev 库 → 隔离 schema（全迁移链回放 + 42P01 容错——同 settlement-lifecycle
- *   real 范式）；结束 drop cascade，无需 v1 的逐表手工清理与渠道预算快照还原。
- * - 上游：真 MiniMax → 本地脚本化 mock 上游（openai-compatible 协议族）。真上游契约
- *   单列 rxm3 *.real（MIGRATION §5 裁决：凭证隔离、不进默认门禁）。种子事实沿用
- *   v1 dev 库口径（RX-M3 → MiniMax-M3、2.1/8.4/0.42）——断言值零漂移。
- * - 装配：v1 assembleGateway(平铺 env) → v2 loadGatewayConfig + assembleGateway
- *   （facade 形态）+ createGatewayApp；资金动词走 billing facade（wallet.credit /
- *   settlement.claim），systemContext 语境消亡（facade 无 ctx 参数）。
+ * 装置形态：
+ * - 库：隔离 schema（全迁移链回放 + 42P01 容错——同 settlement-lifecycle
+ *   real 范式）；结束 drop cascade，无需逐表手工清理与渠道预算快照还原。
+ * - 上游：本地脚本化 mock 上游（openai-compatible 协议族）。真上游契约
+ *   单列 rxm3 *.real（凭证隔离、不进默认门禁）。种子事实：
+ *   RX-M3 → MiniMax-M3、2.1/8.4/0.42。
+ * - 装配：loadGatewayConfig + assembleGateway（facade 形态）+ createGatewayApp；
+ *   资金动词走 billing facade（wallet.credit / settlement.claim）。
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -26,7 +25,6 @@ export { startMockUpstream, E2E_UPSTREAM_KEY } from './upstream';
 export type { MockUpstream, RecordedRequest, UpstreamScript } from './upstream';
 import { E2E_UPSTREAM_KEY, startMockUpstream, type MockUpstream } from './upstream';
 
-/** 种子事实（v1 dev 库 RX-M3 渠道口径——断言值与 v1 e2e 逐条等价） */
 // 测试内替代非空断言的统一收窄手段：值缺失时抛出带定位信息的错误而非静默断言
 // （本分区与 security/、billing-recovery/ 共用——两者均经 ../gateway/kit 导入）
 export function defined<T>(value: T | null | undefined, label = 'value'): T {
@@ -51,7 +49,7 @@ export const E2E_URL = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
 export const E2E_REDIS_URL = process.env.REDIS_URL;
 
 // ---------------------------------------------------------------------------
-// 隔离 schema 世界：全迁移链回放 + 种子目录（provider/channel/mapping v1 事实值）
+// 隔离 schema 世界：全迁移链回放 + 种子目录（provider/channel/mapping）
 // ---------------------------------------------------------------------------
 
 export interface E2ESeed {
@@ -110,7 +108,7 @@ function pgErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
-/** 世界种子落库：provider/channel/mapping/model_channels（v1 dev 库口径事实值） */
+/** 世界种子落库：provider/channel/mapping/model_channels */
 async function seedWorld(
   db: Db,
   upstream: MockUpstream,
@@ -247,7 +245,7 @@ export async function startE2EGateway(
     JWT_SECRET,
     NODE_ENV: 'test',
     OTEL_TRACES_MODE: 'off',
-    // 并发负载（④ 20 路）连接池对齐 v1 kit 口径——缺省 10 会连接超时 500
+    // 并发负载（④ 20 路）连接池上限——缺省 10 会连接超时 500
     DB_POOL_MAX: '40',
     // mock 上游在 127.0.0.1——SSRF 逃生门仅非生产可用（与生产装配同口径）
     GATEWAY_AI_ALLOW_LOCAL_URL: 'true',
@@ -278,7 +276,7 @@ export async function startE2EGateway(
 }
 
 // ---------------------------------------------------------------------------
-// 平台 key 台账（v1 E2EKeys 迁移：发 key / 充值 / 对账 / 结算驱动）
+// 平台 key 台账：发 key / 充值 / 对账 / 结算驱动
 // ---------------------------------------------------------------------------
 
 export class E2EKeys {
@@ -338,7 +336,7 @@ export class E2EKeys {
   }
 
   /**
-   * 驱动结算（定向认领）直到该用户无 settlement_pending（v1 同语义；世界独占 schema
+   * 驱动结算（定向认领）直到该用户无 settlement_pending（世界独占 schema
    * 无外部 worker 竞态，保留 processing 收敛等待作防御）。
    */
   async settleAll(userId: number): Promise<void> {
@@ -367,7 +365,7 @@ export class E2EKeys {
     }
   }
 
-  /** 强对账：余额 == 充值合计 − Σ实扣（usage_logs），在途 == 0（v1 同口径） */
+  /** 强对账：余额 == 充值合计 − Σ实扣（usage_logs），在途 == 0 */
   async assertReconciled(
     userId: number,
     funded: string,
@@ -389,7 +387,7 @@ function expectDecimalEq(actual: string, expected: string): void {
 }
 
 /**
- * 清渠道熔断/死凭据状态（v1 resetChannelBreakers 同语义）：畸形大请求打真上游
+ * 清渠道熔断/死凭据状态：畸形大请求打真上游
  * 触发连续失败后熔断 open 会连坐后续用例。健康键在共享 Redis（inference:health:
  * 前缀），隔离 schema 的渠道 id 每世界从 1 起——文件串行 + 显式复位双保险。
  */
@@ -401,7 +399,7 @@ export async function resetChannelHealth(gateway: E2EGateway): Promise<void> {
   if (keys.length > 0) await redis.del(...keys);
 }
 
-// eslint-disable-next-line max-params -- e2e 装置导出辅助，签名沿 v1 位置参数（调用点遍布各测试文件，改 options 对象会放大无谓 diff）
+// eslint-disable-next-line max-params -- e2e 装置导出辅助，调用点遍布各测试文件，改 options 对象会放大无谓 diff
 export const e2ePost = (
   baseUrl: string,
   raw: string,

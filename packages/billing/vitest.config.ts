@@ -15,7 +15,7 @@ export default defineConfig({
       },
     },
 
-    // 铁律 14:包根 __test__/ 平铺;真实 PG 集成以 *.real.test.ts 文件名区分,默认门禁排除
+    // 包根 __test__/ 平铺;真实 PG 集成以 *.real.test.ts 文件名区分,默认门禁排除
     include: ['__test__/*.test.ts'],
     environment: 'node',
     coverage: {

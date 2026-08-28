@@ -1,5 +1,5 @@
 /**
- * webhook http 适配器:fetch 直击(v1 deliver() 的 SSRF/签名/POST 分支移植)。
+ * webhook http 适配器:fetch 直击(SSRF/签名/POST 分支)。
  * fetch 全局打桩;SSRF 守卫用可编程替身(真守卫行为归 ai 包自测)。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';

@@ -7,7 +7,7 @@ import {
   type SpanBatcher,
   type TraceStore,
 } from '@tillgate/observability';
-// ./composition 子入口仅 assembly 引用(§5.3):app 细粒度直组 store+batcher 的取件处
+// ./composition 子入口仅 assembly 引用:app 细粒度直组 store+batcher 的取件处
 import { createPgTraceStore } from '@tillgate/observability/composition';
 import type { TraceReceiverConfig } from './config';
 
@@ -25,7 +25,7 @@ export interface ReceiverAssembly {
 }
 
 export function assembleReceiver(config: TraceReceiverConfig): ReceiverAssembly {
-  // pretty 必填注入（铁律 3）：receiver 是结构化 JSON 日志消费面，显式 false（v1 同形态）
+  // pretty 必填注入：receiver 是结构化 JSON 日志消费面，显式 false
   const logger = createLogger({
     level: config.logLevel,
     serviceName: 'trace-receiver',

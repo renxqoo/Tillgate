@@ -3,7 +3,7 @@
  *
  * 池是稀缺资源，「并发检出 > 池容量」在任何运行时下都会劣化——node/pg 的
  * 检出队列在突发下吞吐塌陷（live-fire 10k:520/10000,p95 65s），Bun SQL 更是
- * 检出排队直接停摆在途事务（bun#38163/#38231,F-6）。本门把业务请求的 DB
+ * 检出排队直接停摆在途事务（bun#38163/#38231）。本门把业务请求的 DB
  * 并发钳制在预算内：超发请求在进程内 FIFO 排队（事件循环健康等待,不占连接、
  * 不吃池超时），预算 = 池容量 − 余量（余量留给 fire-and-forget 写入与探针
  * 旁路的 DB 工作）。
@@ -25,6 +25,7 @@ export interface DbBudgetOptions {
 
 const BYPASS = new Set(['/healthz', '/livez', '/readyz']);
 
+// eslint-disable-next-line max-lines-per-function -- 排队/超时/释放共享 inflight/queue 闭包状态,拆段即互相回读
 export function dbBudgetMiddleware(opts: DbBudgetOptions): MiddlewareHandler {
   let inflight = 0;
   const queue: Array<() => void> = [];
@@ -41,19 +42,27 @@ export function dbBudgetMiddleware(opts: DbBudgetOptions): MiddlewareHandler {
     if (inflight >= opts.limit) {
       if (queue.length >= opts.maxQueue) {
         // 统一错误出口:抛目录码(unavailable→503),由各 app 的 errorHandler face
-        // 渲染信封/双语/Retry-After——机制件不自带出站形态(ADR-0001 D1)
-        throw HttpErrors.business('db_budget_full', { queueDepth: queue.length, limit: opts.limit }, {
-          retryAfterMs: opts.waitTimeoutMs,
-        });
+        // 渲染信封/双语/Retry-After——机制件不自带出站形态
+        throw HttpErrors.business(
+          'db_budget_full',
+          { queueDepth: queue.length, limit: opts.limit },
+          {
+            retryAfterMs: opts.waitTimeoutMs,
+          },
+        );
       }
       const granted = new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => {
           const i = queue.indexOf(wake);
           if (i >= 0) queue.splice(i, 1);
           reject(
-            HttpErrors.business('db_budget_timeout', { limit: opts.limit }, {
-              retryAfterMs: opts.waitTimeoutMs,
-            }),
+            HttpErrors.business(
+              'db_budget_timeout',
+              { limit: opts.limit },
+              {
+                retryAfterMs: opts.waitTimeoutMs,
+              },
+            ),
           );
         }, opts.waitTimeoutMs);
         const wake = (): void => {

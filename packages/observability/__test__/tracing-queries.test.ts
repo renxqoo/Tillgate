@@ -5,8 +5,8 @@ import { defined } from './defined';
 import type { SpanRow, TraceStore } from '../src/tracing/types';
 
 /**
- * 查询信封规格(v1 admin tracing.service 平移):钳位、rows+total 同过滤、
- * 详情信封、B8 回归(topology hours→sinceMs 正确换算)。
+ * 查询信封规格:钳位、rows+total 同过滤、
+ * 详情信封、topology hours→sinceMs 正确换算回归。
  */
 
 function span(overrides: Partial<SpanRow> = {}): SpanRow {
@@ -120,7 +120,7 @@ describe('createTraceQueries', () => {
     await queries.topology(999); // 钳到 168
     const after = Date.now();
     expect(calls).toHaveLength(3);
-    // v1 缺陷:小时数被直接当毫秒时间戳传入(≈1970);修复后应落在「now - hours*3600s」窗内
+    // 历史缺陷:小时数被直接当毫秒时间戳传入(≈1970);修复后应落在「now - hours*3600s」窗内
     const h24 = defined(calls[0], 'h24');
     const h1 = defined(calls[1], 'h1');
     const h168 = defined(calls[2], 'h168');

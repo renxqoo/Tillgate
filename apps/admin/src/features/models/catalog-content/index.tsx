@@ -31,7 +31,7 @@ export type { FxState } from './catalog-fx-bar';
  * 三态 diff 徽章（新增 / 上游涨价 / 上游降价）+ 亏钱警告 + 汇率条（覆盖/点差/强刷）+
  * 价格溯源时间线（目录价 × 汇率 → 预填 → 提交）。
  */
-// eslint-disable-next-line max-lines-per-function -- 编排器：跨子组件状态（筛选/分页/草稿/导入/溯源）与导入流程的组装点，JSX 已全部下沉为分域子组件（存量棘轮，行为等价优先）
+// eslint-disable-next-line max-lines-per-function -- 编排器：跨子组件状态（筛选/分页/草稿/导入/溯源）与导入流程的组装点，JSX 已全部下沉为分域子组件
 export function CatalogContent({
   sourceId,
   sourceName,

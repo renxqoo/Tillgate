@@ -1,8 +1,8 @@
 /**
  * Server Action 行为规格（BFF 层）：
- *  - 出站经 facade（B7 回归：accept-language / x-forwarded-for 随行，v1 auth 裸 fetch 丢头）；
+ *  - 出站经 facade（accept-language / x-forwarded-for 随行）；
  *  - 两步认证流（kind 判别）、token 落 cookie、next 白名单；
- *  - keys patch 省略 undefined、orgs 邀请链接、订阅动作（B2 回归：plans 用 limit=100）、
+ *  - keys patch 省略 undefined、orgs 邀请链接、订阅动作（plans 用 limit=100）、
  *    改密轮换、redeem/billing 成功反馈与 revalidate。
  * next/headers、next-intl/server、next/cache 以测试替身注入；fetch 打桩捕获出站请求。
  */

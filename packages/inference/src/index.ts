@@ -1,6 +1,6 @@
 /**
  * @tillgate/inference 公共出口：facade、输入/结果契约、错误目录、端口类型与
- * 装配适配器工厂（§5.3——根入口不导出内部实现细节；ai 类型消费方自 @tillgate/ai 引用）。
+ * 装配适配器工厂（根入口不导出内部实现细节；ai 类型消费方自 @tillgate/ai 引用）。
  */
 export { createInference } from './inference';
 export type { ChatInput, Inference, InferenceEnv } from './inference';
@@ -15,7 +15,7 @@ export type {
   GenerationPollDeps,
 } from './application/generation-poll';
 
-// ---- 错误目录（§11）----
+// ---- 错误目录 ----
 export { InferenceErrors } from './domain/errors';
 
 // ---- 配置（装配可覆写缺省）----
@@ -73,7 +73,7 @@ export type { EstimateAttribution, UserSideCancel } from './domain/usage/attribu
 export { GENERATION_KINDS, GENERATION_TASK_KINDS, isGenerationTaskKind } from './domain/generation';
 export type { GenerationTaskKind, GenerationKindDescriptor } from './domain/generation';
 
-// ---- 渠道健康（AiEvent 订阅者；§3.6）----
+// ---- 渠道健康（AiEvent 订阅者）----
 export { createChannelHealth, channelHealthKey } from './health/channel-health';
 export type { ChannelHealth, HealthAdmission } from './health/channel-health';
 export type { BreakerConfig, BreakerState } from './health/breaker';
@@ -86,7 +86,7 @@ export { createMemoryHealthStore } from './adapters/state-memory';
 export { createMemoryGenerationTaskStore } from './adapters/task-memory';
 export { createPostgresGenerationTaskStore } from './adapters/generation-pg';
 
-// ---- 入站协议翻译转出口（gateway P5 波；§3.6「apps 运行时代码不直接 import ai」——
+// ---- 入站协议翻译转出口（「apps 运行时代码不直接 import ai」——
 //      外部线格式 ↔ 规范形的纯翻译函数经本包转发，app HTTP 面单一引用面） ----
 export {
   completionsRequestToChat,

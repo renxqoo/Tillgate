@@ -1,5 +1,5 @@
 /**
- * 用户/Key 域契约（v1 routes/users.ts + keys.ts zod 面平移）。
+ * 用户/Key 域契约。
  * PATCH 封禁语义：freezeReason 只能随封禁（status=1）一并设置——状态语义不二义。
  */
 import * as z from 'zod';
@@ -48,7 +48,7 @@ const giftSchema = z.object({
   remark: z.string().max(255).optional(),
 });
 
-/** from/to 校验但忽略（日期过滤未启用;非法日期仍 400——v1 语义） */
+/** from/to 校验但忽略（日期过滤未启用;非法日期仍 400） */
 const transactionsQuerySchema = z.object({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),

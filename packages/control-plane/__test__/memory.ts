@@ -1,5 +1,5 @@
 /**
- * 内存 store stand-in（§5.6 类型 2：PostgreSQL 的行为等价替身）——默认门禁专用。
+ * 内存 store stand-in（PostgreSQL 的行为等价替身）——默认门禁专用。
  * 与 adapters/postgres 同契约实现；唯一约束以 23505 形状错误模拟
  * （isUniqueViolation 按 cause 链 code 判定——真实形状见 @tillgate/db pg-error）。
  * 真实 SQL 行为等价由 postgres.real.test.ts 承担（默认门禁排除）。
@@ -27,6 +27,7 @@ import type {
 import type { AuditSink, AuditTxSink, AuditEntry } from '../src/ports/audit-sink';
 import type { VoucherStorage } from '../src/ports/voucher-storage';
 import type { UpstreamProbe, ProbeTarget, ProbeOutcome } from '../src/ports/upstream-probe';
+import type { SmtpProbe, SmtpProbeTarget } from '../src/ports/smtp-probe';
 import type { SecretCipher } from '../src/ports/secret-cipher';
 import type { ProviderPatchInput } from '../src/domain/provider/provider';
 import type { ModelInsertInput, ModelPatch } from '../src/ports/model-store';
@@ -57,9 +58,9 @@ export function createMemoryDb(): Db {
 }
 
 /**
- * 回滚语义 db 替身（§5.6 类型 2）：事务内抛错 → 快照恢复（内存替身的 PG ROLLBACK
+ * 回滚语义 db 替身：事务内抛错 → 快照恢复（内存替身的 PG ROLLBACK
  * 等价）。snapshot 在事务开启时取快照并返回恢复函数——用于「审计写失败 → 业务
- * 回滚」类边界断言（§5.4：写入失败必须回滚业务事务）。
+ * 回滚」类边界断言（写入失败必须回滚业务事务）。
  */
 export function rollbackDb(snapshot: () => () => void): Db {
   return {
@@ -221,7 +222,7 @@ export function createMemoryChannelStore(
   boundModels: Map<number, string[]> = new Map(),
   /** 列表富化注入：渠道 → 上游累计消耗（无则 '0'） */
   consumed: Map<number, string> = new Map(),
-  /** 热路径读注入（G1）：providerId → 全量行（路由候选的协议/基址/厂商） */
+  /** 热路径读注入：providerId → 全量行（路由候选的协议/基址/厂商） */
   providersOf: Map<number, ProviderRecord> = new Map(),
 ): MemoryChannelStore {
   const rows = new Map(seed.map((r) => [r.id, { ...r }]));
@@ -413,7 +414,7 @@ export function createMemoryChannelStore(
       return { rows: all.slice(query.offset, query.offset + query.limit), total: all.length };
     },
 
-    // ---- 网关热路径读（G1）。stand-in 局限：内存行不持 model_channels 绑定表，
+    // ---- 网关热路径读。stand-in 局限：内存行不持 model_channels 绑定表，
     // 不按 realModel 过滤（返回全部启用渠道）；过滤语义由 postgres.real 测试承担 ----
     async findRouteCandidates(_db, _realModel) {
       const out: RouteCandidateRow[] = [];
@@ -442,7 +443,7 @@ export function createMemoryChannelStore(
     },
 
     async findTaskChannel(_db, channelId): Promise<RouteCandidateRow | null> {
-      // by id 不按启用状态过滤（v1 语义：停用渠道的已提交任务仍须可轮询）
+      // by id 不按启用状态过滤（停用渠道的已提交任务仍须可轮询）
       const row = rows.get(channelId);
       if (row == null) return null;
       const provider = providersOf.get(row.providerId);
@@ -616,7 +617,7 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
       ).length;
     },
 
-    // ---- 网关热路径读（G1） ----
+    // ---- 网关热路径读 ----
     async findActiveByExternalName(_db, externalName) {
       const row = byExternal(externalName);
       return row && row.status === 0 ? toActiveRow(row) : null;
@@ -747,7 +748,7 @@ export function createMemoryRateCardStore(): MemoryRateCardStore {
       );
     },
 
-    // ---- 网关热路径读（G1） ----
+    // ---- 网关热路径读 ----
     async findActiveCardByUser(_db, userId) {
       const cardId = boundUsers.get(userId);
       if (cardId == null) return null;
@@ -962,6 +963,18 @@ export const fakeCipher: SecretCipher = {
   decrypt: (packed) => packed.replace(/^fake-enc:/, ''),
 };
 
+/** SMTP 探针替身：记录目标并按配置回放结果（默认成功） */
+export function createStubSmtpProbe(override?: (target: SmtpProbeTarget) => ProbeOutcome) {
+  const calls: SmtpProbeTarget[] = [];
+  const probe: SmtpProbe = {
+    async probeSmtp(target) {
+      calls.push(target);
+      return override?.(target) ?? { ok: true, durationMs: 7 };
+    },
+  };
+  return { probe, calls };
+}
+
 /** 上下文工厂：管理员操作 */
 export function adminCtx(adminId = 1) {
   return {
@@ -991,7 +1004,7 @@ function toActiveRow(row: MemoryModelRow): ActiveMappingRow {
   };
 }
 
-/** 管理员资料 store 替身（G2）——投影不含密码列（与 postgres adapter 同口径） */
+/** 管理员资料 store 替身——投影不含密码列（与 postgres adapter 同口径） */
 export function createMemoryAdminStore(
   seed: AdminRecord[] = [],
   roleCodes: Map<number, string> = new Map(),

@@ -8,5 +8,15 @@
     "src/components/forms/calendar.tsx",
     "src/components/forms/slider.tsx",
     "src/components/data/chart.tsx"
+  ],
+  "overrides": [
+    {
+      // 设计系统原语族是 shadcn 形态（一文件一族小包装组件），
+      // 豁免根配置的一文件一组件规则；glob 相对本包目录解析
+      "files": ["src/components/**"],
+      "rules": {
+        "tillgate/no-multi-component": "off"
+      }
+    }
   ]
 }

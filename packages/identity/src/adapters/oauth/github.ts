@@ -1,7 +1,7 @@
 /**
  * GitHub OAuth 上游适配器(Authorization Code 流)。
  * 邮箱策略:/user/emails 只取 primary+verified;emails 端点失败记 warn 且
- * email=null 显式返回(不阻断建号,v1 语义 + B27 修复:不再静默吞错)。
+ * email=null 显式返回(不阻断建号,不再静默吞错)。
  */
 import type { LoggerLike } from '../../ports/logger.js';
 import type { OAuthProfile, OAuthProvider } from '../../ports/oauth-provider.js';
@@ -85,7 +85,7 @@ async function githubExchangeAndProfile(
     }>;
     email = emails.find((e) => e.primary && e.verified)?.email ?? null;
   } else {
-    // B27:上游邮箱端点故障不再静默——记 warn,email 显式为 null(不阻断建号)
+    // 上游邮箱端点故障不再静默——记 warn,email 显式为 null(不阻断建号)
     opts.logger.warn(
       { status: emailsRes.status },
       'github emails endpoint failed; profile continues without email',

@@ -1,4 +1,4 @@
-/** 单码作废（U6;CAS 0→2——已用/已废/不存在统一 404 不泄漏状态差异） */
+/** 单码作废（CAS 0→2——已用/已废/不存在统一 404 不泄漏状态差异） */
 import { BillingErrors } from '../../domain/errors.js';
 import type { BillingStore } from '../../ports/billing-store.js';
 import type { RedeemCodeStore } from '../../ports/payment-ports.js';

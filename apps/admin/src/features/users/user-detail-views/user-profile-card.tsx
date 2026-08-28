@@ -5,6 +5,7 @@ import type { AdminUserRow } from '@tillgate/api-client';
 import { UserActions } from '@/features/users/user-actions';
 import { rateCardLabel, type RateCardOptionLike } from '@/features/users/rate-card-label';
 import { fmtBalance, fmtDateTime } from '@/lib/formatters';
+import { Field } from './field';
 
 /** 用户资料卡（状态/余额/额度/限流字段平铺；从页面提出，规模与复杂度收敛） */
 export function UserProfileCard({
@@ -79,14 +80,5 @@ export function UserProfileCard({
         </dl>
       </CardContent>
     </Card>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="space-y-1">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="font-medium tabular-nums">{value}</dd>
-    </div>
   );
 }

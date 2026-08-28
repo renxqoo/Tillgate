@@ -1,6 +1,5 @@
 /**
- * 计费域规则行为规格（迁移自旧仓 billing/__tests__/{settle-rules,gate-rules}.test.ts；
- * 死信家族改按三性/码判定——B6 结构性修复的规格面）。
+ * 计费域规则行为规格（死信家族按三性/码判定）。
  */
 import { describe, expect, it } from 'vitest';
 import { DefectError, isBusinessError } from '@tillgate/errors';

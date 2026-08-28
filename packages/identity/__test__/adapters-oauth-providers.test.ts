@@ -1,7 +1,7 @@
 /**
  * OAuth provider 适配器测试(注入 fetch):授权 URL 形状、code 交换请求形状、
  * profile 映射(GitHub primary+verified 过滤 / Google email_verified)、
- * B27 回归(GitHub emails 端点失败 warn + email=null 不阻断)。
+ * GitHub emails 端点失败 warn + email=null 不阻断的回归覆盖。
  */
 import { describe, expect, it, vi } from 'vitest';
 import { createGithubProvider } from '../src/adapters/oauth/github.js';

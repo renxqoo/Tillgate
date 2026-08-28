@@ -139,7 +139,7 @@ SIGTERM/SIGINT → healthServer.close → otel.shutdown
 - 本 app 不新建错误目录（无自有业务拒绝；job 异常 = 日志 + 下轮重试）。
 - 日志 = runtime `createLogger`（pino，serviceName `worker`）。
 - 健康端点（v1 对位 + 轻增强）：
-  - `/livez` `/readyz`：进程 running 标志（恒开放，compose healthcheck 用）；
+  - `/livez`：进程 running 标志；`/readyz`：scheduler running 且 PG/BullMQ Redis 可达；
   - `/health`：`x-health-token`（timingSafeEqual）守卫的深度报告
     `{owner, running, jobs: {name → {lastStartedAt, lastResult}}}`——
     v1 只有 `{owner, running}`，per-job 快照是 v2 增强（运维排障）。

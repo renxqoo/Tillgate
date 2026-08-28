@@ -22,7 +22,12 @@ export async function hashPassword(plain: string): Promise<string> {
 const PRICE = { input: '2.1', output: '8.4', cache: '0.42' };
 
 /** (external, real_model, 绑定渠道[chaos=只挂混沌厂商], 备注) */
-export const MODELS: Array<{ ext: string; real: string; ch: string[]; chOverride?: Record<string, Record<string, string>> }> = [
+export const MODELS: Array<{
+  ext: string;
+  real: string;
+  ch: string[];
+  chOverride?: Record<string, Record<string, string>>;
+}> = [
   { ext: 'rt-base', real: 'rt-base', ch: ['openmock:10', 'deepmock:5', 'moonmock:3'] },
   { ext: 'rt-mini', real: 'rt-mini', ch: ['openmock:10'] },
   { ext: 'rt-exact', real: 'rt-base#f=usage100x40', ch: ['openmock:10'] },
@@ -79,7 +84,9 @@ export async function seedCatalog(): Promise<Seeded> {
   await cleanup(db);
 
   // 幂等重种:先清旧 rt- 目录(replica 模式旁路 FK/触发器,残留引用不再卡重跑)
-  await execStatements(db, `    set session_replication_role = replica;
+  await execStatements(
+    db,
+    `    set session_replication_role = replica;
     delete from usage_logs where channel_id in (select id from channels where name like 'rt-ch-%')
       or user_id in (select id from users where issuer = 'rt-fire' or email like 'rt-%@fire.test');
     delete from model_channels where channel_id in (select id from channels where name like 'rt-ch-%')
@@ -87,7 +94,8 @@ export async function seedCatalog(): Promise<Seeded> {
     delete from model_mappings where external_name like 'rt-%';
     delete from channels where name like 'rt-ch-%';
     delete from providers where name like 'rt-%';
-    set session_replication_role = default;`);
+    set session_replication_role = default;`,
+  );
 
   const providerIds: Record<string, number> = {};
   const channelIds: Record<string, number> = {};
@@ -102,21 +110,30 @@ export async function seedCatalog(): Promise<Seeded> {
     ['ssrf', 'http://127.0.0.1:2525'],
   ];
   for (const [vendor, baseUrl] of providerDefs) {
-    const p = await one<{ id: string }>(db, sql`
-      insert into providers (name, protocol, vendor, base_url) values (${`rt-${vendor}`}, 'openai-compatible', 'openai', ${baseUrl}) returning id`);
+    const p = await one<{ id: string }>(
+      db,
+      sql`
+      insert into providers (name, protocol, vendor, base_url) values (${`rt-${vendor}`}, 'openai-compatible', 'openai', ${baseUrl}) returning id`,
+    );
     providerIds[vendor] = Number(p.id);
     const apiKey = `sk-mock-${vendor === 'openmock-rpm' ? 'openmock' : vendor}-k1`;
-    const c = await one<{ id: string }>(db, sql`
+    const c = await one<{ id: string }>(
+      db,
+      sql`
       insert into channels (provider_id, name, api_key_enc, upstream_budget, rpm_limit)
-      values (${p.id}, ${`rt-ch-${vendor}`}, ${cipher.encrypt(apiKey)}, '1000000', ${vendor === 'openmock-rpm' ? 3 : null}) returning id`);
+      values (${p.id}, ${`rt-ch-${vendor}`}, ${cipher.encrypt(apiKey)}, '1000000', ${vendor === 'openmock-rpm' ? 3 : null}) returning id`,
+    );
     channelIds[vendor] = Number(c.id);
   }
 
   const modelIds: Record<string, number> = {};
   for (const m of MODELS) {
-    const r = await one<{ id: string }>(db, sql`
+    const r = await one<{ id: string }>(
+      db,
+      sql`
       insert into model_mappings (external_name, real_model, input_price, output_price, cache_input_price)
-      values (${m.ext}, ${m.real}, ${PRICE.input}, ${PRICE.output}, ${PRICE.cache}) returning id`);
+      values (${m.ext}, ${m.real}, ${PRICE.input}, ${PRICE.output}, ${PRICE.cache}) returning id`,
+    );
     modelIds[m.ext] = Number(r.id);
     for (const link of m.ch) {
       const [vendor, prio] = link.split(':');
@@ -129,20 +146,38 @@ export async function seedCatalog(): Promise<Seeded> {
 }
 
 /** 建测试用户(直插 users + identity 两表,issuer='rt-fire';随机后缀防跨 run 撞唯一键) */
-export async function mkUser(db: Db, tag: string, password = 'Rt!Passw0rd#42'): Promise<{ id: number; email: string }> {
+export async function mkUser(
+  db: Db,
+  tag: string,
+  password = 'Rt!Passw0rd#42',
+): Promise<{ id: number; email: string }> {
   const email = `rt-${tag}-${Math.floor(Math.random() * 1e6).toString(36)}@fire.test`;
-  const u = await one<{ id: string }>(db, sql`
+  const u = await one<{ id: string }>(
+    db,
+    sql`
     insert into users (issuer, subject, identity_provider, email, display_name)
-    values ('rt-fire', ${email}, 'local', ${email}, ${`rt-${tag}`}) returning id`);
+    values ('rt-fire', ${email}, 'local', ${email}, ${`rt-${tag}`}) returning id`,
+  );
   const id = Number(u.id);
-  await db.execute(sql`insert into identity_credentials (user_id, identifier_kind, identifier_value) values (${id}, 'email', ${email})`);
-  await db.execute(sql`insert into identity_passwords (user_id, password_hash) values (${id}, ${await hashPassword(password)})`);
+  await db.execute(
+    sql`insert into identity_credentials (user_id, identifier_kind, identifier_value) values (${id}, 'email', ${email})`,
+  );
+  await db.execute(
+    sql`insert into identity_passwords (user_id, password_hash) values (${id}, ${await hashPassword(password)})`,
+  );
   return { id, email };
 }
 
 /** 直插平台密钥(sha256 落库,明文只此一次返回) */
-export async function mkKey(db: Db, userId: number, name: string, opts: { rpm?: number; tpm?: number } = {}): Promise<string> {
-  const raw = `sk_rt${Array.from(randomBytes(20)).map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+export async function mkKey(
+  db: Db,
+  userId: number,
+  name: string,
+  opts: { rpm?: number; tpm?: number } = {},
+): Promise<string> {
+  const raw = `sk_rt${Array.from(randomBytes(20))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')}`;
   await db.execute(sql`
     insert into api_keys (key_hash, key_preview, user_id, name, rpm_limit, tpm_limit)
     values (${createHash('sha256').update(raw).digest('hex')}, ${raw.slice(0, 8) + '…'}, ${userId}, ${name}, ${opts.rpm ?? null}, ${opts.tpm ?? null})`);
@@ -199,7 +234,9 @@ export async function usageSum(db: Db, userId: number): Promise<string> {
 }
 
 export async function billCount(db: Db, userId: number): Promise<number> {
-  const r = await db.execute(sql`select count(*)::int as n from billing_requests where user_id = ${userId}`);
+  const r = await db.execute(
+    sql`select count(*)::int as n from billing_requests where user_id = ${userId}`,
+  );
   return Number((r[0] as any).n);
 }
 
@@ -207,8 +244,15 @@ export async function billCount(db: Db, userId: number): Promise<number> {
 let smtpSnapshot: { key: string; enabled: boolean; config: unknown } | null | undefined;
 
 export async function swapSmtpToSink() {
-  const db = createDb({ url: process.env.DATABASE_URL as string, poolMax: 1, idleTimeoutMillis: 5_000, connectionTimeoutMillis: 5_000 });
-  const prev = await db.execute(sql`select key, enabled, config from integration_settings where key = 'smtp'`);
+  const db = createDb({
+    url: process.env.DATABASE_URL as string,
+    poolMax: 1,
+    idleTimeoutMillis: 5_000,
+    connectionTimeoutMillis: 5_000,
+  });
+  const prev = await db.execute(
+    sql`select key, enabled, config from integration_settings where key = 'smtp'`,
+  );
   smtpSnapshot = (prev[0] as any) ?? null;
   const cipher = createCipher(process.env.ENCRYPTION_KEY as string);
   const config = {
@@ -225,7 +269,12 @@ export async function swapSmtpToSink() {
 
 export async function restoreSmtp() {
   if (smtpSnapshot === undefined) return;
-  const db = createDb({ url: process.env.DATABASE_URL as string, poolMax: 1, idleTimeoutMillis: 5_000, connectionTimeoutMillis: 5_000 });
+  const db = createDb({
+    url: process.env.DATABASE_URL as string,
+    poolMax: 1,
+    idleTimeoutMillis: 5_000,
+    connectionTimeoutMillis: 5_000,
+  });
   if (smtpSnapshot == null) {
     await db.execute(sql`delete from integration_settings where key = 'smtp'`);
   } else {
@@ -246,7 +295,9 @@ async function execStatements(db: Db, text: string): Promise<void> {
 // ---- 清理:rt- 目录/用户/钱包。session_replication_role=replica 旁路全部触发器
 // (账本不可变/一致性约束会拦带活跃授权的删除——测试数据整体撤离需要无痕通道) ----
 export async function cleanup(db: Db) {
-  await execStatements(db, `    set session_replication_role = replica;
+  await execStatements(
+    db,
+    `    set session_replication_role = replica;
     delete from usage_logs where user_id in (select id from users where issuer = 'rt-fire' or email like 'rt-%@fire.test')
       or channel_id in (select id from channels where name like 'rt-ch-%');
     delete from billing_reservations where billing_request_id in (
@@ -278,7 +329,8 @@ export async function cleanup(db: Db) {
     delete from admins where email = 'rt-admin@fire.test';
     delete from rate_card_coefficients where rate_card_id in (select id from rate_cards where name = 'rt-half');
     delete from rate_cards where name = 'rt-half';
-    set session_replication_role = default;`);
+    set session_replication_role = default;`,
+  );
   // Redis 守卫键清障(锁 600s;窗口计数自然过期)
   const pass = (() => {
     try {
@@ -289,7 +341,8 @@ export async function cleanup(db: Db) {
   })();
   for (const pattern of ['auth:*', 'authfail:*', 'client-api:*', 'inference:health:*']) {
     Bun.spawnSync([
-      'bash', '-c',
+      'bash',
+      '-c',
       `redis-cli -a ${pass} --scan --pattern '${pattern}' 2>/dev/null | xargs -r redis-cli -a ${pass} del >/dev/null 2>&1`,
     ]);
   }

@@ -1,0 +1,11 @@
+{
+  "name": "@tillgate/oxlint-plugins",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tillgate 本地 oxlint JS 插件集合,一个文件夹一个插件",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  }
+}

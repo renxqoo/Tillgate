@@ -1,8 +1,8 @@
 import { extractTextFeatures } from '@tillgate/ai';
 
 /**
- * 缺 usage 的实扣估算（C1 契约演进）：v2 ai 不再公开 BPE 估算器，本层用其公开的
- * 特征四计数器（充分统计量）+ 校准系数（装配可调，缺省 = v1 校准缺省迁移）作为
+ * 缺 usage 的实扣估算：ai 包只公开特征四计数器（充分统计量），本层用
+ * 特征四计数器 + 校准系数（装配可调）作为
  * input/output 的实扣口径——「估算实扣向精确收敛」，字节保守上界（output-cap.ts）
  * 只作预扣敞口不入实扣。输出侧估算的数据源 = 流终态 success.outputFeatures。
  */

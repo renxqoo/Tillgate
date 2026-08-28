@@ -1,8 +1,8 @@
 /**
- * 错误面装配（v1 error-map.ts 的目录体系替身——E1/E3 病灶核销）：
+ * 错误面装配：
  * 全量目录合成（http + 六能力包 + app 自有 admin.*），路由只抛目录业务错误,
  * errorHandler 按 nature/category 分派渲染,PG SQLSTATE 仅兜底注入。
- * message 英文(铁律 18),中文经目录 zh 字段按 Accept-Language 协商。
+ * message 英文,中文经目录 zh 字段按 Accept-Language 协商。
  */
 import { composeErrorCatalogs } from '@tillgate/errors';
 import { HttpErrors, type FaceOverride } from '@tillgate/http';
@@ -14,7 +14,7 @@ import { identityErrors } from '@tillgate/identity';
 import { notificationsErrors } from '@tillgate/notifications';
 import { defineErrorCatalog } from '@tillgate/errors';
 
-/** app 自有目录 admin.*：只登记 app 协议层抛点的边界码（铁律 4：无抛点不登记） */
+/** app 自有目录 admin.*：只登记 app 协议层抛点的边界码（无抛点不登记） */
 export const AdminErrors = defineErrorCatalog('admin', {
   invalid_param: {
     category: 'invalid_input',
@@ -26,19 +26,19 @@ export const AdminErrors = defineErrorCatalog('admin', {
     message: 'Unsupported sort field',
     zh: '不支持的排序字段',
   },
-  /** 目录源路径参数未知（v1 catalog_source_not_found 语义;404 不泄漏源清单） */
+  /** 目录源路径参数未知（404 不泄漏源清单） */
   catalog_source_not_found: {
     category: 'not_found',
     message: 'Unknown catalog source',
     zh: '未知的目录源',
   },
-  /** 进货凭证键不存在/非法（v1 voucher_not_found;404 不泄漏存储布局） */
+  /** 进货凭证键不存在/非法（404 不泄漏存储布局） */
   voucher_not_found: {
     category: 'not_found',
     message: 'Voucher not found',
     zh: '凭证不存在',
   },
-  // ---- P2 登录面（v1 auth.service AppError 码平移）----
+  // ---- 登录面 ----
   /** 管理员凭据不匹配（与 identity.invalid_credentials 区分:凭据行存在但资料行漂移） */
   invalid_credentials_admin: {
     category: 'invalid_input',
@@ -69,7 +69,7 @@ export const AdminErrors = defineErrorCatalog('admin', {
     message: 'Email verification code required but SMTP is not configured',
     zh: '需要邮箱验证码但 SMTP 未配置',
   },
-  /** 敏感设置操作要求 TOTP step-up 但管理员未绑定验证器（ADR-0011——引导先绑定） */
+  /** 敏感设置操作要求 TOTP step-up 但管理员未绑定验证器（引导先绑定） */
   totp_stepup_required: {
     category: 'forbidden',
     message: 'TOTP verification required: bind your authenticator first',
@@ -87,7 +87,7 @@ export const AdminErrors = defineErrorCatalog('admin', {
     message: 'Admin not found',
     zh: '管理员不存在',
   },
-  // ---- RBAC（docs/admin-rbac/DESIGN.md §2.5）----
+  // ---- RBAC ----
   /** 会话有效但角色无该权限（词表/矩阵单一真相 = control-plane domain/rbac） */
   insufficient_permission: {
     category: 'forbidden',
@@ -100,17 +100,42 @@ export const AdminErrors = defineErrorCatalog('admin', {
     message: 'Endpoint has no permission binding',
     zh: '接口未绑定权限（默认拒绝）',
   },
-  /** 修改自身 role/status 被拒（防最后一个超管自锁——DESIGN D6;displayName 可改） */
+  /** 修改自身 role/status 被拒（防最后一个超管自锁;displayName 可改） */
   cannot_modify_self: {
     category: 'invalid_input',
     message: 'Admins cannot modify their own role or status',
     zh: '不能修改自己的角色或状态',
   },
-  /** 只能为本地账号设密——给 OIDC 身份挂本地密码 = 管理员接管（D6） */
+  /** 只能为本地账号设密——给 OIDC 身份挂本地密码 = 管理员接管 */
   not_local_account: {
     category: 'invalid_input',
     message: 'Password can only be set for local accounts',
     zh: '只能为本地账号设置密码',
+  },
+  // ---- 管理员邀请（邮件设置初始密码） ----
+  /** 重发对象已设密码——邀请链接唯一用途是设置初始密码,已激活即无意义 */
+  admin_invite_not_needed: {
+    category: 'conflict',
+    message: 'Admin has already set a password; no invitation needed',
+    zh: '该管理员已设置密码，无需邀请邮件',
+  },
+  /** 重发冷却（60s 固定窗;retryAfterMs 随错误返回） */
+  admin_invite_rate_limited: {
+    category: 'rate_limited',
+    message: 'Invitation email recently sent, please wait before resending',
+    zh: '邀请邮件刚发送过，请稍后再重发',
+  },
+  /** 重发前置:SMTP 未生效或管理后台地址未配置——显式失败不哑成功 */
+  admin_invite_link_unavailable: {
+    category: 'unavailable',
+    message: 'Invitation email is unavailable: SMTP not configured or admin frontend URL missing',
+    zh: '邀请邮件暂不可用：SMTP 未配置或管理后台地址缺失',
+  },
+  /** 邀请令牌无效/过期/已用/目标已激活或封禁——统一口径不泄漏具体原因 */
+  admin_reset_token_invalid: {
+    category: 'invalid_input',
+    message: 'Invalid or expired invitation link',
+    zh: '邀请链接无效或已过期',
   },
 });
 
@@ -126,9 +151,9 @@ export const adminErrorCatalog = composeErrorCatalogs(
   AdminErrors,
 );
 
-/** 状态钉死表:P2 登录面 v1 wire 语义与 category 默认不同的条目（client-api 同机制） */
+/** 状态钉死表:wire 语义与 category 默认不同的条目（client-api 同机制） */
 export const ADMIN_FACE_OVERRIDES: Readonly<Record<string, FaceOverride>> = {
-  // 防枚举统一 401（v1 语义;identity 目录 category 默认 403）
+  // 防枚举统一 401（identity 目录 category 默认 403）
   'identity.invalid_credentials': { status: 401 },
   // 凭据行与资料行漂移——同口径 401（category 默认 400）
   'admin.invalid_credentials_admin': { status: 401 },

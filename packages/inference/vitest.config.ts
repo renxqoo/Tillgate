@@ -10,7 +10,7 @@ export default defineConfig({
       },
     },
 
-    // 铁律 14：包根 __test__/ 平铺，include 固定；真实 Redis 集成用 REDIS_URL skipIf 门控
+    // 包根 __test__/ 平铺，include 固定；真实 Redis 集成用 REDIS_URL skipIf 门控
     include: ['__test__/*.test.ts'],
     environment: 'node',
     // workspace 依赖（@tillgate/ai、@tillgate/errors）经 development 条件直连源码，

@@ -9,9 +9,6 @@ import {
   RowActions,
   TableCell,
   TableRow,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
 } from '@tillgate/ui';
 import { useState } from 'react';
 
@@ -26,12 +23,10 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 
 import type { AdminModelRow, ChannelOption } from '@tillgate/api-client';
-import { ConfirmAction } from '@/components/confirm-action';
-import { fmtPrice, fmtDateTime, unitWord } from '@/lib/formatters';
-import { tierLabelFor, tierPricesOf } from './model-pricing';
-import { BindChannelsDialog } from './bind-channels-dialog';
-import { EditModelDialog } from './edit-model-dialog';
-import { TestModelDialog } from './test-model-dialog';
+import { fmtPrice, fmtDateTime } from '@/lib/formatters';
+import { ModelRowDialogs } from './model-row-dialogs';
+import type { ModelDialogKind } from './model-row-item-shared';
+import { UnitPriceCell } from './unit-price-cell';
 
 /** 上下文窗口 token 数展示：65536 → 64K，1000000 → 1M，未知 → — */
 function fmtContext(tokens: number | null): string {
@@ -39,159 +34,6 @@ function fmtContext(tokens: number | null): string {
   if (tokens >= 1_000_000) return `${+(tokens / 1_000_000).toFixed(1)}M`;
   if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
   return String(tokens);
-}
-
-/**
- * 列表「输出价」列（单位计价）：有差价档位时显示最低价（起），
- * hover 悬浮展示全部档位价（预设档位名 + 参数值）与统一单价回落。
- */
-function UnitPriceCell({ model, locale }: { model: AdminModelRow; locale: 'en' | 'zh' }) {
-  const t = useTranslations('models');
-  const unit = model.pricingUnit ?? 'request';
-  const word = unitWord(unit, locale);
-  const tiers = tierPricesOf(model);
-  const flat = model.unitPrice ?? '';
-  // 展示最低价：档位价与统一单价一起取最小（未命中档位的请求按统一单价计费）
-  const candidates = [...tiers.map((x) => x.price), ...(flat !== '' ? [flat] : [])];
-  const min = candidates.reduce<string | null>(
-    (acc, p) => (acc === null || Number(p) < Number(acc) ? p : acc),
-    null,
-  );
-  if (min === null) return <span>¥0/{word}</span>;
-  if (candidates.length < 2) {
-    return (
-      <span>
-        ¥{fmtPrice(min)}/{word}
-      </span>
-    );
-  }
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span className="cursor-help underline decoration-dotted underline-offset-4">
-            {t('listFromPrice', { min: fmtPrice(min), unit: word })}
-          </span>
-        }
-      />
-      <TooltipContent side="top" className="flex-col items-stretch gap-1 px-3 py-2 text-left">
-        <p className="font-medium">{t('tiersTitle')}</p>
-        {model.billingConfig?.params?.selector ? (
-          <p className="opacity-70">
-            {t('listSelectorLine', { selector: model.billingConfig.params.selector })}
-          </p>
-        ) : null}
-        {tiers.map((tr) => {
-          const label = tierLabelFor(unit, tr.value);
-          return (
-            <div key={tr.value} className="flex justify-between gap-6">
-              <span>{label === tr.value ? tr.value : `${label} · ${tr.value}`}</span>
-              <span>
-                ¥{fmtPrice(tr.price)}/{word}
-              </span>
-            </div>
-          );
-        })}
-        {flat !== '' ? (
-          <div className="flex justify-between gap-6 border-t border-background/20 pt-1 opacity-70">
-            <span>{t('tierFlatHint')}</span>
-            <span>
-              ¥{fmtPrice(flat)}/{word}
-            </span>
-          </div>
-        ) : null}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-/** 行级弹窗种类（受控 open：菜单点选写入，弹窗关闭置 null） */
-type ModelDialogKind = 'bind' | 'edit' | 'test' | 'delist' | 'restore' | 'delete' | 'undelete';
-
-/** 行动作弹窗组：从 ModelRowItem 提出的模块级组件（规模/复杂度收敛），行为不变 */
-function ModelRowDialogs({
-  model,
-  channels,
-  dialog,
-  onClose,
-}: {
-  model: AdminModelRow;
-  channels: ReadonlyArray<ChannelOption>;
-  dialog: ModelDialogKind | null;
-  onClose: () => void;
-}) {
-  const t = useTranslations('models');
-  const deleted = model.deletedAt != null;
-  return (
-    <>
-      {deleted ? (
-        <ConfirmAction
-          open={dialog === 'undelete'}
-          onOpenChange={(open) => !open && onClose()}
-          confirm={t('undeleteConfirm', { name: model.externalName })}
-          action={async () =>
-            (await import('@/server/models-actions')).undeleteModelAction(model.id)
-          }
-          success={t('undeleteSuccess')}
-          tone="default"
-        />
-      ) : (
-        <>
-          {model.status === 0 ? (
-            <ConfirmAction
-              open={dialog === 'delist'}
-              onOpenChange={(open) => !open && onClose()}
-              confirm={t('delistConfirm', { name: model.externalName })}
-              action={async () =>
-                (await import('@/server/models-actions')).delistModelAction(model.id)
-              }
-              success={t('delistSuccess')}
-              tone="default"
-            />
-          ) : (
-            <ConfirmAction
-              open={dialog === 'restore'}
-              onOpenChange={(open) => !open && onClose()}
-              confirm={t('restoreConfirm', { name: model.externalName })}
-              action={async () =>
-                (await import('@/server/models-actions')).restoreModelAction(model.id)
-              }
-              success={t('restoreSuccess')}
-              tone="default"
-            />
-          )}
-          <ConfirmAction
-            open={dialog === 'delete'}
-            onOpenChange={(open) => !open && onClose()}
-            confirm={t('deleteConfirm', { name: model.externalName })}
-            action={async () =>
-              (await import('@/server/models-actions')).deleteModelAction(model.id)
-            }
-            success={t('deleteSuccess')}
-          />
-          <BindChannelsDialog
-            model={model}
-            channels={channels}
-            trigger={null}
-            open={dialog === 'bind'}
-            onOpenChange={(open) => !open && onClose()}
-          />
-          <EditModelDialog
-            model={model}
-            trigger={null}
-            open={dialog === 'edit'}
-            onOpenChange={(open) => !open && onClose()}
-          />
-          <TestModelDialog
-            model={model}
-            trigger={null}
-            open={dialog === 'test'}
-            onOpenChange={(open) => !open && onClose()}
-          />
-        </>
-      )}
-    </>
-  );
 }
 
 export function ModelRowItem({

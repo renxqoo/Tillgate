@@ -8,9 +8,9 @@
  * 幂等：operations 用例（operationId + 指纹——同键同参重放回执，异参 409）。
  * 资金：wallet.transfer(user → platform_revenue, allowCredit:false, 同事务)。
  * 竞态：「单有效订阅」部分唯一索引兜底 → already_subscribed（事务回滚可安全重试）。
- * adminList：管理面列表（U6）——users/plans 富化在 store 物理层。
+ * adminList：管理面列表——users/plans 富化在 store 物理层。
  * 动词各居一文件（purchase/renew/change/cancel/grant-pack），此处只做类型定义与组合
- * （装配参数一次注入共享装配对象——铁律 5 一动词一文件）。
+ * （装配参数一次注入共享装配对象——一动词一文件）。
  */
 import { adminListSubscriptions } from './admin-list-subscriptions.js';
 import { purchase } from './purchase.js';
@@ -96,7 +96,7 @@ export interface GrantPackResult {
 }
 
 export interface SubscriptionsApi {
-  /** 管理面列表（U6;users/plans 富化与剩余额度投影在 store 物理层） */
+  /** 管理面列表（users/plans 富化与剩余额度投影在 store 物理层） */
   adminList(
     input: AdminListSubscriptionsInput,
   ): Promise<{ rows: AdminSubscriptionRow[]; total: number }>;

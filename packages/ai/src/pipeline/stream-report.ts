@@ -75,7 +75,7 @@ export function createStreamEventBus(
 
 /**
  * 流开始前失败的早退流（含 OpenAI 兼容错误帧 + failed 终态）。
- * sanitizeMessage：C 端错误帧 message 的出站脱敏（§3.6 例外 3 内容层）——
+ * sanitizeMessage：C 端错误帧 message 的出站脱敏——
  * 事件面（emitTerminal）携带原始错误不脱敏（观察面/日志保真），仅出站字节脱敏。
  */
 // eslint-disable-next-line max-params -- 导出 API（create-ai 4 处 + 测试调用点），签名即契约，改对象参数放大 diff

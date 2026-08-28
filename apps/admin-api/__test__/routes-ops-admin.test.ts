@@ -1,5 +1,5 @@
 /**
- * P4 契约测试（generation-tasks / payment-orders 族）：任务列表信封与实扣回填、
+ * 契约测试（generation-tasks / payment-orders 族）：任务列表信封与实扣回填、
  * kind/status 词表外 400、limit 上界 200;订单列表信封/q 透传/排序白名单外 400;
  * close 无请求体 + uuid 校验 + 409 语义（billing.order_state_conflict）。
  */
@@ -85,7 +85,7 @@ describe('generation-tasks（P4）', () => {
       id: '019c0b7d-0000-7000-8000-000000000011',
       billingStatus: 'settled',
       settledAmount: '0.42',
-      createdAt: '2025-08-23T02:40:00.000Z', // epoch ms → ISO(v1 wire 形状)
+      createdAt: '2025-08-23T02:40:00.000Z', // epoch ms → ISO(wire 形状)
     });
     // 未结算行 settledAmount = null(不进回查集合)
     expect(body.items[1]).toMatchObject({ id: 't2', settledAmount: null });
@@ -149,7 +149,7 @@ describe('payment-orders（P4）', () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
-    // 留痕文案经装配注入(不写死在路由);v1 同字面
+    // 留痕文案经装配注入(不写死在路由)
     expect(close).toHaveBeenCalledWith({
       orderId: '019c0b7d-0000-7000-8000-0000000000aa',
       reason: '管理员手动关闭',
@@ -165,7 +165,7 @@ describe('payment-orders（P4）', () => {
     expect(badUuid.status).toBe(400);
     expect(await badUuid.json()).toMatchObject({ error: { code: 'admin.invalid_param' } });
 
-    // billing 错误目录经 error-face 渲染 409(v1 conflict 语义)
+    // billing 错误目录经 error-face 渲染 409(conflict 语义)
     const conflictApp = createAdminApp(
       fakeDeps({
         paymentAdmin: {

@@ -11,7 +11,7 @@ import {
 } from '../contracts/control-plane';
 import { idPathParam, listQuery, paginatedOf, okTrue, type OpenApiEndpoint } from './shared';
 
-/** 管理面渠道行（v2 wire 偏差:cooldownUntil/providerBaseUrl/updatedAt 无列来源恒 null） */
+/** 管理面渠道行（cooldownUntil/providerBaseUrl/updatedAt 无列来源恒 null） */
 export const adminChannelRowSchema = z
   .object({
     id: z.number(),
@@ -22,14 +22,14 @@ export const adminChannelRowSchema = z
       .string()
       .nullable()
       .describe(
-        '模型白名单(DB jsonb 数组;DTO 面沿 v1 快照口径 string | null——数组线上形态在 admin 表单边界转换)',
+        '模型白名单(DB jsonb 数组;DTO 面为 string | null——数组线上形态在 admin 表单边界转换)',
       ),
     weight: z.number(),
     priority: z.number(),
     status: z.number(),
     failCount: z.number(),
     deletedAt: z.string().nullable().describe('记录面逻辑删除时刻(回收站);null = 在册'),
-    cooldownUntil: z.string().nullable().describe('冷却截止(v2 无列来源,恒 null)'),
+    cooldownUntil: z.string().nullable().describe('冷却截止(无列来源,恒 null)'),
     rpmLimit: z.number().nullable(),
     tpmLimit: z.number().nullable(),
     upstreamBudget: z.string().describe('进货总额(元,numeric 字符串)'),
@@ -37,9 +37,9 @@ export const adminChannelRowSchema = z
     upstreamConsumed: z.string().describe('已消耗上游成本(元,string)'),
     upstreamRemaining: z.string().describe('剩余 = 进货 - 已消耗(元,string)'),
     createdAt: z.string(),
-    updatedAt: z.string().describe('更新时间(v2 无列来源,恒 null)'),
+    updatedAt: z.string().describe('更新时间(无列来源,恒 null)'),
     providerName: z.string(),
-    providerBaseUrl: z.string().describe('供应商 baseUrl(v2 无列来源,恒 null)'),
+    providerBaseUrl: z.string().describe('供应商 baseUrl(无列来源,恒 null)'),
     boundModels: z
       .array(z.object({ externalName: z.string(), realModel: z.string() }))
       .describe('已绑定模型清单(绑定名投影)'),
@@ -162,7 +162,7 @@ const importChannelsResultSchema = z.object({
   ),
 });
 
-/** 进货/调账回执（numeric(38,18) 存储精度出站点归一——v1 wire 口径） */
+/** 进货/调账回执（numeric(38,18) 存储精度出站点归一） */
 const channelFundsReceiptSchema = z.object({
   ok: z.literal(true),
   rechargeId: z.number().describe('资金流水 id'),

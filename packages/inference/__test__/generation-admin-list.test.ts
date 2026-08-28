@@ -5,7 +5,7 @@ import { GENERATION_TASK_STATUSES } from '../src/ports/generation';
 import type { GenerationTaskRecord } from '../src/ports/generation';
 
 /**
- * 管理任务列表读动词(admin-api P4):内存适配的过滤/分页/排序/total 语义 +
+ * 管理任务列表读动词(admin-api):内存适配的过滤/分页/排序/total 语义 +
  * 词表封闭。账本投影列(billingStatus/settledAmount)内存形态恒空——
  * 数据面缺席的形态约定,SQL 语义由 generation-pg.real.test.ts 承担。
  */

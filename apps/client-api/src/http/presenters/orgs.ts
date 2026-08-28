@@ -1,6 +1,6 @@
 /**
- * 组织呈现：成员资格视图 + 组织活跃订阅富化（app-face join，accounts G1 注释明示
- * 「订阅富化归 app 组合」）→ /v1/orgs wire 行。剩余额度 = max(quota-used-reserved, 0)。
+ * 组织呈现：成员资格视图 + 组织活跃订阅富化（app-face join；订阅富化归 app 组合）
+ * → /v1/orgs wire 行。剩余额度 = max(quota-used-reserved, 0)。
  */
 import { Decimal } from '@tillgate/billing';
 

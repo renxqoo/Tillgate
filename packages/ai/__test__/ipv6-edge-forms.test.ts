@@ -1,5 +1,5 @@
 /**
- * 红测（审计问题 #3：IPv6 判定边缘形态缺口）：
+ * 红测（IPv6 判定边缘形态缺口）：
  * isUnsafeIpv6 只解包 `::ffff:` IPv4-mapped 形；以下内嵌私网/回环 IPv4 的
  * 形态全部漏判（WHATWG URL 会把 IPv6 规范化，dotted 形进不去、压缩形才到
  * 判定函数——运行时已核实各形态经 assertSafeUrlSync 全放行）：

@@ -1,5 +1,5 @@
 /**
- * postgres 适配器真实 PG 行为等价测试（铁律 14：默认门禁按文件名排除，test:real 显式运行）。
+ * postgres 适配器真实 PG 行为等价测试（默认门禁按文件名排除，test:real 显式运行）。
  * 覆盖 SQL 专属语义：唯一索引 23505 翻译、守卫原子 UPDATE、jsonb containment 溯源、
  * 幂等占位冲突、审计 best-effort 写入、凭证 bytea 往返。
  * 环境：DATABASE_URL（根 .env）；不可达时全组跳过（退出码 0——由显式运行者保证环境）。
@@ -260,7 +260,7 @@ describe('rate-card-store（真实 PG：M1 隔离 + 硬删级联）', () => {
       .from(rateCardCoefficients)
       .where(eq(rateCardCoefficients.rateCardId, card.id));
     expect(defined(rows.find((r) => r.scope === 'global')).coefficient).toBe('0.800');
-    expect(defined(rows.find((r) => r.scope === 'model')).coefficient).toBe('2.500'); // M1：未被抹平
+    expect(defined(rows.find((r) => r.scope === 'model')).coefficient).toBe('2.500'); // 模型行未被全局 PATCH 抹平
     expect(await postgresRateCardStore.findGlobalCoefficient(db, card.id)).toBe('0.800');
     expect(await postgresRateCardStore.deleteCard(db, { rateCardId: card.id })).toBe(true);
     expect(

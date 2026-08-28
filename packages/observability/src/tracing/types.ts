@@ -1,5 +1,5 @@
 /**
- * tracing 词表与存储 port(v1 packages/tracing/types.ts 平移)。
+ * tracing 词表与存储 port。
  * SQL 归 adapters/postgres/trace-store;本文件只有纯类型与 port 契约。
  */
 

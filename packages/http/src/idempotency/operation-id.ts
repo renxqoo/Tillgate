@@ -1,8 +1,8 @@
 /**
- * 幂等操作键（v1 idempotency.ts 迁移形态）：优先取 idempotency-key 请求头，缺失时生成 UUID。
+ * 幂等操作键：优先取 idempotency-key 请求头，缺失时生成 UUID。
  * 资金类写操作统一走此入口，消除散落的路由级重复。
  *
- * 命名空间隔离（T1）：operationId 是全局主键，同时承载客户端键与系统自然键
+ * 命名空间隔离：operationId 是全局主键，同时承载客户端键与系统自然键
  * （signup-gift:{id} / redeem:{hash}:{uid} / ch-review:{rid} …）。系统键一律含 ':'，
  * 客户端键因此被限制为不含 ':' 的安全字符集——结构性上不可能抢占/污染系统键
  * （若可投毒 signup-gift:{受害者id} 会导致受害者登录永久 500）。

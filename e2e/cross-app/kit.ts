@@ -1,18 +1,16 @@
 /**
- * 跨 app 生效链 e2e 装置（v1 admin-api e2e-cross-app 搬迁;P7 最后余项）：
+ * 跨 app 生效链 e2e 装置：
  * client-api 真进程（client-journey harness——真 PG/Redis/HTTP + captureMailer
  * 抓验证码）+ admin-api 进程内全真装配（e2e/admin/kit——真 admin-realm 令牌）
  * **共库**——管理动作经真实 admin HTTP 面,用户面感知经真实 client HTTP 面。
  *
- * 与 v1 kit 的形态差异（装置差异,断言语义不改）：
- * - v1 双 app 均子进程 spawn → v2 client 真进程（harness）+ admin in-process
- *   （先例口径:e2e/admin 同院「进程内全真装配 + 真监听」）;
- * - v1 seedAdmin（插专用 admin 行 + 明文密码登录）→ v2 复用 admin kit 的
- *   「取库内首个 admins 行签发真令牌」;库内无行时 kit 先播种兜底行
- *   （client-journey seedRedeemCode 同款形状）——不再走密码登录面（admin 登录
- *   旅程 = P2 pending,此处会话门以真令牌直签锁定）;
- * - v1 trackE2E/cleanupE2E 全表清理 → v2 client-journey 的用户级 FK 逆序
- *   cleanupUsers + 播种行回收（共享库口径不变）。
+ * 装置形态：
+ * - client 真进程（harness）+ admin in-process（进程内全真装配 + 真监听）;
+ * - admin 侧取库内首个 admins 行签发真令牌;库内无行时 kit 先播种兜底行
+ *   （client-journey seedRedeemCode 同款形状）——不走密码登录面,
+ *   会话门以真令牌直签锁定;
+ * - 清理走 client-journey 的用户级 FK 逆序 cleanupUsers + 播种行回收
+ *   （共享库口径不变）。
  */
 import { sql } from 'drizzle-orm';
 import { createDb, closeDb } from '@tillgate/db';
@@ -76,7 +74,7 @@ export async function setupCrossApp(): Promise<CrossAppWorld | null> {
   if (url === '') return null;
 
   // admin config 必填项先行满足（admin kit 自设 ADMIN_JWT_SECRET/ENCRYPTION_KEY/
-  // IDENTITY_CODE_PEPPER;JWT_SECRET 是 P2 后词表一致性的必填键——client 用同一
+  // IDENTITY_CODE_PEPPER;JWT_SECRET 为必填键——client 用同一
   // 密钥签发用户会话,REDIS_URL 两面共用）
   process.env.JWT_SECRET ??= 'e2e-crossapp-jwt-secret-0123456789abcdef';
   process.env.REDIS_URL ??= 'redis://localhost:6379';

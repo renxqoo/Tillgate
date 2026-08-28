@@ -3,7 +3,7 @@ import { createAdminApp } from '../src/app';
 import { authHeader, fakeDeps } from './helpers';
 
 /**
- * 用户/Key 域契约（v1 users.test.ts + keys.test.ts 行为规格）:列表钱包富化口径 /
+ * 用户/Key 域契约:列表钱包富化口径 /
  * 资料 / PATCH 封禁语义与 creditLimit 拆分 / 调账赠送幂等与同事务审计 / 流水信封。
  */
 
@@ -102,7 +102,9 @@ describe('GET /v1/users/:id 与 PATCH', () => {
       }),
     );
     const res = await app.request('/v1/users', { headers: authHeader() });
-    const [row] = ((await res.json()) as { rows: Array<{ rateCardId: number; rateCardName: string }> }).rows;
+    const [row] = (
+      (await res.json()) as { rows: Array<{ rateCardId: number; rateCardName: string }> }
+    ).rows;
     expect(row?.rateCardId).toBe(7);
     expect(row?.rateCardName).toBe('企业卡'); // 修复前:路由漏传第三参,恒 null → 前端列显 '—'
   });

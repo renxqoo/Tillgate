@@ -1,11 +1,9 @@
 /**
  * accounts 三桥接件（装配面——仅 assembly.ts 引用,architecture 测试锁定）。
- * DESIGN §5 裁决：
- *   - D9:walletCredit 独立事务形态（accounts 赠送/推荐入账动词不在 admin 面;
- *     gateway 波 accounts composition 落地后恢复同事务参与）;
- *   - D10:sessionInvalidation 后置推进（identity 锚点存储无外部 tx 参与面;
+ *   - walletCredit 独立事务形态（accounts 赠送/推荐入账动词不在 admin 面）;
+ *   - sessionInvalidation 后置推进（identity 锚点存储无外部 tx 参与面;
  *     失败仍抛错——邮箱变更 500,不静默吞）;
- *   - G1:审计同事务写入（失败随 accounts 业务事务回滚）。
+ *   - 审计同事务写入（失败随 accounts 业务事务回滚）。
  */
 import type { WalletCreditPort, AuditPort } from '@tillgate/accounts';
 import type { DbLike } from '@tillgate/db';
@@ -13,9 +11,8 @@ import type { WalletApi } from '@tillgate/billing';
 import type { Identity } from '@tillgate/identity';
 
 /**
- * 会话失效 port 的结构镜像（accounts 根出口暂未导出该类型——gateway 波子入口在途,
- * 铁律 15 不碰其未提交文件;此处按 §5.2「消费方定义 port」口径本地持形,形状漂移由
- * createAccounts 装配点类型检查兜底）。
+ * 会话失效 port 的结构镜像（accounts 根出口暂未导出该类型,此处按「消费方定义 port」
+ * 口径本地持形,形状漂移由 createAccounts 装配点类型检查兜底）。
  */
 export interface AdminSessionInvalidation {
   invalidateUserSessions(db: unknown, input: { realm: string; userId: number }): Promise<void>;

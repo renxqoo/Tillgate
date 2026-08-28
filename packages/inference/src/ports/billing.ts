@@ -2,7 +2,7 @@ import type { QuoteCandidate } from '../domain/model/types';
 import type { UsageReceipt } from '../domain/usage/receipt';
 
 /**
- * billing port（跨能力经消费方 port——重构方案 §5.2；billing 建包前由装配注入实现）。
+ * billing port（跨能力经消费方 port，由装配注入实现）。
  * 金额运算（计价/预留/敞口）全部在 billing 侧：inference 只供候选价格快照与估算基础
  * 事实。业务拒绝（余额/限额/配置）由实现抛 billing 目录的 BusinessError 上抛。
  */
@@ -36,7 +36,7 @@ export interface BillingPort {
     maxOutputTokens: number;
   }): Promise<{ allowed: true } | { allowed: false }>;
 
-  /** 请求生命周期信号（词表 C5；lease 语义归 billing 状态机） */
+  /** 请求生命周期信号（lease 语义归 billing 状态机） */
   signal(input: BillingSignal): Promise<void>;
 }
 

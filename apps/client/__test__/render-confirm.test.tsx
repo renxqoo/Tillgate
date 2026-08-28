@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * ConfirmAction 渲染规格（jsdom，MIGRATION §8 渲染切片）：
+ * ConfirmAction 渲染规格（jsdom）：
  * 二次确认改用 ui 包 ConfirmDialog（shadcn AlertDialog）——开弹窗 → 确认/取消分支、
  * pending 生命周期（防重复提交）、无 confirm 直执行、action 失败复位不抛。
  * 消费形态对齐 keys 吊销 / apps 删除的行内按钮 render-prop。

@@ -1,6 +1,6 @@
 import { requestSummaryOf } from '../middleware/request-log.js';
 /**
- * Gemini 原生协议端点（v1 routes/native-protocol.ts 迁移）：
+ * Gemini 原生协议端点：
  * POST /v1beta/models/:modelAction —— 模型名在 URL 的路径参数形态，端点注册表表达不了。
  * 翻译函数来自 @tillgate/ai gemini-chat 协议模块（与出站共用一套真相）；译为规范形
  * 后走 chat 管线（鉴权/白名单/计费/限流与所有端点完全一致）。

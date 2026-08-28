@@ -1,5 +1,5 @@
 /**
- * 动态登录邮件（identity Mailer 的集成设置驱动实现——DESIGN §5 D7）。
+ * 动态登录邮件（identity Mailer 的集成设置驱动实现）。
  * 每次发送严格读快照（resolve fail-loud——发送面不允许陈旧凭据）；SMTP 失效抛
  * undeliverable_challenge（与 identity mailer 缺席路径同码，fail-closed 语义不漂移）；
  * 传输器随配置指纹重建（nodemailer transport 与 SmtpConfig 一一对应）。
@@ -57,6 +57,10 @@ export function createDynamicLoginMailer(env: DynamicLoginMailerEnv): Mailer {
       const mailer = await currentMailer();
       if (mailer == null) return unavailable();
       return mailer.sendPasswordResetLink(to, url, ctx);
+    },
+    // 管理面能力:用户面不发送管理员邀请——端口合规空实现(永不达)
+    async sendAdminInviteLink() {
+      throw new Error('client mailer does not send admin invites');
     },
   };
 }

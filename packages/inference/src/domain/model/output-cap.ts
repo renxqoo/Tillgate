@@ -1,6 +1,5 @@
 /**
- * 输出 token 上界与转发体钳制（v1 gateway pipeline/output-cap.ts 迁移；
- * 输入保守上界去掉 bpe 入参——v2 估算口径见 usage/estimate.ts，C1）。
+ * 输出 token 上界与转发体钳制（输入估算口径见 usage/estimate.ts）。
  * 预扣/敞口与上游实许输出共用口径：cap 同时是实际转发硬上限。
  */
 export interface OutputCapConfig {
@@ -8,7 +7,7 @@ export interface OutputCapConfig {
   exposureCap: number;
 }
 
-/** 端点分类：embeddings 无输出；chat 按参数口径；模态族按无输出预算（v1 同款） */
+/** 端点分类：embeddings 无输出；chat 按参数口径；模态族按无输出预算 */
 export function maxOutputTokensFor(
   kind: 'chat' | 'embeddings' | 'modality',
   body: Record<string, unknown>,

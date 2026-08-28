@@ -1,7 +1,7 @@
 /**
  * OAuth 授权跳转半程:state 签发(单次存储,不可达 fail-closed 拒绝——带不上单次
- * state 的跳转必坏,v1 语义)+ provider 授权 URL。cookie 双提交比对与 next 归一
- * 归 app HTTP 层(D7)。
+ * state 的跳转必坏)+ provider 授权 URL。cookie 双提交比对与 next 归一
+ * 归 app HTTP 层。
  */
 import { randomBytes } from 'node:crypto';
 import { identityErrors } from '../domain/errors.js';

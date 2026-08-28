@@ -50,7 +50,7 @@ cp .env.example .env               # 只含必填键；其余配置全部有安�
 # 生成必填密钥（弱值/空值启动即拒绝）：
 for k in JWT_SECRET ADMIN_JWT_SECRET ENCRYPTION_KEY IDENTITY_CODE_PEPPER CLIENT_CODE_PEPPER CHANNEL_API_KEY_ENCRYPTION; do
   sed -i.bak -E "s|^#?[[:space:]]?${k}=.*|${k}=$(openssl rand -hex 32)|" .env; done; rm -f .env.bak
-docker compose -f docker/compose.dev.yml up -d   # 起 postgres + redis
+docker compose --env-file .env -f docker/compose.dev.yml up -d   # 起 postgres + redis
 bun packages/db/scripts/provision-fresh.ts   # 空库前置建表（幂等；首次迁移前必跑）
 bun run db:migrate                 # 建表（91 个迁移，幂等）
 cd apps/admin-api && bun scripts/create-admin.ts --email=admin@ai-gateway.local --password=admin12345 --apply && cd ../..
@@ -66,7 +66,7 @@ worker 健康 `8792` · 用户面板 `3001` · 管理后台 `3002`。
 
 ### 安装 —— 方式二：Docker 部署
 
-生产全套：所有服务容器化，nginx 前门 + TLS。前置条件：Docker 24+ 与 compose 插件；
+生产全套：所有服务容器化，nginx 前门 + TLS。前置条件：Docker 24+ 与 Compose ≥ 2.24.4；
 两个域名的 A 记录（如 `app.example.com` / `admin.example.com`）已指向服务器；
 防火墙放行 80/443。
 
@@ -78,36 +78,41 @@ git clone https://github.com/renxqoo/Tillgate.git && cd Tillgate
 cp .env.example .env && vim .env
 #   必改：JWT_SECRET / ADMIN_JWT_SECRET / ENCRYPTION_KEY / IDENTITY_CODE_PEPPER /
 #   CLIENT_CODE_PEPPER / CHANNEL_API_KEY_ENCRYPTION（强随机）、
-#   POSTGRES_PASSWORD / REDIS_PASSWORD；
+#   POSTGRES_PASSWORD / REDIS_PASSWORD / TRACE_RECEIVER_TOKEN / OAUTH_API_BASE；
 #   NODE_ENV=production。DATABASE_URL / REDIS_URL 由 compose 自动注入，无需手填。
+chmod 600 .env
 
 # 3) 起基础设施 + 一次性迁移
-docker compose -f docker/compose.yml up -d postgres redis
-docker compose -f docker/compose.yml up --build migrate   # 幂等，跑完自动退出
+docker compose --env-file .env -f docker/compose.yml up -d postgres redis
+docker compose --env-file .env -f docker/compose.yml up --build migrate
+# 首次部署建立第一个管理员（输出一次性强密码）
+docker compose --env-file .env -f docker/compose.yml run --rm --workdir /repo migrate \
+  bun --conditions=development apps/admin-api/scripts/create-admin.ts \
+  --email=admin@example.com --apply
 
 # 4) 首次 TLS 证书（standalone 模式——此刻 nginx 还没起）
-docker compose -f docker/compose.yml run --rm --entrypoint certbot -p 80:80 certbot \
+docker compose --env-file .env -f docker/compose.yml run --rm --entrypoint certbot -p 80:80 certbot \
   certonly --standalone --cert-name gateway \
   -d app.example.com -d admin.example.com \
   --email you@example.com --agree-tos --no-eff-email
 
 # 5) 全量启动（首次构建约 10 分钟）
-docker compose -f docker/compose.yml up -d --build
+docker compose --env-file .env -f docker/compose.yml up -d --build
 
 # 6) 验证
 curl -s http://localhost/livez          # {"ok":true}
-docker compose -f docker/compose.yml ps # 全部 Up（migrate 为 Exited(0) 属正常）
+docker compose --env-file .env -f docker/compose.yml ps # migrate 为 Exited(0) 属正常
 ```
 
 上线后必做：支付回调地址指向 `https://app.example.com/v1/payments/notify/epay|stripe`
-（漏配 = 充值不入账）；证书到期前续期（certbot renew + nginx reload，建议 cron）；
-可选观测栈 `--profile obs`。完整清单见[部署清单](docs/deployment-checklist.md)，
+（漏配 = 充值不入账）；证书到期前续期（certbot renew + nginx reload，建议 cron）。
+完整清单见[部署清单](docs/deployment-checklist.md)，
 高可用拓扑见[高可用部署手册](docs/ha-deployment.md)。
 
 ### 如何使用
 
 1. 登录**管理后台**（`http://localhost:3002`），本地用种子脚本创建的管理员
-   （`admin@ai-gateway.local`；生产走邀请制创建管理员）。添加上游**渠道**（供应商 API Key）
+   （`admin@ai-gateway.local`；生产使用部署步骤创建的首个管理员）。添加上游**渠道**（供应商 API Key）
    与**模型映射**（对外模型名 → 真实模型 × 渠道）。出站调用有内置 SSRF 硬防护
    （仅允许 HTTPS；环回/内网地址一律拒绝，DNS 解析后逐地址校验防 rebinding）。
 2. 在**用户面板**（`http://localhost:3001`）创建 **API Key**（可选按 Key 的 RPM/TPM 限额、

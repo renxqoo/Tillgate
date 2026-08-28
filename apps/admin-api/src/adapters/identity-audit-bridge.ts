@@ -1,5 +1,5 @@
 /**
- * identity 审计桥（observability G1 剩余半边,P2 兑现）：IdentityAuditEvent →
+ * identity 审计桥:IdentityAuditEvent →
  * observability writeAudit 行。actor 形如 'admin:7'/'system'——adminId 数值化,
  * 未知形态降级 null（审计行不断流）。action 加 'identity.' 前缀入 audit_logs
  * 命名空间（与 accounts/control-plane 桥同口径）。装配面文件:仅 assembly 引用。

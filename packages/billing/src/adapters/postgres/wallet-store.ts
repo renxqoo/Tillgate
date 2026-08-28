@@ -1,8 +1,6 @@
 /**
  * 钱包复式账本的 PostgreSQL adapter（ports/wallet-store 的唯一实现）。
  *
- * 语义基准：旧仓 repository/wallet.repo.ts（活路径）逐方法平移；差异点在
- * MIGRATION-U1 §4 登记（B11 定序锁显式化 / joinTransaction SAVEPOINT 隔离）。
  * 写路径约定：写方法入参必须是事务句柄（动词层保证）；账户行锁（FOR UPDATE，
  * id 定序）是复式账本的串行化点——锁外读到的余额不可用于过账。
  */
@@ -29,7 +27,7 @@ import type {
   WalletTx,
 } from '../../ports/wallet-store.js';
 
-/** adapter 装配入参（重试策略必填注入，铁律 3——缺省值归 app config） */
+/** adapter 装配入参（重试策略必填注入——缺省值归 app config） */
 export interface PostgresWalletStoreOptions {
   retry: TxRetryPolicy;
 }
@@ -89,7 +87,7 @@ export function createPostgresWalletStore(
     },
 
     async ensureInternalAccount(conn, code, currency) {
-      // shard 恒 0（B9）：唯一键保留分片位，活路径语义唯一
+      // shard 恒 0：唯一键保留分片位，语义仍唯一
       const c = asDb(conn);
       await c
         .insert(walletAccounts)
@@ -155,7 +153,7 @@ export function createPostgresWalletStore(
         })
         .from(walletAccounts)
         .where(inArray(walletAccounts.id, ordered))
-        // B11：定序锁显式化——旧实现依赖索引扫描顺序的实现细节，ORDER BY 使全局加锁顺序成为保证
+        // 定序锁显式化：不依赖索引扫描顺序的实现细节，ORDER BY 使全局加锁顺序成为保证
         .orderBy(asc(walletAccounts.id))
         .for('update');
       if (rows.length !== ordered.length) throw new Error('wallet.lock_accounts_missing');
@@ -189,7 +187,11 @@ export function createPostgresWalletStore(
       } else if (input.guardKind === 'cash') {
         guard = sql`(balance - in_flight >= ${input.amount}::numeric)`;
       }
-      const rows = await asDb(conn).execute<{ balance: string; credit_limit: string; in_flight: string }>(sql`
+      const rows = await asDb(conn).execute<{
+        balance: string;
+        credit_limit: string;
+        in_flight: string;
+      }>(sql`
         update wallet_accounts
         set in_flight = in_flight + ${input.amount}::numeric, updated_at = clock_timestamp()
         where id = ${input.accountId}::uuid and status = 'active' and ${guard}
@@ -198,7 +200,6 @@ export function createPostgresWalletStore(
       if (row == null) return null;
       return { balance: row.balance, creditLimit: row.credit_limit, inFlight: row.in_flight };
     },
-
 
     // ---------- 冻结单 ----------
     async findAuthorization(conn, refType, refId) {
@@ -364,7 +365,7 @@ export function createPostgresWalletStore(
     },
 
     /**
-     * 返利流水（v1 marketing.repo listPayouts 逐语义平移）：三类同视图——佣金与注册
+     * 返利流水：三类同视图——佣金与注册
      * 奖励同 refType='referral' 以 refId 前缀区分,注册赠送走 refType='gift'+'signup:' 前缀
      * （前缀约定单一真相 = accounts domain/referral.ts + billing referral-commission）。
      */

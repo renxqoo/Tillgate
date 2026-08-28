@@ -1,6 +1,6 @@
 /**
  * 关闭 TOTP:已确认必须先 verifyMfa(否则盗会话者可直关 MFA);挂起态免码直删;
- * 恢复码连带清除。审计 targetId 语义统一(B20 系)。
+ * 恢复码连带清除。审计 targetId 语义统一。
  */
 import { advisoryLock, runTx } from '@tillgate/db';
 import { auditEvent } from '../domain/audit-events.js';

@@ -1,5 +1,5 @@
 // 纯净性门禁(机器锁定): src 及其依赖闭包禁止 Next 专有依赖、workspace 兄弟包、
-// 测试依赖与样式后门外挂——这是 P7「纯 React 设计系统」的可执行边界
+// 测试依赖与样式后门外挂——这是「纯 React 设计系统」的可执行边界
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const PKG_ROOT = join(import.meta.dirname, '../..');
 const SRC_DIR = join(PKG_ROOT, 'src');
 
-// 禁止出现在 src import 说明符里的模块前缀(总纲 §3/P7 + 本包 DESIGN 裁决)
+// 禁止出现在 src import 说明符里的模块前缀
 const FORBIDDEN_SPECIFIERS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /^next(\/|$)/, reason: 'Next.js 专有依赖' },
   { pattern: /^next-themes$/, reason: 'Next 主题库(用本包 ThemeProvider)' },

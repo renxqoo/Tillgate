@@ -1,5 +1,5 @@
 /**
- * RBAC 绑定矩阵 e2e——表驱动遍历（AGENT.md 规则 16 口径:参数/错误码矩阵表驱动断言）。
+ * RBAC 绑定矩阵 e2e——表驱动遍历:参数/错误码矩阵表驱动断言。
  *
  *   §P 零授权遍历:全部绑定端点 × 零码令牌 → 逐条 403 insufficient_permission
  *      （一条锁定两事:绑定完整性——缺绑定会变 endpoint_unbound;fail-closed 默认）;
@@ -259,7 +259,7 @@ describe('S. 路由 ⊆ 绑定表（新端点漏绑定即红）', () => {
       if (!bound.has(key)) missing.push(key);
     }
     expect(missing, '以下端点未绑定权限——fail-closed 下超管外全体 403').toEqual([]);
-    // 反向健康度:绑定量应接近注册表量（§P 已逐条验证绑定侧,此处防注册表意外缩水）
+    // 反向健康度:绑定量应接近注册表量（P 段已逐条验证绑定侧,此处防注册表意外缩水）
     expect(adminApiEndpoints.length).toBeGreaterThanOrEqual(119); // 注册表缩水即红（当前 119）
   });
 });

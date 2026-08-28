@@ -1,7 +1,7 @@
 /**
  * @tillgate/notifications 公共出口:通知能力(渠道 CRUD、事务 outbox 入箱/认领/投递、模板)。
  * 出口面刻意极小且由 __test__/architecture.test.ts 锁定——只暴露 facade、用例出入参、
- * 领域词表与纯函数、错误目录;store/适配器/drizzle 行类型/Db/DbTx 不出包(§5.3)。
+ * 领域词表与纯函数、错误目录;store/适配器/drizzle 行类型/Db/DbTx 不出包。
  */
 
 // ---- facade ----
@@ -12,7 +12,7 @@ export type { Notifications, CreateNotificationsParams } from './notifications';
 export type { NotifyActor, NotifyContext } from './application/context';
 export { systemContext } from './application/context';
 
-// ---- 错误目录(AGENT.md §11:码表封闭性由测试锁定)----
+// ---- 错误目录(码表封闭性由测试锁定)----
 export { notificationsErrors } from './errors';
 
 // ---- 领域词表与纯函数 ----

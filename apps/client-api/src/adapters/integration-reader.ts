@@ -1,15 +1,14 @@
 /**
- * client-api 集成设置 reader 装配件（assembly 拆件——铁律 22 文件行数收口）：
- * postgres reader + OAuth 基地址（ADR-0012 退回 env：部署拓扑，装配期生效，
- * 变更需重启——与 env 语义天然一致；原「boot 读 DB fail-loud」随之移除，
- * base 不再来自集成表）。
+ * client-api 集成设置 reader 装配件：
+ * postgres reader + OAuth 基地址（env 来源：部署拓扑，装配期生效，
+ * 变更需重启——与 env 语义天然一致；base 不来自集成表）。
  */
 import { createPostgresIntegrationSettingsReader } from '@tillgate/control-plane/composition';
 import type { IntegrationSettingsReader } from '@tillgate/control-plane';
 import type { Db } from '@tillgate/db';
 import { createCipher, type Logger } from '@tillgate/runtime';
 
-/** 本地缺省（env 未配时——与原「无行」回退同口径，DESIGN §3.3） */
+/** 本地缺省（env 未配时回落） */
 const LOCAL_API_BASE = 'http://localhost:8081';
 const LOCAL_FRONTEND_URL = 'http://localhost:3000';
 
@@ -27,7 +26,7 @@ export async function bootIntegrationReader(input: {
   db: Db;
   encryptionKey: string;
   logger: Logger;
-  /** OAuth 基地址（env `OAUTH_API_BASE`/`OAUTH_FRONTEND_URL`——ADR-0012） */
+  /** OAuth 基地址（env `OAUTH_API_BASE`/`OAUTH_FRONTEND_URL`） */
   oauthBase?: { apiBase?: string; frontendUrl?: string };
 }): Promise<IntegrationReaderBoot> {
   const { db, encryptionKey, logger, oauthBase } = input;

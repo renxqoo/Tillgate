@@ -1,9 +1,9 @@
 /**
- * 架构边界门禁（trace-receiver 范式扩展；IMPLEMENTATION §3 机器锁定清单）：
+ * 架构边界门禁（机器锁定清单）：
  * - src 文件集合快照；
  * - /composition 子入口只在 assembly.ts ∪ adapters/*；
  * - @tillgate/db 装配与 Db/DbTx 类型只在进程装配面（assembly/config/index ∪ adapters/*）；
- * - http/** 不 import @tillgate/ai（§3.6：ai 类型消费方自 inference 出口引用）；
+ * - http/** 不 import @tillgate/ai（ai 类型消费方自 inference 出口引用）；
  * - 跨包 import 只走包名（禁 /src/ 深导入；composition 后缀豁免）。
  */
 import { readdirSync, readFileSync } from 'node:fs';

@@ -5,9 +5,9 @@ import { describe, expect, it } from 'vitest';
 import * as api from '../src/index';
 
 /**
- * 边界门禁（铁律 11：边界必须可执行）：
+ * 边界门禁——边界必须可执行：
  * 1. 零依赖叶子——运行时依赖与 peer 依赖恒为空（仓库级边界脚本就位后并入 CI 静态检查）；
- * 2. 出口面快照——词表封闭锁 #2，新增导出必须显式改本清单（防止顺手把内部件提升为公共契约）。
+ * 2. 出口面快照——词表封闭锁，新增导出必须显式改本清单（防止顺手把内部件提升为公共契约）。
  */
 /** 依赖表计数：缺省视为 0 项 */
 const dependencyCount = (deps?: Record<string, string>): number =>

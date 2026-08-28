@@ -1,6 +1,6 @@
 /**
  * 观测域 presenter：audit/requestLog 行 → wire 行。
- * wire 偏差（MIGRATION §4 D5）：adminSubject 无 join 来源恒 null;
+ * adminSubject 无 join 来源恒 null;
  * 日志行无 apiKeyId/attempts 列来源（apiKeyId 补 null,attempts 不输出）。
  */
 import { isoRequired } from '../contracts/common';

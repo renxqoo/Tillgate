@@ -4,14 +4,14 @@ import { describe, expect, it } from 'vitest';
 import { defined } from './defined.js';
 
 /**
- * app 级架构门禁(§5.5/总纲 P5,机器验证不靠记忆):
- *   1. `./composition` 子入口只允许出现在 src/assembly.ts(§5.3 白名单:apps assembly);
+ * app 级架构门禁(机器验证不靠记忆):
+ *   1. `./composition` 子入口只允许出现在 src/assembly.ts(白名单:apps assembly);
  *   2. `@tillgate/db` 的 Db/DbTx 类型与 createDb/ping 等装配件不出现在非装配代码;
- *      进程装配面(assembly.ts/index.ts/shutdown.ts/adapters/*)除外——P5「app 非
+ *      进程装配面(assembly.ts/index.ts/shutdown.ts/adapters/*)除外——「app 非
  *      assembly 代码不得引用任何 ./composition、repository、adapter 或 Db/DbTx 类型」
  *      (app.ts 的 pgSqlState 纯分类函数是文档化例外;config.ts 零 db 形态)。
- *   3. app 依赖面只走显式包名(禁 @tillgate 各包 src 深导入,§5 硬约束)。
- *   4. src/adapters/* 桥接件只允许 assembly.ts 引用(装配面,gateway DESIGN 同口径)。
+ *   3. app 依赖面只走显式包名(禁 @tillgate 各包 src 深导入)。
+ *   4. src/adapters/* 桥接件只允许 assembly.ts 引用(装配面,gateway 同口径)。
  */
 
 const SRC = join(import.meta.dirname, '../src');
@@ -29,7 +29,7 @@ const FILES = walk(SRC);
 const source = new Map<string, string>(
   FILES.map((name) => [name, readFileSync(join(SRC, name), 'utf8')]),
 );
-/** 进程装配面:依赖装配/桥接/生命周期收口(P5 白名单语义;adapters/* 计入装配面) */
+/** 进程装配面:依赖装配/桥接/生命周期收口(adapters/* 计入装配面) */
 const ASSEMBLY_FACE = new Set([
   'assembly.ts',
   'index.ts',
@@ -39,10 +39,12 @@ const ASSEMBLY_FACE = new Set([
   'adapters/funding-resolver.ts',
   'adapters/accounts-bridges.ts',
   'adapters/dynamic-admin-mailer.ts',
-  // P2 登录波桥接件(identity 审计桥/SMTP 管理员邮件/jti 吊销表——共享文件代为同步白名单)
+  // 桥接件(identity 审计桥/SMTP 管理员邮件/jti 吊销表——共享文件代为同步白名单)
   'adapters/identity-audit-bridge.ts',
   'adapters/redis-session-revocation.ts',
+  'adapters/redis-admin-invite.ts',
   'adapters/smtp-admin-mailer.ts',
+  'adapters/smtp-probe.ts',
 ]);
 
 describe('admin-api 架构门禁', () => {
@@ -52,8 +54,10 @@ describe('admin-api 架构门禁', () => {
       'adapters/dynamic-admin-mailer.ts',
       'adapters/funding-resolver.ts',
       'adapters/identity-audit-bridge.ts',
+      'adapters/redis-admin-invite.ts',
       'adapters/redis-session-revocation.ts',
       'adapters/smtp-admin-mailer.ts',
+      'adapters/smtp-probe.ts',
       'adapters/upstream-probe.ts',
       'app.ts',
       'assembly.ts',

@@ -1,6 +1,6 @@
 /**
  * OAuth state 单次存储（identity OAuthStateStore 的 Redis 实现）：
- * GETDEL 单次消费——重放/过期统一 null（v1 语义；多副本共享）。
+ * GETDEL 单次消费——重放/过期统一 null（多副本共享）。
  */
 import type { Redis } from 'ioredis';
 import type { OAuthStatePayload, OAuthStateStore } from '@tillgate/identity';

@@ -1,6 +1,6 @@
 /**
  * 登出:jti 入黑名单(SETEX 至令牌自然过期);写失败上抛(调用方映射 unavailable,
- * 幂等重试,B06)。缺省未装配 revocation store = 配置错误(invalid_input)。
+ * 幂等重试)。缺省未装配 revocation store = 配置错误(invalid_input)。
  */
 import { identityErrors } from '../domain/errors.js';
 import type { IdentityUseCaseContext } from './context.js';

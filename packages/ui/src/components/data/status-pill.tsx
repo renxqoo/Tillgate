@@ -1,5 +1,5 @@
 // 状态胶囊: 语义色调(neutral/info/success/warning/destructive)由调用方从业务状态映射,
-// 本组件不内置"业务状态 → 颜色"词表(AGENT §0.3 零写死)
+// 本组件不内置"业务状态 → 颜色"词表
 import { cva, type VariantProps } from 'class-variance-authority';
 
 import { cn } from '../../cn';

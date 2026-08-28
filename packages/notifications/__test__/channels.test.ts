@@ -1,5 +1,5 @@
 /**
- * 渠道管理用例(v1 admin ops/ops-coverage 通知段的行为规格,facade 断言):
+ * 渠道管理用例(facade 断言):
  * 创建(校验/加密/掩码/重名)、更新(status/events/config/miss)、删除、测试入箱、列表掩码。
  */
 import { describe, expect, it } from 'vitest';

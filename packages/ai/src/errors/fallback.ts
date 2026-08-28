@@ -2,7 +2,7 @@ import { UpstreamError } from './kinds';
 import type { ErrorKind } from './kinds';
 
 /**
- * 错误归一兜底（§3.2）：通用 HTTP 语义分类（非厂商知识，共享层零正则）。
+ * 错误归一兜底：通用 HTTP 语义分类（非厂商知识，共享层零正则）。
  * 查表顺序：adapter 厂商结构表（各 adapter 内）→ 本 status 兜底 → 档案文本 pattern。
  * 兜底命中应尽量被 adapter 表覆盖；miss 时按下方矩阵给出保底 kind，不静默。
  */

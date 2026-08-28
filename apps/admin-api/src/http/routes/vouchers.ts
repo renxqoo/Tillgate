@@ -1,5 +1,5 @@
 /**
- * 凭证路由（P5;v1 routes/vouchers.ts 平移）：进货凭证截图回读 GET /v1/vouchers/:key。
+ * 凭证路由：进货凭证截图回读 GET /v1/vouchers/:key。
  * 上传内联在 recharge 的 voucherDataUrl;本路由只做存储换读（键校验在 storage——
  * 防路径穿越;load 返回原始字节流,content-type 原样回放）。
  */

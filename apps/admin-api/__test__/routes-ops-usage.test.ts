@@ -1,7 +1,7 @@
 /**
- * P4 契约测试（usage/stats 族）：信封形状 / 过滤透传（estimated 显式布尔、
+ * 契约测试（usage/stats 族）：信封形状 / 过滤透传（estimated 显式布尔、
  * from/to/userId/model）/ 排序白名单外 400 / 词表外 400 / days 边界 /
- * hours 容错收口（NaN→24、越界钳 1..720——不 400,v1 语义）。
+ * hours 容错收口（NaN→24、越界钳 1..720——不 400）。
  * 业务语义本体在 observability 包测试;此处锁定 wire 形状与编排透传。
  */
 import { describe, expect, it, vi } from 'vitest';
@@ -183,7 +183,7 @@ describe('stats 族（P4）', () => {
     expect(channelTtft).toHaveBeenLastCalledWith({ hours: 24, now: frozenNow() });
     await app.request('/v1/analytics/channel-ttft?hours=99999', { headers: authHeader() });
     expect(channelTtft).toHaveBeenLastCalledWith({ hours: 720, now: frozenNow() });
-    // '0' 是 falsy → 走 24 缺省(v1 || 语义);负数才触发下钳
+    // '0' 是 falsy → 走 24 缺省(|| 语义);负数才触发下钳
     await app.request('/v1/analytics/channel-ttft?hours=0', { headers: authHeader() });
     expect(channelTtft).toHaveBeenLastCalledWith({ hours: 24, now: frozenNow() });
     await app.request('/v1/analytics/channel-ttft?hours=-5', { headers: authHeader() });

@@ -1,5 +1,5 @@
 /**
- * 推荐与拉新参数聚合 SQL:关系/名单、单行表 upsert(B7 单往返)、管理面关系视图。
+ * 推荐与拉新参数聚合 SQL:关系/名单、单行表 upsert(单往返)、管理面关系视图。
  */
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { marketingSettings, referrals, users } from '@tillgate/db';
@@ -84,7 +84,7 @@ export const referralQueries: Pick<
       .limit(1);
     const [row] = rows;
     if (row === undefined) {
-      // 缺行兜底 = domain 零值常量(单一真相)+ epoch0(v1 getSettings 语义)
+      // 缺行兜底 = domain 零值常量(单一真相)+ epoch0
       return { ...ZERO_MARKETING_SETTINGS, updatedBy: null, updatedAt: new Date(0) };
     }
     return {
@@ -105,7 +105,7 @@ export const referralQueries: Pick<
     if (patch.referralCommissionRate !== undefined) {
       set.referralCommissionRate = patch.referralCommissionRate;
     }
-    // B7 修复:insert onConflictDoUpdate ... returning 单往返(v1 upsert 后回读两往返)
+    // insert onConflictDoUpdate ... returning 单往返完成 upsert
     const rows = await db
       .insert(marketingSettings)
       .values({ id: 1, ...set })

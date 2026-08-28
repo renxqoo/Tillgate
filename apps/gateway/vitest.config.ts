@@ -10,10 +10,10 @@ export default defineConfig({
       },
     },
 
-    // 铁律 14：包根 __test__/ 平铺；真实 PG/Redis 用例 *.real.test.ts 文件名区分
+    // 包根 __test__/ 平铺；真实 PG/Redis 用例 *.real.test.ts 文件名区分
     include: ['__test__/*.test.ts'],
     environment: 'node',
-    // 共享单实例 PG：文件级串行（与 v1 gateway 同纪律）
+    // 共享单实例 PG：文件级串行
     fileParallelism: false,
     testTimeout: 15_000,
     coverage: {

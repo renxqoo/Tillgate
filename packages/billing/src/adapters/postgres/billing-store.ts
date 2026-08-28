@@ -1,9 +1,8 @@
 /**
  * 计费链路的 PostgreSQL adapter：BillingStore（billing_requests/billing_reservations/
  * usage_logs 读侧 + 结算方法族）。订阅额度/渠道敞口/账户协作/订阅生命周期方法族
- * 按聚合边界拆分在同目录独立文件（铁律 5），此处组合。
- * 语义基准：旧仓 billing-request/billing-reservation/subscription/usage-log/channel
- * 各 repo 活路径逐方法平移；CAS 语义（WHERE status IN / revision+1 / 乐观锁）保持不变。
+ * 按聚合边界拆分在同目录独立文件，此处组合。
+ * CAS 语义：WHERE status IN / revision+1 / 乐观锁。
  */
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import {

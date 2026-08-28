@@ -1,5 +1,5 @@
 /**
- * 唯一出站渲染分派（ADR-0001 D1 + 内外分际；v1 errorResponseBody 的重写形态）：
+ * 唯一出站渲染分派（内外分际）：
  * 错误即数据——渲染 ErrorRecord 而不匹配错误类；status 解析链
  * face override > HTTP_CODE_STATUS（http 自有码修正）> CATEGORY_STATUS_DEFAULTS[category]。
  */
@@ -14,7 +14,7 @@ import {
 import { GENERIC_INTERNAL_MESSAGE, GENERIC_UNAVAILABLE_MESSAGE, HttpErrors } from './catalog';
 import type { Locale } from './locale';
 
-/** category → 默认出站 status（errors 包零 status 的 http 侧补位；DESIGN §2 契约细则） */
+/** category → 默认出站 status（errors 包零 status 的 http 侧补位） */
 export const CATEGORY_STATUS_DEFAULTS: Readonly<Record<ErrorCategory, number>> = Object.freeze({
   invalid_input: 400,
   not_found: 404,
@@ -32,7 +32,7 @@ const HTTP_CODE_STATUS: Readonly<Record<string, number>> = Object.freeze({
   [HttpErrors.code('unsupported_media_type')]: 415,
 });
 
-/** face 出站差异（ADR-0001 D1：个别码的出站投影——status 与 wire code） */
+/** face 出站差异（个别码的出站投影——status 与 wire code） */
 export interface FaceOverride {
   readonly status?: number;
   readonly code?: string;
@@ -58,7 +58,7 @@ function generic(messages: { readonly en: string; readonly zh: string }, locale:
   return locale === 'zh' ? messages.zh : messages.en;
 }
 
-/** 出站信封组装（errorHandler 与协议中间件共用——信封形状单一实现，DESIGN §4.2） */
+/** 出站信封组装（errorHandler 与协议中间件共用——信封形状单一实现） */
 export function errorBody(rendered: RenderedError): {
   error: { code: string; message: string; context?: ErrorContext };
 } {

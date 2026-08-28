@@ -1,5 +1,5 @@
 /**
- * OTel 请求 span 中间件（v1 otel.ts 迁移；SDK 面归 @tillgate/observability 再出口）：
+ * OTel 请求 span 中间件（SDK 面归 @tillgate/observability 再出口）：
  * 每请求一条 span `METHOD /path`；跳过探针路径；requestId 后挂（span 属性依赖它）。
  * off 模式 no-op（observability initOtel 契约）。
  */

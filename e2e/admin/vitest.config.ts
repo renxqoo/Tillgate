@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 
-// e2e/admin 归组运行装置（重构方案 §9/P5「跨进程旅程迁入根 e2e/」）：
+// e2e/admin 归组运行装置：
 // 与 gateway/security 归组同院但独立配置——本目录测试从 apps/admin-api 目录用其
 // vitest 执行（admin-api 依赖闭包含 identity 等 gateway 闭包没有的包）：
 //   cd apps/admin-api && bun run test:e2e

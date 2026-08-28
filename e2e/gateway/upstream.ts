@@ -1,5 +1,5 @@
 /**
- * 脚本化 mock 上游（v1 cost-drain 内嵌件泛化）：openai-compatible 协议族应答 +
+ * 脚本化 mock 上游：openai-compatible 协议族应答 +
  * 请求录制（体/头全量留证）——e2e 套件共享装置（kit 拆件：本文件只管上游行为）。
  */
 import { createServer, type Server, type ServerResponse } from 'node:http';
@@ -8,7 +8,7 @@ import { createServer, type Server, type ServerResponse } from 'node:http';
 export const E2E_UPSTREAM_KEY = 'sk-e2e-minimax-0123456789abcdef';
 
 // ---------------------------------------------------------------------------
-// mock 上游：脚本化 openai-compatible 应答 + 请求录制（v1 cost-drain 内嵌件泛化）
+// mock 上游：脚本化 openai-compatible 应答 + 请求录制
 // ---------------------------------------------------------------------------
 
 export type UpstreamScript =
@@ -27,7 +27,7 @@ export interface RecordedRequest {
   body: Record<string, unknown>;
 }
 
-/** 200 个 CJK 字增量（估算口径 0.7 token/字 → ≥100 token——v1 同款） */
+/** 200 个 CJK 字增量（估算口径 0.7 token/字 → ≥100 token） */
 const cjkDeltas = Array.from({ length: 20 }, () => '数'.repeat(10));
 
 export interface MockUpstream {
@@ -72,7 +72,7 @@ const usageFinishFrame = (): string =>
 const USAGE_SMALL = { promptTokens: 10, completionTokens: 5 };
 const USAGE_HUGE = { promptTokens: 1_000, completionTokens: 100_000 };
 
-/** 非流式 JSON 应答体（id 固定 chatcmpl-e2e——v1 同款；n>1 回 n choices） */
+/** 非流式 JSON 应答体（id 固定 chatcmpl-e2e；n>1 回 n choices） */
 function nonstreamBody(
   content: string,
   n: number,
@@ -145,7 +145,7 @@ function runScript(script: Exclude<UpstreamScript, 'auto'>, ctx: RespondContext)
     }
     case 'nonstream-slow-body': {
       // 响应头即刻到、体 1s 后一次发完——客户端「拿到头即断」时网关仍需读完
-      // 上游体计费（断连≠免费，v1 ⑦ 向量的确定性等价形态）
+      // 上游体计费（断连≠免费，⑦ 断连向量的确定性形态）
       ctx.res.writeHead(200, { 'content-type': 'application/json' });
       setTimeout(() => ctx.res.end(nonstreamBody('好', 1, USAGE_SMALL)), 1_000);
       return;

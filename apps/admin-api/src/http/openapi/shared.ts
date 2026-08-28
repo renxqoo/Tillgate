@@ -1,10 +1,10 @@
 /**
- * OpenAPI registry 基底（P3「contract → OpenAPI → generated client」生成链）。
+ * OpenAPI registry 基底（「contract → OpenAPI → generated client」生成链）。
  * 本目录是 admin-api HTTP 面的机器可读契约单一事实源：
  *   - 请求/查询面引用既有 contracts zod 实例（引用不复制——运行时校验单一真相不变）;
- *   - 响应面 wire 形状以 zod 声明在此（P3「wire schema 逐个迁入」:响应 schema 的
- *     单一真相从 api-client 手写 DTO 移入本 registry,zod→JSON Schema→TS 全链单源）。
- * 产物:scripts/generate-openapi.ts → generated/openapi.json（入库,api-client DESIGN §3.4）;
+ *   - 响应面 wire 形状以 zod 声明在此（响应 schema 的单一真相在本 registry,
+ *     zod→JSON Schema→TS 全链单源）。
+ * 产物:scripts/generate-openapi.ts → generated/openapi.json（入库,由 api-client 消费）;
  * 门禁:__test__/openapi.test.ts 锁重生成逐字节相等 + 端点词表封闭 + 与 routes 对账。
  * 本目录不属于运行时热路径:routes 不 import 此处（仅 scripts/__test__/generator 消费）。
  */
@@ -94,7 +94,7 @@ export interface DtoComponent {
 }
 
 /** 请求体组件:contracts 实例直接登记（形状单一真相在 contracts,不克隆）。 */
-// eslint-disable-next-line max-params -- openapi 登记DSL,14 处调用点按位置传参;改签名放大 diff(存量棘轮)
+// eslint-disable-next-line max-params -- openapi 登记DSL,14 处调用点按位置传参;改签名放大 diff
 export function requestBody(
   name: string,
   schema: z.ZodType,

@@ -1,6 +1,6 @@
 /**
  * 用例装配器:把 UseCaseContext 绑定为可调用动词表(facade 的实现体)。
- * 一动词一文件(铁律 5);本文件只做绑定,不含逻辑。
+ * 一动词一文件;本文件只做绑定,不含逻辑。
  */
 import type { UseCaseContext } from './context.js';
 import { provisionLocalAccount } from './provision-local-account.js';

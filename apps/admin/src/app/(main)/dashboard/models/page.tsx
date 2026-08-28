@@ -1,7 +1,6 @@
 import { requirePermission } from '@/server/get-admin';
 import { CpuIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
 
 import { fetchAdminList } from '@/server/admin-list';
 import type { AdminChannelRow } from '@tillgate/api-client';
@@ -11,46 +10,14 @@ import { parseListSearchParams } from '@/lib/list-query';
 import { CreateModelDialog, ModelsTable } from '@/features/models/models-content';
 import type { ChannelOption, AdminModelRow } from '@tillgate/api-client';
 
+import { ViewTabs } from './view-tabs';
+
 export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 20;
 
 interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
-}
-
-/** 视图 tab：在册（缺省）/ 回收站（view=deleted）；Link 导航，样式与模型市场源 tab 同款 */
-function ViewTabs({
-  active,
-  labels,
-}: {
-  active: 'active' | 'deleted';
-  labels: { all: string; deleted: string };
-}) {
-  return (
-    <span className="flex gap-1 text-xs">
-      <Link
-        href="/dashboard/models"
-        className={`rounded-md px-2 py-1 ${
-          active === 'active'
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-muted text-muted-foreground hover:bg-muted/70'
-        }`}
-      >
-        {labels.all}
-      </Link>
-      <Link
-        href="/dashboard/models?view=deleted"
-        className={`rounded-md px-2 py-1 ${
-          active === 'deleted'
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-muted text-muted-foreground hover:bg-muted/70'
-        }`}
-      >
-        {labels.deleted}
-      </Link>
-    </span>
-  );
 }
 
 export default async function ModelsPage({ searchParams }: PageProps) {

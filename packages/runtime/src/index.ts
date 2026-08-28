@@ -8,10 +8,11 @@ export { createShutdown, type ShutdownDeps, type ShutdownLog } from './lifecycle
 export { createLogger, type CreateLoggerOptions, type Logger } from './logging/logger';
 export { parseSentinels } from './redis/parse-sentinels';
 export {
-  createRedisClient,
-  type RedisClientOptions,
+  resolveRedisConnection,
+  type RedisConnectionTarget,
   type SentinelTopology,
-} from './redis/create-redis-client';
+} from './redis/resolve-redis-connection';
+export { createRedisClient, type RedisClientOptions } from './redis/create-redis-client';
 export { assertRedisReachable } from './redis/assert-redis-reachable';
 export { createRedisScriptRunner, type RedisScriptRunner } from './redis/script-runner';
 export {

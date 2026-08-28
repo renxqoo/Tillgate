@@ -38,7 +38,7 @@ const upstreamError = (
 ): TaskPortErrorShape =>
   error ?? { code: 'invalid_response', message: 'upstream returned neither body nor error' };
 
-// eslint-disable-next-line max-lines-per-function -- 暂存区文件（.staging）：提交/轮询/文件换取三操作面一体，待正式落位时再拆，存量棘轮（铁律 22⑥）
+// eslint-disable-next-line max-lines-per-function -- 暂存区文件（.staging）：提交/轮询/文件换取三操作面一体，待正式落位时再拆
 export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
   const desc = (channel: TaskChannelDesc) => ({
     baseUrl: channel.baseUrlOverride ?? channel.providerBaseUrl,

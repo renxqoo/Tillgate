@@ -1,6 +1,6 @@
 /**
  * billing-store 的结算方法族（认领/租约/五元组 CAS/恢复三路径/usage 投影）——
- * 按聚合边界拆分（铁律 5）。SQL 语义原样：CTE + FOR UPDATE SKIP LOCKED、
+ * 按聚合边界拆分。SQL 语义原样：CTE + FOR UPDATE SKIP LOCKED、
  * clock_timestamp 租约、恢复守卫。
  */
 import { and, eq, inArray, sql } from 'drizzle-orm';

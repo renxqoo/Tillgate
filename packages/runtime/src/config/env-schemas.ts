@@ -19,7 +19,7 @@ const KNOWN_WEAK_SECRETS = new Set([
 /**
  * 密钥三道门：长度 ≥ minLen、非已知弱值、≥4 种不同字符。
  * 黑名单只是兜底（改一个字符即绕过，且测试专用值编入生产校验本身脆弱）——
- * 主防线是长度与字符多样性两道（IMPLEMENTATION.md §2.1 B3）。
+ * 主防线是长度与字符多样性两道。
  */
 export function secretSchema(field: string, minLen: number) {
   return z

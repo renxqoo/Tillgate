@@ -34,9 +34,8 @@ export const admins = pgTable(
     /** 账号状态：ACCOUNT_STATUS（0 正常 / 1 封禁 / 2 注销）；CHECK admins_status_ck 兜底非法值 */
     status: smallint('status').notNull().default(ACCOUNT_STATUS.ACTIVE),
     /**
-     * 动态 RBAC（ADR-0008）：角色 FK（roles 表,0082 迁移切换 + 回填 NOT NULL）。
-     * 旧 role varchar 列在 v2-3 消费者改造完成后由 0083 drop（波次内两步迁移,
-     * 每步门禁可绿;非对外兼容层）。
+     * 动态 RBAC：角色 FK（roles 表,由 0082 迁移切换 + 回填 NOT NULL;
+     * 旧 role varchar 列已由 0083 drop）。
      */
     roleId: bigint('role_id', { mode: 'number' })
       .notNull()
@@ -51,6 +50,6 @@ export const admins = pgTable(
     uniqueIndex('admins_email_uq').on(t.email),
     // 集合与 ACCOUNT_STATUS 一致（新增状态须同步常量与本约束）
     check('admins_status_ck', sql`${t.status} in (0, 1, 2)`),
-    // admins_role_ck 随 role varchar 列在 0083 一并 drop（切换期 DB 仍持有旧约束）
+    // admins_role_ck 随 role varchar 列在 0083 一并 drop（未应用 0083 的库仍持有旧约束）
   ],
 );

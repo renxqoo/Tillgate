@@ -1,6 +1,5 @@
 /**
- * money 值对象行为规格（迁移自旧仓 domain/wallet/__tests__/money.test.ts，12 用例全保留；
- * instanceof 断言换目录码断言——D5 收敛；新增：Decimal 实例入参与垃圾串归类）。
+ * money 值对象行为规格（目录码断言;覆盖 Decimal 实例入参与垃圾串归类）。
  */
 import { describe, expect, it } from 'vitest';
 import type { BusinessError } from '@tillgate/errors';

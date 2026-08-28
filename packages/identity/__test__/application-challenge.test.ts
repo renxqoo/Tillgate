@@ -1,7 +1,7 @@
 /**
- * 挑战用例测试(v1 challenge.test + login-challenge.test 迁移):投递、一次性消费、
+ * 挑战用例测试:投递、一次性消费、
  * 错次递减、冷却、kind 分桶、投递失败作废、payload 域、目标寻址、fail-closed
- * (B05 ip/locale 随调用流动 / B11 abort 失败 warn / B12 无投递器拒绝)。
+ * (ip/locale 随调用流动 / abort 失败 warn / 无投递器拒绝)。
  */
 import { describe, expect, it, vi } from 'vitest';
 import { createTestHarness, TEST_CONFIG } from '../src/testing/harness.js';
@@ -127,6 +127,9 @@ describe('challenges.begin 发码与投递', () => {
         sendPasswordResetLink: async () => {
           throw identityErrors.business('undeliverable_challenge', { channel: 'email' });
         },
+        sendAdminInviteLink: async () => {
+          throw identityErrors.business('undeliverable_challenge', { channel: 'email' });
+        },
       },
     });
     await expect(
@@ -158,6 +161,9 @@ describe('challenges.begin 发码与投递', () => {
           throw new Error('smtp down');
         },
         sendPasswordResetLink: async () => {
+          throw new Error('smtp down');
+        },
+        sendAdminInviteLink: async () => {
           throw new Error('smtp down');
         },
       },
@@ -346,7 +352,7 @@ describe('challenges.verify / abort', () => {
         expect: { identifier: { kind: 'email', value: email(99) } },
       }),
     ).rejects.toMatchObject({ code: 'identity.challenge_invalid' });
-    // 归属不符的验码也消费挑战(CAS 先行,expect 比对在后——v1 语义)
+    // 归属不符的验码也消费挑战(CAS 先行,expect 比对在后)
     await expect(
       h.api.challenges.verify({ challengeId: mismatch.challengeId, code: mismatch.code }),
     ).rejects.toMatchObject({ code: 'identity.challenge_invalid' });

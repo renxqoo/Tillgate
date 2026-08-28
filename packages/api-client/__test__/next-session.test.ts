@@ -1,5 +1,5 @@
 /**
- * ./next session 行为规格(v1 session.ts 全动词;mock next/headers)。
+ * ./next session 行为规格(mock next/headers)。
  * SESSION_TTL_S 与 secure 在模块加载期求值,覆盖/缺省两态用 resetModules + 动态导入分离。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

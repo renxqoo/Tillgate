@@ -1,9 +1,9 @@
 /**
- * 架构边界门禁(铁律 11):目录约定由机器验证。
- * - 根入口依赖闭包不得 import next/(总纲 §3 树注释)
- * - 全包禁止任何私有 @tillgate/* / @ai-gateway/* import(发布闭包,总纲 §5.1)
+ * 架构边界门禁:目录约定由机器验证。
+ * - 根入口依赖闭包不得 import next/
+ * - 全包禁止任何私有 @tillgate/* / @ai-gateway/* import(发布闭包)
  * - package.json 依赖闭包无私有 workspace 包;exports 恰为 '.' 与 './next'
- * - 双出口运行时词表逐一锁定(§10.1 词表封闭性;收编 v1 api-path-contract.test)
+ * - 双出口运行时词表逐一锁定
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';

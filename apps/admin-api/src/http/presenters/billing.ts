@@ -1,7 +1,7 @@
 /**
  * billing 管理域 presenter：plans/订阅管理/兑换批次/死信行 → wire DTO 快照形状。
  * 金额出站点归一（numeric(38,18) 存储精度不裸出）;兑换码 codeMasked = 哈希脱敏
- * （明文不存在于库——v1 同口径）;createdBy/usedBy wire 为字符串（v1 形状）。
+ * （明文不存在于库）;createdBy/usedBy wire 为字符串。
  */
 import { normalizeAmount } from '@tillgate/billing';
 import { iso, isoRequired } from '../contracts/common';

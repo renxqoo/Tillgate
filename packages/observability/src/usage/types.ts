@@ -1,5 +1,5 @@
 /**
- * usage_logs 管理读侧词表(v1 usage-log.repo 管理面族迁入;admin-api P4 消费):
+ * usage_logs 管理读侧词表(admin-api 消费):
  * 表本身是 billing 的结算投影(写入归 billing settlement),本包只承载运维查询——
  * 管理列表/全局聚合/分组/趋势/渠道首字延迟。SQL 只在 adapters/postgres。
  */
@@ -15,7 +15,7 @@ export const USAGE_SORT_FIELDS = [
 ] as const;
 export type UsageSortField = (typeof USAGE_SORT_FIELDS)[number];
 
-/** 分组轴(model 为 v1 缺省轴) */
+/** 分组轴(model 为缺省轴) */
 export type UsageGroupAxis = 'user' | 'model' | 'channel';
 
 export interface UsageAdminListInput {
@@ -26,7 +26,7 @@ export interface UsageAdminListInput {
   userId?: number;
   /** 精确外部模型名(eq) */
   model?: string;
-  /** 估算结算行过滤(v1 parseEstimated 显式布尔;undefined = 不过滤) */
+  /** 估算结算行过滤(显式布尔;undefined = 不过滤) */
   estimated?: boolean;
   sortBy: UsageSortField;
   order: 'asc' | 'desc';
@@ -34,7 +34,7 @@ export interface UsageAdminListInput {
   offset: number;
 }
 
-/** 管理用量行(v1 listAdminUsage 投影;金额/单价 numeric 全精度字符串,Date 由 presenter 转 ISO) */
+/** 管理用量行(金额/单价 numeric 全精度字符串,Date 由 presenter 转 ISO) */
 export interface UsageAdminRow {
   readonly id: number;
   readonly requestId: string;

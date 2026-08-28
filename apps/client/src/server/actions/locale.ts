@@ -1,8 +1,7 @@
 'use server';
 
 /**
- * 语言切换：写 NEXT_LOCALE cookie（1 年）后由调用方 router.refresh() 全量重渲染
- * （v1 由 ui 包 server action 承担；P7 ui 禁服务端依赖后归 app——D1）。
+ * 语言切换：写 NEXT_LOCALE cookie（1 年）后由调用方 router.refresh() 全量重渲染。
  */
 import { cookies } from 'next/headers';
 

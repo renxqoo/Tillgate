@@ -1,5 +1,5 @@
 /**
- * Redis 固定窗计数器：INCR + 首次 EXPIRE（v1 createRedisFixedWindowCounter 语义）。
+ * Redis 固定窗计数器：INCR + 首次 EXPIRE。
  * 同时满足 billing RateCounterPort（兑换/下单闸）与本 app 注册 IP 闸。
  */
 import type { Redis } from 'ioredis';

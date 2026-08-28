@@ -1,6 +1,6 @@
 /**
  * 运营系统设置路由：计费时区（system_configs KV）与第三方集成动态配置
- * （integration_settings——docs/integration-settings）。写入均留审计（control-plane）。
+ * （integration_settings 表）。写入均留审计（control-plane）。
  */
 import { Hono } from 'hono';
 import { jsonBody } from '@tillgate/http';
@@ -34,7 +34,7 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
     jsonBody(settingsContracts.integrationsUpdate),
     async (c) => {
       const body = c.req.valid('json');
-      // step-up 强制点（ADR-0011）：配置/启停共用本端点，未验 TOTP 不得落库
+      // step-up 强制点：配置/启停共用本端点，未验 TOTP 不得落库
       await requireTotpStepup(deps, c, body.totpCode);
       return c.json(
         await integrations.update({
@@ -43,6 +43,19 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
           ...(body.enabled != null ? { enabled: body.enabled } : {}),
           ...(body.config != null ? { config: body.config } : {}),
         }),
+      );
+    },
+  );
+
+  // SMTP 连通性探针：只读不落库（连接+认证，不发送邮件）——与渠道测试端点同免 step-up；
+  // 成功/失败都是探针结果（ok 字段），失败不抬 4xx/5xx
+  app.post(
+    '/v1/settings/integrations/smtp/test',
+    jsonBody(settingsContracts.integrationsProbe),
+    async (c) => {
+      const body = c.req.valid('json');
+      return c.json(
+        await integrations.probeSmtp(body.config != null ? { config: body.config } : {}),
       );
     },
   );

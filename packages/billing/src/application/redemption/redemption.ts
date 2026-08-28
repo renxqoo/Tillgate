@@ -1,5 +1,5 @@
 /**
- * 兑换码用例（迁移自旧仓 client-api redeem.service——从 app 下沉到能力包）：
+ * 兑换码用例：
  * 核销 CAS 与钱包入账同事务（入账失败核销一并回滚——码可重试，账不落空）。
  * 频率闸先记数（猜码攻击本身就该被计数）；limiter 不可达 → fail-closed。
  * 入账幂等锚 refType='redeem' + refId=`code:{id}`。

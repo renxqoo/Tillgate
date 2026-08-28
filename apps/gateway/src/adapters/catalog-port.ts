@@ -1,10 +1,10 @@
 /**
- * inference CatalogPort 的生产实现（DESIGN C-G2，装配面专属）：
+ * inference CatalogPort 的生产实现（装配面专属）：
  * control-plane 只读目录（映射/渠道/费率卡三 store）+ billing 纯函数（系数解析/
  * 计量上界/预扣保底/变体单价——单一真相不复制）→ inference 快照。
- * 本件是调用序列编排，零规则实现（P5 红线：app 不形成第二套 domain/application）。
+ * 本件是调用序列编排，零规则实现（app 不形成第二套 domain/application）。
  *
- * 语义 = v1 build-quote.ts + resolve-channels.ts：
+ * 语义口径：
  *   coefficient = pickCoefficient(用户卡快照, {mappingId, pricingGroup})（无卡恒 '1'）；
  *   停用卡（status≠0）拒绝新请求（control_plane.rate_card_disabled → 403）；
  *   unitUpperBound = max(按请求体计量上界, 预扣保底)——只抬不降；
@@ -120,7 +120,7 @@ function applyPriceAxes(
   };
 }
 
-/** 映射行 + 用户卡 + 请求体 + 准入时刻 → inference 快照（v1 buildQuote 候选装配的单映射形态） */
+/** 映射行 + 用户卡 + 请求体 + 准入时刻 → inference 快照（候选装配的单映射形态） */
 async function toSnapshotRow(input: {
   row: ActiveMappingRow;
   card: UserRateCardContext | null;

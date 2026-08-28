@@ -1,6 +1,6 @@
 /**
  * 创建管理员资料行（POST /v1/admins 的第一半;第二半 = identity 凭据注册,编排与
- * 失败补偿在 admin-api 路由——两包间无共享事务边界,补偿语义见 docs/admin-rbac）。
+ * 失败补偿在 admin-api 路由——两包间无共享事务边界）。
  * 角色词表守卫在此;重名由 admins_email_uq 兜底（23505 → admin_email_taken）。
  * 审计由编排方在双动词全部成功后旁路记录（postAudit——两步全成才算「创建」）。
  */

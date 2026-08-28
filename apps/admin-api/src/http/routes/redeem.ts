@@ -1,7 +1,7 @@
 /**
- * 兑换批次路由（P1;v1 routes/redeem.ts 平移）：创建（明文码仅此一次返回）/
+ * 兑换批次路由：创建（明文码仅此一次返回）/
  * 列表 / 详情 / 批内码列表（哈希脱敏）/ 单码作废。
- * 审计后置（v1 recordAudit 语义——提交后旁路）。
+ * 审计后置（提交后旁路）。
  */
 import { Hono } from 'hono';
 import type { RedeemBatchesApi } from '@tillgate/billing';
@@ -10,7 +10,7 @@ import { BATCH_SORTS, CODE_SORTS, redeemContracts } from '../contracts/billing-a
 import { toBatchWireRow, toCodeWireRow } from '../presenters/billing';
 import type { SessionEnv } from '../middleware/session';
 
-/** 后置审计闭包形状（v1 recordAudit:提交后旁路、失败不阻断——装配桥 writeAudit） */
+/** 后置审计闭包形状（提交后旁路、失败不阻断——装配桥 writeAudit） */
 export interface PostAudit {
   (entry: {
     actor: 'admin';
@@ -27,7 +27,7 @@ export interface RedeemRoutesDeps {
   readonly postAudit: PostAudit;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function redeemRoutes(deps: RedeemRoutesDeps) {
   const app = new Hono<SessionEnv>();
 

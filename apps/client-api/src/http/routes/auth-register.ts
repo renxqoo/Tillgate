@@ -1,5 +1,5 @@
 /**
- * 注册动词（公开，恒两步制——v1 语义）：register 发码（载荷只存 cipher 封装后的
+ * 注册动词（公开，恒两步制）：register 发码（载荷只存 cipher 封装后的
  * 密码，永不落明文）→ register/verify 建号 + 绑凭据 + 建号收尾（赠送/归因
  * best-effort）+ 签发会话。闸序：开关 → IP 限频 → captcha → 邮箱占用 → 密码策略。
  */
@@ -19,7 +19,7 @@ interface RegisterPayload {
   pwd: string;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器平铺
 export function registerRoutes(deps: AuthDeps) {
   const app = new Hono<SessionEnv>();
 
@@ -50,7 +50,7 @@ export function registerRoutes(deps: AuthDeps) {
     if (await deps.emailTaken(body.email)) {
       throw AccountsErrors.business('email_taken', { email: body.email });
     }
-    // 密码策略单源校验（identity 域；不满足直接 400——v1 在发码前拒绝）
+    // 密码策略单源校验（identity 域；不满足直接 400——在发码前拒绝）
     assertPasswordPolicy(body.password, deps.passwordPolicy);
     const payload: Record<string, unknown> = {
       mail: body.email,

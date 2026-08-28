@@ -57,7 +57,7 @@ export const userQueries: Pick<
       if (user === undefined) throw new Error('insertLocalUser returning empty');
       return { status: 'created', user };
     } catch (error) {
-      // 权威约束:users_local_email_uq / users_issuer_subject_uq(并发兜底,v1 语义化翻译)
+      // 权威约束:users_local_email_uq / users_issuer_subject_uq(并发兜底)
       if (isUniqueViolation(error)) return { status: 'email_taken' };
       throw error;
     }
@@ -128,7 +128,7 @@ export const userQueries: Pick<
     if (patch.tpmLimit !== undefined) set.tpmLimit = patch.tpmLimit;
     if (patch.dailySpendLimit !== undefined) set.dailySpendLimit = patch.dailySpendLimit;
     if (patch.isEnterprise !== undefined) set.isEnterprise = patch.isEnterprise;
-    // email 变更的会话失效唯一所有者是 identity(§3.4):admin-patch-user 在同一事务内
+    // email 变更的会话失效唯一所有者是 identity:admin-patch-user 在同一事务内
     // 经 SessionInvalidationPort 推进 identity_session_anchors 吊销线(旧列已随 0090 退役)
     const rows = await db
       .update(users)

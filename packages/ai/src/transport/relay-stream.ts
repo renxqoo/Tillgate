@@ -6,7 +6,7 @@ import type { StreamError, TextTokenFeatures } from '../types';
 import { asServerDrainAbort } from '../errors/server-drain';
 
 /**
- * 透传管道（ai-package.md §7.4）：
+ * 透传管道：
  *   - 上游 chunk 逐块透传（pipeThrough，不缓冲），旁路 SseScanner 扫描 usage/错误帧
  *   - 心跳注入：静默 > heartbeatIdleMs 发 ': keep-alive'
  *   - 静默超时：上游 > inactivityTimeoutMs 无数据 → 注入错误帧 + terminate
@@ -24,7 +24,7 @@ export interface RelayStreamOptions {
   heartbeatIdleMs: number;
   inactivityTimeoutMs: number;
   /**
-   * 响应侧 model 字段替换（§3.6 透传例外 2）：给出即开启——出站 SSE 帧内仅替换
+   * 响应侧 model 字段替换：给出即开启——出站 SSE 帧内仅替换
    * "model" 字符串值为该值（对外目录模型名），其余字节不动；undefined = 关闭，
    * 逐字节透传。逐事件行改写（不整流缓冲），覆盖同协议中继与跨协议转换出站两条路径。
    */
@@ -72,7 +72,7 @@ export interface RelayStreamHandle {
   onEvent: (cb: (e: RelayStreamEvent) => void) => void;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 透传热路径核心（铁律 12：不缓冲不改写）：取消/心跳/不活动/截断/错误帧五类终止语义交织在同一 transform 闭包，拆分线程化状态会触碰数据面语义，存量棘轮（铁律 22⑥）
+// eslint-disable-next-line max-lines-per-function -- 透传热路径核心（不缓冲不改写）：取消/心跳/不活动/截断/错误帧五类终止语义交织在同一 transform 闭包，拆分线程化状态会触碰数据面语义
 export function relayStream(
   upstream: ReadableStream<Uint8Array>,
   options: RelayStreamOptions,
@@ -93,7 +93,7 @@ export function relayStream(
     onErrorFrame: (frame) => emit({ type: 'stream_error', frame }),
   });
 
-  // model 改写器（例外 2）：数据面内联改写——行状态机有界缓冲，逐事件吐出
+  // model 改写器：数据面内联改写——行状态机有界缓冲，逐事件吐出
   const rewriter =
     options.rewriteModel !== undefined ? new SseModelRewriter(options.rewriteModel) : null;
 
@@ -123,7 +123,7 @@ export function relayStream(
     });
   };
 
-  // eslint-disable-next-line max-lines-per-function -- 透传热路径核心(铁律12):重构后位于边界,oxfmt 换行推超 3 行
+  // eslint-disable-next-line max-lines-per-function -- 透传热路径核心（不缓冲不改写）：oxfmt 换行后超出阈值 3 行
   const failWithErrorFrame = (
     frame: StreamError,
     reason:
@@ -309,7 +309,7 @@ export function relayStream(
       // 上游读取错误 → 注入错误帧（通过 controller，pipeTo 已结束但 writable 未 abort）
       if (!finished && tCtrl) {
         // 服务端 drain 中止（宽限期后的 ServerDrainAbort 标记）是服务端责任：
-        // 归类 server_draining——部分交付即计费（2026-08-21 拍板：估算结算，
+        // 归类 server_draining——部分交付即计费（估算结算，
         // 归属 server_draining 分标签，报表可查、可接运营补偿），不得混入用户取消
         const drain = options.signal ? asServerDrainAbort(options.signal.reason) : null;
         let reason: 'server_draining' | 'request_cancelled' | 'upstream_disconnected' =

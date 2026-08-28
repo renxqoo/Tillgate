@@ -1,10 +1,10 @@
 /**
  * client-api(用户面)facade:core transport + 用户面 DTO 快照 + getMe 布局守卫。
  *
- * 双后端物理隔离(总纲 §3 树 client-api/admin-api 两入口):
+ * 双后端物理隔离:
  *   - client-api(用户面,端口 8081):/v1/me、/v1/keys、/v1/apps、/v1/usage、
  *     /v1/redeem、/v1/auth/*、/v1/wallet/*、/v1/subscriptions、/v1/orgs、/v1/payments
- * 会话 token 来源由装配方显式注入(B1 回归:v1 按基地址比较挑选 token 源已废除)。
+ * 会话 token 来源由装配方显式注入(不按基地址挑选 token 源)。
  */
 import {
   createHttpClient,
@@ -24,7 +24,7 @@ export interface ClientApiClientOptions {
 }
 
 export interface ClientApiClient extends HttpClient {
-  /** 调用 /v1/me,失败返回 null(用于 apps/client 的 layout 守卫;v1 getMe 行为等价) */
+  /** 调用 /v1/me,失败返回 null(用于 apps/client 的 layout 守卫) */
   getMe(): Promise<MeInfo | null>;
 }
 

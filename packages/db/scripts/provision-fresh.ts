@@ -1,17 +1,18 @@
 /**
  * 空库前置 provision（fresh database bootstrap）——迁移链 0055/0056/0057 前向引用
- * （identity_session_anchors 建表在 0076、ledger_operations 建表在 0059）的正式收口：
+ * （identity_session_anchors 建表在 0076、ledger_operations 建表在 0059）的解决：
  * 把这两个全幂等迁移文件（IF NOT EXISTS / 条件约束 / drop-then-create 触发器）的 DDL
  * 先行执行，空库即可完整走完整条 journal——0055/0056 回填在新库为 0 行，
  * 链推进到 0059/0076 时重放 = 零操作（在已初始化库上重跑本脚本同样零操作）。
  *
- * 空库完整初始化顺序（三步，.env 的 DATABASE_URL 指向目标空库）：
+ * 空库完整初始化顺序（两步，.env 的 DATABASE_URL 指向目标空库）：
  *   1. bun packages/db/scripts/provision-fresh.ts
  *   2. cd packages/db && bun --env-file=../../.env drizzle-kit migrate
- *   3. bun packages/db/scripts/seed-dev.ts
+ * （原第 3 步 seed-dev.ts 已退役删除：管理员 →
+ *  apps/admin-api/scripts/create-admin.ts，费率卡 → 管理台创建）
  *
  * env 从 .env（cwd 向上查找 monorepo 根）读 DATABASE_URL，缺失即报错退出
- * （v2 无默认连接串，零写死裁决 B2/D5）。
+ * （无默认连接串，不写死）。
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

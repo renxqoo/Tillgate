@@ -1,0 +1,67 @@
+'use client';
+
+import { useState } from 'react';
+
+import { DropdownMenuItem, RowActions, TableCell, TableRow } from '@tillgate/ui';
+import { defineStatusMeta } from '@/components/status-pill';
+import { StatusPill } from '@/components/status-pill';
+import { ShieldBanIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+
+import type { RedeemCodeRow } from '@tillgate/api-client';
+import { fmtDateTime } from '@/lib/formatters';
+import { ConfirmAction } from '@/components/confirm-action';
+
+// 状态 tone 映射留模块级；label 是 redeemBatches 命名空间的 i18n key，渲染处用 t 解析
+const STATUS_LABEL = defineStatusMeta({
+  0: { label: 'statusUnused', tone: 'success' },
+  1: { label: 'statusUsed', tone: 'info' },
+  2: { label: 'statusRevoked', tone: 'neutral' },
+  3: { label: 'statusExpired', tone: 'neutral' },
+});
+
+export function CodeRowItem({ code }: { code: RedeemCodeRow }) {
+  const t = useTranslations('redeemBatches');
+  const tc = useTranslations('common');
+  const meta = STATUS_LABEL.get(code.status);
+  const revocable = code.status === 0;
+  const [revokeOpen, setRevokeOpen] = useState(false);
+
+  return (
+    <TableRow>
+      <TableCell className="text-xs text-muted-foreground tabular-nums">#{code.id}</TableCell>
+      <TableCell>
+        <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{code.codeMasked}</code>
+      </TableCell>
+      <TableCell>
+        <StatusPill tone={meta.tone} label={t(meta.label)} />
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">{code.usedBy ?? '—'}</TableCell>
+      <TableCell className="text-xs text-muted-foreground">{fmtDateTime(code.usedAt)}</TableCell>
+      <TableCell className="text-xs text-muted-foreground">{fmtDateTime(code.expiresAt)}</TableCell>
+      <TableCell className="w-16 text-center">
+        <RowActions label={tc('actions')}>
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={!revocable}
+            onClick={() => setRevokeOpen(true)}
+            title={revocable ? t('revoke') : t('notRevocable')}
+          >
+            <ShieldBanIcon />
+            {t('revoke')}
+          </DropdownMenuItem>
+        </RowActions>
+        {/* 弹窗挂在菜单外(受控 open):菜单点选关闭时会卸载整个 content,放里面会连弹窗一起卸掉 */}
+        <ConfirmAction
+          open={revokeOpen}
+          onOpenChange={setRevokeOpen}
+          confirm={t('revokeConfirm', { id: code.id })}
+          action={async () =>
+            (await import('@/server/redeem-batches-actions')).revokeCodeAction(code.id)
+          }
+          success={t('statusRevoked')}
+        />
+      </TableCell>
+    </TableRow>
+  );
+}

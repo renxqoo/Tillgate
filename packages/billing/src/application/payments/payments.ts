@@ -1,5 +1,5 @@
 /**
- * 充值支付用例（迁移自旧仓 client-api payments.service——从 app 下沉到能力包）：
+ * 充值支付用例：
  * 下单（面额闸 → 渠道解析 → 先落库再调渠道）+ 回调入账（验签 → 金额核对 →
  * 单事务 markPaid→credit→markCredited）+ 订单列表（机会式关单，只关自己的单）。
  *
@@ -51,8 +51,8 @@ export interface PaymentsDeps {
   /** 时钟（装配必填——零写死；DB 时钟权威路径不经此） */
   clock: () => Date;
   /**
-   * 运营/审计异常写入（装配必填：logger/遥测注入——console 直写是隐藏 I/O，
-   * 铁律 3）。承载渠道下单失败回填、回调金额错配、入账失败等资金留痕事件。
+   * 运营/审计异常写入（装配必填：logger/遥测注入——console 直写是隐藏 I/O）。
+   * 承载渠道下单失败回填、回调金额错配、入账失败等资金留痕事件。
    */
   logError: (message: string, detail?: unknown) => void;
 }
@@ -194,7 +194,7 @@ export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
         await store.transaction(async (tx) => {
           const paid = await orders.markPaid(tx, { orderId: order.id, paidAt: clock() });
           if (!paid) {
-            // 并发回调/乱序跃迁：重读定夺（credited 幂等成功；paid 遗留单继续收尾入账）
+            // 并发回调/乱序跃迁：重读判定（credited 幂等成功；paid 遗留单继续收尾入账）
             let fresh = await orders.findById(tx, order.id);
             if (fresh == null) {
               throw BillingErrors.business('order_state_conflict', { orderId: order.id });

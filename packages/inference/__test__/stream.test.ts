@@ -19,7 +19,7 @@ import {
 
 /**
  * 流式尝试（决定性事件 / 续租 / 终态后台结算）。
- * 计时器类用例用假时钟 + 容差（写法纪律 §10.2）；续租节奏断言允许 ±1 次抖动。
+ * 计时器类用例用假时钟 + 容差；续租节奏断言允许 ±1 次抖动。
  */
 function setup(defaults?: Parameters<typeof buildInference>[0]['defaults']) {
   const ai = fakeAi();
@@ -106,7 +106,7 @@ describe('application/stream：流式尝试', () => {
       streamAborted: false,
       clientTtftMs: expect.any(Number),
     });
-    // TTFT 双锚点容差（§10.2 计时器纪律）：名义值 = 合成锚 50ms；测试侧与源码侧
+    // TTFT 双锚点容差：名义值 = 合成锚 50ms；测试侧与源码侧
     // Date.now() 读取错位在慢速 CI runner（coverage 插桩）上实测可达 ~6ms，窗口取
     // ±10ms——仍足以钉住「锚定 50ms 合成事件」而非 0 或 durationMs=4_000
     expect(receipt?.upstreamTtftMs).toBeGreaterThanOrEqual(40);

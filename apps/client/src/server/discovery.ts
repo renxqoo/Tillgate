@@ -1,7 +1,7 @@
 /**
  * 登录/注册页公开探测（未登录可达）：OAuth 按钮发现 + 注册能力（开关/验证码
- * siteKey/邮箱验证码开关）。探测失败按「全开」语义回落（v1 刻意取舍 B20：
- * 探测失败不隐藏入口，由提交动作的 403/错误码兜底）。
+ * siteKey/邮箱验证码开关）。探测失败按「全开」语义回落（探测失败不隐藏入口，
+ * 由提交动作的 403/错误码兜底）。
  */
 import type { AuthCapabilities, OAuthProviders } from '@tillgate/api-client';
 
@@ -30,7 +30,7 @@ export async function fetchOAuthProviders(): Promise<string[]> {
   }
 }
 
-/** 注册/登录能力探测；不可达按全开回落（B20 取舍语义） */
+/** 注册/登录能力探测；不可达按全开回落 */
 export async function fetchAuthCapabilities(): Promise<AuthCapabilities> {
   try {
     return await createClientApi({ fetch: timeoutFetch(PROBE_TIMEOUT_MS) }).get<AuthCapabilities>(

@@ -11,10 +11,10 @@ import type {
 import { escapeLikePattern } from './search';
 
 /**
- * audit_logs 的 PG 适配:写入双原语(G1)+ 通用查询面。
+ * audit_logs 的 PG 适配:写入双原语 + 通用查询面。
  * 写入契约:
  *   - writeAudit 在调用方事务连接上执行,失败抛出 = 随业务回滚,不吞(资金关键操作);
- *   - createBestEffortAuditSink 提交后旁路,不抛、失败记日志(B3:log 可注入,缺省 console.error)。
+ *   - createBestEffortAuditSink 提交后旁路,不抛、失败记日志(log 可注入,缺省 console.error)。
  */
 
 /** 事务内审计写入(资金关键操作——失败即随业务回滚,不吞) */

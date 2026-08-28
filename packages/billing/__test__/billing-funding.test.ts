@@ -1,6 +1,5 @@
 /**
- * 资金来源策略契约（直驱 payg/subscription 两来源的 reserve/release/settle 分支——
- * U3 结算路径接线前先锁死语义；旧仓 service/__tests__ 对应覆盖的移植）。
+ * 资金来源策略契约:直驱 payg/subscription 两来源的 reserve/release/settle 分支语义。
  */
 import { describe, expect, it } from 'vitest';
 import { isBusinessError } from '@tillgate/errors';

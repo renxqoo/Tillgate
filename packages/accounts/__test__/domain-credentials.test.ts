@@ -1,5 +1,5 @@
 /**
- * 凭证材料生成(http 迁入后的单一真相;§10.1 契约 + 随机性)。
+ * 凭证材料生成(单一真相;契约 + 随机性)。
  */
 import { describe, expect, it } from 'vitest';
 import {

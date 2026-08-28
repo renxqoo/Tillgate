@@ -27,7 +27,7 @@ const WALLET_MIGRATIONS = [
   '0069_wallet_negative_coherence.sql',
 ];
 
-/** v1 行为等价重试策略（db 包 transaction.ts 注释口径；生产缺省归 app config） */
+/** 重试策略（与 db 包 transaction.ts 口径一致；生产缺省归 app config） */
 export const V1_RETRY: TxRetryPolicy = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 };
 
 /** SQLSTATE 判等（db 包统一分类:pg 在 code、Bun SQL 在 errno——沿 cause 链双字段探测） */
@@ -126,10 +126,10 @@ export interface RealFullSchemaHarness {
 }
 
 /**
- * 完整迁移链装置（settlement-lifecycle 同款口径，供订阅/支付竞态套件复用）：
+ * 完整迁移链装置（供订阅/支付竞态套件复用）：
  * 隔离 schema 应用 0000→最新全链——库表初始化容忍 42P01（db 链跨链引用缺口，
- * 如 identity-core provision 建的表；清单见 IMPLEMENTATION §8 P3 待办），
- * 其余错误照常失败；个别迁移硬编码 public. 前缀重写到隔离 schema（DDL 内无业务字符串）。
+ * 如 identity-core provision 建的表），其余错误照常失败；
+ * 个别迁移硬编码 public. 前缀重写到隔离 schema（DDL 内无业务字符串）。
  */
 export async function setupRealFullSchema(label: string): Promise<RealFullSchemaHarness> {
   if (!REAL_URL) throw new Error('DB_TEST_URL / DATABASE_URL 未设置');

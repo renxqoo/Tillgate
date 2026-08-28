@@ -1,6 +1,6 @@
 /**
- * 错误目录词表封闭性（§10.1 契约级：导出枚举 == 文档词表；目录是码的唯一登记处）。
- * 新增条目必须同步本快照与 DESIGN/IMPLEMENTATION 记录——契约变了测试必须同步变。
+ * 错误目录词表封闭性（契约级：导出枚举 == 本快照词表；目录是码的唯一登记处）。
+ * 新增条目必须同步本快照——契约变了测试必须同步变。
  */
 import { describe, expect, it } from 'vitest';
 import { isErrorCategory } from '@tillgate/errors';

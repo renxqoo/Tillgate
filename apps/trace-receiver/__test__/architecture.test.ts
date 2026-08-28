@@ -4,12 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { defined } from './defined';
 
 /**
- * app 级架构门禁(§5.5/总纲 P5,机器验证不靠记忆):
- *   1. `./composition` 子入口只允许出现在 src/assembly.ts(§5.3 白名单:apps assembly);
+ * app 级架构门禁(机器验证不靠记忆):
+ *   1. `./composition` 子入口只允许出现在 src/assembly.ts(白名单:apps assembly);
  *   2. `@tillgate/db` 的 Db/DbTx 类型与 createDb/ping 等装配件不出现在非装配代码
- *      (app.ts/config.ts);进程装配面(assembly.ts/index.ts)除外——P5「app 非 assembly
+ *      (app.ts/config.ts);进程装配面(assembly.ts/index.ts)除外——「app 非 assembly
  *      代码不得引用任何 ./composition、repository、adapter 或 Db/DbTx 类型」。
- *   3. app 依赖面只走显式包名(禁 @tillgate 各包 src 深导入,§5 硬约束)。
+ *   3. app 依赖面只走显式包名(禁 @tillgate 各包 src 深导入)。
  */
 
 const SRC = join(import.meta.dirname, '../src');
@@ -19,7 +19,7 @@ const FILES = readdirSync(SRC)
 const source = new Map<string, string>(
   FILES.map((name) => [name, readFileSync(join(SRC, name), 'utf8')]),
 );
-/** 进程装配面:配置产出与依赖装配/生命周期收口(P5 白名单语义;app.ts 是唯一非装配面) */
+/** 进程装配面:配置产出与依赖装配/生命周期收口(app.ts 是唯一非装配面) */
 const ASSEMBLY_FACE = new Set(['assembly.ts', 'config.ts', 'index.ts']);
 
 describe('trace-receiver 架构门禁', () => {

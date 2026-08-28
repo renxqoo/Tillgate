@@ -27,7 +27,7 @@ function positiveN(body: Record<string, unknown>): number {
  * duration 钳制（4-15s，缺省 6——video 按秒计费的时长上界/快照，
  * new-api #5498 教训：上游缺省时长与请求意图不符导致少押）。
  * 取整秒向上（与 audioSeconds 同口径；宁可多押），计量单位数非账本金额——
- * 账本金额运算零 round（DESIGN §4.5，架构测试锁死）。
+ * 账本金额运算零 round（架构测试锁死）。
  */
 function clampedDuration(body: Record<string, unknown>): number {
   const d = body.duration;

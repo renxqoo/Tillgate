@@ -43,7 +43,7 @@ export function MarketingContent({
 }: {
   settings: MarketingSettingsView | null;
   error: string | null;
-  /** growth:update 持有者可保存；否则只读（2026-08-25 用户裁决 D1/D2——权威判定在 ACL） */
+  /** growth:update 持有者可保存；否则只读（权限判定权威在后端 ACL） */
   canUpdate: boolean;
 }) {
   const t = useTranslations('marketing');

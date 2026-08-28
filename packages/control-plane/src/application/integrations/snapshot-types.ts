@@ -1,7 +1,7 @@
 /**
- * 运行时快照类型（DESIGN §5 D4）：消费面（client-api/admin-api/worker）拿到的
+ * 运行时快照类型：消费面（client-api/admin-api/worker）拿到的
  * 已解密、已归一形状。config 仅在 configured（必填齐全）时非 null；
- * effective = enabled && configured（oauth.base 已退回 env——ADR-0012，base 有效性由装配期保证）。
+ * effective = enabled && configured（oauth.base 已退回 env，base 有效性由装配期保证）。
  */
 
 export interface OauthProviderConfig {
@@ -30,7 +30,7 @@ export interface EpayConfig {
   readonly notifyUrl: string;
   readonly returnUrl: string;
   readonly payType: string;
-  /** 验签密钥序列（先新后旧；旧值仅双读窗内——DESIGN §5 D6）；下单签名恒用 key */
+  /** 验签密钥序列（先新后旧；旧值仅双读窗内）；下单签名恒用 key */
   readonly verifyKeys: readonly string[];
 }
 

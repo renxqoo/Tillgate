@@ -1,5 +1,5 @@
 /**
- * E2E 刷费用专项（v1 e2e-cost-drain 迁移；本地可控 mock 上游 + 真适配器 + 真计费全链）
+ * E2E 刷费用专项（本地可控 mock 上游 + 真适配器 + 真计费全链）
  * ——「让用户无限刷平台上游费用」的每一个已知向量的闭环验证：
  *
  *   ① max_tokens 超口径声明 → 转发体被钳到预扣口径（预估敞口 ≥ 实际输出上限）
@@ -11,8 +11,8 @@
  *   ⑥ fixed 低门槛放行 + 实际用量远超余额 → 实际全额补扣、形成负余额且不搁浅
  *   ⑦ 上游重试幂等键（Idempotency-Key = requestId）注入——防响应丢失重试双花上游
  *
- * v1 自建 pipeline 装配 → v2 全真装配（kit 世界；高价映射种子放大金额向量）。
- * 转发参数线名 v2 归一为 max_completion_tokens（装配面适配，语义不变）。
+ * 全真装配（kit 世界；高价映射种子放大金额向量）。
+ * 转发参数线名为 max_completion_tokens。
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -50,7 +50,7 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
   let fullGateway: E2EGateway;
   let fixedGateway: E2EGateway;
   let keys: E2EKeys;
-  /** 高价映射（放大金额向量）：input 60 / output 600 / cache 1（v1 同价） */
+  /** 高价映射（放大金额向量）：input 60 / output 600 / cache 1 */
   let drainModel = '';
 
   beforeAll(async () => {
@@ -224,8 +224,8 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
       });
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toContain('text/event-stream');
-      // 「拉满输出再掐线」攻击形态：读完全部 20 帧增量后断线（v2 relay 需求耦合，
-      // 网关只累计已交付内容——装置适配：v1 读 1 帧时网关已主动累计全部帧）
+      // 「拉满输出再掐线」攻击形态：读完全部 20 帧增量后断线
+      // （网关只累计已交付内容——读满全部帧再断线以最大化敞口）
       const reader = defined(res.body, 'stream body').getReader();
       const decoder = new TextDecoder();
       let text = '';

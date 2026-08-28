@@ -25,7 +25,9 @@ export interface SettlementProcessorDeps {
 
 /** 单条结算驱动：已知结局透传；未知异常吞掉并标记（重投决策归调用方） */
 export function createSettlementProcessor(deps: SettlementProcessorDeps) {
-  return async function processSettlementRequest(requestId: string): Promise<SettlementProcessOutcome> {
+  return async function processSettlementRequest(
+    requestId: string,
+  ): Promise<SettlementProcessOutcome> {
     try {
       const claims = await deps.settlement.claim({
         ownerId: deps.ownerId,

@@ -1,9 +1,9 @@
 /**
- * 挑战 store postgres 实现。SQL 与 v1 identity-core challenge.ts 逐语义对齐:
+ * 挑战 store postgres 实现:
  * 发码 = 锁内「冷却判定(clock_timestamp 墙钟)→ 替换旧挑战 → INSERT」;
  * 验码 = 单条 CAS UPDATE(计错 + 命中即消费);作废 = 幂等。
  * 冷却判定与剩余时长取自同一 SELECT 返回的 DB 钟与 issued_at,算术在 JS 完成
- * (同为 DB 事实,同一时钟口径,B14;避免 pg numeric → string 的驱动解析坑)。
+ * (同为 DB 事实,同一时钟口径;避免 pg numeric → string 的驱动解析坑)。
  */
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import type { DbLike } from '@tillgate/db';
@@ -44,7 +44,7 @@ async function abortLiveChallengeIfCooling(
   },
 ): Promise<{ status: 'cooldown'; retryAfterMs: number } | null> {
   // clock_timestamp()(墙钟)而非 now()(事务起始时刻):advisory lock 等待期间
-  // 事务的 now() 停在等待前,冷却判定会拒绝本应已冷却的旧挑战(v1 注释口径)。
+  // 事务的 now() 停在等待前,冷却判定会拒绝本应已冷却的旧挑战。
   const [row] = await db
     .select({
       id: identityChallenges.id,

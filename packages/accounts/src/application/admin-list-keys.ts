@@ -1,4 +1,4 @@
-/** 管理面 Key 列表:q 命中 name/preview/属主邮箱/属主昵称 + 过滤分页(v1 listAdminKeys) */
+/** 管理面 Key 列表:q 命中 name/preview/属主邮箱/属主昵称 + 过滤分页 */
 import type { ApiKeyRecord, PageResult } from '../ports/account-store.js';
 import { KEY_SORT_FIELDS, clampListQuery, resolveSort } from './list-query.js';
 import type { UseCaseContext } from './context.js';

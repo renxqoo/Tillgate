@@ -11,8 +11,8 @@ import { exportKeysAction } from '@/server/actions/keys';
 import { buildKeysTsv } from './export-tsv';
 
 /**
- * Key 导出（B18 增强）：点击时经 server action 全量翻页拉取当前列表
- * （页面级导出语义保留——G1 筛选契约落地前即全部 Key），TSV 带 UTF-8 BOM
+ * Key 导出：点击时经 server action 全量翻页拉取当前列表
+ * （页面级导出语义——列表当前无筛选，导出即全部 Key），TSV 带 UTF-8 BOM
  * （Excel 中文兼容）；拉取失败以 toast 呈现后端错误文案。
  */
 export function ExportKeys() {

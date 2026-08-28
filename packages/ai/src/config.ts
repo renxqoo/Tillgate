@@ -47,14 +47,14 @@ export const aiDefaultsSchema = z.object({
       totalMs: 120_000,
     }),
   /**
-   * 响应侧 model 字段替换（§3.6 透传例外 2，默认关）：开启时出站 SSE 帧内仅替换
+   * 响应侧 model 字段替换（默认关）：开启时出站 SSE 帧内仅替换
    * "model" 字符串值为对外目录模型名（请求的 ctx.model），其余字节不动——
    * 与请求侧 finalizeRequestBody 的模型名重写共同维护模型目录抽象。
    */
   responseModelRewrite: z.boolean().default(false),
   /**
-   * 错误出站脱敏参数（§3.6 透传例外 3 内容层）：截断上限与内部名→对外名替换表。
-   * 原始全文保留在 UpstreamError.rawBody 与日志路径（细节层只进日志）。
+   * 错误出站脱敏参数：截断上限与内部名→对外名替换表。
+   * 原始全文保留在 UpstreamError.rawBody 与日志路径，不进入 C 端响应。
    */
   errorSanitize: z
     .object({
@@ -79,7 +79,7 @@ export interface AiOptions {
 
 /**
  * 依赖注入：宿主实现，包保持零业务/零 OTel 直接依赖。
- * §3.6 零运维状态——无状态存储注入点；§3.2 机制/策略分离——SSRF 名单经 guardUrl 注入。
+ * 无状态存储注入点（零运维状态）；SSRF 名单经 guardUrl 注入（机制/策略分离）。
  */
 export interface AiDeps {
   logger?: {
@@ -93,7 +93,7 @@ export interface AiDeps {
   /**
    * URL 守卫（SSRF 策略注入点）：缺省执行机械基线（https-only + 禁私网/回环 +
    * DNS 逐地址判定防 rebinding）；注入则整体替换。出口信任锚在运营面
-   * （渠道/provider 写入是 admin 域——ADR-0010）；测试/本地调试注入 `allowAllUrls`。
+   * （渠道/provider 写入是 admin 域）；测试/本地调试注入 `allowAllUrls`。
    */
   guardUrl?: UrlGuard;
 }

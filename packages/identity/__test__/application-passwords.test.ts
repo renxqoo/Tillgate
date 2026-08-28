@@ -1,7 +1,7 @@
 /**
- * 密码用例测试(v1 authenticate.test + passwords-change.test 迁移):
+ * 密码用例测试:
  * 防枚举统一口径、改密正确流(吊销线推进)、旧密错不动、reset 免旧密、
- * B04 回归(锁内验旧密——并发 reset 不被覆盖)。
+ * 锁内验旧密——并发 reset 不被覆盖的回归。
  */
 import { describe, expect, it } from 'vitest';
 import { createTestHarness } from '../src/testing/harness.js';
@@ -209,5 +209,23 @@ describe('passwords.reset', () => {
     await h.api.passwords.reset({ userId: 1, realm: 'admin', newPassword: 'admin-reset-pass-1' });
     const event = h.audit.events.find((e) => e.action === 'password.reset');
     expect(event?.detail).toMatchObject({ realm: 'admin' });
+  });
+});
+
+describe('passwords.exists(邀请激活态读面)', () => {
+  it('仅返回已设密码的 userId 子集;未激活(仅挂标识)不在结果内', async () => {
+    const h = harness();
+    await registerWithPassword(h, 1, 'password-123456');
+    // userId 2 仅挂标识不设密码(邀请制创建形态)
+    await h.api.credentials.register({ userId: 2, identifier: { kind: 'email', value: email(2) } });
+    const ids = await h.api.passwords.exists({ userIds: [1, 2, 3] });
+    expect(ids).toEqual([1]);
+  });
+
+  it('空入参返回空;垃圾 id 形状被拒', async () => {
+    const h = harness();
+    await expect(h.api.passwords.exists({ userIds: [] })).resolves.toEqual([]);
+    await expect(h.api.passwords.exists({ userIds: [0] })).rejects.toThrow();
+    await expect(h.api.passwords.exists({ userIds: [1.5] })).rejects.toThrow();
   });
 });

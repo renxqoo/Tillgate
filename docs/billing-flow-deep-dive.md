@@ -62,7 +62,7 @@ apps/worker（结算：PG LISTEN 唤醒 + 认领→实扣→对账→恢复）�
 | 唤醒 | 生产端 `pg_notify`（`apps/gateway/src/adapters/settle-wake.ts`），消费端 PG LISTEN（`apps/worker/src/wakeup/postgres-notify.ts`）；丢失由 30s 兜底扫描覆盖 |
 
 Redis 在 v2 只剩 gateway 侧三用途：限流窗口、鉴权爆破锁、渠道健康状态
-（`inference:health:` 前缀）；worker 侧零 Redis。
+（`inference:health:` 前缀）；worker 侧 Redis 只承载 BullMQ 调度，不持有资金事实。
 
 ---
 

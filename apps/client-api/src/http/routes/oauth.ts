@@ -4,7 +4,7 @@
  *   GET /v1/oauth/:provider/authorize?next=/path —— 302 授权页（state cookie 双提交）
  *   GET /v1/oauth/:provider/callback?code&state —— 验 state → find-or-create 建号
  *     （赠送 best-effort）→ 会话 token 经 URL fragment 回传前端（#token=…，
- *     不进服务端日志/Referer）。cookie 双提交比对与 next 归一归本层（identity D7）。
+ *     不进服务端日志/Referer）。cookie 双提交比对与 next 归一归本层。
  */
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -33,7 +33,7 @@ export interface OAuthDeps {
   readonly stateTtlSeconds: number;
 }
 
-/** 回调后半程的用户解析（v1 G4 find-or-create）：已绑定直用；
+/** 回调后半程的用户解析（find-or-create）：已绑定直用；
  * 首次社交登录建号 + 建号赠送 best-effort（失败不阻断登录） */
 async function resolveOAuthUserId(
   deps: Pick<OAuthDeps, 'findUser' | 'provision' | 'onboarding'>,
@@ -51,7 +51,7 @@ async function resolveOAuthUserId(
   return created.user.id;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器平铺
 export function oauthRoutes(deps: OAuthDeps) {
   const app = new Hono();
 
@@ -106,7 +106,7 @@ export function oauthRoutes(deps: OAuthDeps) {
     });
     deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/v1/oauth' });
 
-    // find-or-create：已绑定直用；首次建号（v1 G4：find-or-create + 建号赠送归 app）
+    // find-or-create：已绑定直用；首次建号（建号赠送归 app）
     const userId = await resolveOAuthUserId(deps, { provider, result });
     const status = await deps.userStatus(userId);
     if (status !== 0) {

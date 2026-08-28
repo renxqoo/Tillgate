@@ -2,7 +2,7 @@
  * 认证路由装配（动词文件聚合处）：能力探测 / 登出 / 改密在本文件；
  * 注册两步制在 auth-register.ts、登录（含两级验证码）在 auth-login.ts。
  * 共享 deps 形状与协议助手在此定义——本层只编排 facade 动词与协议闸，
- * 业务规则单源在 identity/accounts（DESIGN §4）。
+ * 业务规则单源在 identity/accounts。
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
@@ -27,14 +27,14 @@ export interface ClientCapabilities {
   readonly emailCodeRequired: boolean;
 }
 
-/** 密码信封：注册期封装进挑战载荷、验码期开封（挑战库不落明文——v1「只存哈希」的等价保持） */
+/** 密码信封：注册期封装进挑战载荷、验码期开封（挑战库不落明文，等价于只存哈希） */
 export interface PasswordSealer {
   seal(plaintext: string): string;
   open(sealed: string): string;
 }
 
 export interface AuthDeps {
-  /** capabilities 每请求求值（集成设置快照驱动——DESIGN §4.2） */
+  /** capabilities 每请求求值（集成设置快照驱动） */
   readonly capabilities: () => ClientCapabilities;
   /** SMTP 当前是否生效（forgot 闸门——与 mailer 缺席同语义 fail-closed） */
   readonly smtpReady: () => boolean;
@@ -89,7 +89,7 @@ export function bearerToken(header?: string | undefined): string {
     : '';
 }
 
-/** 爆破守卫键：邮箱+IP 双维（v1 口径） */
+/** 爆破守卫键：邮箱+IP 双维 */
 export function guardKeyOf(email: string, ip: string): string {
   return sha256Hex(`${email}:${ip}`);
 }
@@ -131,7 +131,7 @@ export function authRoutes(deps: AuthDeps, session: MiddlewareHandler<SessionEnv
       currentPassword: body.oldPassword,
       newPassword: body.newPassword,
     });
-    // 改密即吊销全部旧会话；当场重签返回新 token（v1 口径）
+    // 改密即吊销全部旧会话；当场重签返回新 token
     const token = await deps.sign(userId);
     return c.json({ token });
   });

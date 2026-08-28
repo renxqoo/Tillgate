@@ -1,6 +1,6 @@
 /**
  * Hono onError 处理器：边界层错误翻译 + 统一信封 { error: { code, message, context? } }。
- * 优先级（v1 语义保持）：坏 JSON → Hono 4xx HTTPException → 已分类错误按自身身份渲染 →
+ * 优先级：坏 JSON → Hono 4xx HTTPException → 已分类错误按自身身份渲染 →
  * PG SQLSTATE（探测注入，只兜未分类错误）→ 渲染分派兜底。
  * 客户端可预期的错误必须在边界层翻译成 4xx，不得伪装 500（错误语义分级）。
  */
@@ -27,7 +27,7 @@ export interface ErrorHandlerDeps {
   /** face 装配的全量目录（缺省仅 http 自有目录） */
   readonly catalog?: ErrorCatalog;
   readonly overrides?: Readonly<Record<string, FaceOverride>>;
-  /** PG SQLSTATE 探测（@tillgate/db 的 pgSqlState 装配注入；缺省无 PG 翻译——ADR-0002） */
+  /** PG SQLSTATE 探测（@tillgate/db 的 pgSqlState 装配注入；缺省无 PG 翻译） */
   readonly sqlState?: (err: unknown) => string | null;
   /** 5xx 渲染时的服务端日志（缺省静默） */
   readonly logger?: ErrorLogger;
@@ -58,7 +58,7 @@ export function errorHandler(deps: ErrorHandlerDeps = {}) {
       );
     }
     // PG 约束/值错误全局面兜底（探测注入；只兜未分类错误——已分类错误按自身身份出站，
-    // 否则带 PG cause 的 BusinessError 会被 http.pg_* 覆盖丢业务码。v1 语义：已映射错误最先命中）
+    // 否则带 PG cause 的 BusinessError 会被 http.pg_* 覆盖丢业务码）
     if (deps.sqlState !== undefined && !isClassifiedError(err)) {
       const rejection = pgRejection(deps.sqlState(err));
       if (rejection !== null) return render(rejection);

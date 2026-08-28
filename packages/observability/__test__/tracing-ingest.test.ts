@@ -4,7 +4,7 @@ import type { SpanRow, TraceStore } from '../src/tracing/types';
 import { defined } from './defined';
 
 /**
- * SpanBatcher 规格(v1 receiver.test SpanBatcher 段平移 + 补齐):
+ * SpanBatcher 规格:
  * best-effort 数据等级——溢出丢最旧、写失败丢整批,任何路径不抛、不反压。
  */
 

@@ -1,4 +1,4 @@
-/** 套餐更新（U6;kind 不可变——周期校验按「当前 kind ∪ 补丁」合并口径） */
+/** 套餐更新（kind 不可变——周期校验按「当前 kind ∪ 补丁」合并口径） */
 import { BillingErrors } from '../../domain/errors.js';
 import type { BillingStore, PlanRecord } from '../../ports/billing-store.js';
 import { assertKindPeriodConsistency } from './plan-rules.js';

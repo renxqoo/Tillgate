@@ -1,6 +1,6 @@
 /**
  * 内存订阅额度 store（user_subscriptions 守卫三原语 + 快照/成员限额的 stand-in）。
- * 从 in-memory-billing-store 拆出（文件行数上限，铁律 5）。
+ * 从 in-memory-billing-store 拆出（文件行数上限）。
  */
 import type { SubscriptionQuotaStore } from '../ports/funding-ports.js';
 import type { WalletConn } from '../ports/wallet-store.js';

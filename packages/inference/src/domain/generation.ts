@@ -1,5 +1,5 @@
 /**
- * 生成任务类型词表（v1 domain/generation/kinds.ts 迁移，语义不变）：
+ * 生成任务类型词表：
  *
  * 每个任务类型一条纯数据描述——
  *   execution     执行模型：task_poll（网关提交上游任务号，worker 轮询终态）/

@@ -1,7 +1,7 @@
 /**
- * notifications 错误目录(AGENT.md §11:能力包自有目录,码带命名空间)。
- * 身份码 = `notifications.<key>`;message 英文、zh 中文,face 按码双语渲染(铁律 18)。
- * 码表封闭性由 __test__/errors.test.ts 快照锁死;新增码 = 契约变更,须同步 DESIGN §2.3。
+ * notifications 错误目录(能力包自有目录,码带命名空间)。
+ * 身份码 = `notifications.<key>`;message 英文、zh 中文,face 按码双语渲染。
+ * 码表封闭性由 __test__/errors.test.ts 快照锁死;新增码 = 契约变更。
  */
 import { defineErrorCatalog } from '@tillgate/errors';
 

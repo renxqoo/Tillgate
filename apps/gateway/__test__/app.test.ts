@@ -1,5 +1,5 @@
 /**
- * app 面契约（v1 surface.test/app.test 的面段迁移）：
+ * app 面契约：
  * 探针三件 / 未注册路径 404 而非 401 / CORS 白名单与安全头 / bodyLimit 413 /
  * requestId 服务端生成回显 / 中间件顺序副作用。依赖全替身。
  */
@@ -167,8 +167,8 @@ describe('请求日志（记录一切 /v1 请求）', () => {
     expect(entry.userId).toBeNull();
     expect(entry.method).toBe('POST');
     expect(entry.path).toBe('/v1/chat/completions');
-    // 摘要语义(2026-08-26 数据流反转):仅路由成功解析 body 后采集——鉴权失败
-    // (401)不嗅探 body(旧 clone 嗅探在 node-server 下破坏原始流,live-fire 实锤)
+    // 摘要语义:仅路由成功解析 body 后采集——鉴权失败
+    // (401)不嗅探 body(clone 嗅探在 node-server 下破坏原始流)
     expect(entry.requestSummary).toBeNull();
     expect(typeof entry.durationMs).toBe('number');
   });

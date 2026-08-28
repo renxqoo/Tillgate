@@ -8,7 +8,7 @@
  * 资损防线：输入经 safe() 规范化（负/NaN/Infinity → 0）、cached 夹到 ≤ input、
  * coefficient ≤ 0 与负单价钳 0——任何异常上游响应或配置错误都算不出负金额
  * （反向收费/白嫖）。Decimal 全精度，账本永不 round。
- * 上限闸拒绝经目录表达（B6：旧 ReservationError 自造类废除，捕获按码）。
+ * 上限闸拒绝经错误目录表达，消费方按错误码捕获。
  */
 import { BillingErrors } from '../errors.js';
 import { Decimal } from '../money.js';

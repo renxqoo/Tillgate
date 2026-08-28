@@ -1,13 +1,12 @@
 /**
- * 架构边界门禁（AGENT.md §0.11 / 总纲 §5.5）：目录约定不靠记忆，靠本测试执行。
- * 规则来源 DESIGN §7（依赖白名单）与总纲 §5.1 硬约束：
+ * 架构边界门禁：目录约定不靠记忆，靠本测试执行。规则：
  * - src 全量 import 白名单：仅 @tillgate/ai、@tillgate/errors + 外部 ioredis/zod
  *   + node: 内建 + 包内相对引用（billing/control-plane 等业务能力经 port 注入，
- *   零编译依赖——DESIGN §2「不处理」清单的可执行形态）；
- * - ioredis（外部 Redis SDK）与 @tillgate/db + drizzle-orm（C-G9 任务存储 pg 适配器）
- *   只许出现在 src/adapters/**（实现层细节不泄漏；总纲 §5.1「adapters → db/外部 SDK」）；
- * - 零 billing/control-plane 引用（§5.2：inference 单向依赖 ai；控制面经 CatalogPort）；
- * - index.ts 导出面快照（§5.3 公共出口封闭：新增导出必须显式更新本快照）。
+ *   零编译依赖）；
+ * - ioredis（外部 Redis SDK）与 @tillgate/db + drizzle-orm（任务存储 pg 适配器）
+ *   只许出现在 src/adapters/**（实现层细节不泄漏）；
+ * - 零 billing/control-plane 引用（inference 单向依赖 ai；控制面经 CatalogPort）；
+ * - index.ts 导出面快照（公共出口封闭：新增导出必须显式更新本快照）。
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -64,7 +63,7 @@ describe('分层依赖白名单（总纲 §5.1 / DESIGN §7 的可执行形态�
           spec === '@tillgate/errors' ||
           spec === 'ioredis' ||
           spec === 'zod' ||
-          // C-G9（gateway 波）：任务存储 pg 适配器依赖 db schema 与 drizzle——仅 adapters 层
+          // 任务存储 pg 适配器依赖 db schema 与 drizzle——仅 adapters 层
           ((spec === '@tillgate/db' || spec === 'drizzle-orm') && f.layer === 'adapters');
         expect(ok, `${f.path} → ${spec}`).toBe(true);
       }

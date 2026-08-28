@@ -1,6 +1,6 @@
 /**
- * 挑战域测试:码哈希 HMAC 已知向量(B13)、参数覆盖界、payload 域、恢复码哈希、
- * 通道映射;配置解析 fail-fast(v1 security.test「坏配置同步即抛」随迁)。
+ * 挑战域测试:码哈希 HMAC 已知向量、参数覆盖界、payload 域、恢复码哈希、
+ * 通道映射;配置解析 fail-fast(坏配置同步即抛)。
  */
 import { describe, expect, it } from 'vitest';
 import { createHmac } from 'node:crypto';

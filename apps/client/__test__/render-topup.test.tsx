@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * TopUpForm 渲染规格（jsdom，MIGRATION §8 渲染切片）：
+ * TopUpForm 渲染规格（jsdom）：
  *  - 前置校验（渠道必选、金额 1 元–10 万元界）不触发出站 action；
  *  - 预设金额/渠道交互与提交参数、payUrl 跳转；
  *  - 渠道目录为空的降级文案（引流兑换码）。
@@ -19,7 +19,7 @@ vi.mock('@/server/actions/billing', () => ({
   createPaymentAction: vi.fn(),
 }));
 
-// toast 经 @tillgate/ui re-export 自 sonner；client 不直依赖 sonner（B15 口径），
+// toast 经 @tillgate/ui re-export 自 sonner；client 不直依赖 sonner，
 // 故对 ui 面做部分 mock：组件保真，仅 toast 替身以断言成功反馈。
 vi.mock('@tillgate/ui', async (importOriginal) => {
   const actual = await importOriginal<typeof UiModule>();

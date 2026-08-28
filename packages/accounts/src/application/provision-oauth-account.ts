@@ -1,5 +1,5 @@
 /**
- * OAuth 账号 find-or-create(v1 oauth.service 语义):同 (issuer,subject) 幂等建号;
+ * OAuth 账号 find-or-create:同 (issuer,subject) 幂等建号;
  * 竞态撞唯一键走 exists 分支回查(23505 兜底)。displayName 兜底「用户{subject 前 6}」。
  * status≠0 的拒绝归调用方(identity 防枚举口径)。
  */
@@ -18,7 +18,7 @@ export async function provisionOAuthAccount(
   ctx: UseCaseContext,
   input: { issuer: string; subject: string; email?: string; displayName?: string },
 ): Promise<ProvisionOAuthResult> {
-  // email 由调用方选取已验证邮箱;此处规范化,形状不合法按无邮箱落库(v1 不校验语义)
+  // email 由调用方选取已验证邮箱;此处规范化,形状不合法按无邮箱落库
   const email = input.email !== undefined ? normalizeValidEmail(input.email) : null;
   const displayName =
     input.displayName !== undefined && input.displayName.trim().length > 0

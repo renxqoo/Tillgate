@@ -1,5 +1,5 @@
 /**
- * 模态 multipart 族路由（v1 routes/modality-multipart.ts 迁移）：
+ * 模态 multipart 族路由：
  *   POST /v1/images/edits         multipart（image 文件 + prompt；units=张）
  *   POST /v1/audio/transcriptions multipart（audio 文件；units=音频秒）
  *   POST /v1/audio/translations   multipart（audio 文件；units=音频秒）
@@ -103,7 +103,7 @@ async function buildMultipartWrapper(
       const buf = new Uint8Array(await primaryFile.arrayBuffer());
       wrapper.audioSeconds = estimateAudioDurationSeconds(buf);
     } catch {
-      wrapper.audioSeconds = 1; // 字节解析失败兜底（A7：防上游异常文件阻塞路由）
+      wrapper.audioSeconds = 1; // 字节解析失败兜底（防上游异常文件阻塞路由）
     }
   }
   wrapper.upstreamForm = upstream;

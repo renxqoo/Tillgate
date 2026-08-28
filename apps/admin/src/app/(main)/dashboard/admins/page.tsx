@@ -34,6 +34,8 @@ interface AdminRow {
   twoFactorEnabled: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  /** false = 待激活（邀请邮件可发/可重发的单一事实） */
+  hasPassword: boolean;
 }
 
 export default async function AdminsPage({ searchParams }: PageProps) {
@@ -85,9 +87,14 @@ export default async function AdminsPage({ searchParams }: PageProps) {
       key: 'status',
       header: tc('status'),
       render: (r) => (
-        <StatusPill tone={r.status === 0 ? 'success' : 'neutral'}>
-          {r.status === 0 ? tc('enabled') : tc('disabled')}
-        </StatusPill>
+        <span className="flex items-center gap-2">
+          <StatusPill tone={r.status === 0 ? 'success' : 'neutral'}>
+            {r.status === 0 ? tc('enabled') : tc('disabled')}
+          </StatusPill>
+          {r.status === 0 && !r.hasPassword && (
+            <Badge variant="outline">{t('pendingActivation')}</Badge>
+          )}
+        </span>
       ),
     },
     { key: 'lastLoginAt', header: tc('lastLogin'), render: (r) => fmtDateTime(r.lastLoginAt) },
@@ -100,6 +107,8 @@ export default async function AdminsPage({ searchParams }: PageProps) {
           id={r.id}
           roleId={r.roleId}
           status={r.status}
+          hasPassword={r.hasPassword}
+          canResend={hasPerm(me, 'admins:update')}
           self={r.id === me.id}
           roles={roles}
         />

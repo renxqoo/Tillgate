@@ -15,15 +15,12 @@ name: docker-publish
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 concurrency:
   group: docker-publish-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  # compose 插值用：grafana（obs profile）的必填校验变量，构建阶段不消费
-  GRAFANA_ADMIN_PASSWORD: build-placeholder
 
 jobs:
   build-push:
@@ -35,20 +32,28 @@ jobs:
     env:
       REGISTRY: ${{ secrets.ACR_REGISTRY }}
       NAMESPACE: ${{ vars.ACR_NAMESPACE || 'tillgate' }}
+      POSTGRES_PASSWORD: ci-compose-only-postgres
+      REDIS_PASSWORD: ci-compose-only-redis
+      TRACE_RECEIVER_TOKEN: ci-compose-only-trace-token
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
 
+      - name: Prepare Compose environment
+        run: cp .env.example .env
+
       - name: Login to ACR
+        if: github.event_name != 'pull_request'
         run: echo "${{ secrets.ACR_PASSWORD }}" | docker login "$REGISTRY" -u "${{ secrets.ACR_USERNAME }}" --password-stdin
 
       # 与 docker/compose.yml 同源构建（build args/platform 由 compose 定义，含 image 标签
       # tillgate/<svc>:local）；顺序构建共享 Dockerfile.server 的 bun install 层缓存
       - name: Build all images
-        run: docker compose -f docker/compose.yml build
+        run: docker compose --env-file .env -f docker/compose.yml build
 
       - name: Push images
+        if: github.event_name != 'pull_request'
         run: |
           set -eu
           services="gateway client-api admin-api worker trace-receiver console-client console-admin migrate"
@@ -65,5 +70,5 @@ jobs:
           echo "发布完成：${REGISTRY}/${NAMESPACE}/{${services// /,}}"
 
       - name: Logout
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         run: docker logout "$REGISTRY" || true

@@ -1,9 +1,9 @@
 /**
- * 兑换码 claim 真实 PostgreSQL 契约（B-red-claim 回归）：
- * client-api E2E 旅程实测发现——claim 的 UPDATE ... RETURNING 引用了未 JOIN 的
+ * 兑换码 claim 真实 PostgreSQL 契约：
+ * 回归背景——claim 的 UPDATE ... RETURNING 引用了未 JOIN 的
  * 批次表列，渲染成裸列名后 PG 42703（column "amount" does not exist），
  * 兑换动词全路径 500。回归锁死：未知码 → null（不发 SQL 错）；有效码 → 返回
- * 批次面额；重复 claim → null（CAS 单赢家）。默认门禁排除（铁律 14），
+ * 批次面额；重复 claim → null（CAS 单赢家）。默认门禁排除，
  * 经 `bun run test:real`（DB_TEST_URL / DATABASE_URL）显式运行。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

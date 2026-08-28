@@ -1,6 +1,6 @@
 /**
- * 动态 RBAC store port：角色与权限树资源的读写边界（ADR-0008）。
- * 授权策略守卫（super 不可变/内置不可删/码唯一/enforced 锁）由 application 裁决——
+ * 动态 RBAC store port：角色与权限树资源的读写边界。
+ * 授权策略守卫（super 不可变/内置不可删/码唯一/enforced 锁）由 application 判定——
  * port 不藏策略;SQL 只在 adapters/postgres。
  */
 import type { DbLike } from '@tillgate/db';
@@ -96,7 +96,7 @@ export interface CreatePermissionRow {
 
 export interface UpdatePermissionRow {
   readonly id: number;
-  /** 全字段可改（用户裁决:enforced 锁与「码即身份」放开——结构合法性仍由用例校验） */
+  /** 全字段可改（enforced 锁与「码即身份」不限制——结构合法性仍由用例校验） */
   readonly name?: string;
   readonly i18nKey?: string | null;
   readonly description?: string | null;
@@ -127,7 +127,7 @@ export interface PermissionStore {
   activeCodes(db: DbLike): Promise<string[]>;
 }
 
-// ── 接口权限绑定（ADR-0009:执行面数据化）───────────────────────────────────
+// ── 接口权限绑定（执行面数据化）───────────────────────────────────
 
 export interface EndpointBindingRecord {
   readonly id: number;

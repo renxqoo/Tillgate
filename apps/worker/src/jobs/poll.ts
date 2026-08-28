@@ -1,6 +1,6 @@
 /**
  * 生成任务轮询 job（驱动壳）：状态机推进/信号顺序不变量在 inference 的
- * generation-poll 用例（application 层），本文件只提供节奏入口（DESIGN §1）。
+ * generation-poll 用例（application 层），本文件只提供节奏入口。
  */
 import type { GenerationPollResult } from '@tillgate/inference';
 

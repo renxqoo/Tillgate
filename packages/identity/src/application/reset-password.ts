@@ -31,7 +31,7 @@ export async function resetPassword(
       await advisoryLock(tx, credentialSetLockKey(userId));
       await ctx.credentialStore.resetPassword(tx, { userId, passwordHash: newHash });
       const before = await ctx.anchorStore.advanceAnchor(tx, { realm, userId });
-      // 安全审计同事务写入(§5.4):回滚即无审计行,写入失败随事务回滚
+      // 安全审计同事务写入:回滚即无审计行,写入失败随事务回滚
       await auditWithinTx(
         tx,
         ctx,

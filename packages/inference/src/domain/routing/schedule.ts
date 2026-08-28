@@ -1,5 +1,5 @@
 /**
- * 渠道调度排序（v1 gateway routing/schedule.ts 迁移，语义不变）：
+ * 渠道调度排序：
  * priority 高的层严格在前；同层内按 weight 做无放回加权随机——weight 是流量份额
  * （weight=9 的渠道获得 ~9/10 的首发流量），而非确定性 tie-break（否则头部渠道
  * 吸收全部流量直到熔断）。weight<=0 按 1 处理（全 0 时等概率）。

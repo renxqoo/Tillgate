@@ -2,7 +2,7 @@
  * 支付渠道适配（epay / stripe）：PaymentProviderPort 的两个实现。
  * 协议纯规则在 domain/payment/{epay,stripe}；此处只做 IO 组装。
  * 币种与支付类型是部署配置事实（与装配的 PaymentsDeps.currency 同源注入），
- * 不在适配器写死——币种单真相（铁律 3）。
+ * 不在适配器写死——币种单真相。
  */
 import {
   EPAY_PAY_TYPES,
@@ -29,7 +29,7 @@ export function createEpayProvider(config: {
   returnUrl: string;
   /** 支付类型（必填配置；从 EPAY_PAY_TYPES 词表校验——不写死 'alipay'） */
   payType: (typeof EPAY_PAY_TYPES)[number];
-  /** 验签密钥序列（先新后旧，旧值仅双读窗内——DESIGN integration-settings §5 D6；缺省 [key]） */
+  /** 验签密钥序列（先新后旧，旧值仅双读窗内；缺省 [key]） */
   verifyKeys?: readonly string[];
   clock?: () => number;
 }): PaymentProviderPort {
@@ -39,7 +39,7 @@ export function createEpayProvider(config: {
     );
   }
   if (config.verifyKeys != null && config.verifyKeys.length === 0) {
-    // 空验签序列 = 静默关死回调面——fail-loud（review 修复 C-1）
+    // 空验签序列 = 静默关死回调面——fail-loud
     throw new Error('epay verifyKeys must not be empty');
   }
   return {

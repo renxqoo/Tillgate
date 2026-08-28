@@ -3,7 +3,7 @@
  * 引用保留可追溯；渠道名随部分唯一索引释放可复用。
  * 下游守卫：仍有**在册**模型映射绑定该渠道时拒绝（channel_has_models）——须先解绑
  * 或删除映射；回收站映射的残留绑定是历史追溯，不阻塞。
- * 在途任务不受影响：worker 轮询（findTaskChannel）按 v1 语义保持可达。
+ * 在途任务不受影响：worker 轮询（findTaskChannel）不按启用状态过滤，已提交任务保持可达。
  */
 import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';

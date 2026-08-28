@@ -43,7 +43,7 @@ describe.skipIf(url == null)('Redis 集成（真实实例）', () => {
       const err = await assertRedisReachable(dead, 'dead-svc', 'redis://:pass@127.0.0.1:1', 1_000)
         .then(() => null)
         .catch((error: Error) => error);
-      expect(isInfrastructureError(err), String(err)).toBe(true); // §11 身份
+      expect(isInfrastructureError(err), String(err)).toBe(true);
       expect((err as { code: string }).code).toBe('runtime.redis.unreachable');
       const { message } = defined(err, 'err');
       expect(message).toContain('dead-svc');

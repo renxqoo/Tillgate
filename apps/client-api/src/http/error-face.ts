@@ -1,7 +1,7 @@
 /**
- * 错误信封装配（ADR-0001：业务错误定义归能力包、app face 装配）：
+ * 错误信封装配（业务错误定义归能力包、app face 装配）：
  * composeErrorCatalogs 合成全量目录 + FaceOverride 钉死与 category 默认不同的
- * v1 状态语义（410/502/401 族）。禁止 instanceof 业务类翻译表（v1 E1/E3 病灶）。
+ * wire 状态码（410/502/401 族）。禁止 instanceof 业务类翻译表。
  */
 import { composeErrorCatalogs, defineErrorCatalog } from '@tillgate/errors';
 import { HttpErrors, type FaceOverride } from '@tillgate/http';
@@ -9,7 +9,7 @@ import { identityErrors } from '@tillgate/identity';
 import { AccountsErrors } from '@tillgate/accounts';
 import { BillingErrors } from '@tillgate/billing';
 
-/** app 编排期目录（跨能力流程的协议级拒绝——v1 裸码的命名空间化） */
+/** app 编排期目录（跨能力流程的协议级拒绝） */
 export const clientErrors = defineErrorCatalog('client', {
   register_disabled: {
     category: 'forbidden',
@@ -91,27 +91,27 @@ export const clientErrors = defineErrorCatalog('client', {
   },
 });
 
-/** 状态钉死表：v1 wire 状态码与 category 默认不同的全部条目（app.test.ts 表驱动锁死） */
+/** 状态钉死表：wire 状态码与 category 默认不同的全部条目（app.test.ts 表驱动锁死） */
 export const CLIENT_FACE_OVERRIDES: Readonly<Record<string, FaceOverride>> = {
-  // v1 410 Gone 族
+  // 410 Gone 族
   'billing.code_expired': { status: 410 },
   'accounts.invitation_expired': { status: 410 },
   'client.oauth_state_expired': { status: 410 },
   'client.oauth_state_mismatch': { status: 403 },
-  // v1 401（category 默认 403 的统一改判）
+  // 401（category 默认 403 的统一改判）
   'identity.invalid_credentials': { status: 401 },
-  // v1 502（上游/渠道坏流）
+  // 502（上游/渠道坏流）
   'client.oauth_callback_failed': { status: 502 },
   'identity.oauth_profile_failed': { status: 502 },
   'identity.delivery_failed': { status: 502 },
   'billing.payment_channel_unavailable': { status: 502 },
-  // v1 422（订阅购买资格族——语义分级保留）
+  // 422（订阅购买资格族——语义分级保留）
   'billing.plan_disabled': { status: 422 },
   'billing.plan_not_purchasable': { status: 422 },
   'billing.subscription_rule': { status: 422 },
-  // v1 404（未配置的登录方式）
+  // 404（未配置的登录方式）
   'identity.oauth_provider_unconfigured': { status: 404 },
-  // v1 410 语义（identity 单次 state 消费失败统一过期口径，见 DESIGN §4）
+  // 410 语义（identity 单次 state 消费失败统一过期口径）
   'identity.oauth_state_invalid': { status: 410 },
 };
 

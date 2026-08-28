@@ -1,5 +1,5 @@
 /**
- * OpenAPI registry 聚合器（P3 生成链唯一出口）。
+ * OpenAPI registry 聚合器（生成链唯一出口）。
  * buildAdminOpenApiDocument():registry → OpenAPI 3.1 文档（纯函数,确定性输出——
  * scripts/generate-openapi.ts 与 __test__/openapi.test.ts 共用,锁逐字节重生成相等）。
  * 转换口径:请求面 io:'input'（transform/coerce 取 wire 输入侧）,响应面 io:'output';
@@ -16,7 +16,7 @@ import { rateCardsContracts } from '../contracts/rates';
 import { adminsContracts } from '../contracts/admins';
 import { authEndpoints } from './auth';
 import { usersEndpoints } from './users';
-import { adminsEndpoints, adminRowSchema } from './admins';
+import { adminsEndpoints, adminRowSchema, adminCreatedSchema } from './admins';
 import { rbacEndpoints, roleRowSchema, permissionNodeSchema } from './rbac';
 import { controlPlaneEndpoints } from './control-plane';
 import { modelsEndpoints } from './models';
@@ -84,10 +84,11 @@ export const adminApiEndpoints: readonly OpenApiEndpoint[] = [
   ...settingsEndpoints,
 ];
 
-// ---- DTO 组件登记（顺序 = api-client 生成物导出顺序;与换轨前手写版逐名对齐）----
+// ---- DTO 组件登记（顺序 = api-client 生成物导出顺序）----
 export const adminApiDtoComponents: readonly DtoComponent[] = [
   responseComponent('AdminMeInfo', adminMeInfoSchema, 'me'),
   responseComponent('AdminRow', adminRowSchema, 'admins'),
+  responseComponent('AdminCreatedRow', adminCreatedSchema, 'admins'),
   responseComponent('IntegrationSettingItem', integrationItemSchema, 'settings'),
   responseComponent('RoleRow', roleRowSchema, 'roles'),
   responseComponent('PermissionNode', permissionNodeSchema, 'permissions'),
@@ -329,7 +330,7 @@ export function buildAdminOpenApiDocument(): JsonSchema {
     const codes = new Set(endpoint.errors ?? []);
     if (endpoint.auth !== 'public') {
       codes.add(401);
-      codes.add(403); // v2:全部受护端点经 guard(code),无权 403
+      codes.add(403); // 受护端点经 guard(code),无权 403
     }
     for (const code of [...codes].toSorted((a, b) => a - b)) {
       responses[String(code)] = {

@@ -1,6 +1,5 @@
 /**
- * 佣金日结用例单测（v1 apps/worker __tests__/referral.test.ts 语义对位；
- * 内存 wallet + stub stats——postgres 聚合 SQL 由 real 门覆盖）。
+ * 佣金日结用例单测（内存 wallet + stub stats——postgres 聚合 SQL 由 real 门覆盖）。
  */
 import { describe, expect, it } from 'vitest';
 import { createReferralCommissionUseCase } from '../src/application/referral-commission.js';

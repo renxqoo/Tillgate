@@ -1,5 +1,5 @@
 /**
- * 结算唤醒生产端（v1 billing/wakeup.ts 迁移；DESIGN C-G8）：
+ * 结算唤醒生产端：
  * signal 成功转入 settlement_pending 后 `pg_notify('settle-wake', requestId)` 纯门铃
  * ——投递失败不重试不阻断（丢失由 worker 兜底扫描覆盖；消费端 LISTEN 归 worker 波）。
  * 通道名单一真相 = 本常量（db schema billing_requests 注释同源）。

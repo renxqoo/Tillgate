@@ -1,6 +1,5 @@
 /**
- * 返利流水管理读侧（v1 marketing.repo listPayouts 迁移;accounts G3 裁决落位于
- * billing——payouts 是 wallet 流水投影,资金单一真相在本包;admin-api P3 消费）。
+ * 返利流水管理读侧（payouts 是 wallet 流水投影,资金单一真相在本包;admin-api 消费）。
  * kind 词表在 ports 单点;分页口径由调用方收口（listPlans 同例）。
  */
 import type {

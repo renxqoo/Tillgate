@@ -28,9 +28,9 @@ function loadRootDotEnv(): Record<string, string> {
   return filled;
 }
 
-// e2e/billing-recovery 归组运行装置（P7：v1 gateway e2e-worker 搬迁）：
+// e2e/billing-recovery 归组运行装置：
 // 网关真装配（e2e/gateway/kit 世界）+ worker 全真装配共库;文件级串行
-// （三环共享同一世界与 worker 副本——旅程内时序耦合,v1 同套件同款）。
+// （三环共享同一世界与 worker 副本——旅程内时序耦合）。
 export default defineConfig({
   test: {
     root: __dirname,

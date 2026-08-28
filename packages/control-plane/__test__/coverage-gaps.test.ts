@@ -1,5 +1,5 @@
 /**
- * 边界补口用例（§10.1.3：每条断言都有让 它失败的理由——补齐并发竞态路径、
+ * 边界补口用例（每条断言都有让它失败的理由——补齐并发竞态路径、
  * 非管理员操作者、缺省装配构造、fx 环境分支与目录导入 provenance 分支）。
  */
 import { describe, expect, it } from 'vitest';
@@ -28,6 +28,7 @@ import {
   createMemoryDb,
   createMemoryFxStore,
   createStubProbe,
+  createStubSmtpProbe,
   fakeCipher,
   uniqueViolation,
 } from './memory';
@@ -49,6 +50,7 @@ describe('facade 缺省构造（audit/voucher/cache/store 不注入 → postgres
       cipher: fakeCipher,
       capabilities: { protocols: ['openai-compatible'], vendorProfiles: [] },
       probe: createStubProbe().probe,
+      smtpProbe: createStubSmtpProbe().probe,
       defaultProtocol: 'openai-compatible',
       importMaxChannels: 10,
       sources: [],

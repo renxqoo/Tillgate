@@ -1,5 +1,5 @@
 /**
- * chat 流式单次尝试执行体（withRetry 的 fn，从 create-ai 拆出——动词一文件）。
+ * chat 流式单次尝试执行体（withRetry 的 fn；重试编排在 create-ai）。
  * 只做「首字节前」的一次尝试：签名 → 传输 → 首帧探测（空流/流内错误识别）；
  * 重试仅限首字节前，流开始后交给 relay（relay-stream 保证）。
  */
@@ -36,8 +36,7 @@ export interface StreamAttemptEnv {
 }
 
 /**
- * 流式请求签名（B-F2 同修）：流式同样过签名钩子（此前整条 chatStream 路径
- * 无签名——vertex 流式请求会裸奔 401）；签名用最终字节串，与 SigV4 payload
+ * 流式请求签名：流式同样过签名钩子；签名用最终字节串，与 SigV4 payload
  * hash 语义一致。无签名钩子的协议原样返回。
  */
 async function signStreamHeaders(input: {
@@ -60,7 +59,7 @@ async function signStreamHeaders(input: {
 
 /**
  * 首帧判定：错误帧（200 + 流内错误体）→ 厂商错误表映射；正常首帧 → null。
- * B-F3 修复：首帧是 SSE 文本，直接 tryParseJson 恒失败会把 vendorCode 丢成
+ * 首帧是 SSE 文本，直接 tryParseJson 恒失败会把 vendorCode 丢成
  * status 兜底（quota → invalid_request 误分类，重试/熔断判定失真）——用扫描器
  * 剥壳还原错误信封后交厂商错误表。放弃 rest 必须 cancel（tee 分支泄漏）。
  */
@@ -76,7 +75,7 @@ function firstFrameFailure(
 }
 
 /**
- * 流式尝试的 catch 分类序（v1 语义保持）：
+ * 流式尝试的 catch 分类序：
  * drain → 取消 → 超限 → 首字节超时 → 传输错误透传 → 网络。
  */
 function classifyStreamAttemptFailure(
@@ -119,7 +118,7 @@ export async function streamAttempt(
   const bodyStr = JSON.stringify(finalBody);
   const outHeaders = await signStreamHeaders({ adapter, channel, url, bodyStr, headers });
   try {
-    // v1 语义：流式不用 totalMs（流可持续很久，由 heartbeat/inactivity 管理）；
+    // 流式不用 totalMs（流可持续很久，由 heartbeat/inactivity 管理）；
     // connectMs 只覆盖建连，首字节预算由 peekFirstChunk 独立判定——不得用 connectMs
     // 包住 fetch+peek 全程（否则 firstByteTimeoutMs 永不可达、超时误判 empty）
     const res = await fetchUpstream(

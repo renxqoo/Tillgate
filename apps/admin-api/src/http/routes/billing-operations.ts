@@ -1,5 +1,5 @@
 /**
- * 死单复核路由（P1;v1 routes/billing-operations.ts 平移）：list（status=dead 专属）
+ * 死单复核路由：list（status=dead 专属）
  * + retry/abandon（幂等键透传;理由必填;乐观锁 expectedRevision）。
  * 复核审计在 billing 用例内同事务（reviewAuditTx 桥）——路由层零审计。
  */

@@ -1,7 +1,7 @@
 /**
  * billing FundingSourceResolver 桥的真实 PG 契约（*.real.test.ts；默认门禁排除）：
- * 凭证三分支（key 优先 / app 次之 / 兜底）× 限额透传。语义 = v1 credential.repo
- * resolveSourceAndLimits。隔离 schema + 最小 DDL（users/api_keys/apps 三表——与
+ * 凭证三分支（key 优先 / app 次之 / 兜底）× 限额透传。
+ * 隔离 schema + 最小 DDL（users/api_keys/apps 三表——与
  * packages/db schema 同拍的最小子集，仅本表族消费列）。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

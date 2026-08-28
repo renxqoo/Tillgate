@@ -1,5 +1,5 @@
 /**
- * 创建 Application(v1 apps.service create):凭证材料生成(appId/clientId/secret)
+ * 创建 Application:凭证材料生成(appId/clientId/secret)
  * + 订阅守卫(与 Key 同口径)。clientSecret 明文仅本用例返回一次。
  */
 import { runTx } from '@tillgate/db';

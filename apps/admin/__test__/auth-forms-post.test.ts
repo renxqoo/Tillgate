@@ -25,7 +25,10 @@ function formTags(source: string): string[] {
 
 describe('auth 表单 method=post 契约', () => {
   it('features/auth 下每个 <form> 开标签都声明 method="post"（预水合提交不进 URL）', () => {
-    const files = readdirSync(authDir).filter((f) => f.endsWith('.tsx'));
+    // recursive：login-form 等已目录化，子目录内的表单同在守护面内
+    const files = readdirSync(authDir, { recursive: true }).filter(
+      (f): f is string => typeof f === 'string' && f.endsWith('.tsx'),
+    );
     let checked = 0;
     for (const name of files) {
       const tags = formTags(readFileSync(join(authDir, name), 'utf8'));

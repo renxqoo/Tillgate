@@ -1,5 +1,5 @@
 /**
- * 错误分支补集：每个 action 的 ApiError 上浮与网络层失败回落（v1 语义：
+ * 错误分支补集：每个 action 的 ApiError 上浮与网络层失败回落（
  * server action 不允许无提示 reject——fetch 级失败必须翻译为可见 error）。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

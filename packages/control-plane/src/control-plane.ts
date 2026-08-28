@@ -1,5 +1,5 @@
 /**
- * createControlPlane facade：唯一装配面（§5.3——app 只见 facade 与稳定契约）。
+ * createControlPlane facade：唯一装配面（app 只见 facade 与稳定契约）。
  * 内部组装 postgres 适配器族；装配级可覆盖件（审计出口/凭证存储/目录缓存）显式注入。
  * 返回面不泄漏 Db/DbTx/drizzle 行类型/供应商 SDK；分组用例按单元收敛。
  * 按域方法级委托住 src/sections/*-section.ts（逐字搬迁的域构建器）——本文件只做
@@ -27,6 +27,7 @@ import type { CatalogCache } from './ports/cache';
 import type { CatalogSource } from './ports/catalog-source';
 import type { SecretCipher } from './ports/secret-cipher';
 import type { UpstreamProbe } from './ports/upstream-probe';
+import type { SmtpProbe } from './ports/smtp-probe';
 import type { VoucherStorage } from './ports/voucher-storage';
 import type { ProviderCapabilities } from './domain/provider/provider';
 import type { ListResult } from './domain/list';
@@ -69,6 +70,11 @@ import type { RateCardHealth } from './application/rates/check-rate-card-health'
 import type { UpdateBillingTimezoneInput } from './application/settings/update-billing-timezone';
 import type { UpdateIntegrationInput } from './application/integrations/update-integration';
 import type { IntegrationListItem } from './application/integrations/list-integrations';
+import type {
+  ProbeSmtpDeps,
+  ProbeSmtpInput,
+  ProbeSmtpResult,
+} from './application/integrations/probe-smtp';
 import type { CatalogComparisonPayload } from './application/catalog/compare-catalog';
 import type { CatalogPriceHistoryEntry } from './application/catalog/catalog-price-history';
 import type { ImportCatalogInput, ImportCatalogResult } from './application/catalog/import-catalog';
@@ -105,7 +111,7 @@ import { createFxSection } from './sections/fx-section';
 import { createSettingsSection } from './sections/settings-section';
 import { createCatalogSection } from './sections/catalog-section';
 
-/** 装配环境（全部必填注入——铁律 3；可选覆盖件有包内缺省实现） */
+/** 装配环境（全部必填注入；可选覆盖件有包内缺省实现） */
 export interface ControlPlaneEnv {
   readonly db: Db;
   /** 渠道上游 Key 加解密（AES-256-GCM enc:v1；runtime.createCipher 结构兼容） */
@@ -114,6 +120,8 @@ export interface ControlPlaneEnv {
   readonly capabilities: ProviderCapabilities;
   /** 上游探针（assembly 用 ai 库包装：每次新建实例——内存态隔离） */
   readonly probe: UpstreamProbe;
+  /** SMTP 集成探针（assembly 用 nodemailer verify() 包装：连接+认证，不发邮件） */
+  readonly smtpProbe: SmtpProbe;
   /** 协议缺省（如 'openai-compatible'） */
   readonly defaultProtocol: string;
   /** 渠道批量导入单批上限 */
@@ -132,7 +140,7 @@ export interface ControlPlaneEnv {
   readonly fx: FxEnv;
   /** 审计出口（运营事件 best-effort；observability 桥可覆盖——降级清单见 ports/audit-sink.ts） */
   readonly audit?: AuditSink;
-  /** 资金/安全类审计（事务参与 port，§5.4/G3；缺省 postgres 同事务写入） */
+  /** 资金/安全类审计（事务参与 port；缺省 postgres 同事务写入） */
   readonly auditTx?: AuditTxSink;
   /** 凭证存储（缺省 postgres voucher_blobs；OSS 适配可覆盖） */
   readonly voucherStorage?: VoucherStorage;
@@ -206,7 +214,7 @@ export interface ControlPlane {
       replayed: boolean;
     }>;
     listRecharges(input: ListRechargesInput): Promise<ListResult<RechargeRow>>;
-    /** 进货凭证回读（admin-api P5 消费;键校验在 storage——防路径穿越） */
+    /** 进货凭证回读（admin-api 消费;键校验在 storage——防路径穿越） */
     loadVoucher(key: string): Promise<{ data: Uint8Array; mimeType: string } | null>;
   };
   readonly models: {
@@ -249,7 +257,7 @@ export interface ControlPlane {
       },
     ): Promise<ListResult<RateCardUserRow>>;
     cardHealth(rateCardId: number): Promise<RateCardHealth>;
-    /** 卡全局兜底系数读（admin-api D6 set-password「缺则回填 1.000」消费） */
+    /** 卡全局兜底系数读（admin-api set-password「缺则回填 1.000」消费） */
     findGlobalCoefficient(rateCardId: number): Promise<string | null>;
   };
   readonly fx: {
@@ -265,10 +273,12 @@ export interface ControlPlane {
       read(): Promise<{ timezone: string | null }>;
       update(input: UpdateBillingTimezoneInput): Promise<{ timezone: string }>;
     };
-    /** 第三方集成动态配置（integration_settings——DESIGN docs/integration-settings） */
-    integrations: {
+    /** 第三方集成动态配置（integration_settings） */
+    readonly integrations: {
       list(): Promise<{ integrations: readonly IntegrationListItem[] }>;
       update(input: UpdateIntegrationInput): Promise<IntegrationListItem>;
+      /** SMTP 连通性探针（连接+认证，不发送邮件；不落库不留审计） */
+      probeSmtp(input: ProbeSmtpInput): Promise<ProbeSmtpResult>;
     };
   };
   readonly catalog: {
@@ -277,9 +287,9 @@ export interface ControlPlane {
     priceHistory(input: { externalName: string }): Promise<CatalogPriceHistoryEntry[]>;
     import(input: ImportCatalogInput): Promise<ImportCatalogResult>;
   };
-  /** 动态 RBAC（ADR-0008）：动态角色 + 权限树管理面（装配见 application/rbac/compose） */
+  /** 动态 RBAC：动态角色 + 权限树管理面（装配见 application/rbac/compose） */
   readonly rbac: RbacSurface;
-  /** 管理员资料面（G2——装配见 application/admins/compose） */
+  /** 管理员资料面（装配见 application/admins/compose） */
   readonly admins: AdminsSurface;
 }
 
@@ -323,6 +333,16 @@ function resolveStores(env: ControlPlaneEnv): ResolvedStores {
   };
 }
 
+/** SMTP 探针依赖（读存量 + 解密 + 探针 port——只读面，无审计无时钟） */
+function smtpProbeDepsOf(env: ControlPlaneEnv, stores: ResolvedStores): ProbeSmtpDeps {
+  return {
+    db: env.db,
+    stores: { integrationSettings: stores.integrationSettings },
+    cipher: env.cipher,
+    probe: env.smtpProbe,
+  };
+}
+
 export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
   const audit = env.audit ?? createPostgresAuditSink(env.db);
   const auditTx = env.auditTx ?? postgresAuditTxSink;
@@ -339,6 +359,7 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
     auditTx,
     now: () => new Date(),
   };
+  const smtpProbeDeps = smtpProbeDepsOf(env, stores);
   const sourceDeps = { sources: env.sources, cache, cacheTtlMs: env.catalogTtlMs };
   const deps: SectionDeps = {
     env,
@@ -349,6 +370,7 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
     fxDeps,
     settingsDeps,
     integrationDeps,
+    smtpProbeDeps,
     sourceDeps,
   };
   return {

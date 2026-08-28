@@ -13,7 +13,7 @@
 > ④ 实扣公式含 cacheWrite 三段互斥段；
 > ⑤ PAYG 超额 `#over` 走 `collectOverage` **允许负余额全额补收**（无「不足降级」路径）；
 > 套餐核销为守卫式红灯回滚（无「降级核销」路径）；
-> ⑥ 唤醒通道 BullMQ → PG LISTEN/NOTIFY（worker 零 Redis）；
+> ⑥ 结算调度 BullMQ + PG LISTEN/NOTIFY 门铃（PG 状态机兜底）；
 > ⑦ 模型维/渠道维 TPM 预占与免费日限不在 v2（R-E3 在案）；
 > ⑧ 死凭据处置从 DB markDead（status=4）改为 inference health 状态机（AiEvent 记账）。
 >

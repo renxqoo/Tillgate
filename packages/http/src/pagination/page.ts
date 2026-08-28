@@ -1,5 +1,5 @@
 /**
- * 通用分页组件（v1 pagination.ts 逐字迁移；api-contract §4：统一 ?page=&page_size=）。
+ * 通用分页组件（统一 ?page=&page_size= 查询参数约定）。
  *
  * 约定：
  *   - page 从 1 开始（0/负数按 1 处理）

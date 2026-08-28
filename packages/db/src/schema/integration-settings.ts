@@ -3,7 +3,7 @@ import { check, bigint, boolean, pgTable, timestamp, varchar } from 'drizzle-orm
 import { sql } from 'drizzle-orm';
 
 /**
- * integration_settings — 第三方集成动态配置（docs/integration-settings/DESIGN.md §3.1）。
+ * integration_settings — 第三方集成动态配置。
  *
  * OAuth/SMTP/Turnstile/易支付/Stripe 凭据从 env 装配期注入迁入本表：
  * - secret 字段以 enc:v1 密文内嵌 config jsonb（根密钥与渠道 Key 同一部署契约）；
@@ -15,7 +15,7 @@ import { sql } from 'drizzle-orm';
 export const integrationSettings = pgTable(
   'integration_settings',
   {
-    /** 集成键（封闭词表：oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe——oauth.base 已退回 env，ADR-0012） */
+    /** 集成键（封闭词表：oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe——oauth.base 已退回 env） */
     key: varchar('key', { length: 64 }).primaryKey(),
     /** 功能面开关（true ⇒ config 必填齐全——写入侧用例保证） */
     enabled: boolean('enabled').notNull().default(false),

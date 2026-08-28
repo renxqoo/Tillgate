@@ -13,7 +13,7 @@ const GuardErrors = defineErrorCatalog('guardtest', {
   denied: { category: 'conflict', message: 'm', zh: '中' },
 });
 
-/** 守卫面：middleware/边界层精确捕获的唯一入口（DESIGN §2） */
+/** 守卫面：middleware/边界层精确捕获的唯一入口 */
 describe('instanceof 守卫', () => {
   const business = GuardErrors.business('denied');
   const infra = new InfrastructureError('m', 'a.b');

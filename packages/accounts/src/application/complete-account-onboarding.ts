@@ -1,7 +1,7 @@
 /**
- * 建号收尾组合件(v1 createAccountAndSession 的 best-effort 段):
+ * 建号收尾组合件:
  * 赠送失败不阻断建号、归因 catch 全吞——两段都**不抛**,结果记入报告
- * (v1 语义:幂等键可补发/归因可丢弃)。基础设施错误同样吞下并记录 code。
+ * (幂等键可补发/归因可丢弃)。基础设施错误同样吞下并记录 code。
  */
 import { isBusinessError } from '@tillgate/errors';
 import { grantSignupGift } from './grant-signup-gift.js';

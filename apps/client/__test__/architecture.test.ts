@@ -1,8 +1,8 @@
 /**
- * 架构门禁（机器锁定 DESIGN §3/§7 消费面与铁律 3/14 纪律）：
+ * 架构门禁（机器锁定消费面与配置纪律）：
  *  - @tillgate/* 说明符白名单恰为 ui(. / .styles.css) 与 api-client(. / ./next)；
- *  - 全源码禁 @ai-gateway（旧仓残留零容忍）；
- *  - tsconfig paths 恰 @/*（禁止把 workspace 包映射回源码绕过 exports——v1 病灶）；
+ *  - 全源码禁 @ai-gateway；
+ *  - tsconfig paths 恰 @/*（禁止把 workspace 包映射回源码绕过 exports）；
  *  - process.env 只许出现在 server/ 与 config/（features/app/i18n/middleware 禁直读 env）；
  *  - server/actions/*.ts 首行必须是 "use server"。
  */

@@ -9,7 +9,7 @@ const NormalizeErrors = defineErrorCatalog('normtest', {
   denied: { category: 'conflict', message: 'denied', zh: '拒绝' },
 });
 
-/** 边界兜底：任意 unknown → 记录；外来一律按缺陷（v1「未知一律按缺陷」语义的通用化） */
+/** 边界兜底：任意 unknown → 记录；外来一律按缺陷 */
 describe('normalizeError', () => {
   it('根契约错误 → 与 recordOf 等价（三性各一）', () => {
     const samples = [

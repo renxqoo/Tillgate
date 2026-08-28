@@ -1,6 +1,6 @@
 /**
  * ./next locale 行为规格。
- * 内核向量与 @tillgate/http __test__/locale.test.ts 锁步一致(D1 同语义副本约束);
+ * 内核向量与 @tillgate/http __test__/locale.test.ts 锁步一致(同语义副本约束);
  * outgoingLocale 为 BFF 出口封装(mock next/headers)。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

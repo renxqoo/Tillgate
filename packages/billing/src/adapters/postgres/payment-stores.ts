@@ -1,6 +1,5 @@
 /**
  * 支付订单与兑换码的 PostgreSQL adapter（payment_orders / redeem_batches / redeem_codes）。
- * 语义基准：旧仓 payment-order.repo / redeem-{batch,code}.repo 活路径逐方法平移。
  * 状态机：payment_orders 0 created → 1 paid → 2 credited（4 expired 关单标记可复活）；
  * redeem_codes 0 未用 → 1 已核销 / 2 已吊销（库内只存 SHA-256，明文仅返回一次）。
  */
@@ -168,7 +167,7 @@ export function createPostgresPaymentOrderStore(_db: Db): PaymentOrderStore {
         .where(and(eq(paymentOrders.id, orderId), eq(paymentOrders.status, 0)));
     },
 
-    /** 管理列表（v1 listAdminOrders 平移）：q 为订单 uuid 精确命中或用户显示名精确匹配 */
+    /** 管理列表：q 为订单 uuid 精确命中或用户显示名精确匹配 */
     async listAdminOrders(conn, input) {
       const where = input.q
         ? or(eq(paymentOrders.id, input.q), eq(users.displayName, input.q))

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * PasswordForm / RedeemForm 渲染规格（jsdom，MIGRATION §8 渲染切片）：
+ * PasswordForm / RedeemForm 渲染规格（jsdom）：
  *  - PasswordForm：zod 双层校验（长度 8-128 + 两次一致 refine）挡在出站之前、
  *    成功路径参数传递与 reset/onSuccess 收尾；
  *  - RedeemForm：短码校验、成功态到账额展示与「再兑一次」回表单。

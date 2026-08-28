@@ -638,6 +638,20 @@
       "when": 1788657600000,
       "tag": "0091_drop_admins_two_factor_secret",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1788744000000,
+      "tag": "0092_smtp_probe_endpoint",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1788830400000,
+      "tag": "0093_admin_resend_invite_endpoint",
+      "breakpoints": true
     }
   ]
 }

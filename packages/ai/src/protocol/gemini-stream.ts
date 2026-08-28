@@ -12,8 +12,8 @@ import { geminiUsageToUsage } from './gemini-chat';
  * cachedContentTokenCount 扣出 cached、thoughtsTokenCount 计入 output。
  */
 
-/** Gemini alt=sse 数据帧（JSON，无 [DONE]，finishReason 终止）→ 规范形 chunk 流（model 透传入帧——v1 语义） */
-// eslint-disable-next-line max-lines-per-function -- 双向 codec 外壳（装配 + 终态收尾），存量棘轮（铁律 22⑥）
+/** Gemini alt=sse 数据帧（JSON，无 [DONE]，finishReason 终止）→ 规范形 chunk 流（model 透传入帧） */
+// eslint-disable-next-line max-lines-per-function -- 双向 codec 外壳（装配 + 终态收尾）
 export function geminiUpstreamToCanonicalStream(
   upstream: ReadableStream<Uint8Array>,
   model: string,
@@ -22,7 +22,7 @@ export function geminiUpstreamToCanonicalStream(
   let toolCallIndex = 0;
   return sseToSseStream(
     upstream,
-    // eslint-disable-next-line max-lines-per-function, complexity -- 逐事件类型翻译的单闭包状态机（事件词表穷举），拆分需跨函数线程化状态，存量棘轮（铁律 22⑥）
+    // eslint-disable-next-line max-lines-per-function, complexity -- 逐事件类型翻译的单闭包状态机（事件词表穷举），拆分需跨函数线程化状态
     (ev: SseEvent, emit) => {
       let data: Json;
       try {
@@ -73,7 +73,7 @@ export function geminiUpstreamToCanonicalStream(
             }),
           );
         }
-        // functionCall part → tool_calls delta（v1 遗留缺口修复：Gemini 每调用完整下发，
+        // functionCall part → tool_calls delta（Gemini 每调用完整下发，
         // 与 OpenAI 流式增量不同——name+arguments 一次性发出，无分片续接）
         const fc = asJson(part.functionCall);
         if (fc !== null && typeof fc.name === 'string') {
@@ -158,7 +158,7 @@ export function geminiUpstreamToCanonicalStream(
 }
 
 /** 规范形 chunk 流 → Gemini alt=sse 数据帧流（客户端侧，入站 gemini 流式） */
-// eslint-disable-next-line max-lines-per-function -- 双向 codec 外壳（装配 + 终态收尾），存量棘轮（铁律 22⑥）
+// eslint-disable-next-line max-lines-per-function -- 双向 codec 外壳（装配 + 终态收尾）
 export function canonicalStreamToGeminiStream(
   upstream: ReadableStream<Uint8Array>,
   model: string,
@@ -172,7 +172,7 @@ export function canonicalStreamToGeminiStream(
 
   return sseToSseStream(
     upstream,
-    // eslint-disable-next-line complexity, max-lines-per-function -- 逐事件类型翻译的单闭包状态机（规范→gemini 事件穷举），拆分需跨函数线程化状态，存量棘轮（铁律 22⑥）
+    // eslint-disable-next-line complexity, max-lines-per-function -- 逐事件类型翻译的单闭包状态机（规范→gemini 事件穷举），拆分需跨函数线程化状态
     (ev: SseEvent, emit) => {
       if (ev.data === '[DONE]') {
         emit(

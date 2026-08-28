@@ -1,10 +1,10 @@
 /**
  * Key 域 presenter：ApiKeyRecord → AdminKeyRow（api-client DTO 快照形状）。
- * D3（MIGRATION §4）：userEmail/userDisplayName 恒 null——accounts 行无用户 join。
+ * userEmail/userDisplayName 恒 null——accounts 行无用户 join。
  */
 import { iso, isoRequired } from '../contracts/common';
 
-/** Key 行（D3: userEmail/userDisplayName 恒 null——accounts 行无用户 join,MIGRATION §4） */
+/** Key 行（userEmail/userDisplayName 恒 null——accounts 行无用户 join） */
 export interface KeyWireRow {
   id: number;
   keyPreview: string;

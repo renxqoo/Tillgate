@@ -1,6 +1,5 @@
 /**
- * 第三方集成凭据一次性导入：env → integration_settings
- * （docs/integration-settings/DESIGN.md §7.2；本脚本 = env 时代的退出路径）。
+ * 第三方集成凭据一次性导入：env → integration_settings。
  *
  * 运行：bun --env-file=.env packages/control-plane/scripts/import-integration-env.ts
  * （等价根任务 `bun run integrations:import`）
@@ -10,7 +9,7 @@
  *   （幂等：已有键跳过，不覆盖 admin 已改值）；
  * - 非空不完整组 → 跳过并警告（对齐存量启动 assertGroup 口径，不部分导入）；
  * - 全空组 → 未配置（不落行）。
- * 前置：DATABASE_URL、ENCRYPTION_KEY（与 admin-api 加密同根键——DESIGN §5 D3 部署契约；
+ * 前置：DATABASE_URL、ENCRYPTION_KEY（与 admin-api 加密同根键；
  * 仅脚本需要 runtime 加密器，src 层禁依赖 runtime 的边界不变）。
  */
 import { closeDb, createDb } from '@tillgate/db';

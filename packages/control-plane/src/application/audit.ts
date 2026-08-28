@@ -1,5 +1,5 @@
 /**
- * 审计发射助手（§5.4 / G3 核销）：
+ * 审计发射助手：
  * - emitAuditWithinTx：资金/安全类审计与业务同事务写入——写入失败抛错随业务事务
  *   回滚（审计与业务变更原子：要么都落、要么都不落）；
  * - emitAudit：低价值运营事件的提交后 best-effort 降级路径（显式策略非默认，
@@ -8,7 +8,7 @@
 import type { DbLike } from '@tillgate/db';
 import type { AuditEntry, AuditSink, AuditTxSink } from '../ports/audit-sink';
 
-/** 事务参与发射（§5.4）：不吞错——失败随调用方事务回滚 */
+/** 事务参与发射：不吞错——失败随调用方事务回滚 */
 export function emitAuditWithinTx(
   audit: AuditTxSink,
   db: DbLike,
@@ -17,7 +17,7 @@ export function emitAuditWithinTx(
   return audit.recordWithinTx(db, entry);
 }
 
-/** best-effort 发射（仅 G3 降级清单内运营事件）：失败不反噬已提交业务 */
+/** best-effort 发射（仅降级清单内低价值运营事件）：失败不反噬已提交业务 */
 export async function emitAudit(audit: AuditSink, entry: AuditEntry): Promise<void> {
   try {
     await audit.record(entry);

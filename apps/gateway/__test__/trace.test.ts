@@ -1,7 +1,7 @@
 /**
  * 全链路 span 树（用户可见行为规格）：一次 /v1/chat/completions 请求在 memory 模式
- * OTel 下产生完整请求路径 span——至少 9 步、同一 traceId、挂于 HTTP 根 span 之下
- * （docs/observability.md §3 清单）。装配与生产同构：真实 createInference +
+ * OTel 下产生完整请求路径 span——至少 9 步、同一 traceId、挂于 HTTP 根 span 之下。
+ * 装配与生产同构：真实 createInference +
  * adapters/trace-port OTel 绑定；目录/计费/上游/限流为内存替身。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

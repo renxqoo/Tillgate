@@ -1,5 +1,5 @@
 /**
- * 拉新参数与关系管理(MIGRATION §1.5-5..6):settings 读写/审计、关系列表/封禁恢复。
+ * 拉新参数与关系管理:settings 读写/审计、关系列表/封禁恢复。
  */
 import { describe, expect, it } from 'vitest';
 import { createTestHarness } from '../src/testing/harness.js';

@@ -27,7 +27,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 |---|---|
 | `NODE_ENV` | `development` / `test` / `production`——生产触发密钥强度、Secure Cookie、SSRF 强制校验（`Dockerfile.server` 内置 `production`） |
 | `DATABASE_URL` | PostgreSQL 连接串（五个服务全消费；compose 部署由 compose 注入） |
-| `REDIS_URL` | Redis 连接串（密码形态 `redis://:pass@host:6379`）。gateway / client-api / admin-api 必填；**worker 与 trace-receiver 不消费**（v2 变化：worker 的 Redis 依赖全退出，唤醒走 PG LISTEN/NOTIFY） |
+| `REDIS_URL` | Redis 连接串（密码形态 `redis://:pass@host:6379`）。gateway / client-api / admin-api 与 worker 必填；trace-receiver 不消费 |
 | `JWT_SECRET` | 用户面会话 + 网关 App JWT 签发密钥；≥32 随机（开发 16） |
 | `ADMIN_JWT_SECRET` | 管理面独立密钥（admin-api）；恒 ≥32。与 `JWT_SECRET` 仍应配不同随机值（v2 变化：不再启动时强校验「不相同」——identity realm 隔离使跨面 token 本就互不认账，见 `packages/identity/src/adapters/jwt/jose-tokens.ts`） |
 | `ENCRYPTION_KEY` | ≥32 随机；运行时对称加密根密钥（AES-256-GCM `enc:v1`）。admin-api（渠道 Key 落库加密）与 client-api（密码信封）**必填**；gateway 未配 `CHANNEL_API_KEY_ENCRYPTION` 时回退用它 |
@@ -51,7 +51,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `OAUTH_API_BASE` | 空 | API 根地址（OAuth 回调白名单由它构建——ADR-0012 退回 env，装配期生效变更需重启）；**生产必填——缺失拒绝启动**；本地缺省 `http://localhost:8081` |
 | `OAUTH_FRONTEND_URL` | 空 | 前端根地址（OAuth 跳转落点，缺省回落 `http://localhost:3000`；未显式配置时找回密码链接 fail-closed）；装配期生效变更需重启 |
 | `CORS_ORIGINS` | 空 | 跨域白名单（逗号分隔；空 = 不放行跨域）；client-api 与 admin-api 消费。网关另有独立键 `GATEWAY_CORS_ORIGINS` |
-| `OTEL_TRACES_MODE` | `off` | `off`/`otlp`（gateway、client-api）；admin-api / worker / trace-receiver 另支持 `memory`/`console`，缺省开发 `memory`、生产 `off`（worker 恒 `off`，除非显式配）。`otlp` 必配 `OTEL_EXPORTER_OTLP_ENDPOINT`。compose 各服务的 `environment` 把它固定为 `'off'`——启用链路需同步改 compose |
+| `OTEL_TRACES_MODE` | `off` | `off`/`otlp`（gateway、client-api）；admin-api / worker / trace-receiver 另支持 `memory`/`console`。Compose 中设 `otlp` 即使用内置 `http://trace-receiver:8793` |
 | `TRACE_RECEIVER_TOKEN` | 空 | 链路鉴权（见「可选功能组」） |
 | `OTEL_METRICS_INTERVAL_MS` | gateway/admin/worker/trace `10000`；client-api `60000` | OTLP 指标推送周期（otlp 模式生效） |
 | `OTEL_SERVICE_VERSION` | `0.1.0` | OTel 资源版本（admin-api / worker / trace-receiver） |
@@ -123,6 +123,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | 键 | 默认 | 说明 |
 |---|---|---|
 | `ADMIN_API_PORT` | `8082` | 监听端口 |
+| `ADMIN_FRONTEND_URL` | _(未设)_ | 管理后台前端基地址——新建管理员的「设置初始密码」邀请邮件链接由此拼装（docs/admin-invite/DESIGN.md）。未配置时创建返回 `inviteSent:false`（列表可重发补救）、重发接口 503 fail-closed |
 | `ADMIN_LOGIN_FAILURE_THRESHOLD` / `_WINDOW_S` / `_LOCK_S` | 5 / 3600 / 900 | 管理面 (email,ip) 爆破锁（v2 变化：键名从 v1 的 `LOGIN_*` 加 `ADMIN_` 前缀；Redis 必配——不可达 fail-closed） |
 | `ADMIN_LOGIN_IP_FAILURE_LIMIT` / `_WINDOW_S` | 30 / 3600 | per-IP 鉴权失败锁 |
 | `CHANNEL_IMPORT_MAX` | `1000` | 渠道批量导入单次上限 |
@@ -146,6 +147,8 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | 键 | 默认 | 说明 |
 |---|---|---|
 | `WORKER_HEALTH_PORT` / `WORKER_HEALTH_TOKEN` | `8792` / 空 | 健康口端口（0 = 关闭）与令牌；空令牌 = `/health` 恒 403（`/livez` `/readyz` 不受影响） |
+| `WORKER_REDIS_URL` / `REDIS_URL` | 必填 | BullMQ 结算调度连接；前者优先，未配时回落共享 `REDIS_URL` |
+| `WORKER_BULLMQ_PREFIX` / `WORKER_SETTLE_CONCURRENCY` | `{bull}` / `8` | BullMQ 键前缀与结算消费并发 |
 | `WORKER_CURRENCY` | `CNY` | 计价币种 |
 | `WORKER_OWNER_ID` | `worker-<pid>` | 认领归属。缺省自动唯一；**多副本部署建议显式命名**（否则重启后 pid 撞名租约语义混乱） |
 | 循环节拍 | 见左 | `WORKER_SETTLE_INTERVAL_MS`（30s）/ `WORKER_RECOVER_INTERVAL_MS`（15s）/ `WORKER_GENERATION_INTERVAL_MS`（5s）/ `WORKER_NOTIFY_INTERVAL_MS`（15s）/ `WORKER_REFERRAL_INTERVAL_MS`（1h 日结）/ `WORKER_RECONCILE_INTERVAL_MS`（1h 对账）/ `WORKER_PARTITION_INTERVAL_MS`（1h 分区维护） |
@@ -162,7 +165,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | SSRF | `false` | `WORKER_AI_ALLOW_LOCAL_URL` / `WORKER_WEBHOOK_ALLOW_LOCAL_URL`（生产恒 false） |
 | `CHANNEL_API_KEY_ENCRYPTION` | 必填 | ≥32；渠道 Key 解密专用键，**无 ENCRYPTION_KEY 回退** |
 
-> v2 变化：worker 的 `REDIS_URL` 配置项已删除（Redis 全退出——唤醒走 PG NOTIFY、熔断存储用内存实现）。
+> worker 的 PG LISTEN/NOTIFY 保留为低延迟门铃，BullMQ 承载结算调度；PG 恢复扫描是确定性兜底。
 
 ## 七、链路接收（trace-receiver）——`apps/trace-receiver/src/config.ts`
 
@@ -198,17 +201,18 @@ compose 部署由 `environment` 段注入：
 | 组 | 键 | 说明 |
 |---|---|---|
 | **第三方集成（动态配置）** | `integration_settings` 表 | OAuth（GitHub/Google 含回调基地址）/ SMTP / Turnstile / 易支付 / Stripe 凭据全部迁入 DB 动态配置（设计：[integration-settings/DESIGN.md](integration-settings/DESIGN.md)）：admin 端 `/dashboard/settings` 可视化管理，secret 以 `enc:v1` 密文落库（根密钥与渠道 Key 同一部署契约），写入留同事务审计，改后最迟 60s 全进程生效、无需重启。**例外**：`oauth.base` 为装配期读取（回调白名单契约），变更需重启。存量部署迁移：`bun run integrations:import`（幂等；半配组跳过并警告——对齐原启动期成组校验）。原 env 键已删除，仅保留 `OAUTH_{GITHUB,GOOGLE}_ENDPOINTS_JSON`（e2e/私有化端点覆盖逃生门）与 `OAUTH_STATE_TTL_SECONDS`（默认 600）。支付验签密钥轮换自带 96h 双读窗（旧密钥回调不丢）；渠道停用不停验签（在途订单归账不中断） |
-| 链路鉴权 | `TRACE_RECEIVER_TOKEN` | 接收端与推流端（gateway/client-api/admin-api 的 OTLP Bearer）共用同一 `.env` 键自动对齐：生产接收端无此值拒绝启动；有 token 时缺它 = 推送全部 401。注意 compose.yml 各服务 `OTEL_TRACES_MODE` 缺省 `'off'`（覆盖 env_file）——启用链路需同步改 compose。生成：`openssl rand -hex 24` |
-| Redis HA | `REDIS_SENTINELS` / `REDIS_SENTINEL_NAME` / `REDIS_SENTINEL_PASSWORD` | Sentinel 拓扑（见 [ha-deployment.md](ha-deployment.md)）。配置节点列表必须带主名（缺 `REDIS_SENTINEL_NAME` 拒绝启动）；`REDIS_URL` 继续作凭证载体。**v2 现状：仅 client-api 消费该组键**——gateway/admin-api 仍直连（详见 ha 手册「已知边界」） |
+| 链路鉴权 | `TRACE_RECEIVER_TOKEN` | 接收端与四个推流进程共用 Bearer；Compose 启用时设 `OTEL_TRACES_MODE=otlp`。生成：`openssl rand -hex 24` |
+| Redis HA | `REDIS_SENTINELS` / `REDIS_SENTINEL_NAME` / `REDIS_SENTINEL_PASSWORD` | gateway / client-api / admin-api / worker 统一消费 Sentinel 拓扑；配了节点列表必须带主名，`REDIS_URL` 继续作主库凭证载体 |
 
 ## compose 插值键（仅 `docker/compose.yml` 消费，应用不读）
 
 | 键 | 默认 | 说明 |
 |---|---|---|
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `postgres` / `postgres` / `ai_gateway` | 容器 PG 超级用户/密码/库名；compose 同时用它们拼 `DATABASE_URL`。生产必改强随机密码 |
-| `REDIS_PASSWORD` | `root123`（仅开发） | compose 用它建 Redis `requirepass` 并拼 `REDIS_URL`；HA 形态的 replica/sentinel 凭证同源。生产务必覆盖强随机值 |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `postgres` / 必填 / `tillgate` | Compose 同时用它们拼 `DATABASE_URL`；生产密码缺失立即拒绝解析 |
+| `REDIS_PASSWORD` | 必填 | Compose 用它建 Redis `requirepass` 并拼 `REDIS_URL`；HA replica 与主库同凭证 |
+| `REDIS_SENTINEL_PASSWORD` | HA 必填 | Sentinel 自身鉴权，应与主库密码分离 |
+| `TILLGATE_IMAGE_PREFIX` | `tillgate` | 本地镜像命名空间；ACR 设为 `<registry>/<namespace>` |
 | `TILLGATE_TAG` | `local` | 自建镜像标签（`tillgate/<svc>:<tag>`）；server 形态「本地构建 → save/load」用它对齐两端 |
-| `GRAFANA_ADMIN_PASSWORD` | 无默认 | obs profile（`--profile obs`）必配——未设时 compose 直接拒绝启动（弱密码默认已移除） |
 
 ## v1 → v2 键名与语义变化
 
@@ -227,7 +231,7 @@ compose 部署由 `environment` 段注入：
 | `FREE_MODEL_DAILY_LIMIT` 等 | （废弃） | `DEFAULT_USER_RPM`/`DEFAULT_USER_TPM`/`FREE_MODEL_DAILY_LIMIT`/`GENERATION_MAX_ACTIVE_PER_USER` 配置只告警忽略 |
 | `GATEWAY_PORT`（compose 8083） | `GATEWAY_PORT`（compose 8080） | v1 的容器 8083 覆盖取消，统一 8080 |
 | `ENCRYPTION_KEY_OLD` + `scripts/rotate-encryption-key.ts` | （未移植） | v2 密文格式 `enc:v1` 与 v1 逐字节兼容（同密钥互解），但双 key 在线轮换窗机制暂缺（见 [deployment-checklist.md](deployment-checklist.md)） |
-| —（v1 worker 用 Redis） | worker 无 `REDIS_URL` | Redis 依赖全退出 |
+| —（迁移中曾退出） | `WORKER_REDIS_URL` / `REDIS_URL` | BullMQ 结算调度恢复 Redis 依赖，PG 状态机仍作兜底 |
 | trace-receiver `DATABASE_URL` 可省 | 必填 | v1 藏默认连接串，v2 fail-fast |
 
 相关文档：[deployment-checklist.md](deployment-checklist.md) · [ha-deployment.md](ha-deployment.md) · [api-contract.md](api-contract.md) · [tech-stack.md](tech-stack.md) · [project-structure-refactoring.md](project-structure-refactoring.md)

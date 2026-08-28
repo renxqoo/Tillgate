@@ -14,7 +14,7 @@ import {
 import { sql } from 'drizzle-orm';
 
 /**
- * 动态 RBAC（ADR-0008）：动态角色 + 单表权限树。
+ * 动态 RBAC：动态角色 + 单表权限树。
  *
  * permissions = 注册面 + 资源树同体：
  *   group（目录,无码,纯结构）→ page（页面,持 域:read 码 + path;dashboard 无码全员）
@@ -105,7 +105,7 @@ export const rolePermissions = pgTable(
 );
 
 /**
- * 接口权限绑定（ADR-0009:执行面数据化）。绑定按 permission_id 外键——改码零漂移;
+ * 接口权限绑定（执行面数据化）。绑定按 permission_id 外键——改码零漂移;
  * 全局 ACL 中间件消费:未绑定路由默认拒绝（公开/自身白名单在代码侧）。
  * 一端点一绑定（UNIQUE(method, path)）。
  */

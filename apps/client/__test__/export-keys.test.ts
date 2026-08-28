@@ -1,8 +1,8 @@
 /**
- * B18 导出增强行为规格（node 环境，BFF 层）：
+ * 导出增强行为规格（node 环境，BFF 层）：
  *  - exportKeysAction 全量翻页拉取：循环 page 取满 total，而非仅当前页 20 条；
  *  - 上限保护（1000 条防失控）、空页防御（total 异常不死循环）、ApiError 降级 error；
- *  - buildKeysTsv：UTF-8 BOM 首字符（Excel 中文兼容，v1 无 BOM 缺陷修复）与列口径。
+ *  - buildKeysTsv：UTF-8 BOM 首字符（Excel 中文兼容）与列口径。
  * next/headers、next-intl/server、next/cache 以测试替身注入；fetch 打桩逐页回放。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

@@ -3,7 +3,7 @@ import type { ReadableSpan, SpanProcessor } from '@opentelemetry/sdk-trace-base'
 
 /**
  * 内存环形缓冲(mode=memory):最近 N 条 trace,供内置查看页——零基建,开发默认。
- * v1 模块级全局状态的重写:工厂闭包、可多实例(G3)。
+ * 工厂闭包实现,可多实例(无模块级全局状态)。
  *
  * 常数内存预算:MAX_TRACES=200 / MAX_SPANS_TOTAL=4000,超限按插入序淘汰最旧 trace 整组。
  */

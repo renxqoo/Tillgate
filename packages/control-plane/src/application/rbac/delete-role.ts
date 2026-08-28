@@ -1,7 +1,6 @@
 /**
  * 删除角色：super 拒（role_immutable——自毁路径封死,isSuper 是系统恢复通道）;
- * 名下有管理员拒（role_in_use——须先迁移）。预置内置角色可删（用户裁决 2026-08-24
- * 反转旧「预置不可删」:超管面全权管理,唯一硬闸 = 被使用）。授权行级联。
+ * 名下有管理员拒（role_in_use——须先迁移）。预置内置角色可删:唯一硬闸 = 被使用。授权行级联。
  */
 import { controlPlaneErrors } from '../../errors';
 import type { RbacDeps } from './rbac-shared';

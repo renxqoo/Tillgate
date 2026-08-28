@@ -1,5 +1,5 @@
 /**
- * OpenAPI 生成链门禁（总纲 P3/admin-api 侧）：
+ * OpenAPI 生成链门禁（admin-api 侧）：
  *   1. 入库产物与内存重生成逐字节相等——禁止手改（generator 是唯一写入方）;
  *   2. 端点词表封闭：method+path 全集快照（增删端点 = registry 变更 → 必须同步本表
  *      并重生成产物,一处不落即红）;
@@ -91,10 +91,12 @@ const ENDPOINTS: readonly string[] = [
   'PATCH /v1/roles/:id',
   'PATCH /v1/users/:id',
   'POST /v1/admins',
+  'POST /v1/admins/:id/resend-invite',
   'POST /v1/auth/login',
   'POST /v1/auth/login/totp',
   'POST /v1/auth/login/verify',
   'POST /v1/auth/logout',
+  'POST /v1/auth/reset-password',
   'POST /v1/billing-operations/:requestId/abandon',
   'POST /v1/billing-operations/:requestId/retry',
   'POST /v1/channel-funds/adjust',
@@ -127,6 +129,7 @@ const ENDPOINTS: readonly string[] = [
   'POST /v1/redeem-batches',
   'POST /v1/redeem-batches/codes/:codeId/revoke',
   'POST /v1/roles',
+  'POST /v1/settings/integrations/smtp/test',
   'POST /v1/subscriptions/:id/cancel',
   'POST /v1/subscriptions/:id/change',
   'POST /v1/subscriptions/:id/grant',

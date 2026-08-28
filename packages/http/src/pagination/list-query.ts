@@ -1,7 +1,6 @@
 /**
- * 列表查询的纯 query-string 半边（v1 list-query.ts 拆分迁移）。
- * drizzle 耦合半边（searchCondition/resolveOrderBy/buildList/countAll 及白名单拒绝语义）
- * 不随 http 迁移——归宿由首个列表端点消费者迁移单元裁决（ADR-0002 D2、IMPLEMENTATION C3）。
+ * 列表查询的纯 query-string 半边；drizzle 耦合半边（searchCondition/resolveOrderBy/
+ * buildList/countAll 及白名单拒绝语义）归列表端点消费者（apps/client/src/server/list-query.ts）。
  */
 import * as z from 'zod';
 import { paginationQuerySchema } from './page';

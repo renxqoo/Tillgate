@@ -1,12 +1,12 @@
 /**
- * 端到端真实链路（v1 e2e-rxm3 迁移；*.real.test.ts——真上游 MiniMax 花钱，
- * 默认门禁排除，经 e2e real 脚本显式运行；MIGRATION §5 单列裁决）：
+ * 端到端真实链路（*.real.test.ts——真上游 MiniMax 花钱，
+ * 默认门禁排除，经 e2e real 脚本显式运行）：
  *   ① 流式中途取消（模型已有输出）→ 计费归属与资金一致性
  *   ② 上游未返回时取消 → 网关行为与资金一致性
  *   ③ 低余额并发 → 放行数量 / 最多亏损 / 能否负、负多少
  *   ④ 多用户大并发 → 数据不错乱（归属/幂等）、不多扣不扣错（钱包对账精确）
  *
- * 装置（v1→v2）：共享 dev 库渠道 2 → 隔离 schema + 渠道克隆（dev 库解密明文 key
+ * 装置：隔离 schema + 渠道克隆（dev 库解密明文 key
  * 以测试密钥重加密——预算/熔断与 dev 环境互不干扰）；请求体量小（max_tokens 低）控成本。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -212,7 +212,7 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
     const expectedBalance = new Decimal(FUND).minus(defined(usage[0], 'usage sum').sum ?? '0');
     expect(new Decimal(walletState.balance).eq(expectedBalance)).toBe(true);
     expect(new Decimal(walletState.inFlight).eq('0')).toBe(true);
-    // 最多亏损边界：余额不为深度负（单请求级 §4 超额以内）
+    // 最多亏损边界：余额不为深度负（单请求级超额以内）
     console.log(
       `③ 结算后：余额 ${walletState.balance}（亏损深度 ${new Decimal(FUND).minus(walletState.balance).toString()}）在途 ${walletState.inFlight} Σ实扣 ${defined(usage[0], 'usage sum').sum}`,
     );

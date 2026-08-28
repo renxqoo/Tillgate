@@ -132,6 +132,7 @@ export function ResetPasswordForm({ token }: { readonly token: string | null }) 
                 id="reset-password"
                 type="password"
                 autoComplete="new-password"
+                placeholder={t('newPasswordPlaceholder')}
                 className="h-11"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -146,6 +147,7 @@ export function ResetPasswordForm({ token }: { readonly token: string | null }) 
                 id="reset-confirm"
                 type="password"
                 autoComplete="new-password"
+                placeholder={t('confirmPasswordPlaceholder')}
                 className="h-11"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}

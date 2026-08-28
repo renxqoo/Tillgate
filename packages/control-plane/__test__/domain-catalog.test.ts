@@ -1,5 +1,5 @@
 /**
- * 目录纯函数（v1 catalog.test.ts「目录纯函数」组等价迁移）：
+ * 目录纯函数：
  * 对外名建议 / OpenAI 兼容全量映射 / models.dev 字典映射 / 换算 / 三态 diff / 消失检测。
  */
 import { describe, expect, it } from 'vitest';

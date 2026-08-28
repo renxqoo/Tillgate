@@ -1,5 +1,5 @@
 /**
- * 管理台列表页统一取数（v1 api-client/list fetchAdminList 行为等价）：
+ * 管理台列表页统一取数：
  * ?page=&limit= 查询构造在 api-client core（buildListQuery 同源），
  * 失败降级为 {rows:[], total:0, error} ——列表页不因后端不可达抛错整页崩。
  */

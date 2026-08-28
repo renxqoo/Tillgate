@@ -4,11 +4,11 @@ import { measurementOf } from './measurement';
 import type { EstimateAttribution } from './attribution';
 
 /**
- * 收据装配（v1 gateway pipeline/receipt.ts 迁移；fx 快照移除见 DESIGN C2）——
+ * 收据装配——
  * 结算验收消费的 durable 快照：价格取自授权时候的命中候选（防中途改价，fallback
  * 价同样有效），usage 取自上游可信回执；缺 usage 走估算归属政策
  * （usage_missing_nonstream ∈ 白名单）。流式专属字段（stream/streamAborted/
- * estimatedFor/bytesRelayed/TTFT）由流式层在基础收据上覆写（v1 同分工）。
+ * estimatedFor/bytesRelayed/TTFT）由流式层在基础收据上覆写。
  *
  * 单位计量（units）：按命中候选声明的 pricingUnit 走计量注册表取结算实值——
  * 响应实值优先（images 张数），参数兜底（audio 秒 / speech 字符）；

@@ -1,5 +1,5 @@
 /**
- * 集成配置完整性（DESIGN §3.2）：configured = 全部必填字段为非空字符串。
+ * 集成配置完整性：configured = 全部必填字段为非空字符串。
  * effective（enabled && configured）在 application 快照层计算——本层只回答完整性。
  */
 import type { IntegrationSpec } from './specs';

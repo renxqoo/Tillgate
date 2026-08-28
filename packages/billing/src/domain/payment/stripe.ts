@@ -10,7 +10,7 @@ import { parsePositiveAmount } from '../money.js';
 /**
  * Stripe 零小数币种封闭词表（协议事实）：这些币种的 amount 即主币种单位
  * （无「分」换算）——统一 ×100 会向用户实收 100 倍，且回调核对对称通过、
- * 正常入账（账实一致但用户被多收；2026-08-25 审计复核 #6）。
+ * 正常入账（账实一致但用户被多收）。
  */
 export const STRIPE_ZERO_DECIMAL_CURRENCIES: readonly string[] = [
   'bif',

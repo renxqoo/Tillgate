@@ -68,7 +68,7 @@ describe.skipIf(redisUrl == null)('adapters/state-redis：真实 Redis CAS 原�
     const { waitForRedisReady } = await import('@tillgate/runtime/testing');
     const redis = createRedisClient(redisUrl as string, {
       serviceName: 'inference-test',
-      logThrottleMs: 30_000, // 必填注入（铁律 3）：测试取生产行为形态值
+      logThrottleMs: 30_000, // 必填注入：测试取生产行为形态值
     });
     await waitForRedisReady(redis); // offline-queue 关闭形态：就绪前发命令直接抛
     try {

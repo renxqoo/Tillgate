@@ -2,7 +2,7 @@
 
 /**
  * 认证 Server Action：登录（两级验证码）/ 注册（两步验证码）/ 登出。
- * 全部经 BFF facade 出站（accept-language + x-forwarded-for 随行——B7 修复），
+ * 全部经 BFF facade 出站（accept-language + x-forwarded-for 随行），
  * 错误 message 由 client-api 按 accept-language 本地化后原样上浮 toast。
  */
 import { redirect } from 'next/navigation';

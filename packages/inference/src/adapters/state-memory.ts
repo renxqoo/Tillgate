@@ -1,7 +1,7 @@
 import type { HealthStore, Versioned } from '../ports/state';
 
 /**
- * 内存 CAS 存储（单副本开发/测试形态；v1 gateway/worker 内存 storages 合一迁移）。
+ * 内存 CAS 存储（单副本开发/测试形态）。
  * 语义对齐 redis 适配器：版本化 CAS + TTL 懒过期；读写值深拷贝（状态机持有者
  * 不得穿透引用污染存储）。多实例部署不适用（无跨进程原子性）。
  */

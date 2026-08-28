@@ -1,7 +1,7 @@
 /**
- * NotifyStore 的 PostgreSQL 实现(v1 repository/notification.repo.ts 逐字迁移,审计通过):
+ * NotifyStore 的 PostgreSQL 实现:
  * 认领 CTE(FOR UPDATE SKIP LOCKED)、三列 CAS fencing、jsonb 进度追加、退避表达式
- * 均与 v1 SQL 语义一致——真实行为等价由 __test__/postgres.real.test.ts 锁定。
+ * ——真实行为等价由 __test__/postgres.real.test.ts 锁定。
  * 行类型不泄 db 形状(type 经词表收窄,delivered_channel_ids 过滤安全整数)。
  */
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
@@ -74,7 +74,7 @@ export const postgresNotifyStore: NotifyStore = {
   },
 
   async patchChannel(db, input: { channelId: number; patch: ChannelPatchInput }) {
-    // 白名单落库(type 永不可改——config 校验口径与渠道类型绑定,v1 仓储同款强制)
+    // 白名单落库(type 永不可改——config 校验口径与渠道类型绑定)
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (input.patch.name !== undefined) set.name = input.patch.name;
     if (input.patch.config !== undefined) set.config = input.patch.config;
@@ -129,7 +129,7 @@ export const postgresNotifyStore: NotifyStore = {
     `);
     return result.map((row) => ({
       // node-postgres 把 bigint 以字符串返回(bigserial mode:'number' 只作用于
-      // 查询构建器映射)——此处显式归一为 port 契约的 number(v1 隐式同形)
+      // 查询构建器映射)——此处显式归一为 port 契约的 number
       id: Number(row.id),
       event: row.event,
       payload: row.payload,

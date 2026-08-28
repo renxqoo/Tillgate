@@ -1,8 +1,8 @@
 /**
- * 边界测试(铁律 11/16:边界必须可执行):
+ * 边界测试(边界必须可执行):
  * 出口面快照(根 + ./composition)/ 依赖白名单(禁 http/ai/runtime/能力包/apps;
  * OTel 只在 telemetry;drizzle 只在 adapters;adapters 只由 facade 与 composition 装配)/
- * 错误目录码表封闭(== DESIGN §4)。
+ * 错误目录码表封闭。
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';

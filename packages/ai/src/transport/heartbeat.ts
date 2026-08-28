@@ -1,6 +1,6 @@
 /**
- * 全局心跳/静默扫描器（S2 修复）：单一 interval 扫描活跃流注册表，
- * 替代 v1 每流一个 setInterval（万级流 = 4 万次/秒定时器唤醒）。
+ * 全局心跳/静默扫描器：单一 interval 扫描活跃流注册表，
+ * 不逐流设 setInterval（万级流 = 每秒数万次定时器唤醒）。
  * check() 由 relay-stream 注册：返回 false 表示流已结束，自动注销。
  */
 

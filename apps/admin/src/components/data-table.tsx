@@ -1,10 +1,20 @@
 import type { ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { listHref, type SearchParamsInput } from '@/lib/list-query';
+import type { SearchParamsInput } from '@/lib/list-query';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@tillgate/ui';
+
+import type { DataTableColumn, DataTableSort } from './data-table-types';
+import { SortableHead } from './sortable-head';
+
+export type { DataTableColumn, DataTableSort } from './data-table-types';
+
+const ALIGN_CLASS: Record<NonNullable<DataTableColumn<unknown>['align']>, string> = {
+  left: 'text-left',
+  right: 'text-right',
+  center: 'text-center',
+};
 
 /**
  * 统一列表表格（admin / client 所有列表页共用）。
@@ -15,68 +25,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
  *   searchParams 未传时 sortable 降级为纯展示。
  * - 数据获取/分页在页面层完成，本组件只负责呈现。
  */
-
-export interface DataTableSort {
-  sortBy?: string;
-  order: 'asc' | 'desc';
-}
-
-export interface DataTableColumn<Row> {
-  /** 列标识；未提供 render 时取 row[key] 作为单元格内容 */
-  key: string;
-  header: ReactNode;
-  /** 点击表头排序（需要传 searchParams 才会渲染链接） */
-  sortable?: boolean;
-  /** 对应接口 sort_by 白名单字段名，默认取 key */
-  sortBy?: string;
-  align?: 'left' | 'right' | 'center';
-  className?: string;
-  headerClassName?: string;
-  render?: (row: Row, index: number) => ReactNode;
-}
-
-const ALIGN_CLASS: Record<NonNullable<DataTableColumn<unknown>['align']>, string> = {
-  left: 'text-left',
-  right: 'text-right',
-  center: 'text-center',
-};
-
-function SortableHead<Row>({
-  column,
-  sort,
-  searchParams,
-}: {
-  column: DataTableColumn<Row>;
-  sort?: DataTableSort;
-  searchParams?: SearchParamsInput;
-}) {
-  const field = column.sortBy ?? column.key;
-  const active = sort?.sortBy === field;
-  const nextOrder = active && sort.order === 'asc' ? 'desc' : 'asc';
-  const href = listHref(searchParams ?? {}, {
-    sort_by: field,
-    order: nextOrder,
-    page: 1,
-  });
-  let Icon = ArrowUpDown;
-  if (active) Icon = sort.order === 'asc' ? ArrowUp : ArrowDown;
-  return (
-    <a
-      href={href}
-      className={cn(
-        'inline-flex items-center gap-1 hover:text-foreground',
-        active && 'text-foreground',
-      )}
-    >
-      {column.header}
-      <Icon
-        className={cn('size-3.5', active ? 'text-primary' : 'text-muted-foreground/60')}
-        aria-hidden
-      />
-    </a>
-  );
-}
-
 export function DataTable<Row>({
   columns,
   rows,

@@ -1,17 +1,26 @@
 # 本地开发：仅基础设施（应用在宿主机 bun dev 运行）
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
 services:
   redis:
     image: redis:7-alpine
-    command: ['redis-server', '--appendonly', 'yes']
+    # 与根 .env 的 REDIS_URL 密码对齐（compose.yml 同款：requirepass 必开，默认仅开发）
+    command: ['redis-server', '--appendonly', 'yes', '--requirepass', '${REDIS_PASSWORD:-root123}']
     ports:
       - '6379:6379'
     volumes:
       - redis-dev:/data
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      # 带鉴权 ping（requirepass 启用后无密码 ping 返回 NOAUTH）
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD:-root123}', 'ping']
       interval: 5s
       timeout: 3s
       retries: 10
+    logging: *default-logging
 
   postgres:
     image: postgres:16-alpine
@@ -28,6 +37,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    logging: *default-logging
 
 volumes:
   redis-dev:

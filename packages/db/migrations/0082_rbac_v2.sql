@@ -1,11 +1,11 @@
--- 0082：RBAC v2（ADR-0008）——动态角色 + 单表权限树。
+-- 0082：动态角色 + 单表权限树（RBAC 重构）。
 --   permissions（group/page/button 树,enforced 种子 = 代码注册表导出）+ roles +
 --   role_permissions;admins.role varchar → role_id 回填切换（旧列由 0083 在消费方
---   改造完成后 drop——波次内两步,每步门禁可绿;非对外兼容层）。
+--   改造完成后 drop——两步迁移,每步门禁可绿;非对外兼容层）。
 -- 节点规约：按钮一码一节点（部分唯一索引）;页面可共享域读码（同域多页同权限面,
 --   可见性判定走码）;全量 code 唯一性由应用层 create/update 守卫
 --   直接引用码（树是绑定 UI 的呈现,不是按钮注册表）。
--- 授权零漂移映射：v1 矩阵 域:write → 该域全部动词码展开;super_admin = is_super
+-- 角色授权种子映射：域:write → 该域全部动词码展开;super_admin = is_super
 --   隐式全量,不落授权行;ops:write 无写端点,自然蒸发。
 
 --> statement-breakpoint
@@ -189,7 +189,7 @@ FROM (VALUES
 ) AS v(page_key, code, name, sort_order)
 JOIN permissions p ON p.i18n_key = v.page_key AND p.type = 'page';
 
--- ── 种子：角色授权（v1 矩阵展开;域:write → 该域全部动词码）──────────────────
+-- ── 种子：角色授权（域:write → 该域全部动词码）──────────────────
 
 --> statement-breakpoint
 INSERT INTO role_permissions (role_id, permission_id)

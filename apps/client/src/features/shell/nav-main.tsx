@@ -15,9 +15,8 @@ import {
 } from '@tillgate/ui';
 
 /**
- * 侧栏导航主区（app 内装配，新 ui 只提供 Sidebar 原语）。
- * 用户面板导航为纯平铺链接（无子级——v1 NavMain 的折叠/子项分支不移植，
- * 形状由本类型封闭），激活态按 pathname 前缀匹配。
+ * 侧栏导航主区（app 内装配，ui 包只提供 Sidebar 原语）。
+ * 用户面板导航为纯平铺链接（无子级，形状由本类型封闭），激活态按 pathname 前缀匹配。
  */
 export interface NavMainItem {
   id: string;

@@ -1,8 +1,8 @@
 /**
- * OpenAPI 生成脚本（P3 生成链第一段）。
+ * OpenAPI 生成脚本（生成链第一段）。
  * 用法:bun run generate:openapi（或 bun scripts/generate-openapi.ts）。
  * 产物:generated/openapi.json（OpenAPI 3.1,**产物入库**——api-client 生成与兼容性
- * diff 都以该交付物为准,api-client 不得 import admin-api 源码,见 api-client DESIGN §3.4）。
+ * diff 都以该交付物为准,api-client 不得 import admin-api 源码）。
  * 禁止手改产物:__test__/openapi.test.ts 锁重生成逐字节相等。
  */
 import { mkdirSync, writeFileSync } from 'node:fs';

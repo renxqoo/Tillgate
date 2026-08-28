@@ -1,5 +1,5 @@
 /**
- * 错误目录封闭性:码表快照锁死(AGENT.md §11;新增码 = 契约变更,须同步 DESIGN §2.3)。
+ * 错误目录封闭性:码表快照锁死(新增码 = 契约变更)。
  */
 import { describe, expect, it } from 'vitest';
 import { notificationsErrors } from '../src/errors';
@@ -25,7 +25,7 @@ describe('notifications 错误目录', () => {
     for (const key of KEYS) {
       const entry = defined(notificationsErrors.entry(key), key);
       expect(entry.category.length).toBeGreaterThan(0);
-      expect(entry.message).toMatch(/^[\x20-\x7e]+$/); // 英文 ASCII(铁律 18)
+      expect(entry.message).toMatch(/^[\x20-\x7e]+$/); // 英文 ASCII
       expect(entry.zh.length).toBeGreaterThan(0);
     }
   });

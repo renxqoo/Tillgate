@@ -6,13 +6,13 @@ import {
   PaginationContent,
   PaginationEllipsis,
   PaginationItem,
-  PaginationLink,
   PaginationNext,
   PaginationPrevious,
   cn,
 } from '@tillgate/ui';
 
 import { pagerHref } from '@/lib/pager-href';
+import { PageControl } from './page-control';
 
 /** 当前页两侧各展示的兄弟页数。 */
 const SIBLINGS = 2;
@@ -40,41 +40,6 @@ function buildPages(page: number, totalPages: number): Array<number | '...'> {
     prev = p;
   }
   return out;
-}
-
-/** 单个页码控件：受控模式渲染 button，URL 模式渲染链接 */
-function PageControl({
-  target,
-  current,
-  reachable,
-  href,
-  onPageChange,
-  label,
-}: {
-  target: number;
-  current: number;
-  reachable: boolean;
-  href: string;
-  onPageChange?: (page: number) => void;
-  label: string;
-}) {
-  return onPageChange ? (
-    <Button
-      type="button"
-      variant={target === current ? 'outline' : 'ghost'}
-      size="icon"
-      onClick={() => reachable && onPageChange(target)}
-      aria-current={target === current ? 'page' : undefined}
-      aria-label={label}
-      disabled={target === current}
-    >
-      {target}
-    </Button>
-  ) : (
-    <PaginationLink href={href} isActive={target === current} aria-label={label}>
-      {target}
-    </PaginationLink>
-  );
 }
 
 /**

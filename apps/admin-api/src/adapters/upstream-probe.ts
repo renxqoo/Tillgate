@@ -1,7 +1,7 @@
 /**
  * 上游探针桥接件（装配面——仅 assembly.ts 引用，architecture 测试锁定）。
  * control-plane 的 UpstreamProbe port 由 ai 库包装实现：每次探针新建 createAi 实例
- * （内存态熔断/死凭据不跨探针共享、不污染网关——control-plane DESIGN §装配注入）。
+ * （内存态熔断/死凭据不跨探针共享、不污染网关）。
  * 渠道连通性 = ai.probe；模型测试 = "1" + max_tokens=1 真实请求（请求内零重试）。
  */
 import { createAi, type Ai } from '@tillgate/ai';

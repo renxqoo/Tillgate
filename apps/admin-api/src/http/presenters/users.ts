@@ -1,7 +1,7 @@
 /**
  * 用户域 presenter：facade 行 → api-client DTO 快照形状（wire 键名对齐
  * packages/api-client/src/dto/admin-api.ts;日期一律 ISO 字符串）。
- * 富化口径 = v1 users.service enrich：available = balance + creditLimit − inFlight。
+ * 富化口径：available = balance + creditLimit − inFlight。
  */
 import type { AccountSnapshot } from '@tillgate/billing';
 import { Decimal } from '@tillgate/billing';
@@ -48,7 +48,7 @@ export interface UserWireRow {
   createdAt: string;
 }
 
-/** 钱包富化（无账户 = 全零——v1 语义;N+1 每行由路由并发） */
+/** 钱包富化（无账户 = 全零;N+1 每行由路由并发） */
 export function walletEnrichmentOf(snapshots: readonly AccountSnapshot[]): {
   balance: string;
   reservedBalance: string;
@@ -104,7 +104,7 @@ export function toUserWireRow(
   };
 }
 
-/** 钱包流水行（腿级 → v1 transactions 行;createdBy 无来源恒 null——MIGRATION §4 D4 族） */
+/** 钱包流水行（腿级行;createdBy 无来源恒 null） */
 export interface TransactionWireRow {
   id: number;
   userId: number;

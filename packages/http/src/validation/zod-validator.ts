@@ -1,10 +1,9 @@
 /**
- * 请求校验组件：JSON body / query 的 zod 校验中间件（v1 validation.ts 迁移形态）。
+ * 请求校验组件：JSON body / query 的 zod 校验中间件。
  * 失败抛 http.validation_failed（context 平铺 path→reason——errors 包 ErrorContext
- * scalar-only 契约；v1 details 数组形态的演进见 IMPLEMENTATION §1.4 C2），
- * 由 errorHandler 统一渲染（status 由 category invalid_input 派生 400）。
+ * scalar-only 契约），由 errorHandler 统一渲染（status 由 category invalid_input 派生 400）。
  *
- * 不用 @hono/zod-validator：zod v4 classic API 下联合类型会导致 TS 重载报错（v1 结论保持）。
+ * 不用 @hono/zod-validator：zod v4 classic API 下联合类型会导致 TS 重载报错。
  */
 import { validator } from 'hono/validator';
 import type { z } from 'zod';

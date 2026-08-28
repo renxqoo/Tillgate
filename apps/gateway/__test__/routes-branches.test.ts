@@ -192,7 +192,7 @@ describe('multipart 音频族与防御', () => {
       close: () => {},
     } as unknown as Inference;
     const app = mount(inference);
-    // 极小 WAV 头（RIFF）——解析失败兜底 1 秒（A7 分支）
+    // 极小 WAV 头（RIFF）——解析失败兜底 1 秒
     const wav = new Uint8Array(44);
     wav.set(new TextEncoder().encode('RIFF'), 0);
     const form = new FormData();

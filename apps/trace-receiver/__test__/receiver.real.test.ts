@@ -7,10 +7,9 @@ import { createReceiverApp } from '../src/app';
 import { defined } from './defined';
 
 /**
- * 接收端真 PG 集成(铁律 14:默认门禁按文件名排除,test:real 显式运行)。
- * v1 receiver.test.ts「HTTP 面段」4 用例的行为等价移植(裁决见 observability
- * MIGRATION §0:batcher/decode/store 端到端链路由本文件在 app 边界复验):
- *   token 门控 / 媒体类型与结构错误信封 / bodyLimit / POST→flush→点查(计费关联提升列)。
+ * 接收端真 PG 集成(默认门禁按文件名排除,test:real 显式运行)。
+ * 覆盖 token 门控 / 媒体类型与结构错误信封 / bodyLimit / POST→flush→点查
+ * (计费关联提升列)——batcher/decode/store 端到端链路在 app 边界复验。
  * 环境:DATABASE_URL(根 .env);不可达时全组跳过。
  * 数据纪律:service='trr-test-svc' 前缀,自建自清。
  */
@@ -41,7 +40,7 @@ const SERVICE = 'trr-test-svc';
 function appUnderTest(batcher: SpanBatcher, token?: string) {
   if (!db) throw new Error('pg unavailable');
   const connected = db;
-  // pingDb 闭包绑定在测试装配面:app 依赖不出现 Db 类型(P5)
+  // pingDb 闭包绑定在测试装配面:app 依赖不出现 Db 类型
   return createReceiverApp({
     pingDb: () => ping(connected),
     store: createPgTraceStore(connected),
@@ -50,7 +49,7 @@ function appUnderTest(batcher: SpanBatcher, token?: string) {
   });
 }
 
-/** v1 形状:合法 span + request.id/user.id 提升属性 */
+/** 合法 span + request.id/user.id 提升属性 */
 function otlpPayload(overrides: { requestId?: string; service?: string } = {}): unknown {
   return {
     resourceSpans: [
@@ -173,7 +172,7 @@ describe('接收端 HTTP 面(真 PG)', () => {
     });
     expect(badShape.status).toBe(400);
     expect(((await badShape.json()) as { error: { code: string } }).error.code).toBe(
-      'observability.invalid_otlp_payload', // G6:v1 wire 码 INVALID_OTLP → 目录码
+      'observability.invalid_otlp_payload',
     );
   });
 

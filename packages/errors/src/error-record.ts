@@ -1,7 +1,6 @@
 /**
- * 错误即数据（DESIGN §2）：跨层传播、face 渲染与日志摄取共用的规范化记录形状。
- * 记录不判责、不含协议信息（零 status）——出站如何表达归 face（v1 E5「未映射错误甩锅
- * 调用方」的结构修复：记录只陈述事实）。
+ * 错误即数据：跨层传播、face 渲染与日志摄取共用的规范化记录形状。
+ * 记录不判责、不含协议信息（零 status）——出站如何表达归 face：记录只陈述事实。
  */
 import { CATEGORY_DEFAULTS, type ErrorCategory } from './category';
 import {
@@ -13,7 +12,7 @@ import {
 } from './nature';
 
 /**
- * 根命名空间保留码（ADR-0001 D6；单一真相——消费者与测试引用此处，不得另写裸字符串）。
+ * 根命名空间保留码（单一真相——消费者与测试引用此处，不得另写裸字符串）。
  * 命名空间 `errors` 为本包保留，能力包目录不得使用。
  */
 export const ROOT_ERROR_CODES = Object.freeze({
@@ -29,7 +28,7 @@ export const ROOT_ERROR_CODES = Object.freeze({
   duplicateNamespace: 'errors.duplicate_namespace',
 });
 
-/** cause 链规范化深度上限（防御病态长链；v1 实证 drizzle 包装后链深 ≤ 3） */
+/** cause 链规范化深度上限（防御病态长链；drizzle 包装后的常见链深 ≤ 3） */
 export const MAX_CAUSE_DEPTH = 10;
 
 interface RecordBase {
@@ -64,9 +63,9 @@ export interface ErrorHandling {
 }
 
 /**
- * 处理语义单点派生（DESIGN §3.4）：
+ * 处理语义单点派生：
  * business 查 category 默认；环境故障可重试且告警；缺陷不重试且响铃。
- * 不提供逐例覆盖（ADR-0001 D5）。
+ * 不提供逐例覆盖。
  */
 export function handlingOf(record: ErrorRecord): ErrorHandling {
   switch (record.nature) {
@@ -110,7 +109,7 @@ function fromTillgate(error: TillgateError, depth: number): ErrorRecord {
 }
 
 /**
- * 记录上下文 = 构造上下文为底 + 注记按时间序合并（后写胜出，ADR-0001 D9b）。
+ * 记录上下文 = 构造上下文为底 + 注记按时间序合并（后写胜出）。
  * 无构造上下文且无注记时保持 undefined（记录干净）。
  */
 function mergedContextOf(error: TillgateError): ErrorContext | undefined {

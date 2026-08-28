@@ -6,7 +6,6 @@ import { defined } from './defined';
 
 /**
  * spans → 路线图视图模型(纯函数,与 React/图库解耦——展示层只做渲染)。
- * v1 packages/tracing graph.test.ts 平移(MIGRATION §1.5);陈旧措辞随迁修正。
  * 不变量:
  *   - 每个 span 恰好一个节点;节点 kind/status/展示字段由语义推断
  *   - 单子节点 → 普通父子边;同一父下的多兄弟(渠道尝试链)→ 首个接父、

@@ -1,8 +1,8 @@
 /**
  * 可信代理感知的客户端 IP 提取 + BFF 透传出口头(仅 ./next 子入口导出)。
  *
- * D2 同语义副本:孪生实现在 @tillgate/http/src/network/trusted-client-ip.ts(发布闭包
- * 裁决;两侧语义必须同步演进,测试向量与 http 包 network.test.ts 锁步一致)。
+ * 同语义副本:孪生实现在 @tillgate/http/src/network/trusted-client-ip.ts(发布闭包;
+ * 两侧语义必须同步演进,测试向量与 http 包 network.test.ts 锁步一致)。
  *
  * 语义:TRUSTED_PROXY_HOPS = 部署在前面的反向代理层数。
  *   - hops=0(默认,安全兜底):完全不信任 X-Forwarded-For / X-Real-IP——
@@ -55,7 +55,7 @@ export function trustedClientIp(input: TrustedClientIpInput): string {
  * 链路:浏览器 → nginx(XFF 追加真实 IP) → Next(本层按 TRUSTED_PROXY_HOPS 解出)
  *      → API(XFF: <用户 IP>,API 侧同样 hops=1 采信右数第 1 跳)。
  * 解不出(dev 直连 hops=0 / 非请求上下文如构建期)→ 不带该头,API 回落 socket。
- * TRUSTED_PROXY_HOPS 逐调用读取(热更新 env 可生效,v1 行为)。
+ * TRUSTED_PROXY_HOPS 逐调用读取(热更新 env 可生效)。
  */
 export async function outgoingUserIpHeader(): Promise<Record<string, string>> {
   try {

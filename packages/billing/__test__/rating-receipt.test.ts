@@ -1,6 +1,6 @@
 /**
- * 收据解码与验收行为规格（迁移自旧仓 decode/receipt/attribution 测试；
- * 新增 B3 回归：垃圾价格串的 Decimal 构造异常归类毒收据，不逃逸死信家族）。
+ * 收据解码与验收行为规格；垃圾价格串的 Decimal 构造异常
+ * 归类毒收据，不逃逸死信家族。
  */
 import { describe, expect, it } from 'vitest';
 import { isBusinessError } from '@tillgate/errors';

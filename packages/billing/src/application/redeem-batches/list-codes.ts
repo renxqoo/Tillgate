@@ -1,4 +1,4 @@
-/** 批内码列表（U6;哈希脱敏在 presenter——明文不存在于库） */
+/** 批内码列表（哈希脱敏在 presenter——明文不存在于库） */
 import { BillingErrors } from '../../domain/errors.js';
 import type { BillingStore } from '../../ports/billing-store.js';
 import type { RedeemCodeRecord, RedeemCodeStore } from '../../ports/payment-ports.js';

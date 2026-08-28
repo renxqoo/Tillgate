@@ -1,7 +1,7 @@
 /**
- * 凭据用例测试(v1 credentials.test 迁移):注册落行、幂等重挂、他人占用、
- * 并发单赢家(内存复演)、密码策略单源(B18/B23 显式化)、composition bridge
- * 回滚语义(B03)。
+ * 凭据用例测试:注册落行、幂等重挂、他人占用、
+ * 并发单赢家(内存复演)、密码策略单源显式化、composition bridge
+ * 回滚语义。
  */
 import { describe, expect, it } from 'vitest';
 import { identityWithinTx } from '../src/composition.js';
@@ -104,7 +104,7 @@ describe('composition bridge:identityWithinTx(§5.4 事务参与审计)', () => 
       identifier: { kind: 'email', value: email(6) },
     });
     expect(result.replayed).toBe(false);
-    // §5.4 契约:bridge 在事务内经 sink 直写(不再返回 auditEvents 交调用方冲洗);
+    // bridge 在事务内经 sink 直写(不再返回 auditEvents 交调用方冲洗);
     // 落库原子性与回滚语义由 postgres.real 门禁复验,内存替身只验证调用链
     expect(h.audit.events).toHaveLength(1);
     expect(defined(h.audit.events[0], 'h.audit.events[0]').action).toBe('credential.register');

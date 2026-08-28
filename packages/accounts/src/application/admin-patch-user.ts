@@ -1,10 +1,10 @@
 /**
- * 管理面用户补丁(v1 users.service patch 语义重构):
- * - freezeReason 只能随封禁出现(v1 superRefine);封禁缺省原因注入;解封清原因;
- * - email 变更 = 身份事实变更,同事务经 SessionInvalidationPort 推进 identity 吊销线(全网下线;§3.4 唯一所有者);
+ * 管理面用户补丁:
+ * - freezeReason 只能随封禁出现;封禁缺省原因注入;解封清原因;
+ * - email 变更 = 身份事实变更,同事务经 SessionInvalidationPort 推进 identity 吊销线(全网下线);
  * - 换卡守卫两分(不存在/停用);限额域校验;
  * - 审计 user.update 同事务落库(全量 patch detail)。
- * 字段校验顺序(status → freeze → 身份 → 换卡 → 限额)是行为契约,拆分后保持不变。
+ * 字段校验顺序(status → freeze → 身份 → 换卡 → 限额)是行为契约。
  */
 import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
@@ -60,7 +60,7 @@ function applyStatusAndFreeze(
       patch.freezeReason = null;
     }
   }
-  // 封禁缺省原因 / 解封清原因(v1 users.service:162-163)
+  // 封禁缺省原因 / 解封清原因
   if (patch.status === USER_STATUS.BANNED && patch.freezeReason === undefined) {
     patch.freezeReason = policy.banDefaultReason;
   }
@@ -109,7 +109,7 @@ function applyLimitFields(
   if (raw.dailySpendLimit !== undefined) {
     if (raw.dailySpendLimit === null) patch.dailySpendLimit = null;
     else {
-      // 管理面允许 0(即日全拒;v1 admin zod 非负),但不得超过业务上界
+      // 管理面允许 0(即日全拒),但不得超过业务上界
       if (!isNonNegativeAmountWithin(raw.dailySpendLimit, policy.amountLimitUpper)) {
         throw AccountsErrors.business('user_patch_invalid', { field: 'dailySpendLimit' });
       }
@@ -161,7 +161,7 @@ export async function adminPatchUser(
       if (updated === null) {
         throw AccountsErrors.business('user_not_found', { userId: input.userId });
       }
-      // email 变更:同事务推进 identity 吊销线(§3.4;回滚即未失效,失败随事务回滚)
+      // email 变更:同事务推进 identity 吊销线(回滚即未失效,失败随事务回滚)
       if (advanceSessionAnchor) {
         await ctx.sessionInvalidation.invalidateUserSessions(tx, {
           realm: SESSION_REALM,

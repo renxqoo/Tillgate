@@ -5,20 +5,14 @@
 import { KeyRoundIcon } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 
-import {
-  StatusPill,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@tillgate/ui';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@tillgate/ui';
 import type { KeyRow } from '@tillgate/api-client';
 
 import { formatDateTime, formatMoney } from '@/features/shared/format';
 
 import { KeyRowActions } from './key-row-actions';
+import { SourceBadge } from './source-badge';
+import { StatusBadge } from './status-badge';
 
 export function KeysTable({
   keys,
@@ -110,28 +104,5 @@ export function KeysTable({
         )}
       </TableBody>
     </Table>
-  );
-}
-
-function StatusBadge({ status }: { status: number }) {
-  const t = useTranslations('keys');
-  if (status === 0) {
-    return <StatusPill tone="success">{t('statusActive')}</StatusPill>;
-  }
-  return <StatusPill tone="destructive">{t('statusRevoked')}</StatusPill>;
-}
-
-function SourceBadge({ label, balanceLabel }: { label: string; balanceLabel: string }) {
-  const isBalance = label === balanceLabel;
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-        isBalance
-          ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-          : 'bg-violet-500/15 text-violet-700 dark:text-violet-300'
-      }`}
-    >
-      {label}
-    </span>
   );
 }

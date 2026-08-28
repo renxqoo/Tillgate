@@ -167,7 +167,7 @@ export async function verifyLoginAction(
   redirect('/dashboard');
 }
 
-/** 2FA 开关确认码发送（admin-email-2fa D2=A：向本人邮箱发码,60s 冷却） */
+/** 2FA 开关确认码发送（向本人邮箱发码,60s 冷却） */
 export async function requestTwoFactorCodeAction(): Promise<{
   challengeId?: string;
   error?: string;
@@ -210,4 +210,35 @@ export async function logoutAction(): Promise<void> {
   }
   await clearAdminSessionCookie();
   redirect('/login');
+}
+
+/**
+ * 消费邀请令牌设置初始密码（公开端点——新建管理员从邮件链接进入,
+ * 无会话可用,与登录族同走裸 fetch）。无效/过期/已用令牌统一
+ * admin_reset_token_invalid;成功后不自动登录（跳登录页手动登录）。
+ */
+export async function resetPasswordAction(
+  token: string,
+  password: string,
+): Promise<{ ok?: true; error?: string }> {
+  const t = await getTranslations('auth');
+  const r = await authFetch(`${getAdminApiBase()}/v1/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token, password }),
+    cache: 'no-store',
+  });
+  if (isFetchError(r)) return { error: r.fetchError };
+  const res: Response = r;
+  const body = (await res.json().catch(() => null)) as {
+    ok?: boolean;
+    error?: { code?: string; message?: string };
+  } | null;
+  if (!res.ok || body?.ok !== true) {
+    if (body?.error?.code === 'identity.weak_password') {
+      return { error: t('passwordPolicyHint') };
+    }
+    return { error: t('resetTokenInvalid') };
+  }
+  return { ok: true };
 }

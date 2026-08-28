@@ -17,7 +17,7 @@ const scrypt = promisify(scryptCallback) as (
   options: { N: number; r: number; p: number; maxmem: number },
 ) => Promise<Buffer>;
 
-/** 默认 scrypt 参数(2^15 ≈ 50ms,登录场景安全且可接受;与 v1 一致) */
+/** 默认 scrypt 参数(2^15 ≈ 50ms,登录场景安全且可接受) */
 export const SCRYPT_N = 1 << 15;
 export const SCRYPT_R = 8;
 export const SCRYPT_P = 1;

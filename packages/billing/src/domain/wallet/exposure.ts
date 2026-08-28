@@ -1,6 +1,6 @@
 /**
  * 出账口径与守卫（纯函数）：所有出账与授信调整共享同一口径——
- * 这是「同一个用户两种算法算出两个可用额」的防线（D4 收敛，全包唯一实现）。
+ * 这是「同一个用户两种算法算出两个可用额」的防线（全包唯一实现）。
  */
 import { Decimal, toStorage } from '../money.js';
 import { BillingErrors } from '../errors.js';
@@ -24,7 +24,7 @@ export function availableToSpend(
 }
 
 /**
- * 原子门守卫口径（2026-08-26 快路径增量）：SQL WHERE 侧与 availableToSpend
+ * 原子门守卫口径：SQL WHERE 侧与 availableToSpend
  * 同一代数式的离散形态——'credit' = balance+credit_limit-in_flight，
  * 'cash' = balance-in_flight（allowCredit:false）。口径选择单一真相在此，
  * postgres adapter 的条件占用（conditionalReserve）按本枚举构造 WHERE。

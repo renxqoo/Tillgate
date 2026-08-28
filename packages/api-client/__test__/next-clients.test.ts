@@ -1,5 +1,5 @@
 /**
- * ./next clients(Next BFF 装配工厂)行为规格:env 基地址解析(B2:dev 兜底只在装配层)、
+ * ./next clients(Next BFF 装配工厂)行为规格:env 基地址解析(dev 兜底只在装配层)、
  * 惰性 memo、端到端头注入(mock next/headers + fake fetch)。
  * 基地址 memo 为模块级状态,各用例 resetModules 后动态导入隔离。
  */

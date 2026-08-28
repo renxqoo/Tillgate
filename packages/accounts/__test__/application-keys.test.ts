@@ -1,5 +1,5 @@
 /**
- * API Key 用例(MIGRATION §1.3):明文一次、限额域、订阅守卫、CAS 生命周期、
+ * API Key 用例:明文一次、限额域、订阅守卫、CAS 生命周期、
  * 轮换继承与降级、网关鉴权读模型、越权=not_found、哈希零泄漏。
  */
 import { describe, expect, it } from 'vitest';

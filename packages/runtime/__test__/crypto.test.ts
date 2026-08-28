@@ -7,7 +7,7 @@ import { defined } from './defined';
 /** 单 key 单格式语义：enc:v1 是格式标记（非密钥世代）；错误密钥/篡改一律认证失败。 */
 const K = 'encryption-key-32-chars-minimum!!';
 
-/** 断言抛出根契约身份与码（§11：runtime 基础设施/缺陷错误就地分类） */
+/** 断言抛出根契约身份与码（runtime 基础设施/缺陷错误就地分类） */
 function expectDefect(fn: () => unknown, code: string): void {
   try {
     fn();
@@ -46,7 +46,7 @@ describe('AES-GCM 单 key（createCipher）', () => {
   it('篡改密文 → 认证失败（DefectError auth_failed，保留原生 cause）', () => {
     const cipher = createCipher(K);
     // 明文须长于 2 字节：GCM 是流密码（密文=明文长），单字节明文的 cipher 段只有
-    // 2 个 hex 字符，末 4 字符篡改会破坏段结构而非走认证路径（v1 泛断言曾掩盖此点）
+    // 2 个 hex 字符，末 4 字符篡改会破坏段结构而非走认证路径
     const packed = cipher.encrypt('tamper-target-payload-0123456789');
     const tampered = `${packed.slice(0, -4)}0000`;
     try {

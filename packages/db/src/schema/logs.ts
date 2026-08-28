@@ -1,13 +1,5 @@
 import { jsonb } from './jsonb.js';
-import {
-  pgTable,
-  bigserial,
-  uuid,
-  varchar,
-  timestamp,
-  bigint,
-    index,
-} from 'drizzle-orm/pg-core';
+import { pgTable, bigserial, uuid, varchar, timestamp, bigint, index } from 'drizzle-orm/pg-core';
 import { users } from './users.js';
 import { admins } from './admins.js';
 import { apiKeys } from './api-keys.js';

@@ -1,11 +1,10 @@
 import type { TextTokenFeatures } from '../types';
 
 /**
- * 文本特征四计数器（token-estimate 启发式层的充分统计量，单一真相——v1 审计迁移）。
+ * 文本特征四计数器（token-estimate 启发式层的充分统计量，单一真相）。
  * wordSegments 依赖相邻字符状态机（词段 ≠ 字符数），不可简化为字符数分类；
- * scanner 按片段统计后累加（求和可交换），替代 v1 outputText 文本累积（S1：
- * 4MB CAP → O(1) 内存）；BPE 精确路径由估算层（token-estimate → tokenizer）按
- * model 直查，不再经特征面随行（bpeExact 分量已按死代码裁决删除，零消费方）。
+ * scanner 按片段统计后累加（求和可交换，O(1) 内存，不累积正文文本）；
+ * BPE 精确路径由估算层（token-estimate → tokenizer）按 model 直查，不经特征面随行。
  */
 
 const codePoint = (ch: string): number => ch.codePointAt(0) ?? 0;
@@ -38,7 +37,7 @@ function isNumber(ch: string): boolean {
 
 const isWhitespace = (ch: string): boolean => /\s/.test(ch);
 
-/** 文本 → 特征向量（一次性统计；与 v1 逐字符状态机行为等价） */
+/** 文本 → 特征向量（一次性统计，逐字符状态机分段计数） */
 export function extractTextFeatures(text: string): TextTokenFeatures {
   const f: TextTokenFeatures = { cjkChars: 0, wordSegments: 0, numberSegments: 0, symbolCount: 0 };
   if (!text) return f;
@@ -72,7 +71,7 @@ export function extractTextFeatures(text: string): TextTokenFeatures {
  * 按片段统计后求和——与整段统计在数学上等价（四计数器对拼接可交换），
  * 但「片段边界重置词段状态」与逐段 extractTextFeatures 一致，
  * 拼接边界不会产生跨段词段（"hel"+"lo" = 2 段，整段 "hello" = 1 段——
- * 按 v1 片段调用语义保持，估算口径不因累积方式改变）。
+ * 片段边界断段为既定估算口径，不因累积方式改变）。
  */
 export class TextFeaturesAccumulator implements TextTokenFeatures {
   cjkChars = 0;

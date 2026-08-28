@@ -1,7 +1,7 @@
 /**
  * 供应商域规则（纯函数）：词表校验（协议/厂商档案）与输入形状。
  * 词表单一真相在 ai 适配器注册表——本包经装配注入快照（capabilities），
- * 不 import ai（总纲 §4.5/§5.2 防环规则）。
+ * 不 import ai（防环规则）。
  */
 import type { ErrorContext } from '@tillgate/errors';
 import { controlPlaneErrors } from '../../errors';
@@ -17,7 +17,7 @@ export const PROVIDER_STATUSES = [0, 1] as const;
 
 export interface ProviderCreateInput {
   readonly name: string;
-  /** undefined = 装配缺省（env.defaultProtocol 注入——铁律 3，不藏全局默认） */
+  /** undefined = 装配缺省（env.defaultProtocol 注入，不藏全局默认） */
   readonly protocol?: string;
   /** null/'' = 清除档案（纯透传） */
   readonly vendor?: string | null;

@@ -1,9 +1,9 @@
 /**
- * 链路图展示投影（v1 graph-adapter + tracing/graph buildTraceGraph 合并重写）。
+ * 链路图展示投影。
  *
  * 输入是 admin-api wire 行（TraceSpanRow，时间为 ISO 字符串）；本文件做展示边界
  * 唯一的时间归一与图推导（节点/边/执行序）。语义与 observability 包
- * src/tracing/graph.ts 的 buildTraceGraph 保持同步（P5 纪律：前端不得直依赖能力包，
+ * src/tracing/graph.ts 的 buildTraceGraph 保持同步（前端不得直依赖能力包，
  * 展示投影由 app 持有；权威实现无运行时消费者，词表语义漂移由
  * __test__/trace-graph.test.ts 输入输出向量锁步）。
  */

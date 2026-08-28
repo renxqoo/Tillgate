@@ -1,5 +1,5 @@
 /**
- * @tillgate/accounts 公共出口(§5.3):facade、错误目录、policy/命令形状与
+ * @tillgate/accounts 公共出口:facade、错误目录、policy/命令形状与
  * 端口类型(装配桥接需要)。adapter 不从根入口导出;Db/DbTx 不出现在任何签名。
  */
 export { createAccounts, type AccountsEnv } from './accounts.js';
@@ -26,7 +26,7 @@ export {
 } from './domain/status.js';
 
 // ---- 端口(装配桥接:wallet-credit → billing;audit → observability 存储) ----
-// AccountStorePort(可替换存储契约,方法首参 DbLike)仅从 ./composition 子入口导出(§5.3)
+// AccountStorePort(可替换存储契约,方法首参 DbLike)仅从 ./composition 子入口导出
 export type {
   WalletCreditPort,
   CreditCommand,

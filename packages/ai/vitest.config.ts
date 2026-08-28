@@ -11,7 +11,7 @@ export default defineConfig({
     },
 
     include: ['__test__/*.test.ts'],
-    // 铁律 14：真实凭证上游集成以 *.real.test.ts 文件名区分，默认门禁按文件名排除
+    // 真实凭证上游集成以 *.real.test.ts 文件名区分，默认门禁按文件名排除
     // （含裸 `vitest run`——不依赖 package.json 脚本参数）；test:real 脚本显式覆盖排除运行
     exclude: [...configDefaults.exclude, '__test__/*.real.test.ts'],
     environment: 'node',

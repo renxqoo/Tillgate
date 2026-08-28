@@ -12,10 +12,10 @@ import { estimateInputTokensOfBody } from '../domain/usage/estimate';
 import type { CatalogPort } from '../ports/catalog';
 
 /**
- * 请求预检（v1 runChat 前置段迁移，限流/OTel 剥离归 app）：
+ * 请求预检：
  * 白名单 → 目录解析与候选链 → 输出上界与转发体钳制 → 双口径输入估算。
  *
- * 估算双口径（v1 政策）：inputUpperBound（JSON UTF-8 字节保守上界）只作预扣敞口
+ * 估算双口径：inputUpperBound（JSON UTF-8 字节保守上界）只作预扣敞口
  * /渠道预算——宁可多押；inputEstimate（特征校准估算）供缺 usage 的实扣兜底
  * ——实扣向精确收敛，上界入实扣会出现「残缺交付贵于完整交付」的反直觉账单。
  */

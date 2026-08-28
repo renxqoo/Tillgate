@@ -1,5 +1,5 @@
 /**
- * 模型目录域契约与纯函数（v1 admin-api domain/catalog.ts 等价迁移）：
+ * 模型目录域契约与纯函数：
  * 目录源货架（全量，免费/付费由消费方筛）+ 库内三态 diff + 换算 + 消失检测 + 对外名建议。
  * 目录 = 临时货架（内存缓存，不落库）；导入落的是既有三层 provider/channel/model_mappings。
  */

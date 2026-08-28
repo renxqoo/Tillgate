@@ -1,7 +1,7 @@
 /**
  * 临时诊断探针（不入默认 e2e 门禁——诊断完即处置）：全真装配网关（真 PG/Redis/
  * billing/inference + mock 上游）+ 进程内 memory OTel，发完整 chat 请求后倒出整棵
- * span 树，逐项核对 docs/observability.md §3 清单（命名/父子/时序/属性/状态）。
+ * span 树，逐项核对清单（命名/父子/时序/属性/状态）。
  *
  * 运行（依赖闭包同 e2e：从 apps/gateway 起vitest）：
  *   cd apps/gateway && bun --env-file=../../.env x vitest run -c ../../e2e/vitest.config.ts trace-probe
@@ -140,7 +140,7 @@ function checkTrace(input: TraceCheckInput): string[] {
   for (const stage of EXPECTED_STAGES) {
     if (!names.includes(stage)) bad.push(`缺阶段 span ${stage}`);
   }
-  // 同一 traceId / 全部挂根 span 下（docs §3：每请求一棵树，阶段挂根）
+  // 同一 traceId / 全部挂根 span 下（每请求一棵树，阶段挂根）
   const traceIds = new Set(trace.spans.map((s) => s.traceId));
   if (traceIds.size !== 1) {
     bad.push(`span 跨 ${traceIds.size} 个 traceId：${[...traceIds].join(',')}`);

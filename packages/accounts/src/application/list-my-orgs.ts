@@ -1,4 +1,4 @@
-/** 我的组织列表(active 成员资格;订阅富化归 app 组合,G1) */
+/** 我的组织列表(active 成员资格;订阅富化归 app 组合) */
 import type { OrgMembershipView } from '../ports/account-store.js';
 import type { UseCaseContext } from './context.js';
 

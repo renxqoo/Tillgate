@@ -1,12 +1,12 @@
 import type { StreamError } from '../types';
 
 /**
- * 统一 SSE 解析原语（修 v1 双实现 S3/S4）：
+ * 统一 SSE 解析原语：
  *   - 单一行缓冲 + UTF-8 跨 chunk 流式解码 + 事件聚合（保留 event: 行名——claude 事件流需要）；
- *   - 流转换统一走 TransformStream + pipeThrough（v1 relay 的 node-server 缓冲教训，
- *     不用 new ReadableStream({ pull }) 模式）；
+ *   - 流转换统一走 TransformStream + pipeThrough（pull 模式的 controller 队列
+ *     在 node-server 下会被一次性读出，不用 new ReadableStream({ pull }) 模式）；
  *   - 边界跟踪（心跳注入判定）与帧序列化共用本模块。
- * scanner（旁路扫描）与 protocol codec（流转换）都基于此，不再各自实现。
+ * scanner（旁路扫描）与 protocol codec（流转换）都基于此。
  */
 
 export interface SseEvent {
@@ -24,7 +24,7 @@ export interface SseEventReaderOptions {
 
 const lineEncoder = new TextEncoder();
 
-// eslint-disable-next-line max-lines-per-function -- SSE 解析原语：行缓冲/记账/派发共享闭包状态的一体实现（scanner 与 codec 共用），存量棘轮（铁律 22⑥）
+// eslint-disable-next-line max-lines-per-function -- SSE 解析原语：行缓冲/记账/派发共享闭包状态的一体实现（scanner 与 codec 共用）
 export function createSseEventReader(
   onEvent: (ev: SseEvent) => void,
   opts: SseEventReaderOptions = {},
@@ -121,7 +121,7 @@ export class SseBoundaryTracker {
   }
 }
 
-// ---- 规范形帧序列化（created 时间戳由 codec 每流缓存一次写入 obj——修 v1 每帧重算 D9）----
+// ---- 规范形帧序列化（created 时间戳由 codec 每流缓存一次写入 obj）----
 
 export function openaiFrame(obj: Record<string, unknown>): Uint8Array {
   return new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`);

@@ -1,8 +1,8 @@
 /**
- * durable receipt 验收（纯函数）：用户一致、usage 数值自洽、估算归属合法（G1）、
+ * durable receipt 验收（纯函数）：用户一致、usage 数值自洽、估算归属合法、
  * 价格快照必须命中授权 quote 的候选（防中途改价算错账）。
  * 验收失败全部是毒收据家族（billing.poison_receipt / billing.receipt_user_mismatch）——
- * 结算侧按码判 dead，不靠 message 文本；价格比较经 B3 加固（垃圾串构造异常不逃逸）。
+ * 结算侧按码判 dead，不靠 message 文本；价格比较已加固（垃圾串构造异常不逃逸）。
  */
 import { BillingErrors } from '../errors.js';
 import { finiteDecimal } from './decode.js';

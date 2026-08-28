@@ -1,5 +1,5 @@
 /**
- * 装配桥契约（C-G2/C-G3/C-G8 的纯逻辑面；SQL 语义归各包 real 测试）：
+ * 装配桥契约（纯逻辑面；SQL 语义归各包 real 测试）：
  * catalog-port：费率卡三层系数解析 / 停用卡 403 / 单位上界（body 推导 + 保底只抬不降）/
  *   变体单价（hold==settle）/ fallback 链透传 / 渠道候选映射（含可选限流列）；
  * billing-port：authorize 报价组装（inputUpperBound 逐候选盖章 / explicitlyFree）/

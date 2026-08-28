@@ -10,7 +10,7 @@ export const providerParamSchema = z.object({
 /** state cookie 名（双提交比对：cookie ↔ query） */
 export const OAUTH_STATE_COOKIE = 'tl_oauth_state';
 
-/** 回跳上下文归一：站内绝对路径（防开放重定向）；非法回落 /dashboard（v1 口径） */
+/** 回跳上下文归一：站内绝对路径（防开放重定向）；非法回落 /dashboard */
 export function safeNext(raw?: string | undefined | null): string {
   if (typeof raw === 'string' && raw.startsWith('/') && !raw.startsWith('//')) return raw;
   return '/dashboard';

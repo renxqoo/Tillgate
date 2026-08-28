@@ -103,7 +103,7 @@ describe('errors/fallback：status 兜底与厂商表（§3.2）', () => {
       body: { error: { code: 'insufficient_quota', message: 'x' } },
     });
     expect(hit.kind).toBe('quota_exhausted');
-    // B8 回归：max_tokens 输出超限（invalid_request 系）≠ context_overflow——精确 code 才命中
+    // max_tokens 输出超限（invalid_request 系）≠ context_overflow——精确 code 才命中
     const out = tableOrFallback({
       table,
       status: 400,

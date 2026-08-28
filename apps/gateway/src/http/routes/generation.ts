@@ -1,5 +1,5 @@
 /**
- * 异步生成任务路由（v1 routes/generation.ts 迁移；v2 提交面 = inference.generation）：
+ * 异步生成任务路由（提交面 = inference.generation）：
  *   POST /v1/video/generations | /v1/music/generations —— 提交恒 201（new-api 形状）
  *   GET  /v1/videos/:id | /v1/musics/:id —— 归属查询（他人/异类/不存在一律 404）
  * id = 提交响应的 id（= billing requestId = generation_tasks 主键）。

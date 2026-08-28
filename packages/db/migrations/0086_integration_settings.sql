@@ -1,8 +1,8 @@
--- 0086：第三方集成动态配置（docs/integration-settings/DESIGN.md）。
+-- 0086：第三方集成动态配置。
 -- OAuth/SMTP/Turnstile/易支付/Stripe 凭据从 env 装配期注入迁入本表：
 -- secret 字段以 enc:v1 密文内嵌 config jsonb（根密钥 = 渠道 Key 同一部署契约）；
 -- previous_secrets 承载支付验签密钥轮换双读窗（96h 自愈，仅 rotatable 字段进入）。
--- 绑定种子 = 新 settings 集成端点 2 条（ADR-0009 数据化执行面，fail-closed）。
+-- 绑定种子 = 新 settings 集成端点 2 条（数据化执行面，fail-closed）。
 
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS integration_settings (

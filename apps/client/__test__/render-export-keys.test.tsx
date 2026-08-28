@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * ExportKeys 渲染规格（jsdom，MIGRATION §8 渲染切片 + B18 增强）：
+ * ExportKeys 渲染规格（jsdom）：
  *  - 点击导出触发全量 server action 并走完整下载链路
  *    （Blob → objectURL → anchor.click → revoke），文件名与 BOM 落到字节；
  *  - action 失败以 toast 呈现后端文案，不触发下载。

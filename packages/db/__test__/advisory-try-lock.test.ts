@@ -1,7 +1,7 @@
 /**
- * 会话级 advisory try-lock 闭箱规格（R-5 行为锁，真 PG 语义在 pg.real 门）：
+ * 会话级 advisory try-lock 闭箱规格（真 PG 语义在 pg.real 门）：
  * 获锁/未获锁、fn 异常透传、解锁失败 → 销毁连接不归还 + onDefect 上报。
- * 假 $client.reserve() 注入——db 包默认门禁无 PG 依赖（铁律 14）。
+ * 假 $client.reserve() 注入——db 包默认门禁无 PG 依赖。
  */
 import { describe, expect, it, vi } from 'vitest';
 import { withSessionTryLock } from '../src/advisory-try-lock.js';

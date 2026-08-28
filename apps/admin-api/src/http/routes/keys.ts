@@ -1,5 +1,5 @@
 /**
- * API Key 管理面路由（v1 routes/keys.ts 平移）：全量列表 / 限额与状态补丁。
+ * API Key 管理面路由：全量列表 / 限额与状态补丁。
  * status 枚举 0..1;非法 99 → 400。keyPreview 脱敏回显,明文永不回显。
  */
 import { Hono } from 'hono';

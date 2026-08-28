@@ -1,7 +1,7 @@
 /**
- * model_mappings 模型映射 postgres 适配器（v1 model-mapping.repo 管理面子集等价迁移）：
+ * model_mappings 模型映射 postgres 适配器（管理面）：
  * 管理面 CRUD/绑定全量替换/探针读/目录比对读。
- * 报价候选链解析与 /v1/models 在架目录读是网关热路径——不在此（inference 波次 G1）。
+ * 报价候选链解析与 /v1/models 在架目录读是网关热路径——不在本适配器。
  */
 import { and, asc, desc, eq, ilike, inArray, isNull, isNotNull, or, sql } from 'drizzle-orm';
 import { channels, modelChannels, modelMappings, providers } from '@tillgate/db';
@@ -259,7 +259,7 @@ export const postgresModelStore: ModelStore = {
     return row?.count ?? 0;
   },
 
-  // ---- 网关热路径读（G1；v1 QUOTE_COLUMNS 子集 + status=0 过滤） ----
+  // ---- 网关热路径读（列子集 + status=0 过滤） ----
 
   async findActiveByExternalName(db, externalName) {
     const [row] = await db

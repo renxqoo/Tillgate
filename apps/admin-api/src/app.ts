@@ -1,8 +1,8 @@
 /**
- * admin-api HTTP app（协议适配层,v1 app.ts 平移;错误面入 v2 目录体系）。
+ * admin-api HTTP app（协议适配层）。
  * 本文件是 app 非装配代码:不引用数据库连接类型、composition 或任何 adapter——
- * DB 探活以闭包注入(P5:app 只持有 facade 与纯契约类型)。
- * 会话中间件逐路由挂载（未注册路径 404 而非 401——v1 语义）。
+ * DB 探活以闭包注入(app 只持有 facade 与纯契约类型)。
+ * 会话中间件逐路由挂载（未注册路径 404 而非 401）。
  */
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
@@ -64,6 +64,7 @@ import { permissionsRoutes } from './http/routes/permissions';
 import { endpointsRoutes } from './http/routes/endpoints';
 import { authRoutes, type AuthGuard, type AuthRoutesDeps } from './http/routes/auth';
 import { meRoutes } from './http/routes/me';
+import type { AdminInvitePort } from './http/routes/admins';
 
 export interface AdminAppDeps {
   /** DB 探活(healthz/readyz 用;装配绑定 ping(db),app 不接触 Db 类型) */
@@ -72,7 +73,7 @@ export interface AdminAppDeps {
   dbBudget?: { limit: number; maxQueue: number; waitTimeoutMs: number };
   /** 5xx 服务端日志出口(pino 结构兼容;缺省静默) */
   logger?: { error(obj: Record<string, unknown>, msg?: string): void };
-  /** admin realm 会话验证(identity facade 结构子集)+ 属主回查(P2/D8) */
+  /** admin realm 会话验证(identity facade 结构子集)+ 属主回查 */
   sessions: SessionValidator;
   accounts: Pick<
     AccountUseCases,
@@ -96,36 +97,42 @@ export interface AdminAppDeps {
   /** 同事务审计原语(装配闭包注入——observability/composition writeAudit 桥) */
   writeAudit: WriteAuditInTx;
   subscriptions: SubscriptionsApi;
-  /** U6/P1:plans 目录管理 + 兑换批次管理 + 死信复核 */
+  /** plans 目录管理 + 兑换批次管理 + 死信复核 */
   plans: PlansApi;
   redeemBatches: RedeemBatchesApi;
   review: SettlementApi['review'];
-  /** 后置审计闭包(plans/redeem 域——v1 recordAudit 提交后旁路语义) */
+  /** 后置审计闭包(plans/redeem 域——提交后旁路语义) */
   postAudit: PostAudit;
   controlPlane: ControlPlane;
-  /** P6/D1:词表(protocols/vendors)——assembly 自 ai 根出口装配,/v1/vendor-catalog 消费 */
+  /** 词表(protocols/vendors)——assembly 自 ai 根出口装配,/v1/vendor-catalog 消费 */
   vendorCatalog: { readonly protocols: readonly string[]; readonly vendors: readonly string[] };
   observability: Pick<Observability, 'traces' | 'audit' | 'requestLogs' | 'usage'>;
-  /** P5:通知渠道管理面（CRUD/测试入箱;投递在 worker） */
+  /** 通知渠道管理面（CRUD/测试入箱;投递在 worker） */
   notifications: Pick<Notifications, 'channels'>;
-  /** P4:生成任务管理读侧（inference 任务存储;装配 postgres 适配器） */
+  /** 生成任务管理读侧（inference 任务存储;装配 postgres 适配器） */
   generationTasks: Pick<GenerationTaskStore, 'adminList' | 'settledAmounts'>;
-  /** P4:支付订单管理面（billing payments 组;列表 + 手动关单） */
+  /** 支付订单管理面（billing payments 组;列表 + 手动关单） */
   paymentAdmin: PaymentAdminApi;
-  /** P4:手动关单 failureReason 留痕文案（审计数据,装配层显式持有——铁律 3） */
+  /** 手动关单 failureReason 留痕文案（审计数据,装配层显式持有） */
   orderCloseReason: string;
-  /** P2 登录面:identity 动词面（鉴别/挑战/会话——编排件在路由内组装）;
-   *  credentials.register = RBAC 建管理员凭据（docs/admin-rbac §2.5） */
+  /** 登录面:identity 动词面（鉴别/挑战/会话——编排件在路由内组装）;
+   *  credentials.register = RBAC 建管理员凭据 */
   identity: Pick<Identity, 'passwords' | 'challenges' | 'sessions' | 'mfa' | 'credentials'>;
-  /** P2:爆破双闸（runtime Redis 守卫产物） */
+  /** 爆破双闸（runtime Redis 守卫产物） */
   authGuards: { emailIp: AuthGuard; ip: AuthGuard };
-  /** P2:信任代理跳数（守卫键的 IP 提取） */
+  /** 信任代理跳数（守卫键的 IP 提取） */
   trustedProxyHops: number;
-  /** P2:SMTP 是否已配置（2FA fail-closed 前置） */
+  /** SMTP 是否已配置（2FA fail-closed 前置;邀请邮件投递前置同源） */
   mailerConfigured: () => boolean;
-  /** P2:登录三审计（后置旁路——v1 recordAudit 语义） */
+  /** 管理员邀请令牌 + 重发冷却（Redis 适配器形状;admins/auth 路由消费） */
+  invites: AdminInvitePort;
+  /** 邀请邮件投递（ttl 由装配闭包注入;SMTP 未生效抛 undeliverable_challenge） */
+  sendInviteLink: (to: string, url: string, ctx: { locale?: 'en' | 'zh' }) => Promise<void>;
+  /** 管理后台前端基地址（邀请链接拼装;null = ADMIN_FRONTEND_URL 未配置） */
+  inviteLinkBase: string | null;
+  /** 登录三审计（后置旁路——提交后记录,失败不阻断） */
   loginAudit: AuthRoutesDeps['loginAudit'];
-  /** step-up 失败审计（ADR-0011——action 自由词面：settings.stepup.failed 等） */
+  /** step-up 失败审计（action 自由词面：settings.stepup.failed 等） */
   stepupAudit: (entry: { action: string; adminId: number; ip: string | null }) => Promise<void>;
   /** 2FA 开关成功审计（admin-email-2fa——settings.two_factor,后置旁路） */
   twoFactorAudit: (entry: {
@@ -133,7 +140,7 @@ export interface AdminAppDeps {
     enabledFrom: boolean;
     enabledTo: boolean;
   }) => Promise<void>;
-  /** P2:会话 TTL（签发面） */
+  /** 会话 TTL（签发面） */
   sessionTtlSec: number;
   corsOrigins: readonly string[];
   bodyLimitBytes: number;
@@ -141,15 +148,15 @@ export interface AdminAppDeps {
   now: () => Date;
 }
 
-// eslint-disable-next-line max-lines-per-function, max-statements -- 应用装配:错误处理/中间件栈/路由挂载线性平铺,每条语句即一个挂载步骤(存量棘轮)
+// eslint-disable-next-line max-lines-per-function, max-statements -- 应用装配:错误处理/中间件栈/路由挂载线性平铺,每条语句即一个挂载步骤
 export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
   const app = new Hono<SessionEnv>();
 
   // DB 并发预算门先行(探针路径在门内旁路):管理端批量操作/导出脚本防打满小池
   if (deps.dbBudget != null) app.use('*', dbBudgetMiddleware(deps.dbBudget));
 
-  // 统一兜底:contracts 层 zod parse 的 ZodError 先行翻译(validation_failed——v1
-  // invalid_request 语义);其余流动错误按 v2 目录渲染,PG SQLSTATE 探测注入
+  // 统一兜底:contracts 层 zod parse 的 ZodError 先行翻译(validation_failed,
+  // 即 invalid_request 语义);其余流动错误按目录渲染,PG SQLSTATE 探测注入
   const handler = errorHandler({
     catalog: adminErrorCatalog,
     overrides: ADMIN_FACE_OVERRIDES,
@@ -186,7 +193,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
     app.use('*', middleware);
   }
 
-  // RBAC 全局 ACL（ADR-0009:执行面数据化——接口→权限绑定住 endpoint_permissions,
+  // RBAC 全局 ACL（执行面数据化——接口→权限绑定住 endpoint_permissions,
   // 单一事实源）。公开/自身白名单在中间件内;未绑定默认拒绝（fail-closed,超管短路
   // 可进后台补配绑定 = 兜底恢复路径）。每请求绑定表+权限树各一次查询（~百行小表,
   // 管理面 QPS 无感;缓存挂账）。
@@ -294,12 +301,16 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       admins: deps.controlPlane.admins,
       identity: deps.identity,
       postAudit: deps.postAudit,
+      invites: deps.invites,
+      sendInviteLink: deps.sendInviteLink,
+      inviteLinkBase: deps.inviteLinkBase,
+      mailerConfigured: deps.mailerConfigured,
     }),
   );
   app.route('/', rolesRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
   app.route('/', permissionsRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
   app.route('/', endpointsRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
-  // P2 登录面:auth 公开组（登录/验码不挂会话件;logout 挂）+ me 会话组
+  // 登录面:auth 公开组（登录/验码不挂会话件;logout 挂）+ me 会话组
   app.route(
     '/',
     authRoutes({
@@ -309,6 +320,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       loginAudit: deps.loginAudit,
       trustedProxyHops: deps.trustedProxyHops,
       mailerConfigured: deps.mailerConfigured,
+      invites: deps.invites,
       sessionTtlSec: deps.sessionTtlSec,
     }),
   );

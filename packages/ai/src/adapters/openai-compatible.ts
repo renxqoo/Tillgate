@@ -1,7 +1,7 @@
 import { tableOrFallback } from '../errors/fallback';
 import type { ErrorKind } from '../errors/kinds';
 
-/** OpenAI 官方错误 code → kind（结构精确匹配，共享层零正则——§3.2） */
+/** OpenAI 官方错误 code → kind（结构精确匹配，共享层零正则） */
 const OPENAI_CODE_KINDS: Record<string, ErrorKind> = {
   insufficient_quota: 'quota_exhausted',
   invalid_api_key: 'invalid_api_key',
@@ -30,7 +30,7 @@ import type { ParamAdjustment, ProtocolAdapter } from './protocol-adapter';
  *   - map 在 clamp 前：clamp 规则键针对「映射后的最终参数名」编写（如 o 系列 max_completion_tokens 上限）
  */
 
-/** 各端点已知参数（unknown:'drop' 按端点取集——修 v1 chat 词表删他端点合法参数的潜伏雷） */
+/** 各端点已知参数（unknown:'drop' 判定词表按端点取集，避免误删其他端点的合法参数） */
 const ENDPOINT_EXTRA_PARAMS: Record<string, readonly string[]> = {
   embeddings: ['input', 'encoding_format', 'dimensions'],
   images: ['n', 'size', 'quality', 'response_format', 'style', 'background'],
@@ -140,7 +140,7 @@ function applyClampRules(
   return out;
 }
 
-/** 规则 4) unknown: 'drop' → 删除未知参数（动作记 ignore，可观测；词表按端点取并集——S5） */
+/** 规则 4) unknown: 'drop' → 删除未知参数（动作记 ignore，可观测；词表按端点取并集） */
 function dropUnknownParams(
   out: Record<string, unknown>,
   ctx: { rules: ParamRules; endpoint: Endpoint },
@@ -176,7 +176,7 @@ export class OpenAICompatibleAdapter implements ProtocolAdapter {
     'moderations',
   ];
 
-  /** 上游寻址：endpoint 决定路径；认证头带幂等键（见下方 finalizeRequestBody 上方 C5 注释） */
+  /** 上游寻址：endpoint 决定路径；认证头带幂等键 */
   planRequest(
     channel: ChannelDesc,
     input: { endpoint: Endpoint; model: string; requestId: string; stream: boolean },

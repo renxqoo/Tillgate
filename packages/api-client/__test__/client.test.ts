@@ -1,5 +1,5 @@
 /**
- * core transport 行为规格(v1 doFetch 首次测试固化;MIGRATION §7 对照清单)。
+ * core transport 行为规格。
  * fake fetch 捕获 (url, init),断言头合并顺序、编解码语义与错误信封。
  */
 import { describe, expect, it, vi } from 'vitest';

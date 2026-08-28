@@ -14,10 +14,10 @@ import { STOP_REASON_MAP } from './claude-stream-shared';
  * message_start → role 帧；content_block_delta(text_delta) → content delta；
  * content_block_delta(input_json_delta) → tool_calls delta；
  * message_delta(stop_reason/usage) → finish_reason 帧 + usage 帧；message_stop → [DONE]。
- * 真实模型名从 message_start.message.model 提取写入规范帧（v1 同语义——
- * 出站如需对外目录名，由 relay 的响应侧 model 替换开关统一处理，§3.6 例外 2）。
+ * 真实模型名从 message_start.message.model 提取写入规范帧——
+ * 出站如需对外目录名，由 relay 的响应侧 model 替换开关统一处理。
  */
-// eslint-disable-next-line max-lines-per-function -- 双向 codec 的外壳（内层转换器另有豁免）：装配 + 终态收尾，存量棘轮（铁律 22⑥）
+// eslint-disable-next-line max-lines-per-function -- 双向 codec 的外壳（内层转换器另有豁免）：装配 + 终态收尾
 export function claudeUpstreamToCanonicalStream(
   upstream: ReadableStream<Uint8Array>,
 ): ReadableStream<Uint8Array> {
@@ -33,7 +33,7 @@ export function claudeUpstreamToCanonicalStream(
 
   return sseToSseStream(
     upstream,
-    // eslint-disable-next-line max-lines-per-function, complexity, max-statements -- 逐事件类型翻译的单闭包状态机（claude 事件词表 7+ 型），拆分需跨函数线程化状态，存量棘轮（铁律 22⑥）
+    // eslint-disable-next-line max-lines-per-function, complexity, max-statements -- 逐事件类型翻译的单闭包状态机（claude 事件词表 7+ 型），拆分需跨函数线程化状态
     (ev: SseEvent, emit) => {
       let data: Record<string, unknown>;
       try {

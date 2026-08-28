@@ -1,5 +1,5 @@
 /**
- * 健康端点规格（v1 parity-loops 健康段对位）：livez/readyz 恒开放、
+ * 健康端点规格：livez 存活、readyz 就绪、
  * /health 令牌门（无/错 token 403、对 token 200 深度报告）。
  */
 import { afterAll, describe, expect, it } from 'vitest';
@@ -19,12 +19,20 @@ afterAll(async () => {
   );
 });
 
-function listen(state: { live: boolean; deep?: Record<string, unknown> }, token?: string) {
+function listen(
+  state: {
+    live: boolean;
+    ready?: boolean | (() => Promise<boolean>);
+    deep?: Record<string, unknown>;
+  },
+  token?: string,
+) {
   const server = startHealthServer(
     0,
     {
       live: () => state.live,
-      ready: () => state.live,
+      ready: () =>
+        typeof state.ready === 'function' ? state.ready() : (state.ready ?? state.live),
       deep: () => state.deep ?? { owner: 'w-test', running: state.live },
     },
     token,
@@ -39,7 +47,7 @@ function get(server: Server, path: string, headers: Record<string, string> = {})
 }
 
 describe('健康端点', () => {
-  it('livez/readyz 恒开放（状态映射 200/503）', async () => {
+  it('livez/readyz 无鉴权且按状态映射 200/503', async () => {
     const server = listen({ live: true });
     expect((await get(server, '/livez')).status).toBe(200);
     expect((await get(server, '/readyz')).status).toBe(200);
@@ -51,6 +59,20 @@ describe('健康端点', () => {
     const server = listen({ live: false });
     expect((await get(server, '/livez')).status).toBe(503);
     expect((await get(server, '/readyz')).status).toBe(503);
+  });
+
+  it('readyz 异步探测失败或 reject 均返回 503，livez 不受依赖影响', async () => {
+    const unavailable = listen({ live: true, ready: async () => false });
+    expect((await get(unavailable, '/livez')).status).toBe(200);
+    expect((await get(unavailable, '/readyz')).status).toBe(503);
+
+    const rejected = listen({
+      live: true,
+      ready: async () => {
+        throw new Error('dependency down');
+      },
+    });
+    expect((await get(rejected, '/readyz')).status).toBe(503);
   });
 
   it('/health 无令牌配置（空）或请求缺令牌 → 403；令牌匹配 → 深度报告', async () => {

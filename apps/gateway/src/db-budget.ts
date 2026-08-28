@@ -23,7 +23,10 @@ export function gatewayDbBudget(poolMax: number): DbBudgetOptions {
     );
   }
   return {
-    limit: Math.max(1, Math.min(Math.max(MIN_LIMIT, poolMax - TARGET_MARGIN), poolMax - POOL_HEADROOM)),
+    limit: Math.max(
+      1,
+      Math.min(Math.max(MIN_LIMIT, poolMax - TARGET_MARGIN), poolMax - POOL_HEADROOM),
+    ),
     maxQueue: 20_000,
     waitTimeoutMs: 120_000,
   };

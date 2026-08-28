@@ -1,5 +1,5 @@
 /**
- * 死信复核契约测试（U6;内存 stand-in;v1 e2e-money 的 billing-review 行为规格）：
+ * 死信复核契约测试（内存 stand-in）：
  * list dead 投影 / retry CAS（乐观锁 + 清失败态）/ abandon CAS + 三路归还 /
  * operations 幂等（同键重放、异参 409）/ 审计与业务同事务（注入 port）。
  */

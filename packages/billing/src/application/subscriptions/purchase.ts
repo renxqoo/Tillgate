@@ -14,7 +14,7 @@ import {
   type SubscriptionAssembly,
 } from './subscription-shared.js';
 
-// eslint-disable-next-line max-lines-per-function -- 存量棘轮(铁律22⑥):顺序编排/契约签名,拆分需独立契约裁决
+// eslint-disable-next-line max-lines-per-function -- 顺序编排/契约签名,拆分需独立契约设计
 export async function purchase(
   assembly: SubscriptionAssembly,
   input: PurchaseInput,
@@ -28,13 +28,13 @@ export async function purchase(
       planId: input.planId,
       quantity: input.quantity ?? 1,
     },
-    // eslint-disable-next-line max-lines-per-function, max-statements -- 存量棘轮(铁律22⑥):顺序编排/契约签名,拆分需独立契约裁决
+    // eslint-disable-next-line max-lines-per-function, max-statements -- 顺序编排/契约签名,拆分需独立契约设计
     execute: async (tx) => {
       const now = clock();
       const { userId } = input;
       const quantity = input.quantity ?? 1;
       assertValidQuantity(quantity);
-      // C4：惰性翻转「已自然到期但 status 仍 0」——不翻则新购买撞唯一索引死锁
+      // 惰性翻转「已自然到期但 status 仍 0」——不翻则新购买撞唯一索引死锁
       await store.expireLapsedSubscriptions(tx, userId, now);
       const active = await store.lockActiveSubscriptionForUser(tx, userId, now);
       if (active) {

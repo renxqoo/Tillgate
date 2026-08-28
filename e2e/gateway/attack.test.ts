@@ -1,5 +1,5 @@
 /**
- * E2E 对抗套件（v1 e2e-attack 迁移；真网关 + 平台 key + mock 上游全链）——
+ * E2E 对抗套件（真网关 + 平台 key + mock 上游全链）——
  * 攻击 / 资损 / 漏扣 / 多扣 / 扣错全向量：
  *
  *   ⑤ 非法请求全家族（坏 key/坏体/未知模型/负参数/超大体/SQL 注入模型名）→ 全部零扣费
@@ -8,10 +8,10 @@
  *   ⑧ 取消风暴（6 路并发流交错取消）→ 账单数 == 请求数、分毫对账
  *   ⑨ stream/非 stream 混合并发 → 收据旗标正确、usage 与 usage_logs 逐笔一致
  *   ⑩ n 倍数请求 → 计费覆盖全部输出；上游拒绝 → 释放不扣——两分支资金都一致
- *     （v1 依赖真上游二选一；mock 上游确定性覆盖两分支）
+ *     （mock 上游确定性覆盖两分支）
  *
  * 无法在本地确定性复现、由集成/单测层覆盖的向量（见文件尾覆盖矩阵）。
- * 断言语义与 v1 逐条等价（MIGRATION §7 验收）；装置差异（隔离 schema / mock 上游
+ * 装置差异（隔离 schema / mock 上游
  * /渠道 id 取种子值）见 kit 头注释。
  */
 import { randomUUID } from 'node:crypto';
@@ -363,13 +363,13 @@ describe.skipIf(!hasEnv)('E2E', () => {
  * │ 多扣-usage 放大/串账  → e2e ⑨ 收据==usage_logs 逐笔 + ⑫ 分毫对账（auth-audit）
  * │ 多扣-幂等键碰撞       → e2e ⑥ 伪造 x-request-id 独立两笔
  * │ 扣错-跨用户归属       → 集成归属测试（rxm3 real ④ 多用户大并发）
- * │ 资损-低余额并发放大   → e2e ⑭（params-floor：放行 ≤1/拒 7）+ 集成 §4
+ * │ 资损-低余额并发放大   → e2e ⑭（params-floor：放行 ≤1/拒 7）
  * │ 攻击-爆破/刷 401      → 单测（production-hardening 两层防护）＊需 Redis 生产形态
  * │ 攻击-免费模型刷       → 单测 fail-closed（gate.test）＊同上
  * │ 攻击-SSRF/IP 伪造     → ai 包 http-client 单测 + http 包 trustedClientIp 7 例
  * │ 攻击-SQL 注入         → e2e ⑤ 注入模型名 404 零副作用 + 架构测试（SQL 只在 drizzle 层）
  * │ 攻击-超大体/负参数    → e2e ⑤/⑤b 400/413 零扣费
  * │ 资损-任务双结算       → 集成（generation-poll 并发 CAS 单赢家）
- * │ 资损-§4 超额推负      → e2e ⑥（cost-drain：fixed 超额补扣负余额）
+ * │ 资损-单请求超额推负   → e2e ⑥（cost-drain：fixed 超额补扣负余额）
  * └────────────────────────┘
  */

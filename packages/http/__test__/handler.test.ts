@@ -6,8 +6,7 @@ import { errorHandler } from '../src/errors/handler';
 import { HttpErrors } from '../src/errors/catalog';
 
 /**
- * errorHandler 边界翻译（v1 errors.test + bad-json.test + pg-error-translation.test
- * 的迁移形态；PG 探测改为注入——ADR-0002）。
+ * errorHandler 边界翻译。
  * 原则：可预期的客户端错误必须在边界层翻译成 4xx，不得伪装 500。
  */
 

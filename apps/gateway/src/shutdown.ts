@@ -1,7 +1,7 @@
 /**
- * 停机编排（v1 shutdown.ts 迁移；收口顺序归 runtime createShutdown 契约）：
+ * 停机编排（收口顺序归 runtime createShutdown 契约）：
  * gateway 形状绑定——closeables = inference 退订（ai 事件总线）+ settle-wake。
- * 目标树 §3 指定独立文件（trace-receiver 无此件因其零 closeables）。
+ * 独立文件（trace-receiver 无此件因其零 closeables）。
  */
 import type { AppServer } from '@tillgate/http';
 import type { Redis } from 'ioredis';

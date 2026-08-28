@@ -1,6 +1,6 @@
 /**
- * 成功信封契约（v1 encodeResult 三态 + SSE 头组语义迁移）：
- * 流式字节透传头组 / 二进制 rawBody / JSON 三态 / codec 编码 / passthrough（ADR-0004）。
+ * 成功信封契约：
+ * 流式字节透传头组 / 二进制 rawBody / JSON 三态 / codec 编码 / passthrough。
  */
 import { describe, expect, it } from 'vitest';
 import { encodeDelivered, sseResponse } from '../src/http/openai-envelope';

@@ -1,5 +1,5 @@
 /**
- * 兑换批次管理 facade（U6；组合件——动词各居一文件，此处只做绑定）。
+ * 兑换批次管理 facade（组合件——动词各居一文件，此处只做绑定）。
  * app 装配：store/codes 取自 ./composition（postgres），generateCode 注入
  * `@tillgate/http` 的 generateRedeemCode（本包不 import http——防环）。
  */

@@ -1,4 +1,4 @@
-/** 用户资料读(含费率卡名;钱包富化归 app 组合,G1) */
+/** 用户资料读(含费率卡名;钱包富化归 app 组合) */
 import { AccountsErrors } from '../domain/errors.js';
 import type { UserProfile } from '../ports/account-store.js';
 import type { UseCaseContext } from './context.js';

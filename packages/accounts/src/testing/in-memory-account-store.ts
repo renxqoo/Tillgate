@@ -1,5 +1,5 @@
 /**
- * 内存 AccountStore 替身:与 postgres 适配器同拍演进的行为等价 stand-in(§5.6)。
+ * 内存 AccountStore 替身:与 postgres 适配器同拍演进的行为等价 stand-in。
  * 时间语义 = 注入时钟(对应 postgres 的 clock_timestamp);fake db 的 transaction
  * 用快照/恢复实现回滚——「同生共死」类用例(applyReferral 双侧奖励回滚)可真实断言。
  */
@@ -561,7 +561,8 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       return paginate(
         rows.map((r) => ({
           ...pubUser(r),
-          rateCardName: r.rateCardId == null ? null : (state.rateCards.get(r.rateCardId)?.name ?? null),
+          rateCardName:
+            r.rateCardId == null ? null : (state.rateCards.get(r.rateCardId)?.name ?? null),
         })),
         input.page,
         input.limit,

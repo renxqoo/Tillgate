@@ -65,7 +65,7 @@ export const statsTrendsSchema = z
   })
   .meta({ id: 'StatsTrends', description: '按日趋势响应(GET /v1/stats/trends)' });
 
-/** 请求日志行（attempts/apiKeyId 为 v1 快照口径:v2 presenter 不输出 attempts、apiKeyId 恒 null） */
+/** 请求日志行（presenter 不输出 attempts、apiKeyId 恒 null） */
 export const logRowSchema = z
   .object({
     id: z.number(),
@@ -75,7 +75,7 @@ export const logRowSchema = z
       .string()
       .nullable()
       .describe('用户名(displayName 优先,其次 email;LEFT JOIN users,可能为 null)'),
-    apiKeyId: z.number().nullable().describe('v2 无来源列,恒 null'),
+    apiKeyId: z.number().nullable().describe('无来源列,恒 null'),
     method: z.string(),
     path: z.string(),
     statusCode: z.number(),
@@ -89,7 +89,7 @@ export const logRowSchema = z
         messageCount: z.number(),
       })
       .nullable(),
-    attempts: z.number().describe('重试次数(v1 快照口径;v2 presenter 暂不输出——展示兜底为 1 次)'),
+    attempts: z.number().describe('重试次数(快照口径;presenter 暂不输出——展示兜底为 1 次)'),
     sourceIp: z
       .string()
       .nullable()
@@ -136,13 +136,13 @@ export const adminUsageRowSchema = z
     description: '管理端用量明细行(GET /v1/usage-logs;恒 status=0 只看已计费行)——估算扣款一等字段',
   });
 
-/** 审计日志行（detail 为 JSON 对象或字符串;adminSubject v2 无 join 来源恒 null） */
+/** 审计日志行（detail 为 JSON 对象或字符串;adminSubject 无 join 来源恒 null） */
 export const auditLogRowSchema = z
   .object({
     id: z.number(),
     adminId: z.number().nullable(),
     actor: z.string().nullable(),
-    adminSubject: z.string().nullable().describe('管理员标识(v2 无 join 来源,恒 null)'),
+    adminSubject: z.string().nullable().describe('管理员标识(无 join 来源,恒 null)'),
     action: z.string(),
     targetType: z.string(),
     targetId: z.string(),

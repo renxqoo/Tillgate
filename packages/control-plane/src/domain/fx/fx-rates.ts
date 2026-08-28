@@ -1,7 +1,7 @@
 /**
  * 目录汇率域规则（纯函数）：生效口径换算、域校验、尾零规范化。
  *
- * 生效语义（对账口径，v1 同语义）：
+ * 生效语义（对账口径）：
  *   基准汇率 base     = override（最近 manual 行）?? 最近 auto 行
  *   预填换算 effective = base ×(1 + bufferPct/100)   ← 点差不叠在覆盖值上（手动值自带运营判断）
  *   usage_logs.fx_rate 落的是 base（市场真相）；点差只进导入 provenance
@@ -9,7 +9,7 @@
 import Decimal from 'decimal.js';
 import { controlPlaneErrors } from '../../errors';
 
-/** 汇率域与点差域（v1 同值的语义常量——非部署配置） */
+/** 汇率域与点差域（语义常量——非部署配置） */
 export const RATE_MIN = 0.01;
 export const RATE_MAX = 1000;
 export const BUFFER_PCT_MAX = 50;
@@ -48,7 +48,7 @@ export interface FxState {
   fetchedAt: string | null;
 }
 
-/** 汇率域校验（0.01–1000）；合法返回规范化字符串（Number 经 String 归一——v1 同行为） */
+/** 汇率域校验（0.01–1000）；合法返回规范化字符串（Number 经 String 归一） */
 export function normalizeRate(raw: string): string {
   const n = Number(raw);
   if (!Number.isFinite(n) || n < RATE_MIN || n > RATE_MAX) {

@@ -4,7 +4,7 @@ import { createAdminApp } from '../src/app';
 import { authHeader, fakeDeps } from './helpers';
 
 /**
- * 订阅动词契约（v1 subscriptions.test.ts 行为规格）:管理面 userId:null 直续 /
+ * 订阅动词契约:管理面 userId:null 直续 /
  * 幂等键透传 / 资金动词 409 冲突透传（billing.idempotency_conflict）。
  */
 

@@ -5,8 +5,8 @@
  *
  * wallet 白名单 fail-closed：本 app 只经手五类业务域入账（gift 注册赠送 / redeem
  * 兑换 / topup 充值 / subscription 订阅收款 / referral 返利），对手科目只有外部
- * 世界与平台收入镜像（v1 语义）。跨能力 bridge（walletCredit / sessionInvalidation）
- * 不共享事务——赠送/归因本就是 best-effort 段（accounts G4/G5 注释口径）。
+ * 世界与平台收入镜像。跨能力 bridge（walletCredit / sessionInvalidation）
+ * 不共享事务——赠送/归因本就是 best-effort 段。
  */
 import { suggestDbBudget } from '@tillgate/http';
 import { createDb, ping, type Db, type TxRetryPolicy } from '@tillgate/db';
@@ -70,7 +70,7 @@ export interface AssemblyOverrides {
   readonly mailer?: Mailer | null;
 }
 
-// eslint-disable-next-line max-lines-per-function, complexity -- 装配根 composition root:线性依赖组装,拆段只会层层透传上下文(存量棘轮)
+// eslint-disable-next-line max-lines-per-function, complexity -- 装配根 composition root:线性依赖组装,拆段只会层层透传上下文
 export async function assembleClientApi(
   config: ClientApiConfig,
   overrides: AssemblyOverrides = {},
@@ -227,7 +227,7 @@ export async function assembleClientApi(
     db,
     walletCredit: {
       // 跨能力 bridge：赠送/返利入账走 billing 钱包幂等键；不进 accounts 事务
-      // （v1 G4/G5：best-effort 段，失败可按 refKey 补发）
+      // （best-effort 段，失败可按 refKey 补发）
       async credit(_db, command) {
         const result = await billing.wallet.credit({
           userId: command.userId,
@@ -240,7 +240,7 @@ export async function assembleClientApi(
       },
     },
     sessionInvalidation: {
-      // 跨能力 bridge：会话吊销线归 identity（§3.4 唯一所有者）
+      // 跨能力 bridge：会话吊销线归 identity（唯一所有者）
       async invalidateUserSessions(_db, input) {
         await identity.revocation.advance(input);
       },
@@ -291,9 +291,9 @@ export async function assembleClientApi(
     return { userId, jti: payload.jti, exp: payload.exp };
   };
 
-  // capabilities 每请求求值（DESIGN §4.2：快照驱动的 UX 面）
-  // captchaSiteKey 按 effective（DESIGN §4.2：停用 = siteKey null——注册闸门随之关闭；
-  // review 修复 B-1）——计算真源在 dynamic-captcha.captchaSiteKeyOf（测试锁真源防表达式漂移）
+  // capabilities 每请求求值（快照驱动的 UX 面）
+  // captchaSiteKey 按 effective（停用 = siteKey null——注册闸门随之关闭）；
+  // 计算真源在 dynamic-captcha.captchaSiteKeyOf（测试锁真源防表达式漂移）
   const captchaSiteKey = (): string | null => captchaSiteKeyOf(reader.latest().captcha);
   const capabilities = () => ({
     registerEnabled: config.REGISTER_ENABLED,
@@ -346,7 +346,7 @@ export async function assembleClientApi(
       consumeResetToken: resetTokens.consume,
       sendResetLink:
         mailer != null ? (to, url, ctx) => mailer.sendPasswordResetLink(to, url, ctx) : null,
-      // 显式配置才作为找回链接基地址（缺省回落值不算——review 修复魔法串反推）
+      // 显式配置才作为找回链接基地址（缺省回落值不算）
       resetLinkBase: frontendUrlConfigured ? frontendUrl : null,
       resetTokenTtlMinutes: RESET_TOKEN_TTL_MINUTES,
       guards: { emailIp: loginGuard, ip: ipGuard },

@@ -10,6 +10,7 @@ import {
   type MailBrand,
 } from '../../templates/login-code-email.js';
 import { renderPasswordResetEmail } from '../../templates/password-reset-email.js';
+import { renderAdminInviteEmail } from '../../templates/admin-invite-email.js';
 import type { Mailer } from '../../ports/mailer.js';
 import type { Clock } from '../../ports/clock.js';
 
@@ -23,7 +24,7 @@ export interface SmtpMailerConfig {
   readonly from: string;
 }
 
-/** 装配参数(SMTP 连接 + 品牌口径 + 邮件参数 + 时钟,全部显式注入,铁律 3) */
+/** 装配参数(SMTP 连接 + 品牌口径 + 邮件参数 + 时钟,全部显式注入) */
 export interface SmtpMailerOptions {
   readonly config: SmtpMailerConfig;
   readonly brand: MailBrand;
@@ -31,6 +32,7 @@ export interface SmtpMailerOptions {
   readonly clock: Clock;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 传输器构造 + 三投递动词平铺(一 verb 一薄包装,拆分只会制造人工接缝)
 export function createNodemailerMailer(opts: SmtpMailerOptions): Mailer {
   const { config, brand, emailParams, clock } = opts;
   const transporter: Transporter = createTransport({
@@ -57,6 +59,18 @@ export function createNodemailerMailer(opts: SmtpMailerOptions): Mailer {
         brand,
         { ttlMinutes: ctx.ttlMinutes },
       );
+      await transporter.sendMail({
+        from: config.from,
+        to,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+      });
+    },
+    async sendAdminInviteLink(to, url, ctx) {
+      const mail = renderAdminInviteEmail(url, { locale: ctx.locale }, brand, {
+        ttlMinutes: ctx.ttlMinutes,
+      });
       await transporter.sendMail({
         from: config.from,
         to,

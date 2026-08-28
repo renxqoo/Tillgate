@@ -1,7 +1,7 @@
 /**
  * 环境配置（zod 解析，装配唯一入口）：部署可变值全在此声明——
- * 业务参数（开关/阈值/密钥）必填或显式默认，代码零写死（铁律 3）。
- * v1 键名全量保留；新增键为 identity 装配面（CODE_PEPPER/挑战参数/密码策略）与
+ * 业务参数（开关/阈值/密钥）必填或显式默认，代码零写死。
+ * 键覆盖 identity 装配面（CODE_PEPPER/挑战参数/密码策略）与
  * 新机制件（EPAY_PAY_TYPE/用量时区/定价缓存）所需。
  */
 import * as z from 'zod';
@@ -32,25 +32,25 @@ function createSchema(production: boolean) {
     SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(2_592_000).default(86_400),
     /** 邮箱验证码 HMAC pepper（identity 挑战域防离线穷举；与 JWT 密钥分离） */
     CLIENT_CODE_PEPPER: secretSchema('CLIENT_CODE_PEPPER', production ? 32 : 16),
-    /** 密码策略下界（v1 口径 10；上界 128 固定——identity 域校验） */
+    /** 密码策略下界（缺省 10；上界 128 固定——identity 域校验） */
     CLIENT_PASSWORD_MIN_LENGTH: z.coerce.number().int().min(6).max(128).default(10),
     /** 邮箱验证码挑战：有效期/发送冷却/最大尝试次数 */
     CLIENT_CHALLENGE_TTL_MS: z.coerce.number().int().positive().default(600_000),
     CLIENT_CHALLENGE_COOLDOWN_MS: z.coerce.number().int().positive().default(60_000),
-    CLIENT_CHALLENGE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
+    CLIENT_CHALLENGE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(10),
     /** TOTP（MFA 预留词表；用户面暂不开放端点——identity 配置必填项） */
     CLIENT_TOTP_ISSUER: z.string().min(1).max(255).default('Tillgate'),
     /** 邮箱自助注册开关（关闭只留既有账号登录） */
     REGISTER_ENABLED: strictBooleanSchema(true),
     /** 同 IP 注册请求窗口（秒）与上限/窗口（防批量刷号；窗口即 Retry-After 口径） */
     REGISTER_IP_WINDOW_SECONDS: z.coerce.number().int().positive().default(3_600),
-    REGISTER_IP_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(5),
+    REGISTER_IP_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(10),
     /** 兑换频率闸：每用户每分钟兑换尝试上限（防暴力猜码） */
     REDEEM_PER_MINUTE_LIMIT: z.coerce.number().int().positive().default(10),
     /** 充值下单频率闸：每用户每分钟下单上限 */
     CLIENT_TOPUP_ORDERS_PER_MINUTE: z.coerce.number().int().positive().default(10),
     /** 登录爆破防护：per-邮箱+IP 失败阈值/窗口/锁定 + per-IP 失败上限（秒窗口即锁时长） */
-    LOGIN_FAILURE_THRESHOLD: z.coerce.number().int().positive().default(5),
+    LOGIN_FAILURE_THRESHOLD: z.coerce.number().int().positive().default(10),
     LOGIN_FAILURE_WINDOW_S: z.coerce.number().int().positive().default(600),
     LOGIN_LOCK_S: z.coerce.number().int().positive().default(600),
     LOGIN_IP_FAILURE_LIMIT: z.coerce.number().int().positive().default(50),
@@ -60,7 +60,7 @@ function createSchema(production: boolean) {
     /** CORS 白名单（逗号分隔；空 = 不放行跨域）与预检缓存秒数 */
     CORS_ORIGINS: z.string().default(''),
     /**
-     * OAuth 基地址（ADR-0012 退回 env——部署拓扑，装配期生效变更需重启）：
+     * OAuth 基地址（env 来源——部署拓扑，装配期生效变更需重启）：
      * API 根地址生产必填（回调白名单由它构建）；前端根地址可选，
      * 未配回落本地缺省、且找回密码链接 fail-closed（不外发错误域名链接）。
      */
@@ -80,11 +80,11 @@ function createSchema(production: boolean) {
     /** 未支付订单超时关单（ms） */
     PAYMENT_ORDER_TTL_MS: z.coerce.number().int().positive().default(1_800_000),
     /** 易支付五件套全配才启用该渠道；PAY_TYPE 从词表校验（不写死 alipay） */
-    // 支付渠道凭据（EPAY/STRIPE）已迁 integration_settings（动态配置——DESIGN §7.3）
+    // 支付渠道凭据（EPAY/STRIPE）在 integration_settings（动态配置）
     /** 邮箱验证码两级登录：auto = smtp 集成行生效即强制 / on 强制 / off 关闭（单密码） */
     EMAIL_CODE_REQUIRED: z.enum(['auto', 'on', 'off']).default('auto'),
-    // SMTP/CAPTCHA/OAuth 凭据与基地址已迁入 integration_settings（动态配置——
-    // docs/integration-settings/DESIGN.md §7.3；本 schema 只留端点覆盖与 TTL）
+    // SMTP/CAPTCHA/OAuth 凭据在 integration_settings（动态配置）；
+    // 本 schema 只留端点覆盖与 TTL
     /** 端点覆盖（JSON：authorizeUrl/tokenUrl/profileUrl/emailsUrl——私有化/测试 mock 用） */
     OAUTH_GITHUB_ENDPOINTS_JSON: z.string().optional(),
     OAUTH_GOOGLE_ENDPOINTS_JSON: z.string().optional(),
@@ -111,7 +111,7 @@ function createSchema(production: boolean) {
     CLIENT_TPM_LIMIT_MAX: z.coerce.number().int().positive().default(100_000_000),
     /** 推荐被邀名单上界（referralOverview invitees 截断） */
     CLIENT_REFERRAL_INVITEE_LIMIT: z.coerce.number().int().positive().default(100),
-    /** 用量日汇总的日界时区（v1 口径北京时间；GROUP BY 需字面量——字符白名单校验防注入） */
+    /** 用量日汇总的日界时区（缺省北京时间；GROUP BY 需字面量——字符白名单校验防注入） */
     CLIENT_USAGE_TZ: z
       .string()
       .regex(/^[A-Za-z0-9_+/-]{1,64}$/, 'invalid IANA timezone shape')
@@ -126,7 +126,7 @@ function createSchema(production: boolean) {
     CLIENT_SETTLE_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(8),
     CLIENT_SETTLE_BASE_DELAY_MS: z.coerce.number().int().positive().default(1_000),
     CLIENT_SETTLE_MAX_DELAY_MS: z.coerce.number().int().positive().default(300_000),
-    /** DB 事务重试（v1 等价口径） */
+    /** DB 事务重试 */
     CLIENT_TX_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(5),
     CLIENT_TX_BASE_DELAY_MS: z.coerce.number().int().min(0).default(15),
     CLIENT_TX_MAX_JITTER_MS: z.coerce.number().int().min(0).default(20),

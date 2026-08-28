@@ -1,7 +1,7 @@
 /**
  * 发码:目标解析与通道 fail-closed → 锁内「冷却判定 + 替换 + INSERT」原子决策 →
- * 提交后投递(失败即作废,可立刻重发;补救 abort 失败记 warn,B11)。
- * 投递上下文(ip/locale)全程内存流动——v1 模块级 Map 串号/泄漏根治(B05)。
+ * 提交后投递(失败即作废,可立刻重发;补救 abort 失败记 warn)。
+ * 投递上下文(ip/locale)全程内存流动,不做模块级共享——避免跨请求串号/泄漏。
  */
 import { advisoryLock, runTx } from '@tillgate/db';
 import { isBusinessError } from '@tillgate/errors';
@@ -98,7 +98,7 @@ async function resolveDeliveryTarget(
     });
   }
   if (channel === 'sms' || (channel === 'email' && ctx.mailer == null)) {
-    // B12 修复:可投递通道无投递器 = 不建挑战直接拒绝(sms 通道未实现,W6)
+    // 可投递通道无投递器 = 不建挑战直接拒绝(sms 通道未实现)
     throw identityErrors.business('undeliverable_challenge', {
       kind,
       detail:
@@ -220,7 +220,7 @@ async function deliverLoginCode(
     try {
       await ctx.challengeStore.abortChallenge(ctx.db, { challengeId: args.challengeId });
     } catch (abortError) {
-      // B11 修复:补救作废失败不再静默——记 warn(挑战将占冷却位至 TTL,运维可查)
+      // 补救作废失败不再静默——记 warn(挑战将占冷却位至 TTL,运维可查)
       ctx.logger.warn(
         { err: (abortError as Error).message, challengeId: args.challengeId },
         'challenge abort-after-delivery-failure failed; cooldown slot held until TTL',
@@ -234,7 +234,7 @@ async function deliverLoginCode(
   }
 }
 
-/** 审计在投递成功后(事实=挑战已发到目标;投递失败路径已作废,不该有 begin 事件)——独立连接单写,失败抛错不吞(§5.4 不降级) */
+/** 审计在投递成功后(事实=挑战已发到目标;投递失败路径已作废,不该有 begin 事件)——独立连接单写,失败抛错不吞 */
 async function recordBeginAudit(
   ctx: IdentityUseCaseContext,
   args: { kind: string; channel: DeliveryChannel; to: string; challengeId: string },

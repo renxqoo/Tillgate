@@ -30,7 +30,7 @@ export default async function NotificationsPage() {
   const t = await getTranslations('notifications');
   const tc = await getTranslations('common');
   // GET /v1/notifications 返回裸数组（openapi 锁定），不是 {rows}/{list} 信封——
-  // 曾按信封误读导致创建成功但列表恒空（R-9）
+  // 误按信封解读会导致创建成功但列表恒空
   const data = await adminApi()
     .get<ChannelRow[]>('/v1/notifications')
     .catch(() => null);

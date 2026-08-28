@@ -1,4 +1,4 @@
-/** Redis 客户端工厂：错误监听必挂（不刷 Unhandled）+ 去重（间隔必填注入）+ URL 认证脱敏 + 日志注入面（B2）。 */
+/** Redis 客户端工厂：错误监听必挂（不刷 Unhandled）+ 去重（间隔必填注入）+ URL 认证脱敏 + 日志注入面。 */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isDefectError } from '@tillgate/errors';
 import { createRedisClient } from '../src/redis/create-redis-client';

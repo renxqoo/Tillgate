@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   // workspace 依赖（@tillgate/errors）经 development 条件直连源码——
-  // 本包是 v2 首个跨包依赖消费者，测试不经构建产物（IMPLEMENTATION §3.5）
+  // 测试不经构建产物，直连 workspace 源码
   resolve: {
     conditions: ['development'],
   },

@@ -1,6 +1,6 @@
 /**
- * admin-api(管理面)facade 行为规格:getAdminMe 布局守卫(v1 行为等价)、
- * facade 委托 core、B1 回归(管理面 token 源独立)。
+ * admin-api(管理面)facade 行为规格:getAdminMe 布局守卫、
+ * facade 委托 core、管理面 token 源独立回归。
  */
 import { describe, expect, it, vi } from 'vitest';
 import { createAdminApiClient } from '../src/admin-api';
@@ -134,12 +134,19 @@ const FACADE_CASES: readonly FacadeCase[] = [
     respond: { rows: [], total: 0 },
   },
   {
-    name: 'createAdmin POST body 原样',
-    invoke: (c) => c.createAdmin({ email: 'a@b.c', password: '12345678', roleId: 1 }),
+    name: 'createAdmin POST body 原样(邀请制——无 password 字段)',
+    invoke: (c) => c.createAdmin({ email: 'a@b.c', roleId: 1 }),
     method: 'POST',
     url: 'http://admin-api/v1/admins',
-    sendBody: { email: 'a@b.c', password: '12345678', roleId: 1 },
-    respond: { id: 1 },
+    sendBody: { email: 'a@b.c', roleId: 1 },
+    respond: { id: 1, inviteSent: true },
+  },
+  {
+    name: 'resendAdminInvite POST 到 :id/resend-invite',
+    invoke: (c) => c.resendAdminInvite(7),
+    method: 'POST',
+    url: 'http://admin-api/v1/admins/7/resend-invite',
+    respond: { ok: true },
   },
   {
     name: 'updateAdmin PATCH 到 :id',

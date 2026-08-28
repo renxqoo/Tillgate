@@ -1,7 +1,7 @@
 /**
- * 边界测试（铁律 11：边界必须可执行；§5.5/§11）：
+ * 边界测试（边界必须可执行）：
  *   1. src 全量 import 白名单——内部零 @tillgate 内部包（永久叶子），外部仅 node 内建、zod、js-tiktoken；
- *   2. src/errors 目录不 import @tillgate/errors（§11：ai 自有 ErrorKind 封闭词表）；
+ *   2. src/errors 目录不 import @tillgate/errors（ai 自有 ErrorKind 封闭词表）；
  *   3. index.ts 导出面快照（值导出集合精确等于下表——新增导出是契约变更）。
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';

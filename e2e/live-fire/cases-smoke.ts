@@ -16,7 +16,9 @@ define('S1', '冒烟', '全部服务健康', async (c) => {
     const r = await http(`${url}/healthz`, { timeoutMs: 3000 });
     eq(r.status, 200, `${name} healthz`);
   }
-  const m = await http(`${c.url.mock}/openmock/v1/models`, { headers: { authorization: 'Bearer sk-mock-openmock-k1' } });
+  const m = await http(`${c.url.mock}/openmock/v1/models`, {
+    headers: { authorization: 'Bearer sk-mock-openmock-k1' },
+  });
   eq(m.status, 200, 'mock models');
 });
 
@@ -27,9 +29,13 @@ define('S2', '冒烟', 'mock 上游直连:非流式 + 流式', async (c) => {
   });
   eq(n.status, 200, 'non-stream status');
   ok((n.json().usage?.total_tokens ?? 0) > 0, 'usage present');
-  const s = sse(`${c.url.mock}/openmock/v1/chat/completions`, chatBody('rt-base', { stream: true }), {
-    authorization: 'Bearer sk-mock-openmock-k1',
-  });
+  const s = sse(
+    `${c.url.mock}/openmock/v1/chat/completions`,
+    chatBody('rt-base', { stream: true }),
+    {
+      authorization: 'Bearer sk-mock-openmock-k1',
+    },
+  );
   const ready = await s.ready;
   eq(ready.status, 200, 'stream status');
   eq(await s.done, 'done', 'stream completed');

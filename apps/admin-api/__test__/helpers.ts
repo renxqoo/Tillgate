@@ -1,6 +1,6 @@
 /**
  * 契约测试公共替身：fake facade + 有效会话令牌（app.request() 直连,无真实 IO）。
- * 断言口径 = v1 wire 形状与错误码（MIGRATION §1 行为规格来源）。
+ * 断言口径 = wire 形状与错误码。
  */
 import type { AdminAppDeps } from '../src/app';
 import type { ControlPlane } from '@tillgate/control-plane';
@@ -28,6 +28,33 @@ const notWired = async (): Promise<never> => {
   throw new Error('fake not wired');
 };
 
+/** 邀请令牌/冷却内存替身(键值语义与 Redis 适配器一致;无 TTL——过期行为属适配器) */
+export function inMemoryInvites() {
+  const tokens = new Map<string, number>();
+  const cooldowns = new Set<number>();
+  let seq = 0;
+  return {
+    tokens,
+    cooldowns,
+    async issue(adminId: number): Promise<string> {
+      seq += 1;
+      const token = `invite-token-${seq}`;
+      tokens.set(token, adminId);
+      return token;
+    },
+    async consume(token: string): Promise<number | null> {
+      const adminId = tokens.get(token) ?? null;
+      tokens.delete(token);
+      return adminId;
+    },
+    async tryStartCooldown(adminId: number): Promise<boolean> {
+      if (cooldowns.has(adminId)) return false;
+      cooldowns.add(adminId);
+      return true;
+    },
+  };
+}
+
 /** 最小可启动 deps:各域 fake 以 vi.fn 注入,按测试覆写(覆写面松类型——替身处显式收窄) */
 export function fakeDeps(overrides: {
   accounts?: Record<string, unknown>;
@@ -46,10 +73,14 @@ export function fakeDeps(overrides: {
   writeAudit?: AdminAppDeps['writeAudit'];
   pingDb?: () => Promise<void>;
   now?: () => Date;
+  invites?: AdminAppDeps['invites'];
+  sendInviteLink?: AdminAppDeps['sendInviteLink'];
+  inviteLinkBase?: AdminAppDeps['inviteLinkBase'];
+  mailerConfigured?: AdminAppDeps['mailerConfigured'];
 }): AdminAppDeps {
   return {
     pingDb: overrides.pingDb ?? (async () => {}),
-    // P6:词表注入面(真源 = ai 根出口;此处最小 fake——封闭性由 ai 包架构测试锁定)
+    // 词表注入面(真源 = ai 根出口;此处最小 fake——封闭性由 ai 包架构测试锁定)
     vendorCatalog: { protocols: ['openai-compatible'], vendors: ['openai'] },
     sessions: {
       validate: async (token: string) => (token === VALID_TOKEN ? sessionPayload : null),
@@ -69,7 +100,7 @@ export function fakeDeps(overrides: {
         throw new Error('fake not wired');
       },
       userExists: async () => true,
-      // P3:营销/邀请域动词(默认 fake not wired,测试覆写)
+      // 营销/邀请域动词(默认 fake not wired,测试覆写)
       getMarketingSettings: async () => {
         throw new Error('fake not wired');
       },
@@ -94,7 +125,7 @@ export function fakeDeps(overrides: {
         throw new Error('fake not wired');
       },
       statement: async () => [],
-      // P3:返利流水读侧(billing 接缝)
+      // 返利流水读侧(billing 接缝)
       referralPayouts: async () => ({ rows: [], total: 0 }),
       ...overrides.wallet,
     } as AdminAppDeps['wallet'],
@@ -170,7 +201,7 @@ export function fakeDeps(overrides: {
     },
     controlPlane: fakeControlPlane(overrides.controlPlane),
     observability: fakeObservability(overrides.observability) as AdminAppDeps['observability'],
-    // P5:通知渠道管理面(默认空列表;CRUD 动词测试覆写——键为 channels 动词名)
+    // 通知渠道管理面(默认空列表;CRUD 动词测试覆写——键为 channels 动词名)
     notifications: {
       channels: {
         list: async () => [],
@@ -181,7 +212,7 @@ export function fakeDeps(overrides: {
         ...(overrides.notifications as Record<string, unknown> | undefined),
       },
     } as AdminAppDeps['notifications'],
-    // P4:生成任务管理读侧 + 支付订单管理面(默认最小 fake,测试覆写)
+    // 生成任务管理读侧 + 支付订单管理面(默认最小 fake,测试覆写)
     generationTasks: {
       adminList: async () => ({ rows: [], total: 0 }),
       settledAmounts: async () => new Map<string, string>(),
@@ -193,9 +224,14 @@ export function fakeDeps(overrides: {
       ...(overrides.paymentAdmin as Record<string, unknown> | undefined),
     } as AdminAppDeps['paymentAdmin'],
     orderCloseReason: '管理员手动关闭',
-    // P2 登录面:identity 动词 fake(不抛哑错——默认拒绝形态,auth 域测试经独立装配)
+    // 登录面:identity 动词 fake(不抛哑错——默认拒绝形态,auth 域测试经独立装配)
     identity: {
-      passwords: { authenticate: notWired, change: notWired, reset: notWired },
+      passwords: {
+        authenticate: notWired,
+        change: notWired,
+        reset: notWired,
+        exists: async () => [],
+      },
       challenges: { begin: notWired, verify: notWired, abort: notWired },
       mfa: mfaStub(),
       credentials: { register: notWired },
@@ -220,7 +256,10 @@ export function fakeDeps(overrides: {
       },
     },
     trustedProxyHops: 0,
-    mailerConfigured: () => false,
+    mailerConfigured: overrides.mailerConfigured ?? (() => false),
+    invites: overrides.invites ?? inMemoryInvites(),
+    sendInviteLink: overrides.sendInviteLink ?? (async () => {}),
+    inviteLinkBase: overrides.inviteLinkBase ?? null,
     loginAudit: async () => {},
     stepupAudit: async () => {},
     twoFactorAudit: async () => {},
@@ -287,6 +326,7 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
       integrations: {
         list: notWired,
         update: notWired,
+        probeSmtp: notWired,
       },
     },
     catalog: {
@@ -317,7 +357,7 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
         remove: notWired,
       },
     },
-    // P2/G2:管理员资料面(密码/挑战在 identity;此处最小 fake,登录波测试覆写)
+    // 管理员资料面(密码/挑战在 identity;此处最小 fake,测试覆写)
     // RBAC 管理面动词(list/create/update/remove)同 fake——admins 域测试覆写
     admins: {
       find: notWired,
@@ -353,7 +393,7 @@ function fakeObservability(
       insert: notWired,
       list: notWired,
     },
-    // P4:用量运维读侧(默认最小 fake;统计端点测试覆写)
+    // 用量运维读侧(默认最小 fake;统计端点测试覆写)
     usage: {
       adminList: notWired,
       overview: notWired,

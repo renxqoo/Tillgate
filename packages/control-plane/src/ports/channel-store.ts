@@ -1,9 +1,8 @@
 /**
  * ChannelStore port：渠道配置与运营资金的持久化边界。
  * 表族 = 聚合：channels（预算/敞口）与 channel_recharges（其账本流水）是渠道运营资金
- * 的不可分单元。守卫内联 UPDATE WHERE，并发超扣在结构上不可达（v1 语义）。
- * 热路径族（路由候选/死凭据/敞口守卫/成本扣减）不在此——归 inference 波次（G1）；
- * 任务渠道读（findTaskChannel，worker 波轮询的上游凭据源）例外在此。
+ * 的不可分单元。守卫内联 UPDATE WHERE，并发超扣在结构上不可达。
+ * 路由候选与任务渠道读见文件尾「网关热路径读」分区；其余热路径读不在本 port。
  * 返回形状永不包含 apiKeyEnc 之外的密钥事实；管理面返回不含密文（探针专用读除外）。
  */
 import type { DbLike } from '@tillgate/db';
@@ -40,7 +39,7 @@ export interface ChannelFundsRow {
   readonly status: number;
 }
 
-/** 网关路由候选行（G1，gateway P5 波；v1 findRouteCandidates 语义）：启用渠道 + 密文 + 调度权重 */
+/** 网关路由候选行：启用渠道 + 密文 + 调度权重 */
 export interface RouteCandidateRow {
   readonly channelId: number;
   readonly channelName: string;
@@ -152,7 +151,7 @@ export interface ChannelStore {
     db: DbLike,
     channelIds: readonly number[],
   ): Promise<Array<{ channelId: number; externalName: string }>>;
-  /** 页内渠道的上游累计消耗（已结算口径；跨域只读 usage_logs 聚合——billing 波次后改经 facade） */
+  /** 页内渠道的上游累计消耗（已结算口径；跨域直读 usage_logs 聚合） */
   sumUpstreamConsumedByChannelIds(
     db: DbLike,
     channelIds: readonly number[],
@@ -189,15 +188,15 @@ export interface ChannelStore {
     db: DbLike,
     query: ListQuery<RechargeSortField> & { channelId?: number; type?: 'recharge' | 'adjust' },
   ): Promise<ListResult<RechargeRow>>;
-  // ---- 网关热路径读（G1，gateway P5 波） ----
+  // ---- 网关热路径读 ----
   /**
    * 真实模型 → 路由候选渠道（启用 status=0 且未删除、供应商未删除；基序 priority/weight
    * 降序——加权调度在 inference）。含渠道密文与渠道维限流/预算列（网关 admitChannel 消费）。
    */
   findRouteCandidates(db: DbLike, realModel: string): Promise<RouteCandidateRow[]>;
   /**
-   * 单渠道连接信息（worker 波任务轮询/代执行的上游凭据源；v1 findTaskChannel
-   * 语义）。by id 不按启用状态过滤——已提交任务所属渠道事后停用仍须可达。
+   * 单渠道连接信息（worker 任务轮询/代执行的上游凭据源）。
+   * by id 不按启用状态过滤——已提交任务所属渠道事后停用仍须可达。
    */
   findTaskChannel(db: DbLike, channelId: number): Promise<RouteCandidateRow | null>;
 }

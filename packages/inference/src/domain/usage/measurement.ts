@@ -1,12 +1,12 @@
 /**
- * 计量描述符注册表（v1 domain/rating/measurement.ts 迁移，语义不变）——
+ * 计量描述符注册表——
  * 「这个模型按什么计量」的单一真相（usage 计量语义归 inference；价格运算归 billing）。
  *
  * 每个定价单位（pricingUnit）一个描述符，回答两个问题：
  *   unitsUpperBoundOf —— 预扣上界（保守估计，宁可多押）——报价预检消费
  *   unitsOf            —— 结算实值（响应实值优先，参数兜底）——收据装配消费
  *
- * token 族的输入估算在 usage/estimate.ts（特征四计数器 + 校准系数，C1）；
+ * token 族的输入估算在 usage/estimate.ts（特征四计数器 + 校准系数）；
  * token 模型不走单位轴（units 恒 0），金额全部走 token 三价。
  */
 

@@ -275,7 +275,7 @@ export const postgresPermissionStore: PermissionStore = {
   },
 };
 
-// ── 接口权限绑定 postgres 实现（ADR-0009）────────────────────────────────────
+// ── 接口权限绑定 postgres 实现 ────────────────────────────────────────────────
 
 const endpointProjection = {
   id: endpointPermissions.id,

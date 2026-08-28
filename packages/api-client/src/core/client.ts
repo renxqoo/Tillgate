@@ -1,8 +1,8 @@
 /**
- * 框架无关 HTTP transport(总纲 §7.2):baseUrl/fetch/token/headers 获取器全部经参数注入,
+ * 框架无关 HTTP transport:baseUrl/fetch/token/headers 获取器全部经参数注入,
  * 本模块不读 Next Cookie、不读环境变量、不持有可信代理配置。
  *
- * 行为口径(v1 doFetch 行为等价,见 MIGRATION §7):
+ * 行为口径:
  *   - 只接受后端唯一正式路径 /v1/*;本层不做路径翻译
  *   - 默认头 content-type: application/json;getHeaders() 结果与调用方 headers 依次覆盖
  *   - body !== undefined 才 JSON.stringify(null 也发 "null");响应空体→null,非 JSON→{raw}
@@ -34,7 +34,7 @@ export type HeaderGetter = () =>
 export type TokenGetter = () => string | null | undefined | Promise<string | null | undefined>;
 
 export interface HttpClientOptions {
-  /** 后端基地址;必填,不藏默认(铁律 3;dev 兜底在 ./next/clients.ts 装配层) */
+  /** 后端基地址;必填,不藏默认(dev 兜底在 ./next/clients.ts 装配层) */
   baseUrl: string;
   /** fetch 实现;缺省 globalThis.fetch */
   fetch?: typeof globalThis.fetch;
@@ -94,7 +94,7 @@ async function buildFetchInit(inputs: FetchInitInputs): Promise<RequestInit> {
     body: body !== undefined ? JSON.stringify(body) : undefined,
     cache: revalidate === false ? 'no-store' : 'default',
     // Next.js 专有扩展(标准 fetch 忽略该字段,Next patched fetch 消费)——惰性透传,
-    // core 不 import next(DESIGN §3.5)
+    // core 不 import next
     ...(typeof revalidate === 'number' ? { next: { revalidate } } : {}),
   } as unknown as RequestInit;
 }
@@ -109,7 +109,7 @@ function parseResponseBody(text: string): unknown {
   }
 }
 
-/** 统一错误信封 → ApiError(信封缺失时以状态码兜底文案;铁律 18:message 一律英文) */
+/** 统一错误信封 → ApiError(信封缺失时以状态码兜底文案;message 一律英文) */
 function toApiError(status: number, data: unknown): ApiError {
   const err = (data as { error?: { message?: string; code?: string; details?: unknown } } | null)
     ?.error;

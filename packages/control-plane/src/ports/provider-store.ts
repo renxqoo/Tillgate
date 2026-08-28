@@ -1,5 +1,5 @@
 /**
- * ProviderStore port：供应商配置的持久化边界（PostgreSQL 可替换本地依赖，§5.6 类型 2）。
+ * ProviderStore port：供应商配置的持久化边界（PostgreSQL 可替换本地依赖）。
  * 方法首参 db 会话：写路径传事务句柄（application 持有事务），只读路径可传池句柄。
  * 重名交给 PG 部分唯一索引（23505 由 application 翻译 conflict——已删除行不占名）；
  * 禁用 = status=1（PATCH）；删除 = 逻辑删除回收站（softDelete）。

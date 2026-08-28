@@ -1,5 +1,5 @@
 /**
- * 端点路由（v1 routes/inference-endpoints.ts 的路由段迁移）：
+ * 端点路由：
  * schema 校验 → 限流准入（TPM 保守上界预占）→（codec 端点先 decode）→
  * inference.chat/stream → 信封三态出站。鉴权由 app 按路径挂载。
  */
@@ -69,8 +69,8 @@ export function inferenceRoutes(
 ): Hono<AuthEnv> {
   return new Hono<AuthEnv>().post('/', async (c) => {
     const raw = (await c.req.json().catch(() => null)) as unknown;
-  const summary = requestSummaryOf(c.req.method, raw);
-  if (summary != null) c.set('requestLogSummary', summary);
+    const summary = requestSummaryOf(c.req.method, raw);
+    if (summary != null) c.set('requestLogSummary', summary);
     const parsed = endpoint.schema.safeParse(raw);
     if (!parsed.success) return invalidBody(c.json.bind(c), parsed.error.issues);
 

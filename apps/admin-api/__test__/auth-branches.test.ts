@@ -1,5 +1,5 @@
 /**
- * P2 分支补面（覆盖率 90/85 门槛——铁律 16 只补测试）：
+ * 分支补面（覆盖率 90/85 门槛——仅补测试）：
  * identity 审计桥映射（actor 前缀归一/数值归属）、session 属主回查三态、
  * me/auth 未走分支（资料行缺失/2FA 开启成功/凭据行与资料行漂移/payload 无 adminId）、
  * config P2 新键缺省与 SMTP 组边界。
@@ -22,12 +22,14 @@ const ADMIN_ID = 7;
 
 function bare(): Hono<SessionEnv> {
   const app = authRoutes({
+    invites: { consume: async () => null },
     identity: {
       mfa: mfaStub(),
       passwords: {
         authenticate: async () => ({ userId: ADMIN_ID }),
         change: async () => ({ invalidBefore: 'x' }),
         reset: async () => ({ invalidBefore: 'x' }),
+        exists: async () => [],
       },
       challenges: {
         begin: (async () => ({ challengeId: 'c' })) as never,
@@ -222,6 +224,7 @@ describe('auth/me 未走分支', () => {
           authenticate: async () => ({ userId: 0 }),
           change: async () => ({ invalidBefore: 'x' }),
           reset: async () => ({ invalidBefore: 'x' }),
+          exists: async () => [],
         },
         sessions: {
           sign: async () => 't',
@@ -267,12 +270,14 @@ describe('auth/me 未走分支', () => {
   it('登录成功但 touch/审计为 best-effort 分支（audit 拒绝不阻断登录）', async () => {
     const app = authRoutes({
       mailerConfigured: () => false,
+      invites: { consume: async () => null },
       identity: {
         mfa: mfaStub(),
         passwords: {
           authenticate: async () => ({ userId: ADMIN_ID }),
           change: async () => ({ invalidBefore: 'x' }),
           reset: async () => ({ invalidBefore: 'x' }),
+          exists: async () => [],
         },
         challenges: {
           begin: (async () => ({ challengeId: 'c' })) as never,

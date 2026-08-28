@@ -3,12 +3,12 @@ import { UpstreamError } from '../errors/kinds';
 import type { UrlGuard } from '../types';
 
 /**
- * fetch 封装（ai-package.md §7.4 传输层）：
+ * fetch 封装（传输层）：
  *   - assertSafeUrl：SSRF 防护（https-only + 禁内网/回环，含 DNS 解析后逐地址判定，防 rebinding）
  *   - connectMs：首字节前超时（connect + TTFB），超时抛 timeout 错误（retryable + circuitTrip）
  *   - 外部 AbortSignal：原样透传（withRetry 的 deadline / 客户端断），抛原生 AbortError 交给上层识别
  *   - 网络错误（fetch failed / ECONNREFUSED）→ network 错误（retryable + circuitTrip）
- * 状态码不在此层分类（429/401 等由 adapter.mapError 处理，见阶段 C）
+ * 状态码不在此层分类（429/401 等由 adapter.mapError 处理）
  */
 
 /** 按首字节的 IPv4 保留段判定表（入参为次字节 b）；未列出的首字节 → 公网 */
@@ -157,7 +157,7 @@ export function assertSafeUrlSync(url: string, opts: SafeUrlOptions = {}): URL {
 
 /**
  * 完整校验：同步快速失败 + DNS 解析后逐地址判定（防 DNS rebinding）。
- * 出口信任 = 机械基线 + 运营面（渠道写入是 admin 域——ADR-0010）；
+ * 出口信任 = 机械基线 + 运营面（渠道写入是 admin 域）；
  * 域名解析失败时放行（交给 fetch 自然报 network 错误，未解析=无法发起连接，安全）。
  */
 export async function assertSafeUrl(url: string, opts: SafeUrlOptions = {}): Promise<URL> {
@@ -189,7 +189,7 @@ export interface FetchUpstreamOptions {
  * fetch 封装：机械基线校验 → connectMs 超时 → 外部信号传播 → 错误分类。
  * 返回原始 Response（含非 2xx，状态码分类由 adapter.mapError 负责）；body 由调用方接管。
  *
- * SSRF 防护（ADR-0010）：机械基线逐个拒绝私网地址与危险协议，出口信任锚在
+ * SSRF 防护：机械基线逐个拒绝私网地址与危险协议，出口信任锚在
  * 运营面（上游 URL 全部来自 admin 域的渠道/provider 表）；TLS 仍校验原 hostname。
  */
 export async function fetchUpstream(
@@ -216,7 +216,7 @@ export async function fetchUpstream(
   try {
     // 原生 fetch 保持响应体逐块流式传输；生产安全边界是机械基线
     // （https-only + 私网/IPv6 解包拒绝 + DNS 私网地址检查）与 HTTPS 证书校验；
-    // 出口信任锚在运营面（渠道写入是 admin 域——ADR-0010）。
+    // 出口信任锚在运营面（渠道写入是 admin 域）。
     // redirect:'manual'：守卫只校验初始 URL，自动跟随 3x 等于让未过审目标
     // （含 http 内网/metadata 降级跳转）绕过守卫——3x 按 非 2xx 交 mapError 分类。
     return await fetch(url, { ...init, redirect: 'manual', signal: controller.signal });

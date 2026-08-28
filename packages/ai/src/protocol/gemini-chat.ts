@@ -45,7 +45,7 @@ export function geminiUsageToUsage(
 
 // ─────────────────────────── ① 入站请求 → 规范形 ───────────────────────────
 
-// eslint-disable-next-line complexity, max-lines-per-function -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态，存量棘轮（铁律 22⑥）
+// eslint-disable-next-line complexity, max-lines-per-function -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态
 export function geminiRequestToChat(req: unknown, model: string): Json {
   const r = asJson(req) ?? {};
   const messages: unknown[] = [];
@@ -76,8 +76,7 @@ export function geminiRequestToChat(req: unknown, model: string): Json {
     }
     const entry: Json = { role, content: partsToContent(parts) };
     if (role === 'assistant') {
-      // B-G1 回归：functionCall 为非对象标量（垃圾形状）时 filter(Boolean) 仍放行，
-      // asJson(fc)! 空断言后读 f.name 抛 TypeError——先归一成对象再过滤 null（垃圾形状不崩）
+      // functionCall 为非对象标量（垃圾形状）时先归一成对象再过滤 null（垃圾形状不崩）
       const toolCalls = parts
         .map((p) => asJson(asJson(p)?.functionCall))
         .filter((f): f is Json => f !== null)
@@ -143,7 +142,7 @@ function chatContentToParts(content: unknown): unknown[] {
   });
 }
 
-// eslint-disable-next-line complexity, max-lines-per-function, max-statements -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态，存量棘轮（铁律 22⑥）
+// eslint-disable-next-line complexity, max-lines-per-function, max-statements -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态
 export function chatRequestToGemini(req: unknown): Json {
   const r = asJson(req) ?? {};
   const contents: unknown[] = [];
@@ -280,7 +279,7 @@ const CHAT_FINISH_TO_GEMINI: Record<string, string> = {
 };
 
 /** 规范形 chat 非流式响应 → Gemini generateContent 响应（入站非流式） */
-// eslint-disable-next-line complexity -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态，存量棘轮（铁律 22⑥）
+// eslint-disable-next-line complexity -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态
 export function chatResponseToGemini(res: unknown): Json {
   const r = asJson(res) ?? {};
   const choice = asJson(asArray(r.choices)[0]) ?? {};
