@@ -26,7 +26,7 @@ health.ts / scheduler.ts / shutdown.ts / index.ts
 
 ## 配置与端口
 
-- 必填：`DATABASE_URL`、`CHANNEL_API_KEY_ENCRYPTION`（≥32，渠道上游 Key 解密；worker 必配此键，无 `ENCRYPTION_KEY` 回退——回落仅存在于 gateway 侧）
+- 必填：`DATABASE_URL`、`ENCRYPTION_KEY`（≥32，对称加密根键——渠道上游 Key 与 integration settings 解密共用，与全服务同值）
 - 选配：`SMTP_HOST/USER/PASS` 三要素（缺一 = 不装配，email 渠道 fail-closed）；逃生门 `WORKER_AI_ALLOW_LOCAL_URL` / `WORKER_WEBHOOK_ALLOW_LOCAL_URL`（缺省 false，仅非生产语义）
 - 常用缺省：`WORKER_OWNER_ID=worker-<pid>`、`WORKER_BATCH_SIZE=20`、`WORKER_CLAIM_LEASE_MS=60000`、`WORKER_MAX_ATTEMPTS=10`、`WORKER_BALANCE_LOW_THRESHOLD=5`
 - OTel：`OTEL_TRACES_MODE=off|memory|console|otlp`（缺省开发 memory / 生产 off）；推送鉴权 `TRACE_RECEIVER_TOKEN`（与 trace-receiver 同键同值）

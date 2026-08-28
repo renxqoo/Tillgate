@@ -48,7 +48,7 @@ git clone https://github.com/renxqoo/Tillgate.git && cd Tillgate
 bun install                        # 安装依赖（bun.lock）
 cp .env.example .env               # 只含必填键；其余配置全部有安全默认值
 # 生成必填密钥（弱值/空值启动即拒绝）：
-for k in JWT_SECRET ADMIN_JWT_SECRET ENCRYPTION_KEY IDENTITY_CODE_PEPPER CLIENT_CODE_PEPPER CHANNEL_API_KEY_ENCRYPTION; do
+for k in JWT_SECRET ADMIN_JWT_SECRET ENCRYPTION_KEY IDENTITY_CODE_PEPPER CLIENT_CODE_PEPPER; do
   sed -i.bak -E "s|^#?[[:space:]]?${k}=.*|${k}=$(openssl rand -hex 32)|" .env; done; rm -f .env.bak
 docker compose --env-file .env -f docker/compose.dev.yml up -d   # 起 postgres + redis
 bun packages/db/scripts/provision-fresh.ts   # 空库前置建表（幂等；首次迁移前必跑）
@@ -77,7 +77,7 @@ git clone https://github.com/renxqoo/Tillgate.git && cd Tillgate
 # 2) 生产 .env —— 唯一配置面
 cp .env.example .env && vim .env
 #   必改：JWT_SECRET / ADMIN_JWT_SECRET / ENCRYPTION_KEY / IDENTITY_CODE_PEPPER /
-#   CLIENT_CODE_PEPPER / CHANNEL_API_KEY_ENCRYPTION（强随机）、
+#   CLIENT_CODE_PEPPER（强随机）、
 #   POSTGRES_PASSWORD / REDIS_PASSWORD / TRACE_RECEIVER_TOKEN / OAUTH_API_BASE；
 #   NODE_ENV=production。DATABASE_URL / REDIS_URL 由 compose 自动注入，无需手填。
 chmod 600 .env

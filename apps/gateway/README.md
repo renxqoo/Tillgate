@@ -26,7 +26,7 @@ app.ts / index.ts / shutdown.ts
 ## 配置与端口
 
 - 端口 `8080`（`GATEWAY_PORT`）；探针 `/healthz`（查 DB）`/readyz`（查 DB+Redis）`/livez`（纯 200）
-- 必填：`DATABASE_URL`、`REDIS_URL`（**必配**——多副本共享限流/爆破/健康状态；启动 `assertRedisReachable` 连不上拒绝启动）、`JWT_SECRET`（生产 ≥32，App-JWT）、`CHANNEL_API_KEY_ENCRYPTION`（≥32，回落 `ENCRYPTION_KEY`）
+- 必填：`DATABASE_URL`、`REDIS_URL`（**必配**——多副本共享限流/爆破/健康状态；启动 `assertRedisReachable` 连不上拒绝启动）、`JWT_SECRET`（生产 ≥32，App-JWT）、`ENCRYPTION_KEY`（≥32，对称加密根键）
 - 关键缺省：`GATEWAY_BODY_LIMIT_BYTES=10MB`、`GATEWAY_UPLOAD_MAX_FILE_BYTES=16MB`、`GATEWAY_UPSTREAM_DEADLINE_MS=120000`、`BILLING_RESERVATION_MODE=full`、`TRUSTED_PROXY_HOPS=0`
 - OTel：`OTEL_TRACES_MODE=off|otlp`（缺省 off）；推送鉴权 `TRACE_RECEIVER_TOKEN`（Bearer，与 trace-receiver 同键同值；缺此值对生产接收端 = span 全部 401）
 

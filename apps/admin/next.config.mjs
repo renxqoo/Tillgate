@@ -48,6 +48,8 @@ const allowedDevOrigins = [
 
 const nextConfig = {
   output: 'standalone',
+  // 不发 X-Powered-By: Next.js 响应头（技术栈指纹泄露）
+  poweredByHeader: false,
   allowedDevOrigins,
   // development 条件解析到 src 的 workspace 包必须列在此（Next 才做 .js→.ts 扩展名映射）
   transpilePackages: ['@tillgate/ui', '@tillgate/api-client'],
