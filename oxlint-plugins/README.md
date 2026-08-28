@@ -2,7 +2,6 @@
 
 Tillgate 本地 [oxlint JS 插件](https://oxc.rs/docs/guide/usage/linter/js-plugins.html)集合,
 把仓库规范(如 [rule/component-split.md](../rule/component-split.md))落成 lint 门禁。
-架构参考 [t3code 的 oxlint 插件](https://github.com/pingdotgg/t3code/tree/main/oxlint-plugin-t3code)。
 
 ## 目录结构:一个文件夹一个插件
 
