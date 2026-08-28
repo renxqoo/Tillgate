@@ -29,6 +29,8 @@ interface AccountRow {
   balance: string;
   inFlight: string;
   creditLimit: string;
+  debitFloor: string;
+  debitFloorSource: string;
   status: string;
 }
 
@@ -105,6 +107,8 @@ const asSnapshot = (row: AccountRow) => ({
   balance: row.balance,
   inFlight: row.inFlight,
   creditLimit: row.creditLimit,
+  debitFloor: row.debitFloor,
+  debitFloorSource: row.debitFloorSource,
   status: row.status,
 });
 
@@ -120,7 +124,9 @@ const asAuthSnapshot = (row: AuthorizationRow) => ({
   expiresAt: row.expiresAt,
 });
 
-export function createInMemoryWalletStore(): InMemoryWalletStore {
+export function createInMemoryWalletStore(
+  options: { defaultFloor?: () => Promise<string | null> } = {},
+): InMemoryWalletStore {
   const accounts = new Map<string, AccountRow>();
   const authorizations = new Map<string, AuthorizationRow>(); // key: refType\0refId
   const transactions: TransactionRow[] = [];
@@ -140,12 +146,13 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
     transaction: (fn) => fn(txHandle),
     joinTransaction: (_tx, fn) => fn(txHandle),
 
-    ensureUserAccount(_conn, userId, currency) {
+    async ensureUserAccount(_conn, userId, currency) {
       for (const row of accounts.values()) {
         if (row.kind === 'user' && row.userId === userId && row.currency === currency) {
-          return Promise.resolve(row.id);
+          return row.id;
         }
       }
+      const defaultFloor = options.defaultFloor != null ? await options.defaultFloor() : null;
       const row: AccountRow = {
         id: nextId('acc'),
         kind: 'user',
@@ -156,10 +163,12 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
         balance: '0',
         inFlight: '0',
         creditLimit: '0',
+        debitFloor: defaultFloor ?? '0',
+        debitFloorSource: 'default',
         status: 'active',
       };
       accounts.set(row.id, row);
-      return Promise.resolve(row.id);
+      return row.id;
     },
 
     ensureInternalAccount(_conn, code, currency) {
@@ -183,6 +192,8 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
         balance: '0',
         inFlight: '0',
         creditLimit: '0',
+        debitFloor: '0',
+        debitFloorSource: 'default',
         status: 'active',
       };
       accounts.set(row.id, row);
@@ -355,20 +366,48 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
     async conditionalReserve(_conn, input) {
       const account = accounts.get(input.accountId);
       if (account == null || account.status !== 'active') return null;
-      if (!input.collectOverage) {
-        const credit =
-          input.guardKind === 'cash' ? new Decimal(0) : new Decimal(account.creditLimit);
-        const available = new Decimal(account.balance)
-          .plus(credit)
-          .minus(new Decimal(account.inFlight));
-        if (available.lt(new Decimal(input.amount))) return null;
-      }
+      const credit = input.guardKind === 'cash' ? new Decimal(0) : new Decimal(account.creditLimit);
+      const floor =
+        input.collectOverage === true ? new Decimal(account.debitFloor) : new Decimal(0);
+      const available = new Decimal(account.balance)
+        .plus(credit)
+        .plus(floor)
+        .minus(new Decimal(account.inFlight));
+      if (available.lt(new Decimal(input.amount))) return null;
       account.inFlight = new Decimal(account.inFlight).plus(new Decimal(input.amount)).toString();
       return {
         balance: account.balance,
         creditLimit: account.creditLimit,
         inFlight: account.inFlight,
       };
+    },
+
+    setDebitFloor(_conn, accountId, value) {
+      const row = accounts.get(accountId);
+      if (row == null) throw new Error('wallet.account_missing');
+      row.debitFloor = value;
+      row.debitFloorSource = 'manual';
+      return Promise.resolve();
+    },
+
+    async applyDefaultFloor(_conn, input) {
+      let applied = 0;
+      let skipped = 0;
+      for (const row of accounts.values()) {
+        if (row.kind !== 'user' || row.debitFloorSource !== 'default') continue;
+        const covers = new Decimal(row.balance)
+          .plus(new Decimal(row.creditLimit))
+          .plus(new Decimal(input.floor))
+          .minus(new Decimal(row.inFlight))
+          .gte(0);
+        if (covers) {
+          row.debitFloor = input.floor;
+          applied += 1;
+        } else {
+          skipped += 1;
+        }
+      }
+      return { applied, skipped };
     },
 
     setInFlight(_conn, accountId, value) {

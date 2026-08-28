@@ -7,4 +7,6 @@ export type { RefundInput, RefundResult } from './refund.js';
 export type { TransferInput, TransferResult } from './transfer.js';
 export type { StatementQuery, StatementItemView } from './statement.js';
 export type { SetCreditLimitInput, SetCreditLimitResult } from './credit-line.js';
+export type { SetDebitFloorInput, SetDebitFloorResult } from './debit-floor.js';
+export type { ApplyDefaultFloorInput, ApplyDefaultFloorResult } from './debit-floor.js';
 export type { ReferralPayoutsQuery, ReferralPayoutsResult } from './referral-payouts.js';

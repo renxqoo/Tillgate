@@ -51,6 +51,12 @@ export const billingRequests = pgTable(
     }),
     /** 实际冻结金额：full=风险预估，fixed=显式门槛。 */
     reservedAmount: numeric('reserved_amount', { precision: 38, scale: 18 }).notNull(),
+    /**
+     * 超收放弃额（元）：结算时 actual > 预留且可用额不足，超出可收部分被放弃
+     * （charged = actual − waived）。常态为 0；>0 = 上游 usage 虚高/余额耗尽的
+     * 运营信号（对账与告警口径），结算不因此死信。
+     */
+    waivedAmount: numeric('waived_amount', { precision: 38, scale: 18 }).notNull().default('0'),
     /** authorized/in_flight/settlement_pending/processing/retry_wait/settled/released/dead（2026-08-17 政策：uncertain 删除） */
     status: varchar('status', { length: 32 }).notNull().default('authorized'),
     /** 每次状态迁移递增；同时作为 worker fencing token。 */

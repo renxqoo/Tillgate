@@ -21,5 +21,9 @@ export interface AccountSnapshot {
   balance: string;
   inFlight: string;
   creditLimit: string;
+  /** 结算透支地板（缺省 '0' = 不透支；旧快照实现未携带时按 0 口径） */
+  debitFloor?: string;
+  /** 地板来源（default/manual；管理面读取用，旧实现未携带时按 default） */
+  debitFloorSource?: string;
   status: string;
 }

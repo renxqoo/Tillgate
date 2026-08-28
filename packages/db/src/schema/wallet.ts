@@ -46,6 +46,16 @@ export const walletAccounts = pgTable(
     inFlight: numeric('in_flight', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 新请求准入授信额度（≥0）；不限制已发生消费的结算补扣负余额。 */
     creditLimit: numeric('credit_limit', { precision: 38, scale: 18 }).notNull().default('0'),
+    /**
+     * 结算透支地板（≥0，缺省 0 = 不透支）：结算超收可形成负余额，但最终
+     * 可用敞口不得低于 −(credit_limit + debit_floor)（DB 触发器强制）。
+     */
+    debitFloor: numeric('debit_floor', { precision: 38, scale: 18 }).notNull().default('0'),
+    /**
+     * 地板来源：default = 随全局默认（批量刷默认只动此来源）；manual = 管理员
+     * 手工覆盖（批量永不覆盖）；group 为用户分组配置预留（本期不建）。
+     */
+    debitFloorSource: varchar('debit_floor_source', { length: 16 }).notNull().default('default'),
     /** active / frozen（风控冻结：冻结账户拒绝一切资金变动） */
     status: varchar('status', { length: 8 }).notNull().default('active'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -56,7 +66,10 @@ export const walletAccounts = pgTable(
       sql`(${t.kind} = 'user' and ${t.userId} is not null and ${t.code} is null)
           or (${t.kind} = 'internal' and ${t.code} is not null and ${t.userId} is null)`,
     ),
-    check('wallet_accounts_floor_ck', sql`${t.creditLimit} >= 0 and ${t.inFlight} >= 0`),
+    check(
+      'wallet_accounts_floor_ck',
+      sql`${t.creditLimit} >= 0 and ${t.inFlight} >= 0 and ${t.debitFloor} >= 0`,
+    ),
     check('wallet_accounts_status_ck', sql`${t.status} in ('active', 'frozen')`),
     check(
       'wallet_accounts_shard_ck',

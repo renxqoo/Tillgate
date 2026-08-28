@@ -173,8 +173,7 @@ export interface WalletStore {
    * coherence 在 commit 校验，autocommit 直调立即检查必炸）：单语句条件占用
    * in_flight——守卫（可用额口径 guardKind / 账户 active）进 WHERE，
    * 成功即「守卫过 + 占用
-   * 完成」，行锁窗口 = 本语句→commit。collectOverage（#over 结算补扣专属）
-   * 恒过——负余额只经结算侧，普通授权无法借道。返回 null = 守卫未过
+   * 完成」，行锁窗口 = 本语句→commit。返回 null = 守卫未过
    * （调用方读快照分类报错，错误口径复用域守卫）。
    */
   conditionalReserve(
@@ -183,11 +182,23 @@ export interface WalletStore {
       accountId: string;
       amount: string;
       guardKind: GuardKind;
-      collectOverage: boolean;
+      /** #over 结算补扣专属：守卫放宽到透支地板（余额+授信+地板−在途 ≥ 金额） */
+      collectOverage?: boolean;
     },
   ): Promise<{ balance: string; creditLimit: string; inFlight: string } | null>;
   /** 账户授信地板绝对值设置（credit_line 专用；账户行必须已锁） */
   setCreditLimit(tx: WalletConn, accountId: string, value: string): Promise<void>;
+  /** 结算透支地板设置（不动资金、不落交易行；管理面风控口径；manual 来源） */
+  setDebitFloor(tx: WalletConn, accountId: string, value: string): Promise<void>;
+  /**
+   * 存量批量刷默认地板：仅作用 kind='user' 且 debit_floor_source='default'
+   * 的账户（manual 永不覆盖）；贴线不满足（余额+授信+新地板−在途 < 0）的行
+   * 跳过并计数。返回 {applied, skipped}。
+   */
+  applyDefaultFloor(
+    tx: WalletConn,
+    input: { floor: string },
+  ): Promise<{ applied: number; skipped: number }>;
   /** 数据库时钟（过期判定必须用 DB now——多副本时钟漂移防线） */
   databaseNow(conn: WalletConn): Promise<Date>;
 

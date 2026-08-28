@@ -160,7 +160,7 @@ export function settlementMethods(
       return (row as BillingRequestRow | undefined) ?? null;
     },
 
-    async casFinalizeSettled(conn, claim) {
+    async casFinalizeSettled(conn, claim, settled) {
       const rows = await tx(conn)
         .update(billingRequests)
         .set({
@@ -169,6 +169,7 @@ export function settlementMethods(
           claimOwner: null,
           claimToken: null,
           claimUntil: null,
+          waivedAmount: settled.waived,
           settledAt: sql`clock_timestamp()`,
           nextSettlementAt: null,
           lastError: null,

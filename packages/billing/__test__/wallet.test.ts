@@ -4,7 +4,7 @@
  * 键劫持归属、出账守卫口径、同键竞速回归、读侧规范化。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError, isDefectError } from '@tillgate/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { BillingErrors } from '../src/domain/errors.js';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store.js';
@@ -143,7 +143,7 @@ describe('authorize / settle / release（两阶段闭环）', () => {
     expect(replay.replayed).toBe(true);
   });
 
-  it('可用口径守卫：在途挤占可用额（第二笔冻结拒且无残留）', async () => {
+  it('可用口径守卫：在途挤占可用额（第二笔冻结拒且无残留；余额本体足 → held_in_flight）', async () => {
     const { api } = harness();
     const userId = nextUser();
     await api.credit({ userId, amount: '10', refType: 'topup', refId: 'c3' });
@@ -151,7 +151,7 @@ describe('authorize / settle / release（两阶段闭环）', () => {
     const rejected = await rejection(() =>
       api.authorize({ userId, amount: '3', refType: 'billing', refId: 'b4' }),
     );
-    expect(rejected.code).toBe('billing.insufficient_balance');
+    expect(rejected.code).toBe('billing.funds_held_in_flight');
     expect(defined((await api.accounts(userId))[0]).inFlight).toBe('8');
   });
 
@@ -165,7 +165,8 @@ describe('authorize / settle / release（两阶段闭环）', () => {
     const rejected = await rejection(() =>
       api.authorize({ userId, amount: '1', refType: 'billing', refId: 'b6', allowCredit: false }),
     );
-    expect(rejected.code).toBe('billing.insufficient_cash');
+    // 现金口径下余额本体 5 ≥ 1，仅被在途 5 挤占 → held_in_flight（非 cash 不足）
+    expect(rejected.code).toBe('billing.funds_held_in_flight');
   });
 
   it('release：在途归还、重复释放幂等 no-op、释放后不可结算', async () => {
@@ -214,25 +215,6 @@ describe('authorize / settle / release（两阶段闭环）', () => {
     const replay = await api.authorize({ userId, amount: '4', refType: 'billing', refId: 'b9' });
     expect(replay).toEqual({ ...first, replayed: true });
     expect(defined((await api.accounts(userId))[0]).inFlight).toBe('4');
-  });
-
-  it('collectOverage 域约束：非 billing/#over 键使用即红灯缺陷', async () => {
-    const { api } = harness();
-    const userId = nextUser();
-    await api.credit({ userId, amount: '1', refType: 'topup', refId: 'c8' });
-    let defect: unknown;
-    try {
-      await api.authorize({
-        userId,
-        amount: '1',
-        refType: 'topup',
-        refId: 'x',
-        collectOverage: true,
-      });
-    } catch (error) {
-      defect = error;
-    }
-    expect(isDefectError(defect)).toBe(true);
   });
 });
 

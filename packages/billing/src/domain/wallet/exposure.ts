@@ -35,7 +35,7 @@ export function guardKindOf(guard: DebitGuard): GuardKind {
   return guard.allowCredit === false ? 'cash' : 'credit';
 }
 
-/** 出账守卫：可用额不足按口径分流为现金/余额两类拒绝（quota_exhausted，充值语义由 face 翻译） */
+/** 出账守卫：可用额不足按口径分流——在途占用/现金/余额三类拒绝（quota_exhausted，充值语义由 face 翻译） */
 // eslint-disable-next-line max-params -- 导出域守卫:调用点遍布 wallet 应用层,改签名放大跨模块 diff
 export function assertCanDebit(
   account: Pick<AccountSnapshot, 'kind' | 'currency' | 'balance' | 'creditLimit' | 'inFlight'>,
@@ -51,6 +51,18 @@ export function assertCanDebit(
     required: toStorage(amount),
     currency: account.currency,
   };
+  // 余额本体足够、仅被在途预扣挤占：分流独立错误码——「充值无济于事，等结算」
+  // 与真余额不足的可操作口径不同（重试 vs 充值），混报会误导用户。
+  const gross =
+    guard.allowCredit === false || account.kind !== 'user'
+      ? new Decimal(account.balance)
+      : new Decimal(account.balance).plus(new Decimal(account.creditLimit));
+  if (gross.gte(amount)) {
+    throw BillingErrors.business('funds_held_in_flight', {
+      ...context,
+      inFlight: account.inFlight,
+    });
+  }
   if (guard.allowCredit === false) {
     throw BillingErrors.business('insufficient_cash', context);
   }

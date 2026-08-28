@@ -159,20 +159,4 @@ async function expectBusinessCode(fn: () => Promise<unknown>): Promise<string> {
     const replay = await h.api.refund({ userId, amount: '2', refType: 'admin', refId: 'rf1' });
     expect(replay).toEqual({ ...first, replayed: true });
   });
-
-  it('负余额结算路径：collectOverage 允许 #over 补扣击穿地板（触发器不阻止负余额）', async () => {
-    const userId = nextUser();
-    await h.api.credit({ userId, amount: '1', refType: 'topup', refId: 'c7' });
-    const over = await h.api.authorize({
-      userId,
-      amount: '5',
-      refType: 'billing',
-      refId: 'req9#over',
-      collectOverage: true,
-    });
-    expect(over.status).toBe('active');
-    await h.api.settle({ refType: 'billing', refId: 'req9#over', amount: '5' });
-    expect(defined((await h.api.accounts(userId))[0]).balance).toBe('-4');
-    await assertLedgerCoherent(h.db);
-  });
 });

@@ -52,7 +52,12 @@ export function createDefaultFundingRegistry(deps: {
   quota: SubscriptionQuotaStore;
 }): FundingRegistry {
   return createFundingRegistry([
-    createSubscriptionSource({ quota: deps.quota, billing: deps.store, wallet: deps.wallet }),
+    createSubscriptionSource({
+      quota: deps.quota,
+      billing: deps.store,
+      wallet: deps.wallet,
+      walletStore: deps.walletStore,
+    }),
     createPaygSource({ wallet: deps.wallet, walletStore: deps.walletStore }),
   ]);
 }

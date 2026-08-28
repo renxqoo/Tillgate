@@ -8,10 +8,11 @@ import { subscriptionAvailability } from '../../../domain/billing/subscription-a
 import { billingDayStart, billingMonthStart } from '../../../domain/billing/daily-window.js';
 import { BillingErrors } from '../../../domain/errors.js';
 import { Decimal } from '../../../domain/money.js';
+import { overCollectCeiling } from './over-collect.js';
 import { BILLING_REF_TYPE } from '../../wallet/authorize.js';
 import type { BillingStore } from '../../../ports/billing-store.js';
 import type { SubscriptionQuotaStore } from '../../../ports/funding-ports.js';
-import type { WalletTx } from '../../../ports/wallet-store.js';
+import type { WalletStore, WalletTx } from '../../../ports/wallet-store.js';
 import type { WalletApi } from '../../wallet/wallet.js';
 import type {
   FundingSource,
@@ -19,6 +20,7 @@ import type {
   ReserveInput,
   SourceReservation,
   SourceSettleInput,
+  SourceSettleResult,
 } from './source.js';
 
 // eslint-disable-next-line max-lines-per-function -- 订阅资金源生命周期动词(probe/reserve)事务体
@@ -26,6 +28,7 @@ export function createSubscriptionSource(deps: {
   quota: SubscriptionQuotaStore;
   billing: BillingStore;
   wallet: WalletApi;
+  walletStore: WalletStore;
 }): FundingSource {
   const type = 'subscription' as const;
   return {
@@ -148,8 +151,9 @@ export function createSubscriptionSource(deps: {
       }
     },
 
-    async settle(tx: WalletTx, input: SourceSettleInput): Promise<void> {
-      // 套餐只核销预留内份额；纯套餐链的超额转用户余额补扣，可形成负余额。
+    async settle(tx: WalletTx, input: SourceSettleInput): Promise<SourceSettleResult> {
+      // 套餐只核销预留内份额；纯套餐链的超额转用户余额补扣——与 PAYG 同口径
+      // 钳制到可收额（负余额与账本一致性触发器矛盾），差额 waived 上报。
       const { sourceRefId } = input.reservation;
       if (sourceRefId === null) {
         throw new DefectError('subscription_source.no_source_ref', 'billing.wallet_invariant');
@@ -165,10 +169,17 @@ export function createSubscriptionSource(deps: {
           detail: 'quota settle guard missed',
         });
       }
-      if (new Decimal(input.over).gt(0)) {
+      const over = new Decimal(input.over);
+      if (!over.gt(0)) return { waived: '0' };
+      // 钳到可收额（可用 + 透支地板；见 over-collect.ts），差额 waived 上报
+      const collectOver = Decimal.min(
+        over,
+        await overCollectCeiling(deps.walletStore, tx, input.userId),
+      );
+      if (collectOver.gt(0)) {
         await deps.wallet.authorize({
           userId: input.userId,
-          amount: input.over,
+          amount: collectOver.toString(),
           refType: BILLING_REF_TYPE,
           refId: `${input.requestId}#over`,
           memo: `subscription overage ${input.requestId}`,
@@ -178,11 +189,12 @@ export function createSubscriptionSource(deps: {
         await deps.wallet.settle({
           refType: BILLING_REF_TYPE,
           refId: `${input.requestId}#over`,
-          amount: input.over,
+          amount: collectOver.toString(),
           memo: `subscription overage ${input.requestId}`,
           tx,
         });
       }
+      return { waived: over.minus(collectOver).toString() };
     },
   };
 }

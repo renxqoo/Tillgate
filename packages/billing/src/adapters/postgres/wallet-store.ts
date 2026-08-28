@@ -4,10 +4,12 @@
  * 写路径约定：写方法入参必须是事务句柄（动词层保证）；账户行锁（FOR UPDATE，
  * id 定序）是复式账本的串行化点——锁外读到的余额不可用于过账。
  */
+/* eslint-disable max-lines -- 钱包存储全动词聚散件:账户/授权/过账/结算原语单一实现面,行数随动词线性增长 */
 import { and, asc, desc, eq, inArray, like, lt, sql } from 'drizzle-orm';
 import {
   isUniqueViolation,
   runTx,
+  systemConfigs,
   walletAccounts,
   walletAuthorizations,
   walletLegs,
@@ -16,6 +18,11 @@ import {
   type DbTx,
   type TxRetryPolicy,
 } from '@tillgate/db';
+import { Decimal } from '../../domain/money.js';
+import {
+  DEBIT_FLOOR_DEFAULT_KEY,
+  parseDebitFloorDefault,
+} from '../../application/wallet/debit-floor.js';
 import type { AccountSnapshot } from '../../domain/wallet/accounts.js';
 import type { AuthorizationSnapshot } from '../../domain/wallet/authorization.js';
 import type {
@@ -30,6 +37,20 @@ import type {
 /** adapter 装配入参（重试策略必填注入——缺省值归 app config） */
 export interface PostgresWalletStoreOptions {
   retry: TxRetryPolicy;
+  /**
+   * 新钱包创建时的默认地板解析（返回 null = 不套用）。
+   * 缺省 = 同库读 system_configs 的 debit_floor_default 键——
+   * 键与值形状单一真相在 application/wallet/debit-floor.ts。
+   */
+  defaultFloor?: (conn: WalletConn) => Promise<string | null>;
+}
+
+/** 缺省默认地板解析：同库读 system_configs（键单一真相在 debit-floor.ts） */
+async function readKvDefaultFloor(c: DbTx): Promise<string | null> {
+  const row = await c.query.systemConfigs.findFirst({
+    where: eq(systemConfigs.key, DEBIT_FLOOR_DEFAULT_KEY),
+  });
+  return parseDebitFloorDefault(row?.value);
 }
 
 /** 句柄透传：port 句柄在本 adapter 内即 db 句柄（品牌字段由工厂统一加盖） */
@@ -47,6 +68,7 @@ export function createPostgresWalletStore(
   options: PostgresWalletStoreOptions,
 ): WalletStore {
   const { retry } = options;
+  const resolveDefaultFloor = options.defaultFloor;
 
   const AUTH_COLUMNS = {
     id: walletAuthorizations.id,
@@ -68,10 +90,19 @@ export function createPostgresWalletStore(
     // ---------- 账户 ----------
     async ensureUserAccount(conn, userId, currency) {
       const c = asDb(conn);
-      await c
+      const defaultFloor =
+        resolveDefaultFloor != null ? await resolveDefaultFloor(conn) : await readKvDefaultFloor(c);
+      const inserted = await c
         .insert(walletAccounts)
-        .values({ kind: 'user', userId, currency })
-        .onConflictDoNothing();
+        .values({
+          kind: 'user',
+          userId,
+          currency,
+          ...(defaultFloor != null ? { debitFloor: defaultFloor } : {}),
+        })
+        .onConflictDoNothing()
+        .returning({ id: walletAccounts.id });
+      if (inserted[0] != null) return inserted[0].id;
       const [row] = await c
         .select({ id: walletAccounts.id })
         .from(walletAccounts)
@@ -149,6 +180,8 @@ export function createPostgresWalletStore(
           balance: walletAccounts.balance,
           inFlight: walletAccounts.inFlight,
           creditLimit: walletAccounts.creditLimit,
+          debitFloor: walletAccounts.debitFloor,
+          debitFloorSource: walletAccounts.debitFloorSource,
           status: walletAccounts.status,
         })
         .from(walletAccounts)
@@ -170,6 +203,8 @@ export function createPostgresWalletStore(
           balance: walletAccounts.balance,
           inFlight: walletAccounts.inFlight,
           creditLimit: walletAccounts.creditLimit,
+          debitFloor: walletAccounts.debitFloor,
+          debitFloorSource: walletAccounts.debitFloorSource,
           status: walletAccounts.status,
         })
         .from(walletAccounts)
@@ -182,8 +217,9 @@ export function createPostgresWalletStore(
       // 快路径的串行窗口即本语句,与后续 insertAuthorization 同事务(deferred
       // coherence 在 commit 统一校验 in_flight == Σ active authorizations)。
       let guard = sql`(balance + credit_limit - in_flight >= ${input.amount}::numeric)`;
-      if (input.collectOverage) {
-        guard = sql`true`;
+      if (input.collectOverage === true) {
+        // #over 结算补扣：守卫放宽到透支地板（深度由 debit_floor 与触发器封顶）
+        guard = sql`(balance + credit_limit + debit_floor - in_flight >= ${input.amount}::numeric)`;
       } else if (input.guardKind === 'cash') {
         guard = sql`(balance - in_flight >= ${input.amount}::numeric)`;
       }
@@ -328,6 +364,29 @@ export function createPostgresWalletStore(
         .update(walletAccounts)
         .set({ creditLimit: value, updatedAt: new Date() })
         .where(eq(walletAccounts.id, accountId));
+    },
+    async setDebitFloor(conn, accountId, value) {
+      await asDb(conn)
+        .update(walletAccounts)
+        .set({ debitFloor: value, debitFloorSource: 'manual', updatedAt: new Date() })
+        .where(eq(walletAccounts.id, accountId));
+    },
+
+    async applyDefaultFloor(conn, input) {
+      const c = asDb(conn);
+      void Decimal; // eslint-disable-line @typescript-eslint/no-unused-vars -- 保留导入位（键解析同源）
+      const updated = await c.execute<{ id: string }>(sql`
+        update wallet_accounts
+        set debit_floor = ${input.floor}::numeric, debit_floor_source = 'default', updated_at = clock_timestamp()
+        where kind = 'user' and debit_floor_source = 'default'
+          and (balance + credit_limit + ${input.floor}::numeric - in_flight >= 0)
+        returning id`);
+      const total = await c.execute<{ n: string }>(sql`
+        select count(*)::text as n from wallet_accounts
+        where kind = 'user' and debit_floor_source = 'default'`);
+      const applied = updated.length;
+      const population = Number(total[0]?.n ?? '0');
+      return { applied, skipped: population - applied };
     },
 
     async databaseNow(conn) {

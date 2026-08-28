@@ -34,6 +34,8 @@ export interface BillingRequestRow {
   subscriptionId: number | null;
   estimatedExposureAmount: string | null;
   reservedAmount: string;
+  /** 超收放弃额（结算钳制口径；旧行缺省 '0'） */
+  waivedAmount?: string;
   status: string;
   revision: number;
   stream: boolean;
@@ -252,10 +254,11 @@ export interface BillingStore {
     tx: WalletConn,
     claim: { requestId: string; ownerId: string; claimToken: string; revision: number },
   ): Promise<BillingRequestRow | null>;
-  /** CAS processing → settled（五元组；清认领） */
+  /** CAS processing → settled（五元组；清认领；waived = 超收放弃额落库） */
   casFinalizeSettled(
     tx: WalletConn,
     claim: { requestId: string; ownerId: string; claimToken: string; revision: number },
+    settled: { waived: string },
   ): Promise<boolean>;
   /** 失败处置 CAS：processing → retry_wait（退避）/ dead（死信） */
   casToRetryOrDead(
