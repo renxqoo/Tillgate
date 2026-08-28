@@ -241,10 +241,8 @@ describe('接收与指标', () => {
     });
     const downRes = await down.request('/readyz');
     expect(downRes.status).toBe(503);
-    expect(
-      ((await downRes.json()) as { status: string; dependencies: { postgres: string } })
-        .dependencies.postgres,
-    ).toBe('down');
+    // S6：故障细节只进日志——探针不回显驱动错误串
+    expect(await downRes.json()).toEqual({ status: 'fail', dependencies: { postgres: 'down' } });
   });
 
   it('/internal/stats:batcher 计数器直出;存储查询失败不掩盖指标(storage null)', async () => {

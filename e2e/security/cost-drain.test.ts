@@ -183,9 +183,13 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
       expect(world.upstream.recorded.length).toBe(0); // 上游一次都没被调——平台零损失
     }, 30_000);
 
-    it('⑥ fixed=0.1 低门槛放行 + 实际用量远超余额 → 全额补扣负余额', async () => {
+    it('⑥ fixed=0.1 低门槛放行 + 实际用量远超余额 → 受控透支补扣（地板内扣负、地板外放弃）', async () => {
       world.upstream.script = 'nonstream-huge-usage'; // 实际 100k 输出 token × ¥600/M = ¥60 >> 预留 0.5
       const { raw, userId } = await keys.issue('0.5');
+      // 结算透支地板 5：受控负余额上界（新口径：超收钳到 可用+地板，差额 waived）
+      await world.db.execute(
+        sql`update wallet_accounts set debit_floor = 5 where user_id = ${userId}`,
+      );
 
       const res = await e2ePost(fixedGateway.baseUrl, raw, {
         model: drainModel,
@@ -198,15 +202,18 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
 
       const bill = await latestReceipt(userId);
       expect(bill.status).toBe('settled'); // 不是 dead / 不是 settlement_pending 滞留
-      // 实扣口径按真实 usage（60 元级）落 usage_logs；超出 0.1 的部分全部 #over 补扣。
+      // 实收 = 可用 0.4（0.5 − 预留在途 0.1）+ 地板 5 = 5.4，加预留内 0.1 → 5.5；
+      // 应收 60.06（1000 输入 ×¥60/M + 100k 输出 ×¥600/M）与实收的差额 54.56 落 waived_amount。
       const usage = await world.db.execute<{ amount: string }>(
         sql`select amount::text from usage_logs where user_id = ${userId}`,
       );
-      const usageAmount = defined(usage[0], 'usage row').amount;
-      expect(new Decimal(usageAmount).gt(50)).toBe(true);
+      expect(new Decimal(defined(usage[0], 'usage row').amount).eq('5.5')).toBe(true);
+      const waived = await world.db.execute<{ waived_amount: string }>(
+        sql`select waived_amount::text from billing_requests where user_id = ${userId}`,
+      );
+      expect(new Decimal(defined(waived[0], 'bill row').waived_amount).eq('54.56')).toBe(true);
       const w = await keys.walletOf(userId);
-      expect(new Decimal(w.balance).eq(new Decimal('0.5').minus(usageAmount))).toBe(true);
-      expect(new Decimal(w.balance).lt(0)).toBe(true);
+      expect(new Decimal(w.balance).eq('-5')).toBe(true); // 恰触地板——受控透支不穿透
       expect(w.inFlight).toBe('0'); // 在途清零——无资金搁浅
     }, 60_000);
   });

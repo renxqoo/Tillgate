@@ -34,6 +34,15 @@ export interface ModelMappingSnapshot {
    * （显式免费与候选价格非全零结构性拒绝）。目录实现方携带。
    */
   isFree?: boolean;
+  /** 模型维限流（目录实现方携带；admitModel 钩子消费，缺省不限） */
+  rpmLimit?: number | null;
+  tpmLimit?: number | null;
+  /**
+   * 模型上下文窗口（token 总量；目录实现方携带，缺省不限）。用于把输出
+   * 预留上界钳到「窗口 − 输入上界」——全额预扣模式下避免按缺省输出上限
+   * 过度预留挤占用户可用敞口（小窗口模型尤其显著）。
+   */
+  contextLength?: number | null;
 }
 
 /** 报价候选（主模型 + 兜底展开后的有序链；价格快照来自各自映射） */
@@ -50,6 +59,11 @@ export interface QuoteCandidate {
   unitUpperBound: number;
   coefficient: string;
   billingPolicyFingerprint: string | null;
+  /** 模型维限流（候选级准入维度；见 ModelMappingSnapshot.rpmLimit） */
+  rpmLimit?: number | null;
+  tpmLimit?: number | null;
+  /** 模型上下文窗口透传（见 ModelMappingSnapshot.contextLength） */
+  contextLength?: number | null;
   /** 命中时段标签透传（收据审计列；见 ModelMappingSnapshot.pricingWindow） */
   pricingWindow?: string;
   /** 显式免费标记透传（授权 0 元 fast-path 判定；见 ModelMappingSnapshot.isFree） */

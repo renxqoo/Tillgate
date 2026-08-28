@@ -14,9 +14,17 @@ export interface SettingsRoutesDeps extends StepupVerifyDeps {
   readonly controlPlane: Pick<ControlPlane, 'settings'>;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 设置面路由表平铺:时区+集成+地板（一文件一族,拆分制造人工接缝）
 export function settingsRoutes(deps: SettingsRoutesDeps) {
   const app = new Hono<SessionEnv>();
-  const { billingTimezone, integrations } = deps.controlPlane.settings;
+  const {
+    billingTimezone,
+    debitFloorDefault,
+    billingReservation,
+    billingReservationLimit,
+    platformCurrency,
+    integrations,
+  } = deps.controlPlane.settings;
 
   app.get('/v1/settings/billing-timezone', async (c) => c.json(await billingTimezone.read()));
 
@@ -28,6 +36,62 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
   });
 
   app.get('/v1/settings/integrations', async (c) => c.json(await integrations.list()));
+
+  app.get('/v1/settings/debit-floor-default', async (c) => c.json(await debitFloorDefault.read()));
+
+  app.put(
+    '/v1/settings/debit-floor-default',
+    jsonBody(settingsContracts.debitFloorDefaultUpdate),
+    async (c) => {
+      const body = c.req.valid('json');
+      // 审计在 control-plane 用例内（settings.debit_floor_default；与 billing_timezone 同族）
+      return c.json(
+        await debitFloorDefault.update({ ctx: controlContextOf(c), floor: body.floor }),
+      );
+    },
+  );
+
+  app.get('/v1/settings/billing-reservation', async (c) => c.json(await billingReservation.read()));
+
+  app.get('/v1/settings/platform-currency', async (c) => c.json(await platformCurrency.read()));
+
+  app.put(
+    '/v1/settings/platform-currency',
+    jsonBody(settingsContracts.platformCurrencyUpdate),
+    async (c) => {
+      const body = c.req.valid('json');
+      // 写一次守卫（处女系统）在 control-plane 用例内；非处女 409 platform_currency_locked
+      return c.json(
+        await platformCurrency.update({ ctx: controlContextOf(c), currency: body.currency }),
+      );
+    },
+  );
+
+  app.get('/v1/settings/billing-reservation-limit', async (c) =>
+    c.json(await billingReservationLimit.read()),
+  );
+
+  app.put(
+    '/v1/settings/billing-reservation-limit',
+    jsonBody(settingsContracts.billingReservationLimitUpdate),
+    async (c) => {
+      const body = c.req.valid('json');
+      // 审计在 control-plane 用例内（settings.billing_reservation_limit；网关 TTL 内拾取）
+      return c.json(
+        await billingReservationLimit.update({ ctx: controlContextOf(c), limit: body.limit }),
+      );
+    },
+  );
+
+  app.put(
+    '/v1/settings/billing-reservation',
+    jsonBody(settingsContracts.billingReservationUpdate),
+    async (c) => {
+      const body = c.req.valid('json');
+      // 审计在 control-plane 用例内（settings.billing_reservation；网关 TTL 缓存内拾取）
+      return c.json(await billingReservation.update({ ctx: controlContextOf(c), policy: body }));
+    },
+  );
 
   app.put(
     '/v1/settings/integrations/:key',

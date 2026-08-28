@@ -14,6 +14,7 @@ const config = (overrides: Record<string, string | undefined> = {}) =>
   loadTraceReceiverConfig({
     DATABASE_URL: 'postgres://u:p@localhost:5432/unreachable-test',
     OTEL_TRACES_MODE: 'off', // 不启动 SDK;pg.Pool 惰性建连,不触库
+    TRACE_RECEIVER_OPEN: 'true', // 测试显式开放逃生门(鉴权语义另有 config 测试锁定)
     ...overrides,
   } as NodeJS.ProcessEnv);
 

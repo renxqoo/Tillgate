@@ -62,9 +62,18 @@ export interface SourceSettleInput {
   reservation: SourceReservation;
   /** 本源消耗（≤ 预留额；余量随结算原语隐式归还） */
   consume: string;
-  /** 超额（actual > Σ预留）：由最后一个资金源补充入账；余额不足也必须形成全额应收 */
+  /** 超额（actual > Σ预留）：由最后一个资金源补充入账；可用额不足部分被放弃（见 settle 返回） */
   over: string;
   now: Date;
+}
+
+/** 来源结算产物 */
+export interface SourceSettleResult {
+  /**
+   * 超收放弃额（over 中因可用额不足而未入账的部分）。恒 ≥ 0；'0' = 无放弃。
+   * 结算永不因超收死信——差额随 billing_requests.waived_amount 落库供对账/告警。
+   */
+  waived: string;
 }
 
 export interface FundingSource {
@@ -86,7 +95,8 @@ export interface FundingSource {
 
   /**
    * 结算：按分配结果核销本源份额（consume ≤ 预留额，余量由原语隐式归还）；
-   * over > 0 = 超额，PAYG 以补充授权（authorize#over + settle#over）吸收。
+   * over > 0 = 超额，兜底源按「可收额」钳制补充入账（authorize#over + settle#over），
+   * 不足部分以 waived 返回——不形成负余额（账本一致性触发器口径），不阻死结算。
    */
-  settle(tx: WalletTx, input: SourceSettleInput): Promise<void>;
+  settle(tx: WalletTx, input: SourceSettleInput): Promise<SourceSettleResult>;
 }

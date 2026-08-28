@@ -30,8 +30,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `REDIS_URL` | Redis 连接串（密码形态 `redis://:pass@host:6379`）。gateway / client-api / admin-api 与 worker 必填；trace-receiver 不消费 |
 | `JWT_SECRET` | 用户面会话 + 网关 App JWT 签发密钥；≥32 随机（开发 16） |
 | `ADMIN_JWT_SECRET` | 管理面独立密钥（admin-api）；恒 ≥32。与 `JWT_SECRET` 仍应配不同随机值（v2 变化：不再启动时强校验「不相同」——identity realm 隔离使跨面 token 本就互不认账，见 `packages/identity/src/adapters/jwt/jose-tokens.ts`） |
-| `ENCRYPTION_KEY` | ≥32 随机；运行时对称加密根密钥（AES-256-GCM `enc:v1`）。admin-api（渠道 Key 落库加密）与 client-api（密码信封）**必填**；gateway 未配 `CHANNEL_API_KEY_ENCRYPTION` 时回退用它 |
-| `CHANNEL_API_KEY_ENCRYPTION` | ≥32 随机；渠道上游 Key 加密专用键。**worker 必配此键（无回退——只配 `ENCRYPTION_KEY` 时 worker 拒绝启动，以 `apps/worker/src/config.ts` schema 实测为准）**；gateway 优先用它、缺省回退 `ENCRYPTION_KEY` |
+| `ENCRYPTION_KEY` | ≥32 随机；运行时对称加密根密钥（AES-256-GCM `enc:v1`），全服务（admin-api / client-api / gateway / worker）**必填且同值**：渠道上游 Key 落库加密、密码信封、integration settings、TOTP secret 跨进程加解密共用 |
 | `IDENTITY_CODE_PEPPER` | ≥16 随机（生产建议 ≥32）；管理面挑战/恢复码 HMAC pepper（admin-api 装配必填） |
 | `CLIENT_CODE_PEPPER` | ≥16 随机（生产 32）；client-api 用户面验证码 HMAC pepper（与管理面 pepper 分离） |
 
@@ -53,6 +52,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `CORS_ORIGINS` | 空 | 跨域白名单（逗号分隔；空 = 不放行跨域）；client-api 与 admin-api 消费。网关另有独立键 `GATEWAY_CORS_ORIGINS` |
 | `OTEL_TRACES_MODE` | `off` | `off`/`otlp`（gateway、client-api）；admin-api / worker / trace-receiver 另支持 `memory`/`console`。Compose 中设 `otlp` 即使用内置 `http://trace-receiver:8793` |
 | `TRACE_RECEIVER_TOKEN` | 空 | 链路鉴权（见「可选功能组」） |
+| `TRACE_RECEIVER_OPEN` | `false` | 显式逃生门：无令牌放行（仅隔离本机开发；任意环境缺令牌默认拒绝启动） |
 | `OTEL_METRICS_INTERVAL_MS` | gateway/admin/worker/trace `10000`；client-api `60000` | OTLP 指标推送周期（otlp 模式生效） |
 | `OTEL_SERVICE_VERSION` | `0.1.0` | OTel 资源版本（admin-api / worker / trace-receiver） |
 
@@ -63,6 +63,8 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `GATEWAY_PORT` | `8080` | 监听端口（v2 变化：compose 容器也固定 8080，v1 的 8083 覆盖已取消；nginx upstream 即 `gateway:8080`） |
 | `GATEWAY_CURRENCY` | `CNY` | 计费币种（3 字母） |
 | `GLOBAL_RPM` | `2000` | 全站每分钟请求闸（0 = 不限；生产硬顶 5000，超配钳回并打告警日志） |
+| `PREAUTH_IP_RPM` | `1200` | 预认证 per-IP 每分钟请求闸（鉴权前第一道闸，未认证洪水超限 429 且不写 request_logs；0 = 不设）。按客户端 IP 计桶——反代后必须正确设置 `TRUSTED_PROXY_HOPS`，否则全站共享代理 IP 桶被钳到此值 |
+| `GATEWAY_DRAIN_FINALIZE_MS` | `5000` | 停机宽限耗尽 abort 在途请求后的收尾窗（信号结算/释放；之后强退） |
 | `AUTH_KEY_FAILURE_THRESHOLD` / `_WINDOW_S` / `_LOCK_S` | 5 / 600 / 600 | 同 Key 失败 5 次（10 分钟窗）锁 10 分钟 |
 | `AUTH_IP_FAILURE_LIMIT` / `_WINDOW_S` | 30 / 300 | 同 IP 失败 30 次即锁 |
 | `BILLING_RESERVATION_MAX` | `1000` | 单请求预扣上限（元；正金额十进制串，20 位整数 + 18 位小数；只拒绝不截断） |
@@ -163,7 +165,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `WORKER_BALANCE_LOW_THRESHOLD` | `5` | balance_low 预警阈值（元） |
 | `WORKER_SHUTDOWN_GRACE_MS` | `15000` | 优雅停机 |
 | SSRF | `false` | `WORKER_AI_ALLOW_LOCAL_URL` / `WORKER_WEBHOOK_ALLOW_LOCAL_URL`（生产恒 false） |
-| `CHANNEL_API_KEY_ENCRYPTION` | 必填 | ≥32；渠道 Key 解密专用键，**无 ENCRYPTION_KEY 回退** |
+| `ENCRYPTION_KEY` | 必填 | ≥32；对称加密根键（渠道 Key 解密等），与全服务同值 |
 
 > worker 的 PG LISTEN/NOTIFY 保留为低延迟门铃，BullMQ 承载结算调度；PG 恢复扫描是确定性兜底。
 
@@ -223,7 +225,7 @@ compose 部署由 `environment` 段注入：
 | `INTERNAL_API_TOKEN` | （移除） | v1 的 BFF 内部令牌机制未迁入 v2；BFF 出站靠会话 cookie + 容器网络隔离 |
 | `WORKER_SETTLE_WAKEUP` | `WORKER_SETTLE_WAKE` | 键名缩短；实现由 BullMQ 唤醒改为 PG LISTEN/NOTIFY |
 | `EMAIL_CODE_REQUIRED=always/never` | `on`/`off` | 值域更名（`auto` 不变） |
-| `ENCRYPTION_KEY`（全服务一把） | `ENCRYPTION_KEY` + `CHANNEL_API_KEY_ENCRYPTION` | 渠道 Key 加密拆出专用键：worker 必配专用键，gateway 专用键优先/回退根键，admin-api/client-api 仍用根键 |
+| `ENCRYPTION_KEY`（全服务一把） | `ENCRYPTION_KEY` | 渠道 Key 加密专用键已并回根键（曾拆分的 `CHANNEL_API_KEY_ENCRYPTION` 因 admin-api 加密侧从未支持造成跨进程解密失败，已删除统一） |
 | —（v1 无） | `IDENTITY_CODE_PEPPER` / `CLIENT_CODE_PEPPER` | identity 挑战/验证码域 HMAC pepper（管理面/用户面分离） |
 | `GATEWAY_BODY_LIMIT_BYTES=10485760` | `GATEWAY_BODY_LIMIT_BYTES=10MB` | 网关两个 body/upload 键从纯数字改为字节量串（`b/kb/mb/gb`） |
 | `LOGIN_*`（client-api 与 admin-api 同键） | client-api 保留 `LOGIN_*`；admin-api 改 `ADMIN_LOGIN_*` | 管理面爆破锁独立成键（阈值/窗口默认亦不同：1h 窗/15m 锁） |

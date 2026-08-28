@@ -26,6 +26,18 @@ export const BillingErrors = defineErrorCatalog('billing', {
     message: 'Insufficient cash balance (cash basis: credit limit excluded)',
     zh: '现金余额不足（现金口径：授信不参与）',
   },
+  debit_floor_conflict: {
+    category: 'conflict',
+    message:
+      'Lowering the debit floor would breach current exposure (balance + credit + new floor − in-flight < 0); recover or top up first',
+    zh: '降低透支地板会击穿当前敞口（余额 + 授信 + 新地板 − 在途 < 0），请先恢复或充值',
+  },
+  funds_held_in_flight: {
+    category: 'quota_exhausted',
+    message:
+      'Balance is sufficient but held by in-flight reservations; retry after settlements complete',
+    zh: '余额充足但被在途预扣占用，待结算完成后重试',
+  },
   credit_limit_conflict: {
     category: 'conflict',
     message: 'New credit limit does not cover current exposure',

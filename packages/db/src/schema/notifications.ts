@@ -1,7 +1,7 @@
 import {
   check,
   index,
-    pgTable,
+  pgTable,
   bigserial,
   varchar,
   smallint,

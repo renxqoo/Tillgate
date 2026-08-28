@@ -40,6 +40,7 @@ function settlementFace(claims: SettlementClaim[], overrides: Record<string, unk
         return claims.filter((c) => input.requestIds?.includes(c.requestId));
       },
       processClaim: async (_claim: SettlementClaim) => 'settled' as const,
+      settleClaims: async () => [],
       listDueRequestIds: async () => claims.map((c) => c.requestId),
       ...overrides,
     },
@@ -52,6 +53,7 @@ function processorOf(face: unknown, errors: unknown[] = []) {
     settlement: face as never,
     ownerId: 'w1',
     claimLeaseMs: 60_000,
+    batchSize: 1,
     onError: (error) => errors.push(error),
   });
 }
@@ -102,9 +104,11 @@ describe('jobs/settlement：单条 processor（毒账单隔离核心）', () => 
           throw new Error('connection reset');
         },
         processClaim: async () => 'settled',
+        settleClaims: async () => [],
       },
       ownerId: 'w1',
       claimLeaseMs: 60_000,
+      batchSize: 1,
       onError: () => {},
     });
     expect(await process('r1')).toBe('unknown-failure');
@@ -119,7 +123,8 @@ describe('jobs/settlement：直驱 job（runners.settle 确定性入口）', () 
       r3: 'claim_lost',
     };
     const h = settlementFace([claimOf('r1'), claimOf('r2'), claimOf('r3')], {
-      processClaim: async (claim: SettlementClaim) => outcomeByRequest[claim.requestId] ?? 'settled',
+      processClaim: async (claim: SettlementClaim) =>
+        outcomeByRequest[claim.requestId] ?? 'settled',
     });
     const run = createSettlementDirectJob({
       settlement: h.face,
@@ -356,5 +361,91 @@ describe('jobs 驱动壳透传（notify/poll/referral）', () => {
       run: async () => ({ credited: 4 }),
     });
     expect(await run()).toEqual({ credited: 4 });
+  });
+});
+
+describe('jobs/settlement：批量捎带（吞吐收敛接线）', () => {
+  function claimOfSeq(id: string): SettlementClaim {
+    return { ...claimOf(id) } as SettlementClaim;
+  }
+
+  it('batchSize>1：捎带认领 due + settleClaims 批量，通知条结局透传且不落单条路径', async () => {
+    const batches: unknown[][] = [];
+    let singles = 0;
+    const face = {
+      claim: async (input: ClaimInput) =>
+        input.requestIds ? [claimOf('r1')] : [claimOfSeq('r2'), claimOfSeq('r3')],
+      settleClaims: async (claims: unknown[]) => {
+        batches.push(claims);
+        return claims.map(() => ({
+          outcome: 'settled' as const,
+          settled: true,
+          amount: '1',
+          waived: '0',
+          channelCircuitBroken: false,
+        }));
+      },
+      processClaim: async () => {
+        singles += 1;
+        return 'settled' as const;
+      },
+    };
+    const process = createSettlementProcessor({
+      settlement: face as never,
+      ownerId: 'w1',
+      claimLeaseMs: 60_000,
+      batchSize: 3,
+      onError: () => {},
+    });
+    expect(await process('r1')).toBe('settled');
+    expect(batches).toHaveLength(1);
+    expect(defined(batches[0])).toHaveLength(3); // 通知条 + 2 捎带
+    expect(singles).toBe(0);
+  });
+
+  it('批内毒账单：整批回滚 → 回退逐张（通知条走 processClaim 语义）', async () => {
+    const errors: unknown[] = [];
+    let singles = 0;
+    const face = {
+      claim: async (input: ClaimInput) => (input.requestIds ? [claimOf('r1')] : [claimOfSeq('r2')]),
+      settleClaims: async () => {
+        throw new Error('poison in batch');
+      },
+      processClaim: async () => {
+        singles += 1;
+        return 'settled' as const;
+      },
+    };
+    const process = createSettlementProcessor({
+      settlement: face as never,
+      ownerId: 'w1',
+      claimLeaseMs: 60_000,
+      batchSize: 2,
+      onError: (error) => errors.push(error),
+    });
+    expect(await process('r1')).toBe('settled');
+    expect(singles).toBeGreaterThanOrEqual(1); // 至少通知条回退单张
+    expect(errors).toHaveLength(1);
+  });
+
+  it('batchSize=1：不捎带、不走批量路径', async () => {
+    let batchCalled = 0;
+    const face = {
+      claim: async (input: ClaimInput) => (input.requestIds ? [claimOf('r1')] : []),
+      settleClaims: async () => {
+        batchCalled += 1;
+        return [];
+      },
+      processClaim: async () => 'settled' as const,
+    };
+    const process = createSettlementProcessor({
+      settlement: face as never,
+      ownerId: 'w1',
+      claimLeaseMs: 60_000,
+      batchSize: 1,
+      onError: () => {},
+    });
+    expect(await process('r1')).toBe('settled');
+    expect(batchCalled).toBe(0);
   });
 });

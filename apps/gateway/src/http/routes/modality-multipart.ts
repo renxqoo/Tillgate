@@ -11,7 +11,7 @@ import { Hono, type Context } from 'hono';
 import type { Inference } from '@tillgate/inference';
 import { estimateAudioDurationSeconds } from '@tillgate/inference';
 import type { AuthEnv } from '../middleware/api-key';
-import { toInferenceInput } from './inference-input';
+import { requestSignalOf, toInferenceInput } from './inference-input';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { GatewayErrors } from '../openai-error-face';
 
@@ -140,7 +140,7 @@ function encodeMultipartResult(
 
 /** 三路由共用的处理工厂（multipart 解析 → 准入 → chat → 三态出站编码） */
 function multipartRoute(
-  deps: { inference: Inference; rateLimit?: RateLimitGate },
+  deps: { inference: Inference; rateLimit?: RateLimitGate; drainSignal?: AbortSignal },
   maxFileBytes: number,
   opts: {
     fileField: string;
@@ -159,15 +159,25 @@ function multipartRoute(
     const auth = c.get('auth');
     const requestId = c.get('requestId');
     const body = wrapper as unknown as Record<string, unknown>;
-    // multipart 族恒非流式
+    // multipart 族恒非流式。计价单位为张/秒（非 token）——TPM 维明确豁免：
+    // 旧口径 JSON.stringify(FormData) 恒为几十字节（文件序列化为 "{}"），
+    // 是既不反映敞口也无消费语义的假预占；成本敞口由 billing reserveChannel
+    // 的单位上界（张/秒）兜住，RPM 维照查。
     const admit = await admitRequest(deps.rateLimit, {
       requestId,
       auth,
-      estimatedTokens: JSON.stringify(body).length,
+      estimatedTokens: 0,
+      exemptTpm: true,
     });
     try {
       const result = await deps.inference.chat(
-        toInferenceInput({ requestId, auth, body, endpoint: opts.kind }),
+        toInferenceInput({
+          requestId,
+          auth,
+          body,
+          endpoint: opts.kind,
+          signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
+        }),
       );
       return encodeMultipartResult(c, result, requestId);
     } catch (error) {
@@ -178,7 +188,7 @@ function multipartRoute(
 }
 
 export function modalityMultipartRoutes(
-  deps: { inference: Inference; rateLimit?: RateLimitGate },
+  deps: { inference: Inference; rateLimit?: RateLimitGate; drainSignal?: AbortSignal },
   limits: ModalityLimits = {},
 ): Hono<AuthEnv> {
   const imageMime = limits.imageMime ?? DEFAULT_IMAGE_MIME;

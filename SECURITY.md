@@ -27,5 +27,5 @@ remediation progress.
   are not vulnerabilities of this project — rotate via `.env`.
 - Channel upstream keys are encrypted at rest with AES-256-GCM
   (`ENCRYPTION_KEY` on the gateway; the worker decrypts with
-  `CHANNEL_API_KEY_ENCRYPTION`). Key rotation guidance — see
+  `ENCRYPTION_KEY`). Key rotation guidance — see
   [docs/deployment-checklist.md](docs/deployment-checklist.md).

@@ -1001,16 +1001,53 @@ describe('auth 两步制', () => {
     expect(res.headers.get('retry-after')).toBe('3600');
   });
 
-  it('邮箱已占 409 accounts.email_taken', async () => {
-    const { app } = build();
+  it('S5 回归（弱密码差分）：taken+弱密码 与 free+弱密码 同为 400 weak_password（闸序=密码策略先行）', async () => {
+    const { app, state } = build();
+    const taken = await app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'taken@x.com', password: 'a' }),
+    });
+    const free = await app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'brand-new@x.com', password: 'a' }),
+    });
+    // 两分支同码同状态码——弱密码探测不再是枚举 oracle
+    expect(taken.status).toBe(400);
+    expect(free.status).toBe(400);
+    expect(((await taken.json()) as { error: { code: string } }).error.code).toBe(
+      'identity.weak_password',
+    );
+    expect(((await free.json()) as { error: { code: string } }).error.code).toBe(
+      'identity.weak_password',
+    );
+    expect(state.challenges.size).toBe(0);
+  });
+
+  it('S5 回归：邮箱已占同款哑口径（200 code_required + 不建挑战不发码——不可枚举）', async () => {
+    const { app, state } = build();
     const res = await app.request('/v1/auth/register', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'taken@x.com', password: 'password123' }),
     });
-    expect(res.status).toBe(409);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
-      'accounts.email_taken',
+    // 与未占用邮箱完全同形状同状态码（响应面不可区分——枚举探测无信号）
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { kind: string; challengeId: string };
+    expect(body.kind).toBe('code_required');
+    expect(typeof body.challengeId).toBe('string');
+    expect(body.challengeId.length).toBeGreaterThan(0);
+    // 哑口径事实：不建真挑战 → 不发码（challengeId 为不透明一次性值）
+    expect(state.challenges.size).toBe(0);
+    // 用哑 challengeId 走 verify → 与任意垃圾 ID 同款 challenge_invalid（仍无信号）
+    const ver = await app.request('/v1/auth/register/verify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ challengeId: body.challengeId, code: '000000' }),
+    });
+    expect(((await ver.json()) as { error: { code: string } }).error.code).toBe(
+      'identity.challenge_invalid',
     );
   });
 

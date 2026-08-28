@@ -169,9 +169,9 @@ e2e 挂了是**资产不是麻烦**。定位纪律：
 
 ## 参考文件索引
 
-| 文件 | 何时读 |
-| --- | --- |
-| `references/documents.md` | 第 1 阶段：写三件文档时 |
-| `references/audit.md` | 第 2-3 阶段：审计旧实现与做裁决时 |
+| 文件                        | 何时读                                                                |
+| --------------------------- | --------------------------------------------------------------------- |
+| `references/documents.md`   | 第 1 阶段：写三件文档时                                               |
+| `references/audit.md`       | 第 2-3 阶段：审计旧实现与做裁决时                                     |
 | `references/e2e-harness.md` | 第 6 阶段：建造 e2e 装置与迁移旧 e2e 时；或定位结论指向装置自身缺陷时 |
-| `references/debugging.md` | e2e/集成测试挂起或抓到缺陷时 |
+| `references/debugging.md`   | e2e/集成测试挂起或抓到缺陷时                                          |

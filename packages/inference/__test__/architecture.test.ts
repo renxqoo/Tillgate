@@ -132,6 +132,7 @@ describe('公共出口封闭（§5.3：根入口导出面快照）', () => {
       'GENERATION_TASK_STATUSES',
       'InferenceErrors',
       'USER_SIDE_CANCELS',
+      'admissionTokenUpperBound',
       'buildCandidateChain',
       'canonicalStreamToClaudeStream',
       'canonicalStreamToCompletionsStream',

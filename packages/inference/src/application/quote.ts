@@ -4,6 +4,7 @@ import { InferenceErrors } from '../domain/errors';
 import { buildCandidateChain } from '../domain/model/candidates';
 import {
   clampForwardedOutputLimit,
+  clampOutputCapByContext,
   conservativeInputTokenUpperBound,
   maxOutputTokensFor,
 } from '../domain/model/output-cap';
@@ -66,7 +67,13 @@ export async function prepareChatRequest(env: {
     defaultMax: env.defaults.output.defaultMaxOutputTokens,
     exposureCap: env.defaults.output.exposureCap,
   });
-  const upstreamBody = clampForwardedOutputLimit(env.body, outputCap);
+  const inputUpperBound = conservativeInputTokenUpperBound(env.body);
+  const effectiveOutputCap = clampOutputCapByContext(
+    outputCap,
+    mapping.contextLength,
+    inputUpperBound,
+  );
+  const upstreamBody = clampForwardedOutputLimit(env.body, effectiveOutputCap);
   return {
     requestId: env.requestId,
     auth: env.auth,
@@ -74,8 +81,8 @@ export async function prepareChatRequest(env: {
     body: env.body,
     upstreamBody,
     endpoint,
-    outputCap,
-    inputUpperBound: conservativeInputTokenUpperBound(env.body),
+    outputCap: effectiveOutputCap,
+    inputUpperBound,
     inputEstimate: estimateInputTokensOfBody(env.body, env.defaults.estimate),
     candidates,
   };

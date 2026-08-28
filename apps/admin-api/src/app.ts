@@ -13,6 +13,7 @@ import {
   renderError,
   HttpErrors,
   dbBudgetMiddleware,
+  type DbBudgetOptions,
 } from '@tillgate/http';
 import { localeFromContext } from '@tillgate/http';
 import type { AccountUseCases } from '@tillgate/accounts';
@@ -70,9 +71,9 @@ export interface AdminAppDeps {
   /** DB 探活(healthz/readyz 用;装配绑定 ping(db),app 不接触 Db 类型) */
   pingDb: () => Promise<void>;
   /** DB 并发预算门(管理面批量脚本/导出的入口排队;缺省关闭——不注入即旁路) */
-  dbBudget?: { limit: number; maxQueue: number; waitTimeoutMs: number };
+  dbBudget?: DbBudgetOptions;
   /** 5xx 服务端日志出口(pino 结构兼容;缺省静默) */
-  logger?: { error(obj: Record<string, unknown>, msg?: string): void };
+  logger?: { error(obj: unknown, msg?: string): void };
   /** admin realm 会话验证(identity facade 结构子集)+ 属主回查 */
   sessions: SessionValidator;
   accounts: Pick<
@@ -90,7 +91,14 @@ export interface AdminAppDeps {
   >;
   wallet: Pick<
     WalletApi,
-    'accounts' | 'setCreditLimit' | 'credit' | 'transfer' | 'statement' | 'referralPayouts'
+    | 'accounts'
+    | 'setCreditLimit'
+    | 'setDebitFloor'
+    | 'applyDefaultFloor'
+    | 'credit'
+    | 'transfer'
+    | 'statement'
+    | 'referralPayouts'
   >;
   /** 调账/赠送幂等用例(billing operations;装配创建) */
   operations: OperationsUseCase;
@@ -215,13 +223,15 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
   };
   app.use('*', createAclMiddleware(deps.sessions, resolveBinding));
 
-  // 探针:healthz/readyz 查 DB(livez 纯 200);K8s/compose healthcheck 不带 Bearer
+  // 探针:healthz/readyz 查 DB(livez 纯 200);K8s/compose healthcheck 不带 Bearer。
+  // 故障细节只进日志——公开探针不回显驱动错误串(S6:主机名/凭据细节不外泄)
   app.get('/healthz', async (c) => {
     try {
       await deps.pingDb();
       return c.json({ ok: true });
     } catch (error) {
-      return c.json({ ok: false, error: (error as Error).message }, 503);
+      deps.logger?.error({ err: error }, 'healthz ping failed');
+      return c.json({ ok: false }, 503);
     }
   });
   app.get('/livez', (c) => c.json({ ok: true }));
@@ -230,10 +240,8 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       await deps.pingDb();
       return c.json({ status: 'ok', dependencies: { postgres: 'up' } });
     } catch (error) {
-      return c.json(
-        { status: 'fail', dependencies: { postgres: 'down' }, error: (error as Error).message },
-        503,
-      );
+      deps.logger?.error({ err: error }, 'readyz ping failed');
+      return c.json({ status: 'fail', dependencies: { postgres: 'down' } }, 503);
     }
   });
 
@@ -255,6 +263,8 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       operations: deps.operations,
       writeAudit: deps.writeAudit,
       audit: deps.observability.audit,
+      controlPlane: deps.controlPlane,
+      postAudit: deps.postAudit,
     }),
   );
   app.route('/', keysRoutes({ accounts: deps.accounts }));

@@ -11,7 +11,7 @@ services:
     # 与根 .env 的 REDIS_URL 密码对齐（compose.yml 同款：requirepass 必开，默认仅开发）
     command: ['redis-server', '--appendonly', 'yes', '--requirepass', '${REDIS_PASSWORD:-root123}']
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379' # 仅回环：宿主机 bun dev 直连；0.0.0.0 会把带弱默认口令的 Redis 暴露给局域网
     volumes:
       - redis-dev:/data
     healthcheck:
@@ -29,7 +29,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-tillgate}
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432' # 仅回环：同上，避免局域网可达
     volumes:
       - pg-dev:/var/lib/postgresql/data
     healthcheck:

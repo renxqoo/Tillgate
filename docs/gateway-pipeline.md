@@ -44,7 +44,7 @@ corsPreflight（跨域源白名单精确匹配）→ securityHeaders → bodyPar
 | /v1/models 列表（scope 过滤） | `http/routes/models.ts` |
 | 成功信封三态出站（SSE 直传 / rawBody 二进制 / JSON；codec 回编码） | `http/openai-envelope.ts` |
 | 错误 face 映射（网关目录码 → OpenAI 兼容信封） | `http/openai-error-face.ts` |
-| 上游错误细节脱敏（内部寻址/真实模型名/截断） | `http/sanitize.ts` |
+| 上游错误细节脱敏（内部寻址/真实模型名/截断） | inference `dispatchFailure` 单点（机制件 `packages/ai/src/errors/sanitize.ts`） |
 | inference↔billing 桥（quote 盖章/词表映射/reserveChannel） | `adapters/billing-port.ts` |
 | 目录读模型（模型映射/渠道解析 PG 适配） | `adapters/catalog-port.ts` |
 | 结算唤醒生产端（pg_notify 门铃） | `adapters/settle-wake.ts` |
@@ -92,7 +92,7 @@ gateway，在 `packages/inference`（`src/application/{quote,failover,chat,strea
 - **死凭据不再 DB markDead**：经 AiEvent 由 inference health 状态机记账
   （连续失败 ≥3（1h 窗）→ invalid 停止放行；成功自愈 valid；Redis/内存存储）
 - **错误信封恒 `{error:{code,message}}`**；真实模型名/内部 URL 由
-  `http/sanitize.ts` + `packages/ai/src/errors/sanitize.ts` 统一脱敏
+  inference `dispatchFailure`（出站单点）+ `packages/ai/src/errors/sanitize.ts`（机制件）统一脱敏
 - 熔断默认仅计数阈值（60s 窗 ≥5 次、冷却 5min、half-open 单探测），无比率条件；
   与结算侧「渠道进货预算耗尽熔断」（DB 闸）是两套机制
 - **转发钳制会注入**：客户端未声明输出上限时注入 max_completion_tokens

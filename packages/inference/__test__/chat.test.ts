@@ -38,6 +38,33 @@ function setup(defaults?: Parameters<typeof buildInference>[0]['defaults']) {
   return { inference, upstream, billing, catalog, emit: ai.emit, detach: () => inference.close() };
 }
 
+/** facade 级装配（含 admitModel 注入面——锁 createInference 字段接线不断链） */
+function setupWithAdmitModel(
+  admitModel: NonNullable<Parameters<typeof buildInference>[0]['admitModel']>,
+) {
+  const ai = fakeAi();
+  const upstream = fakeUpstream();
+  const billing = fakeBilling();
+  const catalog = fakeCatalog(
+    {
+      'gpt-x': mapping({ fallbackModels: ['gpt-y'] }),
+      'gpt-y': mapping({ mappingId: 12, externalModel: 'gpt-y', realModel: 'gpt-y-real' }),
+    },
+    {
+      'gpt-x-real': [channel({ channelId: 1, channelName: 'ch-a' })],
+      'gpt-y-real': [channel({ channelId: 2, channelName: 'ch-b' })],
+    },
+  );
+  const inference = buildInference({
+    ai: ai.ai,
+    catalog,
+    billing: billing.port,
+    upstream: upstream.port,
+    admitModel,
+  });
+  return { inference, upstream, billing, catalog, emit: ai.emit, detach: () => inference.close() };
+}
+
 const body = { model: 'gpt-x', messages: [{ role: 'user', content: '你好' }] };
 
 describe('application/chat：非流式尝试（先结算后交付）', () => {
@@ -180,6 +207,23 @@ describe('application/chat：非流式尝试（先结算后交付）', () => {
     s.upstream.onChat(async () => ({ ok: true, usage: usage(), durationMs: 1, body: {} }));
     await s.inference.chat({ auth: baseAuth, body });
     expect(s.billing.authorizations[0]?.requestId).toBeTruthy();
+    s.detach();
+  });
+});
+
+describe('facade 注入面：admitModel 经 createInference 贯通（防字段拼错静默失效）', () => {
+  it('admitModel 拒主模型 → fallback 候选交付（B2 装配链路级回归）', async () => {
+    const s = setupWithAdmitModel(async (candidate) => candidate.realModel !== 'gpt-x-real');
+    s.upstream.onChat(async () => ({
+      ok: true,
+      usage: usage({ inputTokens: 5, cachedInputTokens: 0, outputTokens: 6 }),
+      durationMs: 3,
+      body: { id: 'cmpl-fb', choices: [] },
+    }));
+    const delivered = await s.inference.chat({ requestId: 'req-fb', auth: baseAuth, body });
+    expect(delivered).toMatchObject({ ok: true, status: 200 });
+    // 实际上游打到 fallback 渠道（主候选被模型维准入拒绝）
+    expect(s.upstream.calls[0]?.channel.channelId).toBe(2);
     s.detach();
   });
 });

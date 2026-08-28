@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { DEFAULT_SANITIZE_MAX_LEN } from './errors/sanitize.js';
 import type { ProtocolAdapter } from './adapters/protocol-adapter';
 import type { UrlGuard } from './types';
 
@@ -58,11 +59,11 @@ export const aiDefaultsSchema = z.object({
    */
   errorSanitize: z
     .object({
-      maxLen: z.number().int().min(1).default(512),
+      maxLen: z.number().int().min(1).default(DEFAULT_SANITIZE_MAX_LEN),
       /** 需替换为对外名的内部字符串（如真实部署模型名）；替换目标 = 本次请求的 ctx.model */
       redactions: z.array(z.string()).default([]),
     })
-    .default({ maxLen: 512, redactions: [] }),
+    .default({ maxLen: DEFAULT_SANITIZE_MAX_LEN, redactions: [] }),
 });
 
 export type AiDefaults = z.infer<typeof aiDefaultsSchema>;

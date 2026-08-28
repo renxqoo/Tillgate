@@ -199,6 +199,40 @@ describe('sanitizeUpstreamDetail：三类脱敏（例外 3 内容层）', () => 
     );
   });
 
+  it('逐项配对 redactions：字符串项走缺省 replacement，对象项各自映射对外名', () => {
+    const out = sanitizeUpstreamDetail('fallback from gpt-4o-real to azure-deploy-x exhausted', {
+      redactions: [
+        { needle: 'gpt-4o-real', replacement: 'catalog-gpt-4o' },
+        { needle: 'azure-deploy-x', replacement: 'catalog-azure' },
+      ],
+    });
+    expect(out).toBe('fallback from catalog-gpt-4o to catalog-azure exhausted');
+    expect(
+      sanitizeUpstreamDetail('a secret-name b gpt-4o-real', {
+        redactions: ['secret-name', { needle: 'gpt-4o-real', replacement: 'gpt-x' }],
+      }),
+    ).toBe('a [redacted] b gpt-x');
+  });
+
+  it('needle 互为前缀（gpt-4 / gpt-4o）单趟最长优先——不产生杂交名', () => {
+    const out = sanitizeUpstreamDetail('fallback gpt-4o to gpt-4 exhausted', {
+      redactions: [
+        { needle: 'gpt-4', replacement: 'catalog-4' },
+        { needle: 'gpt-4o', replacement: 'catalog-4o' },
+      ],
+    });
+    expect(out).toBe('fallback catalog-4o to catalog-4 exhausted');
+    // replacement 含其它 needle 也不二次替换（单趟）
+    expect(
+      sanitizeUpstreamDetail('secret-name-x secret-name', {
+        redactions: [
+          { needle: 'secret-name-x', replacement: 'out secret-name' },
+          { needle: 'secret-name', replacement: '[redacted]' },
+        ],
+      }),
+    ).toBe('out secret-name [redacted]');
+  });
+
   it('空串原样；空 redaction 项忽略', () => {
     expect(sanitizeUpstreamDetail('')).toBe('');
     expect(sanitizeUpstreamDetail('abc', { redactions: ['', 'b'] })).toBe('a[redacted]c');

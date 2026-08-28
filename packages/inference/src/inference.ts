@@ -30,6 +30,7 @@ import {
   type AttemptContext,
   type AttemptOutcome,
   type ChannelAdmission,
+  type ModelAdmission,
   type ExecutionDeps,
   type PassthroughDelivered,
 } from './application/failover';
@@ -49,6 +50,11 @@ export interface ChatInput {
   auth: RequestAuth;
   body: Record<string, unknown>;
   endpoint?: Endpoint;
+  /**
+   * 客户端断连取消信号：HTTP 入口必须传 c.req.raw.signal（贯通到上游 fetch，
+   * 终止分类 request_cancelled/server_draining 依赖它）。缺传 = 客户端断开后
+   * 上游照跑、计费照走——路由层契约测试锁定各入口必传。
+   */
   signal?: AbortSignal;
 }
 
@@ -67,6 +73,8 @@ export interface InferenceEnv {
   tasks?: GenerationTaskStore;
   /** 渠道维限流钩子（gateway app 装配；未装配 = 放行） */
   admitChannel?: ChannelAdmission;
+  /** 模型维限流钩子（候选级 RPM/TPM；gateway app 装配；未装配 = 放行） */
+  admitModel?: ModelAdmission;
   /** 阶段 span 注入口（gateway 装配绑 OTel；未装配 = no-op 零开销） */
   trace?: TracePort;
   defaults?: InferenceDefaultsInput;
@@ -207,6 +215,7 @@ function buildExecutionDeps(
     upstream,
     health,
     ...(env.admitChannel != null ? { admitChannel: env.admitChannel } : {}),
+    ...(env.admitModel != null ? { admitModel: env.admitModel } : {}),
     trace,
     defaults,
     onError,

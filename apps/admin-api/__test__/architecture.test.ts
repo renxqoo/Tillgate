@@ -34,6 +34,7 @@ const ASSEMBLY_FACE = new Set([
   'assembly.ts',
   'index.ts',
   'shutdown.ts',
+  'startup-rbac.ts',
   'config.ts',
   'adapters/upstream-probe.ts',
   'adapters/funding-resolver.ts',
@@ -139,6 +140,7 @@ describe('admin-api 架构门禁', () => {
       'http/stepup-verify.ts',
       'index.ts',
       'shutdown.ts',
+      'startup-rbac.ts',
     ]);
   });
 

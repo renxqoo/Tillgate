@@ -41,8 +41,8 @@ export const E2E_OUTPUT_PRICE = '8.4';
 export const E2E_CACHE_INPUT_PRICE = '0.42';
 
 /** 世界渠道密钥加密钥（gateway/worker 装配共钥——worker 侧结算需解密同一批渠道行） */
-export const E2E_CHANNEL_ENCRYPTION_KEY = 'e2e-channel-key-0123456789abcdef'; // ≥32 字符（secretSchema 口径）
-const ENCRYPTION_KEY = E2E_CHANNEL_ENCRYPTION_KEY;
+export const E2E_ENCRYPTION_KEY = 'e2e-channel-key-0123456789abcdef'; // ≥32 字符（secretSchema 口径）
+const ENCRYPTION_KEY = E2E_ENCRYPTION_KEY;
 const JWT_SECRET = 'e2e-jwt-secret-0123456789abcdef012345';
 
 export const E2E_URL = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
@@ -241,7 +241,7 @@ export async function startE2EGateway(
   const config = loadGatewayConfig({
     DATABASE_URL: world.scopedUrl,
     REDIS_URL: redisUrl,
-    CHANNEL_API_KEY_ENCRYPTION: ENCRYPTION_KEY,
+    ENCRYPTION_KEY,
     JWT_SECRET,
     NODE_ENV: 'test',
     OTEL_TRACES_MODE: 'off',
@@ -251,7 +251,7 @@ export async function startE2EGateway(
     GATEWAY_AI_ALLOW_LOCAL_URL: 'true',
     ...env,
   });
-  const assembly = assembleGateway(config);
+  const assembly = await assembleGateway(config);
   const app = createGatewayApp(buildGatewayAppOptions(assembly, config));
   const server = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });
   await new Promise<void>((resolve) => {
@@ -259,6 +259,14 @@ export async function startE2EGateway(
   });
   const address = server.address();
   const baseUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
+  // Redis 握手竞速防线：listening 早于 ioredis ready——首批 /v1 请求会被
+  // 限流闸 fail-closed 503。以「无凭证 /v1/models 返回 401（非 5xx）」为
+  // 鉴权链就绪条件，短轮询放行（超时不阻断——仅收敛竞速窗口）。
+  for (let i = 0; i < 50; i += 1) {
+    const probe = await fetch(`${baseUrl}/v1/models`).catch(() => null);
+    if (probe != null && probe.status < 500) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
   return {
     baseUrl,
     assembly,

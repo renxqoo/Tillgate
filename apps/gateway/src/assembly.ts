@@ -19,13 +19,14 @@ import {
   createPostgresWalletStore,
 } from '@tillgate/billing/composition';
 import { createBillingAdmission, type Billing } from '@tillgate/billing';
+import { readPlatformCurrency } from '@tillgate/billing/composition';
 import { createPgFundingSourceResolver } from '@tillgate/accounts/composition';
 import { createAccounts, type AccountUseCases, type WalletCreditPort } from '@tillgate/accounts';
 import { type SessionInvalidationPort } from '@tillgate/accounts/composition';
 import { postgresModelStore } from '@tillgate/control-plane/composition';
 import type { EnabledModelRow } from '@tillgate/control-plane';
 import { initOtel } from '@tillgate/observability';
-import { createPgRequestLogStore } from '@tillgate/observability/composition';
+import { createPgRequestLogStore, writeAudit } from '@tillgate/observability/composition';
 import { assertSafeUrl, createAi } from '@tillgate/ai';
 import {
   createInference,
@@ -35,10 +36,18 @@ import {
 } from '@tillgate/inference';
 import { createPostgresGatewayCatalog } from './adapters/catalog-port';
 import { createGatewayBilling } from './adapters/billing-port';
+import {
+  createBillingReservationLimitReader,
+  createBillingReservationPolicyReader,
+} from './adapters/reservation-policy';
 import { createSettleWakeProducer } from './adapters/settle-wake';
 import { otelTracePort } from './adapters/trace-port';
-import { tryChannelRpm, type RateLimitGate } from './http/middleware/rate-limit';
-import { ACCOUNTS_POLICY, BILLING_GUARDS, type GatewayConfig } from './config';
+import {
+  tryChannelAdmission,
+  tryModelAdmission,
+  type RateLimitGate,
+} from './http/middleware/rate-limit';
+import { ACCOUNTS_POLICY, billingGuardsOf, type GatewayConfig } from './config';
 
 /** 渠道健康 Redis 键前缀（前缀纪律：breaker/credential 分键） */
 const HEALTH_PREFIX = 'inference:health:';
@@ -70,7 +79,7 @@ export interface GatewayAssembly {
 }
 
 // eslint-disable-next-line max-lines-per-function -- 进程级 DI 装配平铺：逐依赖一次构造、顺序即生命周期契约
-export function assembleGateway(config: GatewayConfig): GatewayAssembly {
+export async function assembleGateway(config: GatewayConfig): Promise<GatewayAssembly> {
   const logger = createLogger({
     level: 'info',
     serviceName: 'gateway',
@@ -83,6 +92,8 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     // 10k 级负载:检出等待耐心 60s(预算门内的排队请求等待而非 5s 超时失败)
     connectionTimeoutMillis: 60_000,
   });
+  // 平台币种启动读（写一次 KV;不可变期间进程内恒定——账本身份不猜）
+  const platformCurrency = await readPlatformCurrency(db);
   const redis = createRedisClient(
     config.redisUrl,
     config.redisTopology.kind === 'sentinel'
@@ -150,12 +161,30 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     },
     {
       resolver: createPgFundingSourceResolver(),
-      guards: BILLING_GUARDS,
-      currency: config.currency,
+      guards: billingGuardsOf(platformCurrency),
+      currency: platformCurrency,
+      usageDefectBreaker: config.usageDefectBreaker,
       failurePolicy: { maxAttempts: 5, baseDelayMs: 500, maxDelayMs: 8_000 },
       clock: () => new Date(),
       onError: (error, context) =>
         logger.error({ err: String(error), context }, 'billing settlement error'),
+      // 验收门钳制：日志 + best-effort 审计（计数/熔断已在结算事务内完成）
+      onUsageDefect: (data) => {
+        logger.error({ ...data }, 'usage evidence violation — invoice clamped');
+        writeAudit(db, {
+          actor: 'system',
+          adminId: null,
+          action: 'billing.usage_evidence_violation',
+          targetType: 'channel',
+          targetId: String(data.channelId ?? ''),
+          detail: {
+            requestId: data.requestId,
+            clamps: data.clamps as unknown as Record<string, unknown>,
+            defects: data.defects,
+            broken: data.broken,
+          },
+        }).catch(() => {});
+      },
       wake: settleWake.wake,
     },
   );
@@ -170,6 +199,7 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
   const rateLimit: RateLimitGate = {
     limiter: createSlidingWindowLimiter(redis, { logger }),
     globalRpm: config.globalRpm,
+    preauthIpRpm: config.preauthIpRpm,
   };
   const keyGuard = createKeyBruteForceGuard(redis, {
     failureThreshold: config.authGuards.keyFailureThreshold,
@@ -182,7 +212,7 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
   });
 
   // ---- inference：ai 执行库 + 目录/计费桥 + Redis 健康 + 渠道维 RPM 钩子 ----
-  const cipher = createCipher(config.channelApiKeyEncryption);
+  const cipher = createCipher(config.encryptionKey);
   const ai = createAi(
     {
       timeout: { connectMs: config.upstreamConnectTimeoutMs, totalMs: config.upstreamDeadlineMs },
@@ -205,21 +235,47 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
       fallback: config.billingTimezoneFallback,
     }),
     billing: createGatewayBilling(billingFacade.billing, {
-      reservationLimit: config.reservationLimit,
-      reservationPolicy: config.reservationPolicy,
+      // 单笔预估敞口上限动态读（KV;缺失回落缺省 1000——防单笔巨亏保险丝）
+      resolveReservationLimit: createBillingReservationLimitReader({
+        db,
+        ttlMs: config.reservationPolicyTtlMs,
+      }),
+      // 预扣策略动态读（system_configs KV;admin 改动 TTL 内拾取,缺失回落 full 保守）
+      resolveReservationPolicy: createBillingReservationPolicyReader({
+        db,
+        ttlMs: config.reservationPolicyTtlMs,
+      }),
       assertCapacity,
+      // TPM 预占收尾（结算信号面回填/释放——预占不再靠分钟桶滚动硬等）
+      limiter: rateLimit.limiter,
     }),
     store: createRedisHealthStore(redis, HEALTH_PREFIX),
     decrypt: (enc) => cipher.decrypt(enc),
     tasks: createPostgresGenerationTaskStore(db),
     // 阶段 span 绑定（inference TracePort → OTel）
     trace: otelTracePort,
-    // 渠道维 RPM 尝试前判定（钩子无请求作用域生命周期，故无渠道 TPM 预占）
-    admitChannel: async (channel) =>
-      tryChannelRpm(rateLimit, {
-        channelId: channel.channelId,
-        rpmLimit: channel.rpmLimit ?? null,
-      }),
+    // 渠道维准入（RPM 滑窗 + TPM 预占——预占并入请求级预占哈希，异常路径 release 收口）
+    admitChannel: async (channel, estimatedTokens, requestId) =>
+      tryChannelAdmission(
+        rateLimit,
+        {
+          channelId: channel.channelId,
+          rpmLimit: channel.rpmLimit ?? null,
+          tpmLimit: channel.tpmLimit ?? null,
+        },
+        { estimatedTokens, requestId },
+      ),
+    // 模型维准入（管理台 model_mappings.rpm/tpm_limit 生效面；超限换 fallback 候选）
+    admitModel: async (candidate, estimatedTokens, requestId) =>
+      tryModelAdmission(
+        rateLimit,
+        {
+          realModel: candidate.realModel,
+          rpmLimit: candidate.rpmLimit ?? null,
+          tpmLimit: candidate.tpmLimit ?? null,
+        },
+        { estimatedTokens, requestId },
+      ),
     defaults: {
       output: config.output,
       authorization: { ttlMs: config.authorizationTtlMs },

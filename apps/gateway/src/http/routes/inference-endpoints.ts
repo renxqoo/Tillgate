@@ -5,9 +5,13 @@
  */
 import { Hono } from 'hono';
 import type { Inference } from '@tillgate/inference';
-import { conservativeInputTokenUpperBound } from '@tillgate/inference';
+import {
+  admissionTokenUpperBound,
+  defaultInferenceDefaults,
+  type OutputCapConfig,
+} from '@tillgate/inference';
 import type { AuthEnv } from '../middleware/api-key';
-import { toInferenceInput } from './inference-input';
+import { requestSignalOf, toInferenceInput } from './inference-input';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { GatewayErrors } from '../openai-error-face';
 import { encodeDelivered } from '../openai-envelope';
@@ -18,6 +22,33 @@ import { requestSummaryOf } from '../middleware/request-log.js';
 export interface InferenceRouteDeps {
   inference: Inference;
   rateLimit?: RateLimitGate;
+  /** 输出上界口径（缺省取 inference 包缺省——与未覆盖装配时的 prepare 口径一致） */
+  outputCap?: OutputCapConfig;
+  /** 服务端 drain 信号（宽限耗尽 abort——与客户端断连信号合成） */
+  drainSignal?: AbortSignal;
+}
+
+/** 端点 → 输出维口径（与 quote/prepare 的 kind 映射一致：仅 chat 族计输出） */
+function outputKindOf(endpoint: InferenceEndpoint): 'chat' | 'embeddings' | 'modality' {
+  if (endpoint.kind === 'chat') return 'chat';
+  if (endpoint.kind === 'embeddings') return 'embeddings';
+  return 'modality';
+}
+
+/** 路由工厂共用的准入预占估算（输入 + 输出上界；与 billing 敞口同式） */
+function admissionEstimateOf(
+  deps: InferenceRouteDeps,
+  endpoint: InferenceEndpoint,
+  canonical: Record<string, unknown>,
+): number {
+  if (deps.outputCap != null) {
+    return admissionTokenUpperBound(outputKindOf(endpoint), canonical, deps.outputCap);
+  }
+  const defaults = defaultInferenceDefaults().output;
+  return admissionTokenUpperBound(outputKindOf(endpoint), canonical, {
+    defaultMax: defaults.defaultMaxOutputTokens,
+    exposureCap: defaults.exposureCap,
+  });
 }
 
 function invalidBody(json: (b: unknown, s: 400) => Response, issues: { message?: string }[]) {
@@ -82,7 +113,7 @@ export function inferenceRoutes(
     const admit = await admitRequest(deps.rateLimit, {
       requestId,
       auth,
-      estimatedTokens: conservativeInputTokenUpperBound(canonical),
+      estimatedTokens: admissionEstimateOf(deps, endpoint, canonical),
     });
     try {
       const input = toInferenceInput({
@@ -90,6 +121,7 @@ export function inferenceRoutes(
         auth,
         body: canonical,
         endpoint: endpoint.kind,
+        signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
       });
       const result =
         canonical.stream === true
@@ -102,7 +134,8 @@ export function inferenceRoutes(
       );
     } catch (error) {
       // 零上游执行的失败（鉴权后异常/目录未命中/预算拒绝）归还 TPM 预占——宁可归还
-      // 也不过度占用窗口（成功路径由结算 backfill 归还，失败路径 TTL 兜底）
+      // 也不过度占用窗口（上游已执行的成败收尾归 billing 桥：succeeded→backfill、
+      // failed→release，见 adapters/billing-port.ts finalizeTpmReservation）
       await admit.release();
       throw error;
     }
@@ -132,11 +165,17 @@ export function enginesAliasRoutes(
     const admit = await admitRequest(deps.rateLimit, {
       requestId,
       auth,
-      estimatedTokens: conservativeInputTokenUpperBound(canonical),
+      estimatedTokens: admissionEstimateOf(deps, endpoint, canonical),
     });
     try {
       const result = await deps.inference.chat(
-        toInferenceInput({ requestId, auth, body: canonical, endpoint: endpoint.kind }),
+        toInferenceInput({
+          requestId,
+          auth,
+          body: canonical,
+          endpoint: endpoint.kind,
+          signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
+        }),
       );
       return await encodeDelivered(
         c.json.bind(c),

@@ -1,7 +1,7 @@
 /**
  * wallet 动词族装配出口：动词各居一文件，此处只做组合（装配参数一次注入）。
  *
- *   credit / authorize / settle / release / refund / transfer / setCreditLimit
+ *   credit / authorize / settle / release / refund / transfer / setCreditLimit / setDebitFloor
  *   / accounts / statement
  *
  * 不变量（domain 定律 + 各动词内部顺序）：
@@ -20,6 +20,14 @@ import { createAccountsUseCase } from './accounts.js';
 import { createAuthorizeUseCase } from './authorize.js';
 import type { AuthorizeInput, AuthorizeResult } from './authorize.js';
 import { createCreditUseCase } from './credit.js';
+import {
+  createApplyDefaultFloorUseCase,
+  createSetDebitFloorUseCase,
+  type ApplyDefaultFloorInput,
+  type ApplyDefaultFloorResult,
+  type SetDebitFloorInput,
+  type SetDebitFloorResult,
+} from './debit-floor.js';
 import type { CreditInput, CreditResult } from './credit.js';
 import {
   createSetCreditLimitUseCase,
@@ -76,6 +84,10 @@ export interface WalletApi {
   refund(input: RefundInput): Promise<RefundResult>;
   transfer(input: TransferInput): Promise<TransferResult>;
   setCreditLimit(input: SetCreditLimitInput): Promise<SetCreditLimitResult>;
+  /** 结算透支地板（受控负余额上限；不动资金；manual 来源） */
+  setDebitFloor(input: SetDebitFloorInput): Promise<SetDebitFloorResult>;
+  /** 存量批量刷默认地板（仅 default 来源；manual 永不覆盖） */
+  applyDefaultFloor(input: ApplyDefaultFloorInput): Promise<ApplyDefaultFloorResult>;
   /** 用户全部币种账户摘要（读侧） */
   accounts(userId: number): Promise<AccountSnapshot[]>;
   /** 用户资金流水（腿级，id 倒序游标分页；读侧） */
@@ -94,6 +106,8 @@ export function createWalletApi(env: WalletEnv): WalletApi {
     refund: createRefundUseCase(env),
     transfer: createTransferUseCase(env),
     setCreditLimit: createSetCreditLimitUseCase(env),
+    setDebitFloor: createSetDebitFloorUseCase(env),
+    applyDefaultFloor: createApplyDefaultFloorUseCase(env),
     accounts: createAccountsUseCase(env),
     statement: createStatementUseCase(env),
     referralPayouts: createReferralPayoutsUseCase(env).list,

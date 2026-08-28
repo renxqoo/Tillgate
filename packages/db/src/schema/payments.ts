@@ -7,7 +7,7 @@ import {
   uuid,
   varchar,
   numeric,
-    bigint,
+  bigint,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { jsonb } from './jsonb.js';

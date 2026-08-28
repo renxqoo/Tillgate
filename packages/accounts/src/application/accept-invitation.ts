@@ -5,19 +5,29 @@
  */
 import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
-import { invitationEmailMatches } from '../domain/org.js';
+import { invitationEmailMatches, invitationTokenHash } from '../domain/org.js';
 import { MEMBER_ROLES } from '../domain/org.js';
 import type { UseCaseContext } from './context.js';
+import type { InvitationSnapshot } from '../ports/account-store.js';
+
+/** 接受前置校验：token（查询键 = sha256，库内不存明文）查得且未撤销/未接受/未过期 */
+async function loadAcceptableInvitation(
+  ctx: UseCaseContext,
+  token: string,
+): Promise<InvitationSnapshot> {
+  const snapshot = await ctx.store.findInvitationByToken(ctx.db, invitationTokenHash(token));
+  if (snapshot === null) throw AccountsErrors.business('invitation_invalid');
+  if (snapshot.status === 2) throw AccountsErrors.business('invitation_revoked');
+  if (snapshot.status === 1) throw AccountsErrors.business('invitation_already_accepted');
+  if (snapshot.expired) throw AccountsErrors.business('invitation_expired');
+  return snapshot;
+}
 
 export async function acceptInvitation(
   ctx: UseCaseContext,
   input: { token: string; acceptorUserId: number },
 ): Promise<{ orgId: number }> {
-  const snapshot = await ctx.store.findInvitationByToken(ctx.db, input.token);
-  if (snapshot === null) throw AccountsErrors.business('invitation_invalid');
-  if (snapshot.status === 2) throw AccountsErrors.business('invitation_revoked');
-  if (snapshot.status === 1) throw AccountsErrors.business('invitation_already_accepted');
-  if (snapshot.expired) throw AccountsErrors.business('invitation_expired');
+  const snapshot = await loadAcceptableInvitation(ctx, input.token);
 
   const acceptor = await ctx.store.findUserById(ctx.db, input.acceptorUserId);
   if (acceptor === null) {

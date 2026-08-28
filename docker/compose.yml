@@ -34,6 +34,7 @@ services:
         condition: service_healthy
     logging: *default-logging
     restart: unless-stopped
+    mem_limit: 64m
 
   # certbot 证书签发与续期（Let's Encrypt）——本服务 entrypoint 为 sleep 常驻，
   # 签发/续期须显式指定 --entrypoint certbot（或用 exec）：
@@ -74,6 +75,8 @@ services:
       GATEWAY_PORT: 8080
       OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-off}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://trace-receiver:8793}
+      # OTLP Bearer——与 trace-receiver 共用同键；缺此值 span 全部 401 拒收
+      TRACE_RECEIVER_TOKEN: ${TRACE_RECEIVER_TOKEN:?TRACE_RECEIVER_TOKEN is required}
       TRUSTED_PROXY_HOPS: '1' # nginx 单层代理：XFF 右数第 1 跳 = 真实客户端
       ADMIN_JWT_SECRET:
       IDENTITY_CODE_PEPPER:
@@ -98,6 +101,7 @@ services:
     security_opt: ['no-new-privileges:true']
     logging: *default-logging
     restart: unless-stopped
+    mem_limit: 384m
     stop_grace_period: 30s # 优雅关停：给 in-flight SSE/请求足够 drain 时间
     # 多副本：docker compose --env-file .env -f docker/compose.yml up -d --scale gateway=2
 
@@ -121,7 +125,6 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://trace-receiver:8793}
       ADMIN_JWT_SECRET:
       IDENTITY_CODE_PEPPER:
-      CHANNEL_API_KEY_ENCRYPTION:
       POSTGRES_PASSWORD:
       REDIS_PASSWORD:
     depends_on:
@@ -142,6 +145,7 @@ services:
     security_opt: ['no-new-privileges:true']
     logging: *default-logging
     restart: unless-stopped
+    mem_limit: 384m
     stop_grace_period: 15s
 
   admin-api:
@@ -163,7 +167,6 @@ services:
       OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-off}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://trace-receiver:8793}
       CLIENT_CODE_PEPPER:
-      CHANNEL_API_KEY_ENCRYPTION:
       POSTGRES_PASSWORD:
       REDIS_PASSWORD:
     depends_on:
@@ -184,6 +187,7 @@ services:
     security_opt: ['no-new-privileges:true']
     logging: *default-logging
     restart: unless-stopped
+    mem_limit: 384m
     stop_grace_period: 15s
 
   worker:
@@ -228,6 +232,7 @@ services:
     security_opt: ['no-new-privileges:true']
     logging: *default-logging
     restart: unless-stopped
+    mem_limit: 384m
     stop_grace_period: 30s
 
   # 链路接收端（内网）：OTLP/HTTP JSON → PG trace_spans 日分区；
@@ -266,6 +271,7 @@ services:
     security_opt: ['no-new-privileges:true']
     logging: *default-logging
     restart: unless-stopped
+    mem_limit: 192m
 
   console-client:
     image: ${TILLGATE_IMAGE_PREFIX:-tillgate}/console-client:${TILLGATE_TAG:-local}
@@ -293,6 +299,7 @@ services:
     security_opt: ['no-new-privileges:true']
     logging: *default-logging
     restart: unless-stopped
+    mem_limit: 768m
 
   console-admin:
     image: ${TILLGATE_IMAGE_PREFIX:-tillgate}/console-admin:${TILLGATE_TAG:-local}
@@ -317,6 +324,7 @@ services:
     security_opt: ['no-new-privileges:true']
     logging: *default-logging
     restart: unless-stopped
+    mem_limit: 512m
 
   migrate:
     image: ${TILLGATE_IMAGE_PREFIX:-tillgate}/migrate:${TILLGATE_TAG:-local}
@@ -332,6 +340,7 @@ services:
       postgres:
         condition: service_healthy
     restart: 'no'
+    mem_limit: 256m
     security_opt: ['no-new-privileges:true']
     logging: *default-logging
 
@@ -358,6 +367,7 @@ services:
       timeout: 3s
       retries: 10
     restart: unless-stopped
+    mem_limit: 256m
     logging: *default-logging
 
   postgres:
@@ -374,6 +384,7 @@ services:
       timeout: 3s
       retries: 10
     restart: unless-stopped
+    mem_limit: 512m
     logging: *default-logging
 
 volumes:

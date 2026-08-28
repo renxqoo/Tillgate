@@ -36,6 +36,7 @@ describe('src 文件集合快照', () => {
       'adapters/billing-port.ts',
       'adapters/billing-timezone.ts',
       'adapters/catalog-port.ts',
+      'adapters/reservation-policy.ts',
       'adapters/settle-wake.ts',
       'adapters/trace-port.ts',
       'app.ts',
@@ -57,7 +58,6 @@ describe('src 文件集合快照', () => {
       'http/routes/models.ts',
       'http/routes/native-gemini.ts',
       'http/routes/oauth-token.ts',
-      'http/sanitize.ts',
       'index.ts',
       'shutdown.ts',
     ]);

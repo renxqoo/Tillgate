@@ -1,4 +1,5 @@
 import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { UpstreamError } from '../errors/kinds';
 import type { UrlGuard } from '../types';
 
@@ -156,6 +157,22 @@ export function assertSafeUrlSync(url: string, opts: SafeUrlOptions = {}): URL {
 }
 
 /**
+ * 单地址 SSRF 判定（拨号层原语——钉住已校验解析的钉子）：私网/回环/链路本地/
+ * metadata/组播/内嵌私网段全拒；非 IP 文本按不安全处理（防御对称）。
+ * allowLocal 仅放行内网形态（测试/本地调试，与 assertSafeUrl 同语义）。
+ * 消费方在「实际发起连接的解析钩子」里调用——校验的就是拨号地址本身，
+ * DNS rebinding 的两次解析不一致在此结构性失效。
+ */
+export function assertSafeAddress(address: string, opts: SafeUrlOptions = {}): void {
+  if (opts.allowLocal === true) return;
+  // 非 IP 文本直接拒（防御对称；也拦 '0177.0.0.1' 这类非规范 IPv4 形态——
+  // isUnsafeIpv4 的 Number() 会把八进制段误判为公网）
+  if (isIP(address) === 0) throw new Error(`blocked address: ${address}`);
+  const unsafe = address.includes(':') ? isUnsafeIpv6(address) : isUnsafeIpv4(address);
+  if (unsafe) throw new Error(`blocked address: ${address}`);
+}
+
+/**
  * 完整校验：同步快速失败 + DNS 解析后逐地址判定（防 DNS rebinding）。
  * 出口信任 = 机械基线 + 运营面（渠道写入是 admin 域）；
  * 域名解析失败时放行（交给 fetch 自然报 network 错误，未解析=无法发起连接，安全）。
@@ -170,8 +187,11 @@ export async function assertSafeUrl(url: string, opts: SafeUrlOptions = {}): Pro
     return u;
   }
   for (const addr of addresses) {
-    const unsafe = addr.includes(':') ? isUnsafeIpv6(addr) : isUnsafeIpv4(addr);
-    if (unsafe) throw new Error(`blocked address: ${u.hostname} resolves to ${addr}`);
+    try {
+      assertSafeAddress(addr);
+    } catch {
+      throw new Error(`blocked address: ${u.hostname} resolves to ${addr}`);
+    }
   }
   return u;
 }

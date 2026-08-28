@@ -4,6 +4,7 @@ import { loadAdminApiConfig } from './config';
 import { assembleAdminApi } from './assembly';
 import { createAdminApp } from './app';
 import { createAdminShutdown } from './shutdown';
+import { verifyRbacStartup } from './startup-rbac';
 
 /**
  * 管理控制面入口：config → assembly → app → serve → 信号接线（三段式,不自行拼装依赖）。
@@ -11,12 +12,20 @@ import { createAdminShutdown } from './shutdown';
  */
 
 const config = loadAdminApiConfig();
-const assembly = assembleAdminApi(config);
+const assembly = await assembleAdminApi(config);
+// 启动对账:代码侧 enforced 码 ⊆ DB 活动码,缺种子拒启(fail-closed;非阻塞不挡监听)
+verifyRbacStartup({
+  activeCodes: assembly.controlPlane.rbac.permissions.activeCodes,
+  logger: assembly.logger,
+});
 // ping 绑定在进程装配面:app.ts 不接触 Db 类型(非装配代码只持闭包与纯契约)
+// 停机排水控制器:宽限耗尽时 abort 预算门排队者(裸 abort——终止分类 reason
+// 是 gateway 推理链专属语义,预算队列只关心 aborted 事实)
+const drainController = new AbortController();
 const app = createAdminApp({
   pingDb: () => ping(assembly.db),
   // DB 并发预算门:管理面批量脚本(调账/导出)入口排队,防打满小池(余量 2 给探针)
-  dbBudget: suggestDbBudget(assembly.dbPool.poolMax, 2),
+  dbBudget: { ...suggestDbBudget(assembly.dbPool.poolMax, 2), drainSignal: drainController.signal },
   logger: assembly.logger,
   // 会话验证 + 属主回查（admins 行存在且 status=0——封禁/注销即刻失效）
   sessions: {
@@ -77,6 +86,7 @@ const shutdown = createAdminShutdown({
   db: assembly.db,
   graceMs: config.shutdownGraceMs,
   logger: assembly.logger,
+  drain: { abort: () => drainController.abort() },
 });
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);

@@ -393,6 +393,71 @@ describe('C. 资金旅程（e2e-money;旅程专属用户——真实账本,零�
   });
 });
 
+describe('E. 透支地板管理面（真 PG：默认→单用户→批量→新钱包套用）', () => {
+  it('全局默认读写→单用户手工覆盖→批量不动 manual→新钱包自动套默认', async () => {
+    const user = await w().provisionUser();
+
+    // 1) 全局默认 0.5：读回显
+    const put = await call(w(), '/v1/settings/debit-floor-default', {
+      method: 'PUT',
+      headers: jsonHeaders,
+      body: JSON.stringify({ floor: '0.5' }),
+    });
+    expect(put.status).toBe(200);
+    expect(put.body).toMatchObject({ floor: '0.5' });
+    const read = await call(w(), '/v1/settings/debit-floor-default', {});
+    expect(read.body).toMatchObject({ floor: '0.5' });
+
+    // 2) 单用户手工覆盖 → manual 来源（列表富化可见）
+    const set = await call(w(), `/v1/users/${user.id}/debit-floor`, {
+      method: 'PUT',
+      headers: jsonHeaders,
+      body: JSON.stringify({ floor: '5' }),
+    });
+    expect(set.status).toBe(200);
+    expect(set.body).toMatchObject({ ok: true, floorAfter: '5', source: 'manual' });
+    const profile = await call(w(), `/v1/users/${user.id}`, {});
+    expect(String(profile.body.debitFloor).startsWith('5')).toBe(true);
+    expect(profile.body).toMatchObject({ debitFloorSource: 'manual' });
+
+    // 3) 批量刷默认：manual 行不动
+    const apply = await call(w(), '/v1/wallets/debit-floor/apply-default', { method: 'POST' });
+    expect(apply.status).toBe(200);
+    expect(apply.body).toMatchObject({ floor: '0.5' });
+    expect(Number(apply.body.applied)).toBeGreaterThanOrEqual(0);
+    const after = await call(w(), `/v1/users/${user.id}`, {});
+    expect(String(after.body.debitFloor).startsWith('5')).toBe(true);
+    expect(after.body).toMatchObject({ debitFloorSource: 'manual' });
+
+    // 4) 新钱包自动套默认：provisionUser 建用户后首笔 credit 触发 ensureUserAccount
+    const fresh = await w().provisionUser();
+    const adjust = await call(w(), `/v1/users/${fresh.id}/adjust`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ amount: '1' }),
+    });
+    expect(adjust.status).toBe(200);
+    const freshProfile = await call(w(), `/v1/users/${fresh.id}`, {});
+    expect(String(freshProfile.body.debitFloor).startsWith('0.5')).toBe(true);
+    expect(freshProfile.body).toMatchObject({ debitFloorSource: 'default' });
+
+    // 5) 非法 floor 400
+    const bad = await call(w(), `/v1/users/${user.id}/debit-floor`, {
+      method: 'PUT',
+      headers: jsonHeaders,
+      body: JSON.stringify({ floor: '-1' }),
+    });
+    expect(bad.status).toBe(400);
+
+    // 6) 收敛：全局默认归零（后续旅程不受影响）
+    await call(w(), '/v1/settings/debit-floor-default', {
+      method: 'PUT',
+      headers: jsonHeaders,
+      body: JSON.stringify({ floor: '0' }),
+    });
+  }, 30_000);
+});
+
 describe('D. 观测面（e2e-ops 的现存子集;stats/usage 族 = P4 pending）', () => {
   it('审计列表命中旅程动作;请求日志/链路信封;死信面空态口径', async () => {
     // q 定向(并发会话的审计行会挤出首页——q 命中 action ilike)

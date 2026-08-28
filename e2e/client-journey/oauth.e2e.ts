@@ -107,7 +107,7 @@ async function firstCallbackAndSession(
   );
   expect(callback.status).toBe(302);
   const redirect = String(callback.headers.location ?? '');
-  expect(redirect).toContain(`${harness.baseUrl}/app/billing#token=`);
+  expect(redirect).toContain(`${harness.baseUrl}/billing#token=`);
   const fragmentToken = decodeURIComponent(redirect.split('#token=')[1] ?? '');
   expect(fragmentToken.length).toBeGreaterThan(0);
   // mock 上游确实被调（token + profile + emails）

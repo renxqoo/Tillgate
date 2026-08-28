@@ -3,14 +3,19 @@
  * 加载环境 → 装配（内部完成 DB 建连与 Redis fail-closed 连通性验证）→
  * createApp → serve → 配置快照 → 优雅停机。
  */
-import { serveApp } from '@tillgate/http';
+import { serveApp, suggestDbBudget } from '@tillgate/http';
 import { loadClientApiConfig } from './config.js';
 import { assembleClientApi } from './assembly.js';
 import { createClientApiApp } from './app.js';
 import { createClientShutdown } from './shutdown.js';
 
 const config = loadClientApiConfig();
-const { logger, otel, db, redis, deps } = await assembleClientApi(config);
+// 停机排水 controller + DB 并发预算门（gateway 同形态:入口持有——宽限耗尽时
+// abort 预算门排队者,余量 2 给探针旁路;方案 docs/db-budget-signals/DESIGN.md）
+const drainController = new AbortController();
+const { logger, otel, db, redis, deps } = await assembleClientApi(config, {
+  dbBudget: { ...suggestDbBudget(config.DB_POOL_MAX, 2), drainSignal: drainController.signal },
+});
 const app = createClientApiApp(deps);
 
 const server = serveApp(app, { port: config.CLIENT_API_PORT }, () => {
@@ -39,6 +44,8 @@ const shutdown = createClientShutdown({
   redis,
   db: { end: () => db.$client.end() },
   graceMs: config.CLIENT_SHUTDOWN_GRACE_MS,
+  // 宽限耗尽 → abort 预算门排队者（db-budget-signals 停机接线）
+  drain: { abort: () => drainController.abort() },
   logger,
 });
 process.on('SIGTERM', shutdown);

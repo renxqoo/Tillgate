@@ -18,7 +18,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomUUID } from 'node:crypto';
 import { ping, closeDb, createDb } from '@tillgate/db';
 import type { Db } from '@tillgate/db';
-import { E2E_CHANNEL_ENCRYPTION_KEY, setupE2EWorld, type E2EWorld } from '../gateway/kit.js';
+import { E2E_ENCRYPTION_KEY, setupE2EWorld, type E2EWorld } from '../gateway/kit.js';
 import { loadWorkerConfig } from '../../apps/worker/src/config.js';
 import { assembleWorker } from '../../apps/worker/src/assembly.js';
 import type { WorkerAssembly } from '../../apps/worker/src/assembly.js';
@@ -124,7 +124,7 @@ export async function assembleWorldWorker(world: E2EWorld): Promise<WorkerAssemb
     NODE_ENV: 'test',
     DATABASE_URL: world.scopedUrl,
     // 与 gateway 装配共钥——worker 结算/轮询要解密同一批渠道行
-    CHANNEL_API_KEY_ENCRYPTION: E2E_CHANNEL_ENCRYPTION_KEY,
+    ENCRYPTION_KEY: E2E_ENCRYPTION_KEY,
     OTEL_TRACES_MODE: 'off',
     LOG_LEVEL: 'error',
     WORKER_OWNER_ID: `e2e-br-${randomUUID().slice(0, 8)}`,

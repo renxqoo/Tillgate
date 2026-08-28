@@ -3,21 +3,23 @@
  * 并罚制——任一维（key/user RPM、key/user/global TPM）超限即 429，不做凭证>用户择优；
  * 维度串不外泄（Retry-After 头表达等待）；TPM 预占失败必须 releaseTpm（TTL 兜底）。
  *
- * 范围说明：模型维 TPM 与渠道维 TPM 预占不在本闸——前者需目录候选映射 id
- * （inference 内部解析），后者需请求作用域 TPM 生命周期（admitChannel 钩子无
- * requestId 维）。渠道维 RPM 经 assembly 注入的 admitChannel 钩子保留
- * （渠道超限换渠语义）。
+ * 候选/渠道维（tryModelAdmission / tryChannelAdmission）经 assembly 注入 inference
+ * 的 admitModel/admitChannel 钩子：模型超限换候选（fallback 链）、渠道超限换渠；
+ * TPM 预占与 key/user 维共用同一 requestId 预占哈希。
  */
-import { randomUUID } from 'node:crypto';
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
+import type { MiddlewareHandler } from 'hono';
+import { socketAddressFromContext, trustedClientIp } from '@tillgate/http';
 import { getTracer, withAsyncSpan } from '@tillgate/observability';
 import { GatewayErrors } from '../openai-error-face';
-import type { AuthContext } from './api-key';
+import type { AuthContext, AuthEnv } from './api-key';
 
 export interface RateLimitGate {
   limiter: SlidingWindowLimiter;
   /** null = 无全局维 */
   globalRpm: number | null;
+  /** 预认证 per-IP RPM 上限（null = 不设该闸）；鉴权前的第一道闸 */
+  preauthIpRpm: number | null;
 }
 
 export interface AdmitInput {
@@ -25,6 +27,11 @@ export interface AdmitInput {
   auth: AuthContext;
   /** TPM 预占口径的估算 token 数（敞口保守上界） */
   estimatedTokens: number;
+  /**
+   * TPM 维豁免（按张/按秒计价的模态端点）：RPM 照查、不预占 TPM——
+   * 计价单位非 token 时 TPM 维没有消费语义，预占恒 0 的假口径不如明确豁免。
+   */
+  exemptTpm?: boolean;
 }
 
 export interface AdmitHandle {
@@ -32,7 +39,9 @@ export interface AdmitHandle {
   release(): Promise<void>;
 }
 
-/** RPM 维表（key/user/global 并罚——任一维超限即拒） */
+/** RPM 维表（key/app/user/global 并罚——任一维超限即拒）。
+ *  凭证维二选一：静态 Key → key:{apiKeyId}；App-JWT → app:{appId}
+ *  （scope.rpm 随令牌签发——「限流执行依据」的落地维）。 */
 function rpmDimsOf(
   gate: RateLimitGate,
   auth: AuthContext,
@@ -40,6 +49,8 @@ function rpmDimsOf(
   const dims: Array<{ dimension: string; max: number }> = [];
   if (auth.apiKeyId != null && auth.rpmLimit != null) {
     dims.push({ dimension: `key:${auth.apiKeyId}`, max: auth.rpmLimit });
+  } else if (auth.appId != null && auth.rpmLimit != null) {
+    dims.push({ dimension: `app:${auth.appId}`, max: auth.rpmLimit });
   }
   if (auth.userRpmLimit != null) {
     dims.push({ dimension: `user:${auth.userId}`, max: auth.userRpmLimit });
@@ -48,7 +59,7 @@ function rpmDimsOf(
   return dims;
 }
 
-/** TPM 维表（key/user 预占——凭证维缺失跳过） */
+/** TPM 维表（key/app/user 预占——凭证维缺失跳过；维度选择同 rpmDimsOf） */
 function tpmDimsOf(
   auth: AuthContext,
   estimatedTokens: number,
@@ -56,6 +67,8 @@ function tpmDimsOf(
   const dims: Array<{ dimension: string; estimatedTokens: number; max: number }> = [];
   if (auth.apiKeyId != null && auth.tpmLimit != null) {
     dims.push({ dimension: `key:${auth.apiKeyId}`, estimatedTokens, max: auth.tpmLimit });
+  } else if (auth.appId != null && auth.tpmLimit != null) {
+    dims.push({ dimension: `app:${auth.appId}`, estimatedTokens, max: auth.tpmLimit });
   }
   if (auth.userTpmLimit != null) {
     dims.push({ dimension: `user:${auth.userId}`, estimatedTokens, max: auth.userTpmLimit });
@@ -91,7 +104,7 @@ export async function admitRequest(
         });
       }
 
-      const tpmDims = tpmDimsOf(auth, input.estimatedTokens);
+      const tpmDims = input.exemptTpm === true ? [] : tpmDimsOf(auth, input.estimatedTokens);
       if (tpmDims.length > 0) {
         const tpm = await gate.limiter.reserveTpmAll(tpmDims, input.requestId);
         if (!tpm.allowed) {
@@ -108,16 +121,103 @@ export async function admitRequest(
   );
 }
 
-/** 渠道维 RPM 尝试前判定（assembly 经 inference admitChannel 钩子消费；false = 换渠） */
-export async function tryChannelRpm(
+/** TPM 预占作用域（与 key/user 维共用同一预占哈希的请求级上下文） */
+export interface AdmissionScope {
+  estimatedTokens: number;
+  requestId: string;
+}
+
+/** 渠道维准入（RPM 滑窗 + TPM 预占；assembly 经 inference admitChannel 钩子消费；false = 换渠）。
+ *  TPM 与 key/user 维共用同一 requestId 预占哈希（RESERVE 幂等追加维，异常路径 release
+ *  统一收口）；failover 换渠时旧渠道预占保留到分钟桶滚动（保守口径——无按维撤销原语）。 */
+export async function tryChannelAdmission(
   gate: RateLimitGate | undefined,
-  channel: { channelId: number; rpmLimit: number | null },
+  channel: { channelId: number; rpmLimit: number | null; tpmLimit?: number | null },
+  scope: AdmissionScope,
 ): Promise<boolean> {
-  if (gate == null || channel.rpmLimit == null || channel.rpmLimit <= 0) return true;
-  const result = await gate.limiter.check(
-    `channel:${channel.channelId}`,
-    channel.rpmLimit,
-    randomUUID(),
-  );
-  return result.allowed;
+  if (gate == null) return true;
+  if (channel.rpmLimit != null && channel.rpmLimit > 0) {
+    // member=requestId：同请求对同一渠道的重复准入尝试幂等计数（failover 跨候选
+    // 常共用渠道集——randomUUID member 会让一笔请求吃掉同渠道多个 RPM 槽）
+    const result = await gate.limiter.check(
+      `channel:${channel.channelId}`,
+      channel.rpmLimit,
+      scope.requestId,
+    );
+    if (!result.allowed) return false;
+  }
+  if (channel.tpmLimit != null && channel.tpmLimit > 0) {
+    const tpm = await gate.limiter.reserveTpmAll(
+      [
+        {
+          dimension: `channel:${channel.channelId}`,
+          estimatedTokens: scope.estimatedTokens,
+          max: channel.tpmLimit,
+        },
+      ],
+      scope.requestId,
+    );
+    if (!tpm.allowed) return false;
+  }
+  return true;
+}
+
+/** 模型维准入（realModel 维 RPM + TPM；assembly 经 inference admitModel 钩子消费；
+ *  false = 换候选——fallback 模型接手）。管理台可配的模型级限流在此生效。 */
+export async function tryModelAdmission(
+  gate: RateLimitGate | undefined,
+  model: { realModel: string; rpmLimit: number | null; tpmLimit: number | null },
+  scope: AdmissionScope,
+): Promise<boolean> {
+  if (gate == null) return true;
+  if (model.rpmLimit != null && model.rpmLimit > 0) {
+    const result = await gate.limiter.check(
+      `model:${model.realModel}`,
+      model.rpmLimit,
+      scope.requestId,
+    );
+    if (!result.allowed) return false;
+  }
+  if (model.tpmLimit != null && model.tpmLimit > 0) {
+    const tpm = await gate.limiter.reserveTpmAll(
+      [
+        {
+          dimension: `model:${model.realModel}`,
+          estimatedTokens: scope.estimatedTokens,
+          max: model.tpmLimit,
+        },
+      ],
+      scope.requestId,
+    );
+    if (!tpm.allowed) return false;
+  }
+  return true;
+}
+
+/**
+ * 预认证 per-IP 限流中间件（/v1/* 与 /v1beta/* 共用同一 IP 桶）：
+ * 鉴权维度限流（key/user/global）全部依赖 AuthContext——未认证洪水不经过任何闸，
+ * 且每发请求都写一行 request_logs（写放大）。本闸挂在 requestLog 之前：
+ * 超限 429 直接出站、不写日志。Redis 故障 fail-closed（与 admitRequest 同语义）。
+ */
+export function preauthIpRateLimitMiddleware(gate: {
+  limiter: SlidingWindowLimiter;
+  maxPerMinute: number;
+  trustedProxyHops: number;
+}): MiddlewareHandler<AuthEnv> {
+  return async (c, next) => {
+    const ip = trustedClientIp({
+      headers: c.req.raw.headers,
+      trustedProxyHops: gate.trustedProxyHops,
+      socketAddress: socketAddressFromContext(c),
+    });
+    const requestId = c.get('requestId');
+    const result = await gate.limiter.check(`preauth-ip:${ip}`, gate.maxPerMinute, requestId);
+    if (!result.allowed) {
+      throw GatewayErrors.business('rate_limit_exceeded', {
+        retryAfterSec: result.retryAfterSec ?? 60,
+      });
+    }
+    await next();
+  };
 }

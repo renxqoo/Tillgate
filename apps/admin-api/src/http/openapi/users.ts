@@ -4,7 +4,7 @@
  * （形状与 presenters/users.ts、presenters/keys.ts 投影逐字段对齐——金额恒十进制字符串）。
  */
 import * as z from 'zod';
-import { keysContracts, usersContracts } from '../contracts/users';
+import { debitFloorUpdateSchema, keysContracts, usersContracts } from '../contracts/users';
 import { authContracts } from '../contracts/auth';
 import { idPathParam, listQuery, paginatedOf, okTrue, type OpenApiEndpoint } from './shared';
 import { auditLogRowSchema } from './observability';
@@ -24,6 +24,12 @@ export const adminUserRowSchema = z
     reservedBalance: z.string(),
     availableBalance: z.string(),
     creditLimit: z.string().describe('透支上限(元,>=0)。信用模型:balance 允许降到 -creditLimit。'),
+    debitFloor: z
+      .string()
+      .describe('结算透支地板(元,>=0)。结算超收可负到 -(creditLimit+debitFloor);0 = 不透支。'),
+    debitFloorSource: z
+      .enum(['default', 'manual'])
+      .describe('地板来源:default=随全局默认(批量刷默认会覆盖);manual=管理员手工(批量永不动)。'),
     dailySpendLimit: z.string().nullable().describe('每日花费上限(元,NULL=不限)。'),
     status: z.number(),
     isEnterprise: z.boolean(),
@@ -127,6 +133,28 @@ export const usersEndpoints: readonly OpenApiEndpoint[] = [
     body: authContracts.setPassword,
     response: { schema: okTrue },
     errors: [400, 401, 404],
+  },
+  {
+    method: 'put',
+    path: '/v1/users/:id/debit-floor',
+    tag: 'users',
+    summary: '设置用户透支地板（manual 来源;批量刷默认永不覆盖;后置审计）',
+    params: [idPathParam('用户 id')],
+    body: debitFloorUpdateSchema,
+    response: {
+      schema: z.object({ ok: okTrue, floorAfter: z.string(), source: z.enum(['manual']) }),
+    },
+    errors: [400, 401, 403, 404, 409],
+  },
+  {
+    method: 'post',
+    path: '/v1/wallets/debit-floor/apply-default',
+    tag: 'users',
+    summary: '存量批量刷默认地板（仅 default 来源;manual 不动;贴线不足跳过计数;后置审计）',
+    response: {
+      schema: z.object({ applied: z.number(), skipped: z.number(), floor: z.string() }),
+    },
+    errors: [401, 403],
   },
   {
     method: 'post',

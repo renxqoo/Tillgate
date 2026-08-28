@@ -239,7 +239,7 @@ stringly 约定；专表与 `marketing_settings`/`notification_channels` 先例�
 ### D3 加密与跨进程密钥契约：与渠道 Key 同一部署契约
 
 admin-api（写入方）以 `ENCRYPTION_KEY` 加密；client-api 以 `ENCRYPTION_KEY`
-解密；worker 以其必填 `CHANNEL_API_KEY_ENCRYPTION` 解密——**与渠道 Key 的跨进程
+解密；worker 以其必填 `ENCRYPTION_KEY` 解密——**与渠道 Key 的跨进程
 契约完全一致**（`docs/configuration.md`：worker 必配专用键、gateway 专用键优先/
 回退根键、admin/client 用根键；部署须保持两键同值，本地 .env 实测相等）。不新增
 任何 env 键。

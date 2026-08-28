@@ -6,7 +6,11 @@ export { createInference } from './inference';
 export type { ChatInput, Inference, InferenceEnv } from './inference';
 export type { ChatDelivered } from './application/chat';
 export type { StreamDelivered } from './application/stream';
-export type { PassthroughDelivered, ChannelAdmission } from './application/failover';
+export type {
+  PassthroughDelivered,
+  ChannelAdmission,
+  ModelAdmission,
+} from './application/failover';
 export type { GenerationSubmitInput, GenerationSubmitOutcome } from './application/generation';
 export { createGenerationPollUseCase } from './application/generation-poll';
 export type {
@@ -55,7 +59,11 @@ export type {
   PricingUnit,
 } from './domain/model/types';
 export { buildCandidateChain } from './domain/model/candidates';
-export { conservativeInputTokenUpperBound } from './domain/model/output-cap';
+export {
+  admissionTokenUpperBound,
+  conservativeInputTokenUpperBound,
+  type OutputCapConfig,
+} from './domain/model/output-cap';
 export type {
   UsageReceipt,
   ReceiptParams,

@@ -3,6 +3,7 @@
  * 套餐 Key 且开关 OFF 时执行不到本来源——订阅 probe 覆盖不足会先行抛错中断瀑布。
  */
 import { availableToSpend } from '../../../domain/wallet/exposure.js';
+import { overCollectCeiling } from './over-collect.js';
 import { Decimal } from '../../../domain/money.js';
 import { BILLING_REF_TYPE } from '../../wallet/authorize.js';
 import type { WalletStore, WalletTx } from '../../../ports/wallet-store.js';
@@ -13,6 +14,7 @@ import type {
   ReserveInput,
   SourceReservation,
   SourceSettleInput,
+  SourceSettleResult,
 } from './source.js';
 
 // eslint-disable-next-line max-lines-per-function -- PAYG 资金源动词事务体
@@ -64,25 +66,34 @@ export function createPaygSource(deps: {
       });
     },
 
-    async settle(tx: WalletTx, input: SourceSettleInput): Promise<void> {
-      // 超额（actual > Σ预留）：补充授权——同事务补押差价并结算，再结清原单，
-      // 总扣款 = consume + over = actual 精确；statement 呈现两笔结算。
-      if (new Decimal(input.over).gt(0)) {
-        await deps.wallet.authorize({
-          userId: input.userId,
-          amount: input.over,
-          refType: BILLING_REF_TYPE,
-          refId: `${input.requestId}#over`,
-          memo: `billing over-hold ${input.requestId}`,
-          collectOverage: true,
-          tx,
-        });
-        await deps.wallet.settle({
-          refType: BILLING_REF_TYPE,
-          refId: `${input.requestId}#over`,
-          amount: input.over,
-          tx,
-        });
+    async settle(tx: WalletTx, input: SourceSettleInput): Promise<SourceSettleResult> {
+      // 超额（actual > Σ预留）：钳到可收额（可用 + 透支地板；见 over-collect.ts）
+      // 补充授权——差额 waived 上报（落 waived_amount），结算恒成功不进死信。
+      const over = new Decimal(input.over);
+      let waived = new Decimal(0);
+      if (over.gt(0)) {
+        const collectOver = Decimal.min(
+          over,
+          await overCollectCeiling(deps.walletStore, tx, input.userId),
+        );
+        if (collectOver.gt(0)) {
+          await deps.wallet.authorize({
+            userId: input.userId,
+            amount: collectOver.toString(),
+            refType: BILLING_REF_TYPE,
+            refId: `${input.requestId}#over`,
+            memo: `billing over-hold ${input.requestId}`,
+            collectOverage: true,
+            tx,
+          });
+          await deps.wallet.settle({
+            refType: BILLING_REF_TYPE,
+            refId: `${input.requestId}#over`,
+            amount: collectOver.toString(),
+            tx,
+          });
+        }
+        waived = over.minus(collectOver);
       }
       // consume ≤ hold；未用完的预留余量由 wallet.settle 隐式归还。
       // 0 元结算（缓存免费/上游全 0 usage）：settle 动词拒绝零额——改走全额释放，
@@ -94,7 +105,7 @@ export function createPaygSource(deps: {
           reason: 'billing_settled_zero',
           tx,
         });
-        return;
+        return { waived: waived.toString() };
       }
       await deps.wallet.settle({
         refType: BILLING_REF_TYPE,
@@ -103,6 +114,7 @@ export function createPaygSource(deps: {
         memo: `billing settle ${input.requestId}`,
         tx,
       });
+      return { waived: waived.toString() };
     },
   };
 }

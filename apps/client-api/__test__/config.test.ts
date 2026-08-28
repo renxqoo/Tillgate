@@ -29,9 +29,8 @@ describe('client-api config', () => {
   it('默认值生效（端口/币种/闸门/时区/缓存）', () => {
     const c = load();
     expect(c.CLIENT_API_PORT).toBe(8081);
-    expect(c.CLIENT_CURRENCY).toBe('CNY');
     expect(c.REGISTER_ENABLED).toBe(true);
-    expect(c.CLIENT_CHALLENGE_MAX_ATTEMPTS).toBe(10);
+    expect(c.CLIENT_CHALLENGE_MAX_ATTEMPTS).toBe(5);
     expect(c.REGISTER_IP_LIMIT_PER_HOUR).toBe(10);
     expect(c.REDEEM_PER_MINUTE_LIMIT).toBe(10);
     expect(c.CLIENT_TOPUP_ORDERS_PER_MINUTE).toBe(10);
@@ -52,7 +51,6 @@ describe('client-api config', () => {
       TRACE_RECEIVER_TOKEN: 'tok-1',
     });
     expect(c.CLIENT_API_PORT).toBe(9090);
-    expect(c.CLIENT_CURRENCY).toBe('USD');
     expect(c.REGISTER_ENABLED).toBe(false);
     expect(c.CLIENT_USAGE_TZ).toBe('UTC');
     expect(c.TRACE_RECEIVER_TOKEN).toBe('tok-1');

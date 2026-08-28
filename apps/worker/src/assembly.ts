@@ -10,13 +10,15 @@
 /* eslint-disable max-lines -- 装配根 composition root：线性依赖组装，行数棘轮与
    下方 max-lines-per-function 同口径（拆段/拆文件只会层层透传上下文） */
 import { createTransport } from 'nodemailer';
-import { assertSafeUrl, createAi } from '@tillgate/ai';
+import { assertSafeAddress, assertSafeUrl, createAi } from '@tillgate/ai';
 import type { Ai } from '@tillgate/ai';
 import { createCipher, createLogger } from '@tillgate/runtime';
 import type { Logger } from '@tillgate/runtime';
 import { closeDb, createDb, ping, withSessionTryLock } from '@tillgate/db';
 import type { Db, DbTx, LockDefectHook } from '@tillgate/db';
 import { initOtel, createObservability } from '@tillgate/observability';
+// writeAudit = 跨能力审计桥原语（仅 assembly 可引用 composition 子入口）
+import { writeAudit } from '@tillgate/observability/composition';
 import type { OtelHandle } from '@tillgate/observability';
 import {
   Decimal,
@@ -40,6 +42,7 @@ import {
   createPostgresReconcileDiscrepancyStore,
   createPostgresWalletStore,
 } from '@tillgate/billing/composition';
+import { readPlatformCurrency } from '@tillgate/billing/composition';
 import { createNotifications, systemContext } from '@tillgate/notifications';
 import type { EmailSender, Notifications } from '@tillgate/notifications';
 import { outboxWithinTx } from '@tillgate/notifications/composition';
@@ -74,18 +77,20 @@ import type { WorkerHealthState } from './health';
 const TX_RETRY = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 } as const;
 /** 对账会话锁键（重叠部署互斥，与分区锁同口径） */
 const RECONCILE_LOCK_KEY = 'ai-gateway:billing-reconcile';
-/** settlement 侧 wallet guards（默认 wallet 全词表口径） */
-const SETTLEMENT_GUARDS = {
-  refTypes: ['billing', 'topup', 'admin', 'subscription', 'pack', 'redeem'],
-  currencies: ['CNY'],
-  internalAccounts: ['outside', 'platform_revenue'],
-} as const;
+/** settlement 侧 wallet guards（默认 wallet 全词表口径;币种自平台 KV 派生） */
+const settlementGuardsOf = (platformCurrency: string) =>
+  ({
+    refTypes: ['billing', 'topup', 'admin', 'subscription', 'pack', 'redeem'],
+    currencies: [platformCurrency],
+    internalAccounts: ['outside', 'platform_revenue'],
+  }) as const;
 /** 佣金侧 wallet guards（独立佣金钱包口径：只许 referral 资金流） */
-const REFERRAL_GUARDS = {
-  refTypes: ['referral'],
-  currencies: ['CNY'],
-  internalAccounts: ['outside', 'platform_revenue'],
-} as const;
+const referralGuardsOf = (platformCurrency: string) =>
+  ({
+    refTypes: ['referral'],
+    currencies: [platformCurrency],
+    internalAccounts: ['outside', 'platform_revenue'],
+  }) as const;
 
 /** 装配时钟（模块级纯函数——不捕获闭包；测试经 job 用例注入各自时钟） */
 const workerClock = (): Date => new Date();
@@ -140,13 +145,24 @@ export interface WorkerAssembly {
 /** inference 蛇形 → billing 点分 与 渠道行 → 候选形状两个桥接映射已拆至 ./bridge-mappers.ts */
 
 // eslint-disable-next-line max-lines-per-function, max-statements -- 装配根 composition root:线性依赖组装,每条语句即一个装配步骤;拆段只会层层透传上下文
-export function assembleWorker(config: WorkerConfig): WorkerAssembly {
+/** 装配引导覆写（生产缺省不传=读 KV;单测注入以保零连接前提） */
+export interface WorkerAssemblyBootstrap {
+  readonly platformCurrency?: string;
+}
+
+// eslint-disable-next-line max-lines-per-function, max-statements -- 装配根 composition root:线性依赖组装,每条语句即一个装配步骤;拆段只会层层透传上下文
+export async function assembleWorker(
+  config: WorkerConfig,
+  bootstrap: WorkerAssemblyBootstrap = {},
+): Promise<WorkerAssembly> {
   const logger = createLogger({
     level: config.logLevel,
     serviceName: 'worker',
     pretty: config.nodeEnv !== 'production',
   });
   const db = createDb({ url: config.databaseUrl, ...config.dbPool });
+  // 平台币种启动读（写一次 KV;替代硬编码 CNY——单一真相;测试可覆写）
+  const platformCurrency = bootstrap.platformCurrency ?? (await readPlatformCurrency(db));
   const otel = initOtel({
     serviceName: 'worker',
     serviceVersion: config.serviceVersion,
@@ -168,12 +184,12 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   const billingStore = createPostgresBillingStore(db, { retry: TX_RETRY });
   const settlementWallet = createWalletApi({
     store: walletStore,
-    guards: SETTLEMENT_GUARDS,
+    guards: settlementGuardsOf(platformCurrency),
     currency: config.currency,
   });
   const referralWallet = createWalletApi({
     store: walletStore,
-    guards: REFERRAL_GUARDS,
+    guards: referralGuardsOf(platformCurrency),
     currency: config.currency,
   });
   const fundingRegistry = createDefaultFundingRegistry({
@@ -184,10 +200,11 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   });
 
   // ---- notifications：facade + billing 同事务入箱桥 ----
-  const cipher = createCipher(config.channelApiKeyEncryption);
+  const cipher = createCipher(config.encryptionKey);
   // 告警邮件动态化：每次投递严格读快照（fail-loud），
   // SMTP 未生效抛错走投递失败重试路径（email 渠道 fail-closed 语义等价）；
-  // 传输器随配置指纹重建。密钥 = 渠道 Key 同一部署契约（CHANNEL_API_KEY_ENCRYPTION）。
+  // 传输器随配置指纹重建。密钥 = 对称加密根键 ENCRYPTION_KEY
+  // （渠道 Key 与 integration settings 跨进程共用同一根键，与 admin-api 加密侧一致）。
   const integrationReader = createPostgresIntegrationSettingsReader({
     db,
     cipher,
@@ -219,7 +236,10 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   const notifications: Notifications = createNotifications({
     db,
     cipher,
-    urlGuard: { assert: (url, opts) => assertSafeUrl(url, { allowLocal: opts.allowLocal }) },
+    urlGuard: {
+      assert: (url, opts) => assertSafeUrl(url, { allowLocal: opts.allowLocal }),
+      assertAddress: (address, opts) => assertSafeAddress(address, { allowLocal: opts.allowLocal }),
+    },
     emailSender,
     logger: { warn: (obj, msg) => logger.warn(obj, msg) },
     webhookAllowLocalUrl: config.webhookAllowLocalUrl,
@@ -258,12 +278,30 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
     walletStore,
     fundingRegistry,
     channels: billingStore.channelStore,
+    usageDefectBreaker: config.usageDefectBreaker,
     failurePolicy: config.settle.failurePolicy,
     clock,
     onError,
     outbox: outboxPort,
     onSettled: (data) => {
       void balanceLowCheck(data).catch(() => {});
+    },
+    onUsageDefect: (data) => {
+      logger.error({ ...data }, 'usage evidence violation — invoice clamped');
+      // 与网关同款 best-effort 审计（两结算进程都要留痕——谁结算谁落账）
+      writeAudit(db, {
+        actor: 'system',
+        adminId: null,
+        action: 'billing.usage_evidence_violation',
+        targetType: 'channel',
+        targetId: String(data.channelId ?? ''),
+        detail: {
+          requestId: data.requestId,
+          clamps: data.clamps as unknown as Record<string, unknown>,
+          defects: data.defects,
+          broken: data.broken,
+        },
+      }).catch(() => {});
     },
   });
 
@@ -372,6 +410,7 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
     config: {
       ownerId: config.ownerId,
       batchSize: config.settle.batchSize,
+      settleBatchSize: config.settle.settleBatchSize,
       claimLeaseMs: config.settle.claimLeaseMs,
       backoffBaseMs: config.settle.failurePolicy.baseDelayMs,
       bullmq: config.settle.bullmq,

@@ -56,7 +56,6 @@
     "endpoints": "接口绑定",
     "plans": "套餐",
     "subscriptions": "订阅",
-    "channelFunds": "渠道资金",
     "marketing": "营销配置",
     "referrals": "邀请管理",
     "paymentOrders": "支付订单",
@@ -67,7 +66,8 @@
     "tracing": "链路追踪",
     "logs": "请求日志",
     "usageLogs": "用量明细",
-    "auditLogs": "操作审计"
+    "auditLogs": "操作审计",
+    "funds": "资金管理"
   },
   "auth": {
     "landingTitle": "{name} 管理后台",
@@ -217,7 +217,12 @@
     "clear": "清除",
     "filter": "筛选",
     "invalidInteger": "请输入整数",
-    "delete": "删除"
+    "delete": "删除",
+    "debitFloor": "透支地板",
+    "debitFloorSource": "地板来源",
+    "debitFloorDefault": "默认",
+    "debitFloorManual": "手工",
+    "setDebitFloor": "设置地板"
   },
   "users": {
     "title": "用户",
@@ -278,6 +283,11 @@
     "unbind": "（解绑）",
     "bindFailed": "绑定费率卡失败",
     "rateCardUpdated": "已更新费率卡",
+    "debitFloorTitle": "设置透支地板 - {subject}",
+    "debitFloorDescription": "当前 {floor}（{source}）。0 = 不透支；到达地板后新请求将被拒绝，直到充值覆盖。手工覆盖不受全局默认批量刷新影响。",
+    "debitFloorInvalid": "透支地板必须为非负数字",
+    "debitFloorFailed": "设置透支地板失败",
+    "debitFloorSet": "已设置透支地板",
     "backToUsers": "返回用户列表",
     "userNotFound": "用户不存在",
     "amountChange": "变动",
@@ -1139,7 +1149,21 @@
       },
       "enable": "启用",
       "disable": "停用"
-    }
+    },
+    "debitFloor": "透支地板默认",
+    "debitFloorDescription": "结算超收的全局透支上界（0 = 不透支;单用户可单独覆盖）",
+    "debitFloorHint": "新建钱包自动套用;存量用户用「刷默认」同步（手工覆盖的永不动）。负余额会锁定新请求直到充值覆盖。",
+    "debitFloorApply": "存量刷默认",
+    "debitFloorApplyResult": "已刷新 {applied} 个,跳过 {skipped} 个（贴线不足或手工覆盖）",
+    "debitFloorApplyFailed": "批量刷默认失败",
+    "reservationPolicy": "预扣策略",
+    "reservationPolicyDescription": "full 全额保守预扣（默认，零垫付风险）；fixed 固定门槛（厂商式——余额过门槛即放行，实际用量后付费，超出部分受透支地板封底）",
+    "reservationPolicyHint": "网关按缓存 TTL（默认 15 秒）拾取变更，无需重启。fixed 门槛只是准入下限，实际扣费按用量结算。",
+    "reservationModeFull": "全额预扣（保守）",
+    "reservationModeFixed": "固定门槛（厂商式）",
+    "reservationAmount": "门槛金额",
+    "reservationLimit": "单笔预估敞口上限",
+    "reservationLimitSave": "保存上限"
   },
   "landing": {
     "announcement": "🎉 Tillgate—— 多供应商 LLM API 网关",
@@ -1322,5 +1346,28 @@
       "permission_not_found": "权限节点不存在",
       "endpoint_not_found": "绑定不存在"
     }
+  },
+  "funds": {
+    "tabChannels": "渠道资金",
+    "tabRisk": "风控参数",
+    "tabFx": "汇率与币种",
+    "fxTitle": "目录汇率（USD→CNY）",
+    "fxDescription": "美元计价模型的换算基准：auto 自动拉取，override 手动锁定；生效价 = 基准 ×(1+点差%)",
+    "fxMode": "模式",
+    "fxModeAuto": "自动",
+    "fxModeOverride": "手动覆盖",
+    "fxBase": "基准汇率",
+    "fxEffective": "生效汇率",
+    "fxFetchedAt": "拉取时间",
+    "fxOverride": "覆盖汇率",
+    "fxSetOverride": "设置覆盖",
+    "fxClearOverride": "清除回自动",
+    "fxRefresh": "强制刷新",
+    "fxBuffer": "点差",
+    "fxSetBuffer": "保存点差",
+    "fxHint": "收据快照请求时点汇率（fxRateId 可追溯）；override 期间不再跟随市场。",
+    "currencyTitle": "平台币种（记账币种）",
+    "currencyDescription": "全平台账本与计价的记账币种（写一次配置）",
+    "currencyHint": "存在账本/渠道资金/用量记录后即锁定（409）；换币需显式数据迁移。各服务启动时读取，修改后需重启生效。"
   }
 }

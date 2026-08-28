@@ -79,3 +79,6 @@ export const keysContracts = {
   listQueryExtra: keysListQueryExtra,
   patch: keyPatchSchema,
 } as const;
+
+/** 单用户透支地板设置（manual 来源；批量刷默认永不覆盖） */
+export const debitFloorUpdateSchema = z.object({ floor: nonNegativeMoneyString });

@@ -9,6 +9,39 @@ import { otelMiddleware } from '../src/http/middleware/otel';
 import type { AuthEnv } from '../src/http/middleware/api-key';
 
 describe('createGatewayShutdown（gateway 绑定形状）', () => {
+  it('宽限耗尽透传 drain 钩子（server_draining 生产者的停机侧接线）', async () => {
+    const order: string[] = [];
+    const shutdown = createGatewayShutdown({
+      server: { close: () => {} } as never, // 不回调 = 在途未完成 → 宽限路径
+      otel: { shutdown: async () => {} },
+      redis: null as never,
+      closeDb: async () => {},
+      inference: { close: () => {} },
+      settleWake: { close: async () => {} },
+      graceMs: 100, // 下界钳到 1s——宽限耗尽走 drain 路径
+      drain: {
+        abort: () => {
+          order.push('drain-abort');
+        },
+        finalizeMs: 1_000,
+      },
+      exit: ((code: number) => {
+        order.push(`exit:${code}`);
+        return undefined as never;
+      }) as never,
+    });
+    shutdown('SIGTERM');
+    // 宽限下界 1s：drain abort 先于强退
+    await new Promise((r) => {
+      setTimeout(r, 1_600);
+    });
+    expect(order).toEqual(['drain-abort']);
+    await new Promise((r) => {
+      setTimeout(r, 1_500);
+    });
+    expect(order).toEqual(['drain-abort', 'exit:1']);
+  });
+
   it('触发一次：otel → closeables（inference 退订、settle-wake）→ redis → db；二次幂等', async () => {
     const order: string[] = [];
     const shutdown = createGatewayShutdown({

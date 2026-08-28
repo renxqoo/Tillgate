@@ -13,6 +13,7 @@ import {
   HttpErrors,
   requestIdMiddleware,
   securityHeaders,
+  type DbBudgetOptions,
 } from '@tillgate/http';
 import { pgSqlState } from '@tillgate/db';
 import { CLIENT_FACE_OVERRIDES, clientErrorCatalog } from './http/error-face.js';
@@ -44,7 +45,7 @@ export interface ClientApiDeps {
     readonly bodyLimitBytes: number;
   };
   /** DB 并发预算门(公网 ingress 入口排队;缺省关闭——不注入即旁路) */
-  readonly dbBudget?: { limit: number; maxQueue: number; waitTimeoutMs: number };
+  readonly dbBudget?: DbBudgetOptions;
   readonly logger: { error(obj: Record<string, unknown>, msg?: string): void };
   readonly health: { pingDb(): Promise<void>; pingRedis(): Promise<void> };
   readonly validateSession: SessionValidator;

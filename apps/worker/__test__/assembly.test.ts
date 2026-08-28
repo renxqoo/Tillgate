@@ -11,7 +11,7 @@ import type { WorkerAssembly } from '../src/assembly';
 const config = (overrides: Record<string, string | undefined> = {}) =>
   loadWorkerConfig({
     DATABASE_URL: 'postgres://u:p@localhost:5432/unreachable-worker-test',
-    CHANNEL_API_KEY_ENCRYPTION: 'wk3y-zx9q'.repeat(4),
+    ENCRYPTION_KEY: 'wk3y-zx9q'.repeat(4),
     REDIS_URL: 'redis://u:p@localhost:6399/unreachable-worker-test',
     OTEL_TRACES_MODE: 'off',
     WORKER_SETTLE_WAKE: 'false', // 单测不挂 LISTEN（专用连接会尝试建连）
@@ -30,7 +30,7 @@ describe('assembleWorker', () => {
   }, 60_000);
 
   it('off 模式全链装配：七个 job 注册 + 唤醒关闭 + 健康深度报告形状', async () => {
-    const assembly = assembleWorker(config());
+    const assembly = await assembleWorker(config(), { platformCurrency: 'CNY' });
     assemblies.push(assembly);
     expect([...assembly.jobs].toSorted()).toEqual([
       'generation',
@@ -52,29 +52,34 @@ describe('assembleWorker', () => {
     );
   });
 
-  it('WORKER_NOTIFY_ENABLED=false → notify 静音（不注册）', () => {
-    const assembly = assembleWorker(config({ WORKER_NOTIFY_ENABLED: 'false' }));
+  it('WORKER_NOTIFY_ENABLED=false → notify 静音（不注册）', async () => {
+    const assembly = await assembleWorker(config({ WORKER_NOTIFY_ENABLED: 'false' }), {
+      platformCurrency: 'CNY',
+    });
     assemblies.push(assembly);
     expect(assembly.jobs.includes('notify')).toBe(false);
     expect(assembly.jobs).toHaveLength(6);
   });
 
-  it('池-并发不变量从注册表派生：并发 12 + 7 tick（notify 开，partitions/reconcile 双连接）超池 20 → fail-fast', () => {
+  it('池-并发不变量从注册表派生：并发 12 + 7 tick（notify 开，partitions/reconcile 双连接）超池 20 → fail-fast', async () => {
     // 旧手工记账 RUNNER_COUNT=6 会算 12+6+2=20 放行（漏 notify tick 与持锁
     // 双连接 tick，红队复审 R-2）；注册表派生 = 12 + (1+1+1+1+2+2+1) + 2 = 23 > 20
-    expect(() => assembleWorker(config({ WORKER_SETTLE_CONCURRENCY: '12' }))).toThrow(
-      /worker DB pool 20 < worst-case DB concurrency 23/,
-    );
+    await expect(
+      assembleWorker(config({ WORKER_SETTLE_CONCURRENCY: '12' }), { platformCurrency: 'CNY' }),
+    ).rejects.toThrow(/worker DB pool 20 < worst-case DB concurrency 23/);
     // 静音 notify（6 tick，连接需求 8）+ 并发 10 = 20 恰好覆盖 → 放行
-    const tight = assembleWorker(
+    const tight = await assembleWorker(
       config({ WORKER_SETTLE_CONCURRENCY: '10', WORKER_NOTIFY_ENABLED: 'false' }),
+      { platformCurrency: 'CNY' },
     );
     assemblies.push(tight);
     expect(tight.jobs).toHaveLength(6);
   });
 
   it('WORKER_SETTLE_WAKE=true → 唤醒消费端挂载（LISTEN 专用连接尽力建连，失败仅日志）', async () => {
-    const assembly = assembleWorker(config({ WORKER_SETTLE_WAKE: 'true' }));
+    const assembly = await assembleWorker(config({ WORKER_SETTLE_WAKE: 'true' }), {
+      platformCurrency: 'CNY',
+    });
     assemblies.push(assembly);
     expect(assembly.wakeup).not.toBeNull();
     // 初始建连对不可达库异步失败（sweep covers 口径）——close 幂等收口
@@ -84,8 +89,8 @@ describe('assembleWorker', () => {
     await defined(assembly.wakeup, 'assembly.wakeup').close();
   });
 
-  it('pingDb 暴露为闭包（非 Db 类型泄漏——P5 口径的健康探测面）', () => {
-    const assembly = assembleWorker(config());
+  it('pingDb 暴露为闭包（非 Db 类型泄漏——P5 口径的健康探测面）', async () => {
+    const assembly = await assembleWorker(config(), { platformCurrency: 'CNY' });
     assemblies.push(assembly);
     expect(typeof assembly.pingDb).toBe('function');
   });

@@ -9,7 +9,7 @@ import { loadWorkerConfig } from '../src/config';
 const base = (overrides: Record<string, string | undefined> = {}) =>
   ({
     DATABASE_URL: 'postgres://u:p@localhost:5432/worker-test',
-    CHANNEL_API_KEY_ENCRYPTION: 'wk3y-zx9q'.repeat(4),
+    ENCRYPTION_KEY: 'wk3y-zx9q'.repeat(4),
     REDIS_URL: 'redis://:secret@localhost:6379/0',
     ...overrides,
   }) as NodeJS.ProcessEnv;
@@ -105,10 +105,10 @@ describe('worker 配置 fail-closed', () => {
     expect(() => loadWorkerConfig(base({ WORKER_BALANCE_LOW_THRESHOLD: '-1' }))).toThrow();
   });
 
-  it('必填缺失 fail-closed：DATABASE_URL / CHANNEL_API_KEY_ENCRYPTION / 弱密钥', () => {
+  it('必填缺失 fail-closed：DATABASE_URL / ENCRYPTION_KEY / 弱密钥', () => {
     expect(() => loadWorkerConfig(base({ DATABASE_URL: undefined }))).toThrow();
-    expect(() => loadWorkerConfig(base({ CHANNEL_API_KEY_ENCRYPTION: undefined }))).toThrow();
-    expect(() => loadWorkerConfig(base({ CHANNEL_API_KEY_ENCRYPTION: 'secret' }))).toThrow();
+    expect(() => loadWorkerConfig(base({ ENCRYPTION_KEY: undefined }))).toThrow();
+    expect(() => loadWorkerConfig(base({ ENCRYPTION_KEY: 'secret' }))).toThrow();
   });
 
   it('OTEL mode=otlp 缺端点 fail-closed', () => {

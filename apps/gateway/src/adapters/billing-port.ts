@@ -14,15 +14,27 @@ import {
   type BillingEvent,
   type BillingQuote,
   type BillingQuoteCandidate,
+  type FundingReservationPolicy,
 } from '@tillgate/billing';
+import type { SlidingWindowLimiter } from '@tillgate/runtime';
 import type { BillingPort, BillingSignal, QuoteCandidate, UsageReceipt } from '@tillgate/inference';
 
 export interface GatewayBillingConfig {
-  reservationLimit: string;
-  reservationPolicy: { mode: 'full' } | { mode: 'fixed'; amount: string };
+  /** 单笔预估敞口上限解析（每次 authorize 现读——TTL 缓存的 system_configs KV） */
+  resolveReservationLimit: () => Promise<string>;
+  /** 预扣策略解析（每次 authorize 现读——TTL 缓存的 system_configs KV，admin 动态调整） */
+  resolveReservationPolicy: () => Promise<FundingReservationPolicy>;
   /** 结算积压准入（bridge 级调用：authorize 前置闸；requestId 恒服务端生成，
    *  HTTP 面无客户端重放路径，桥级 admission 不破坏 billing 内部的重放免疫） */
   assertCapacity?: () => Promise<void>;
+  /**
+   * TPM 预占收尾（成功结算主路径在网关进程内——本桥 signal 面即收尾点）：
+   * request_succeeded → backfillTpm（释放预占 + 实值入 actual 维）；lease_renewed →
+   * renewTpm（长流防 600s TTL 提前释放）；request_failed → releaseTpm。
+   * limiter 件内部 best-effort（不反杀资金面）；崩溃残留预占由 TTL 兜底（worker
+   * 恢复路径不回填——预占按分钟桶滚动，保守不放大窗口）。
+   */
+  limiter?: Pick<SlidingWindowLimiter, 'backfillTpm' | 'renewTpm' | 'releaseTpm'>;
 }
 
 export interface GatewayBillingApi {
@@ -151,30 +163,88 @@ function officialPriceAmount(
   }).toString();
 }
 
+/** TPM actual 维度（与 admitRequest/tryModelAdmission/tryChannelAdmission 的维度串同源） */
+function tpmDimensionsOf(receipt: UsageReceipt): string[] {
+  const dims: string[] = [];
+  if (receipt.apiKeyId != null) dims.push(`key:${receipt.apiKeyId}`);
+  dims.push(`user:${receipt.userId}`);
+  dims.push(`model:${receipt.realModel}`);
+  if (receipt.channelId != null) dims.push(`channel:${receipt.channelId}`);
+  return dims;
+}
+
+/** TPM 实值口径 = 输入 + 缓存命中 + 输出（窗口按原始吞吐——缓存命中不占输入价但仍占窗口） */
+function tpmTokensOf(receipt: UsageReceipt): number {
+  const usage = receipt.usage as {
+    inputTokens: number;
+    cachedInputTokens?: number;
+    outputTokens: number;
+  };
+  return usage.inputTokens + (usage.cachedInputTokens ?? 0) + usage.outputTokens;
+}
+
+/** 结算信号后的 TPM 预占收尾（billing 先行；limiter 件内部 best-effort 不抛） */
+async function finalizeTpmReservation(
+  limiter: GatewayBillingConfig['limiter'],
+  signal: BillingSignal,
+): Promise<void> {
+  if (limiter == null) return;
+  if (signal.type === 'request_succeeded') {
+    await limiter.backfillTpm(
+      signal.requestId,
+      tpmDimensionsOf(signal.receipt),
+      tpmTokensOf(signal.receipt),
+    );
+  } else if (signal.type === 'lease_renewed') {
+    await limiter.renewTpm(signal.requestId);
+  } else if (signal.type === 'request_failed') {
+    await limiter.releaseTpm(signal.requestId);
+  }
+}
+
+/** authorize 体检出：动态风控值（策略/上限）现读 + 形状收窄后透传 */
+async function authorizeWithDynamicRisk(
+  api: GatewayBillingApi,
+  config: GatewayBillingConfig,
+  input: Parameters<BillingPort['authorize']>[0],
+): Promise<void> {
+  if (config.assertCapacity != null) await config.assertCapacity();
+  const [policy, reservationLimit] = await Promise.all([
+    config.resolveReservationPolicy(),
+    config.resolveReservationLimit(),
+  ]);
+  await api.authorize({
+    requestId: input.requestId,
+    userId: input.userId,
+    apiKeyId: input.apiKeyId,
+    appId: input.appId,
+    stream: input.stream,
+    quote: toQuote(input),
+    reservationLimit,
+    ...(policy.mode === 'fixed'
+      ? { reservationPolicy: { mode: 'fixed', amount: policy.amount } }
+      : {}),
+    authorizationTtlMs: input.authorizationTtlMs,
+  });
+}
+
 export function createGatewayBilling(
   api: GatewayBillingApi,
   config: GatewayBillingConfig,
 ): BillingPort {
   return {
     async authorize(input) {
-      if (config.assertCapacity != null) await config.assertCapacity();
-      await api.authorize({
-        requestId: input.requestId,
-        userId: input.userId,
-        apiKeyId: input.apiKeyId,
-        appId: input.appId,
-        stream: input.stream,
-        quote: toQuote(input),
-        reservationLimit: config.reservationLimit,
-        ...(config.reservationPolicy.mode === 'fixed'
-          ? { reservationPolicy: { mode: 'fixed', amount: config.reservationPolicy.amount } }
-          : {}),
-        authorizationTtlMs: input.authorizationTtlMs,
-      });
+      await authorizeWithDynamicRisk(api, config, input);
     },
 
     async signal(signal: BillingSignal) {
-      await api.signal(toBillingEvent(signal));
+      // TPM 收尾与 billing 结算解耦（finally）：billing 抛错（DB 抖动）时
+      // release/renew 不丢——release/backfill 均幂等，settle 重试链重放安全
+      try {
+        await api.signal(toBillingEvent(signal));
+      } finally {
+        await finalizeTpmReservation(config.limiter, signal);
+      }
     },
 
     async reserveChannel(input) {

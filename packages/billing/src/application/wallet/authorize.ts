@@ -31,8 +31,10 @@ export interface AuthorizeInput extends TxChannel {
   /** false = 现金口径守卫（授信不参与可用额）；缺省 = 信用口径 */
   allowCredit?: boolean;
   /**
-   * 仅结算补扣内部使用：允许形成负余额。必须同时满足 billing refType 与 #over 自然键，
-   * 普通授权调用无法借此绕过余额守卫。
+   * 仅结算补扣（#over）内部使用：守卫放宽到透支地板
+   * （balance + credit_limit + debit_floor − in_flight ≥ amount）——负余额深度
+   * 由账户 debit_floor 与 DB 触发器强制上限。必须同时满足 billing refType
+   * 与 #over 自然键，普通授权无法借此绕过余额守卫。
    */
   collectOverage?: boolean;
 }
@@ -151,10 +153,10 @@ export function createAuthorizeUseCase(env: WalletEnv) {
           accountId,
           amount: toStorage(amount),
           guardKind: guardKindOf({ allowCredit: input.allowCredit }),
-          collectOverage: input.collectOverage === true,
+          ...(input.collectOverage === true ? { collectOverage: true } : {}),
         });
         if (reserved == null) {
-          // 守卫输:读快照分类报错(冻结/可用不足)——错误口径复用域守卫,单一真相
+          // 守卫输:读快照分类报错(冻结/在途占用/可用不足)——错误口径复用域守卫,单一真相
           const summaries = await store.userAccountSummaries(tx, input.userId);
           const account = summaries.find((row) => row.id === accountId);
           if (account == null) {

@@ -10,7 +10,6 @@ Tillgate 是 TypeScript/Bun monorepo，提供 OpenAI 兼容的多供应商 LLM �
 - 文档与代码冲突时，不得猜测目标行为；报告具体差异，按用户本次授权处理。
 - 不得猜测脚本名、导出、环境变量、错误码、数据库字段或 HTTP 契约；使用前必须在仓库中查到定义和现有用法。
 
-
 ## 开始修改前
 
 1. 运行 `git status --short`，识别已有修改；他人的工作不回滚、不格式化、不提交。
@@ -42,6 +41,9 @@ Tillgate 是 TypeScript/Bun monorepo，提供 OpenAI 兼容的多供应商 LLM �
 - 分层能力包使用 `domain` / `application` / `ports` / `adapters`；SQL 实现在
   `adapters` 的现有 Postgres 实现中，表定义在 `packages/db/src/schema`，事务编排可在 application 使用
   `@tillgate/db` 提供的原语。
+- 写码前先想清楚归属，并遵循所在包的既有代码风格与组织方式：领域逻辑、持久化
+  与跨 app 能力进对应能力包（按 domain/application/ports/adapters 合理分层拆分，
+  不堆大文件）；新领域才新建包；apps 只留协议、装配与单 app 专属粘合。
 - 不是所有包都使用同一目录形状。简单包与专用协议包保持已有结构；不得为了形式统一强行搬层。
 - 每个分层包的 import 白名单不完全相同，以该包 `architecture.test.ts` 为准；修改边界时同步更新契约测试。
 - 根入口只导出消费方所需的稳定面。Postgres 适配器、store 和装配细节放在已有
@@ -58,7 +60,6 @@ Tillgate 是 TypeScript/Bun monorepo，提供 OpenAI 兼容的多供应商 LLM �
 - 前端先搜索 `@tillgate/ui` 已有组件、hooks 和 formatting 子路径。可复用的通用组件放入 UI 包；
   UI 包不引入 Next.js 专有依赖。
 - 遇到有bug、逻辑错误代码，如果阻塞当前任务流程，请及时停下来反馈，非阻塞在当前任务结束报告。
-
 
 ## 高风险路径
 

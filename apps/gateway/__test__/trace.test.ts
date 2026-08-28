@@ -121,6 +121,7 @@ const rateLimit: RateLimitGate = {
     backfillTpm: async () => {},
   } as unknown as SlidingWindowLimiter,
   globalRpm: 1000,
+  preauthIpRpm: null,
 };
 
 beforeAll(() => {

@@ -61,6 +61,22 @@ export function clampForwardedOutputLimit(
 }
 
 /**
+ * contextLength 钳制：输出预留上界 ≤ 窗口 − 输入上界（保守字节口径）。
+ * 全额预扣按输出上界预留——缺省上界（如 4096）对小窗口模型显著过押，
+ * 挤占用户可用敞口（并发容量 = 余额 ÷ 单笔预留）。窗口未配置/预算非正
+ * 时不钳（输入超窗由上游自然拒绝）。
+ */
+export function clampOutputCapByContext(
+  outputCap: number,
+  contextLength: number | null | undefined,
+  inputUpperBound: number,
+): number {
+  if (contextLength == null) return outputCap;
+  const budget = contextLength - inputUpperBound;
+  return budget > 0 ? Math.min(outputCap, budget) : outputCap;
+}
+
+/**
  * JSON UTF-8 字节数是文本 token 数的保守上界（每 token 至少 1 字节）——
  * 只作预扣敞口/预算估算，不入实扣（实扣估算向精确收敛，见 usage/estimate.ts）。
  */
@@ -70,4 +86,17 @@ export function conservativeInputTokenUpperBound(body: Record<string, unknown>):
   } catch {
     return 0;
   }
+}
+
+/**
+ * 入口准入预占口径 = 输入保守上界 + 输出上界（kind 映射与 quote/prepare 一致：
+ * 仅 chat 族计输出）。与 billing 敞口（failover estimatedTokens）同式——
+ * 入口只押输入会漏掉大 max_tokens 请求对 key/user TPM 维的敞口。
+ */
+export function admissionTokenUpperBound(
+  kind: 'chat' | 'embeddings' | 'modality',
+  body: Record<string, unknown>,
+  config: OutputCapConfig,
+): number {
+  return conservativeInputTokenUpperBound(body) + maxOutputTokensFor(kind, body, config);
 }

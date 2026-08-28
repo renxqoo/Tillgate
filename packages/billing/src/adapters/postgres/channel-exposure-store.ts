@@ -94,5 +94,30 @@ export function createChannelExposureStore(_db: Db): ChannelExposureStore {
       }
       return false;
     },
+
+    async recordUsageDefect(conn, input) {
+      // 原子计数 + SQL 侧阈值判定（避免 JS 读改写竞态；同 deduct 的熔断语义）
+      const rows = await tx(conn)
+        .update(channels)
+        .set({
+          usageEvidenceDefects: sql`${channels.usageEvidenceDefects} + 1`,
+          updatedAt: input.now,
+        })
+        .where(eq(channels.id, input.channelId))
+        .returning({
+          defects: channels.usageEvidenceDefects,
+          alreadyBroken: sql<boolean>`${channels.status} <> 0`,
+        });
+      const [row] = rows;
+      if (!row) return null;
+      if (!row.alreadyBroken && row.defects >= input.threshold) {
+        await tx(conn)
+          .update(channels)
+          .set({ status: 3, updatedAt: input.now })
+          .where(and(eq(channels.id, input.channelId), eq(channels.status, 0)));
+        return { defects: row.defects, broken: true };
+      }
+      return { defects: row.defects, broken: false };
+    },
   };
 }

@@ -6,7 +6,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import { GatewayErrors } from '../src/http/openai-error-face';
-import { admitRequest, tryChannelRpm, type RateLimitGate } from '../src/http/middleware/rate-limit';
+import {
+  admitRequest,
+  tryChannelAdmission,
+  tryModelAdmission,
+  type RateLimitGate,
+} from '../src/http/middleware/rate-limit';
 import { defined } from './defined';
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
 import type { AuthContext } from '../src/http/middleware/api-key';
@@ -52,9 +57,14 @@ const auth = (over: Partial<AuthContext> = {}): AuthContext => ({
   ...over,
 });
 
-const gate = (limiter: SlidingWindowLimiter, globalRpm: number | null = 2_000): RateLimitGate => ({
+const gate = (
+  limiter: SlidingWindowLimiter,
+  globalRpm: number | null = 2_000,
+  preauthIpRpm: number | null = null,
+): RateLimitGate => ({
   limiter,
   globalRpm,
+  preauthIpRpm,
 });
 
 describe('admitRequest 并罚制', () => {
@@ -110,16 +120,21 @@ describe('admitRequest 并罚制', () => {
     ]);
   });
 
-  it('App-JWT 凭证（apiKeyId=null, appId 在场）：维度同 user-only，span 凭证维走 app:', async () => {
+  it('App-JWT 凭证（apiKeyId=null, appId 在场，scope 有限额）：凭证维 = app:{appId}（并罚 user 维）', async () => {
     const { limiter, calls } = fakeLimiter();
     await admitRequest(gate(limiter, null), {
       requestId: 'r',
-      auth: auth({ apiKeyId: null, appId: 9, rpmLimit: 10, tpmLimit: 10 }),
+      auth: auth({
+        apiKeyId: null,
+        appId: 9,
+        rpmLimit: 10,
+        tpmLimit: 10,
+        userRpmLimit: null,
+        userTpmLimit: null,
+      }),
       estimatedTokens: 5,
     });
-    expect(defined(calls.checkAll[0], 'checkAll[0]')[0]).toEqual([
-      { dimension: 'user:42', max: 30 },
-    ]);
+    expect(defined(calls.checkAll[0], 'checkAll[0]')[0]).toEqual([{ dimension: 'app:9', max: 10 }]);
   });
 
   it('限流维度串不外泄：错误码可编程分派，无 dimension 泄漏', async () => {
@@ -143,17 +158,185 @@ describe('admitRequest 并罚制', () => {
   });
 });
 
-describe('tryChannelRpm（渠道维尝试前判定）', () => {
-  it('渠道限额缺失/未装配 = 放行；有限额走 limiter.check', async () => {
+describe('admitRequest App-JWT 凭证维（scope rpm/tpm 落地）', () => {
+  it('JWT 形态（apiKeyId=null + appId）→ 凭证维用 app:{appId}（RPM 与 TPM 同维）', async () => {
     const { limiter, calls } = fakeLimiter();
-    expect(await tryChannelRpm(undefined, { channelId: 1, rpmLimit: 10 })).toBe(true);
-    expect(await tryChannelRpm(gate(limiter), { channelId: 1, rpmLimit: null })).toBe(true);
-    expect(await tryChannelRpm(gate(limiter), { channelId: 3, rpmLimit: 99 })).toBe(true);
+    const jwtAuth = auth({
+      apiKeyId: null,
+      appId: 5,
+      rpmLimit: 10,
+      tpmLimit: 20_000,
+      userRpmLimit: null,
+      userTpmLimit: null,
+    });
+    await admitRequest(gate(limiter), { requestId: 'rq-jwt', auth: jwtAuth, estimatedTokens: 42 });
+    const rpmDims = calls.checkAll[0]?.[0] as Array<{ dimension: string; max: number }>;
+    expect(rpmDims).toEqual([
+      { dimension: 'app:5', max: 10 },
+      { dimension: 'global', max: 2_000 },
+    ]);
+    const tpmDims = calls.reserveTpmAll[0]?.[0] as Array<{
+      dimension: string;
+      estimatedTokens: number;
+      max: number;
+    }>;
+    expect(tpmDims).toEqual([{ dimension: 'app:5', estimatedTokens: 42, max: 20_000 }]);
+  });
+
+  it('JWT 无限额（scope 未配 rpm/tpm）→ 凭证维缺席，仅 global RPM', async () => {
+    const { limiter, calls } = fakeLimiter();
+    const jwtAuth = auth({
+      apiKeyId: null,
+      appId: 5,
+      rpmLimit: null,
+      tpmLimit: null,
+      userRpmLimit: null,
+      userTpmLimit: null,
+    });
+    await admitRequest(gate(limiter), { requestId: 'rq-jwt2', auth: jwtAuth, estimatedTokens: 1 });
+    const rpmDims = calls.checkAll[0]?.[0] as Array<{ dimension: string; max: number }>;
+    expect(rpmDims).toEqual([{ dimension: 'global', max: 2_000 }]);
+    expect(calls.reserveTpmAll).toHaveLength(0);
+  });
+});
+
+describe('admitRequest TPM 豁免维（按张/按秒计费端点）', () => {
+  it('exemptTpm = true：RPM 照查、TPM 不预占（模态族计价单位非 token——TPM 维无意义）', async () => {
+    const { limiter, calls } = fakeLimiter();
+    await admitRequest(gate(limiter), {
+      requestId: 'rq-x',
+      auth: auth(),
+      estimatedTokens: 0,
+      exemptTpm: true,
+    });
+    expect(calls.checkAll).toHaveLength(1);
+    expect(calls.reserveTpmAll).toHaveLength(0);
+  });
+});
+
+describe('tryChannelAdmission（渠道维 RPM + TPM 尝试前判定）', () => {
+  it('渠道限额缺失/未装配 = 放行；RPM 有限额走 limiter.check（member 随机）', async () => {
+    const { limiter, calls } = fakeLimiter();
+    expect(
+      await tryChannelAdmission(
+        undefined,
+        { channelId: 1, rpmLimit: 10 },
+        { estimatedTokens: 5, requestId: 'rq' },
+      ),
+    ).toBe(true);
+    expect(
+      await tryChannelAdmission(
+        gate(limiter),
+        { channelId: 1, rpmLimit: null },
+        { estimatedTokens: 5, requestId: 'rq' },
+      ),
+    ).toBe(true);
+    expect(
+      await tryChannelAdmission(
+        gate(limiter),
+        { channelId: 3, rpmLimit: 99 },
+        { estimatedTokens: 5, requestId: 'rq' },
+      ),
+    ).toBe(true);
     expect(calls.channelChecks[0]).toEqual(['channel:3', 99, expect.any(String)]);
   });
 
-  it('渠道维超限 → false（换渠语义）', async () => {
-    const { limiter } = fakeLimiter({ check: () => ({ allowed: false }) });
-    expect(await tryChannelRpm(gate(limiter), { channelId: 3, rpmLimit: 99 })).toBe(false);
+  it('渠道维 RPM 超限 → false（换渠语义，不触 TPM 预占）', async () => {
+    const { limiter, calls } = fakeLimiter({ check: () => ({ allowed: false }) });
+    expect(
+      await tryChannelAdmission(
+        gate(limiter),
+        { channelId: 3, rpmLimit: 99, tpmLimit: 1_000 },
+        { estimatedTokens: 5, requestId: 'rq' },
+      ),
+    ).toBe(false);
+    expect(calls.reserveTpmAll).toHaveLength(0);
+  });
+
+  it('渠道维 TPM 预占（与 key/user 同 requestId 预占哈希——release/backfill 统一收口）', async () => {
+    const { limiter, calls } = fakeLimiter();
+    expect(
+      await tryChannelAdmission(
+        gate(limiter),
+        { channelId: 3, rpmLimit: null, tpmLimit: 50_000 },
+        { estimatedTokens: 42, requestId: 'rq-3' },
+      ),
+    ).toBe(true);
+    expect(calls.reserveTpmAll[0]).toEqual([
+      [{ dimension: 'channel:3', estimatedTokens: 42, max: 50_000 }],
+      'rq-3',
+    ]);
+  });
+
+  it('渠道维 TPM 超限 → false', async () => {
+    const { limiter } = fakeLimiter({ reserveTpmAll: () => ({ allowed: false }) });
+    expect(
+      await tryChannelAdmission(
+        gate(limiter),
+        { channelId: 3, rpmLimit: null, tpmLimit: 5 },
+        { estimatedTokens: 1, requestId: 'rq' },
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('tryModelAdmission（模型维 RPM + TPM——管理台可配限流生效）', () => {
+  it('未装配/无限额 = 放行且零 limiter 调用', async () => {
+    const { limiter, calls } = fakeLimiter();
+    expect(
+      await tryModelAdmission(
+        undefined,
+        { realModel: 'r', rpmLimit: 10, tpmLimit: 10 },
+        { estimatedTokens: 5, requestId: 'rq' },
+      ),
+    ).toBe(true);
+    expect(
+      await tryModelAdmission(
+        gate(limiter),
+        { realModel: 'r', rpmLimit: null, tpmLimit: null },
+        { estimatedTokens: 5, requestId: 'rq' },
+      ),
+    ).toBe(true);
+    expect(calls.channelChecks).toHaveLength(0);
+    expect(calls.reserveTpmAll).toHaveLength(0);
+  });
+
+  it('RPM 有限额走 check（member=requestId）；拒绝 → false（不触 TPM）', async () => {
+    const { limiter, calls } = fakeLimiter({ check: () => ({ allowed: false }) });
+    expect(
+      await tryModelAdmission(
+        gate(limiter),
+        { realModel: 'gpt-x-real', rpmLimit: 10, tpmLimit: 1_000 },
+        { estimatedTokens: 5, requestId: 'rq-1' },
+      ),
+    ).toBe(false);
+    expect(calls.channelChecks[0]).toEqual(['model:gpt-x-real', 10, 'rq-1']);
+    expect(calls.reserveTpmAll).toHaveLength(0);
+  });
+
+  it('RPM 通过后 TPM 预占 model 维（realModel 维度串）', async () => {
+    const { limiter, calls } = fakeLimiter();
+    expect(
+      await tryModelAdmission(
+        gate(limiter),
+        { realModel: 'gpt-x-real', rpmLimit: 10, tpmLimit: 1_000 },
+        { estimatedTokens: 42, requestId: 'rq-2' },
+      ),
+    ).toBe(true);
+    expect(calls.reserveTpmAll[0]).toEqual([
+      [{ dimension: 'model:gpt-x-real', estimatedTokens: 42, max: 1_000 }],
+      'rq-2',
+    ]);
+  });
+
+  it('模型维 TPM 超限 → false（换候选——fallback 模型接手）', async () => {
+    const { limiter } = fakeLimiter({ reserveTpmAll: () => ({ allowed: false }) });
+    expect(
+      await tryModelAdmission(
+        gate(limiter),
+        { realModel: 'r', rpmLimit: null, tpmLimit: 5 },
+        { estimatedTokens: 1, requestId: 'rq' },
+      ),
+    ).toBe(false);
   });
 });

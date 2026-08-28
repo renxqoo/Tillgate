@@ -128,6 +128,36 @@ describe('relay-stream：守护与终止（数据面热路径）', () => {
     }
   });
 
+  it('中段合成错误帧脱敏：sanitizeErrorDetail 作用于本层合成帧，事件面保真', async () => {
+    // 触发面 = 上游断流（合成 upstream_stream_truncated 帧）；detail 当前是本层
+    // 固定文案——注入点防的是未来把 provider 文本带进合成帧的形态
+    const events: RelayStreamEvent[] = [];
+    const handle = relayStream(
+      new ReadableStream({
+        start(c) {
+          c.enqueue(b('data: {"choices":[{"delta":{"content":"部分"}}]}\n\n'));
+          c.close(); // 无 [DONE] 无终止帧 → 合成 truncated 帧
+        },
+      }),
+      {
+        heartbeatIdleMs: 10_000,
+        inactivityTimeoutMs: 10_000,
+        sanitizeErrorDetail: (detail) => detail.replaceAll('upstream', '[redacted]'),
+      },
+    );
+    handle.onEvent(function (e) {
+      events.push(e);
+    });
+    const text = await new Response(handle.stream).text();
+    // 出站合成帧经过脱敏回调
+    expect(text).toContain('[redacted] stream ended before a terminal event');
+    // 事件面保真：原始 detail（未脱敏）
+    const done = events.find((e) => e.type === 'done');
+    if (done?.type === 'done') {
+      expect(done.terminated).toBe('upstream_truncated');
+    }
+  });
+
   it('流内错误帧：stream_error 事件 + done.errorFrame 携带', async () => {
     const events: RelayStreamEvent[] = [];
     const handle = relayStream(

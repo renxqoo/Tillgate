@@ -86,6 +86,32 @@ describe('trustedClientIp', () => {
     ).toBe('10.0.0.5');
   });
 
+  it('S3 回归：选中的 XFF 跳非 IP 格式（任意伪造注入串）→ 回退 socket，不外传', () => {
+    // 反代部署下塞恶意 XFF——选中跳必须是合法 IP 才可用（值会进邮件模板/限流维度）
+    expect(
+      trustedClientIp({
+        headers: headers('<img src=x onerror=alert(1)>'),
+        trustedProxyHops: 1,
+        socketAddress: '10.0.0.5',
+      }),
+    ).toBe('10.0.0.5');
+    expect(
+      trustedClientIp({
+        headers: headers('a, b'),
+        trustedProxyHops: 1,
+        socketAddress: '10.0.0.5',
+      }),
+    ).toBe('10.0.0.5');
+    // 合法 IPv6 照常采用
+    expect(
+      trustedClientIp({
+        headers: headers('2001:db8::1'),
+        trustedProxyHops: 1,
+        socketAddress: '10.0.0.5',
+      }),
+    ).toBe('2001:db8::1');
+  });
+
   it('无 XFF、无 socket（测试环境）→ 进程级唯一兜底（同一进程内稳定）', () => {
     const a = trustedClientIp({ headers: headers(), trustedProxyHops: 0, socketAddress: null });
     const b = trustedClientIp({ headers: headers(), trustedProxyHops: 1, socketAddress: null });

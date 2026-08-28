@@ -1,4 +1,3 @@
-import { ENFORCED_CODES } from '@tillgate/control-plane';
 import { createPostgresIntegrationSettingsReader } from '@tillgate/control-plane/composition';
 import { createDb, type Db, type TxRetryPolicy, type DbPoolConfig } from '@tillgate/db';
 import type Redis from 'ioredis';
@@ -10,7 +9,12 @@ import {
   createAuthFailureGuard,
   type Logger,
 } from '@tillgate/runtime';
-import { SUPPORTED_PROTOCOLS, vendorProfileNames, assertSafeUrl } from '@tillgate/ai';
+import {
+  SUPPORTED_PROTOCOLS,
+  assertSafeAddress,
+  assertSafeUrl,
+  vendorProfileNames,
+} from '@tillgate/ai';
 import { createIdentity, type Identity } from '@tillgate/identity';
 import type { AdminAppDeps } from './app';
 import {
@@ -42,6 +46,7 @@ import {
 } from '@tillgate/observability';
 import { createNotifications, type Notifications } from '@tillgate/notifications';
 import { createPostgresGenerationTaskStore } from '@tillgate/inference';
+import { readPlatformCurrency } from '@tillgate/billing/composition';
 // writeAudit/createBestEffortAuditSink = 跨能力审计桥原语(仅 assembly 可引用)
 import { writeAudit, createBestEffortAuditSink } from '@tillgate/observability/composition';
 import { ADMIN_SESSION_ISSUER, type AdminApiConfig } from './config';
@@ -156,8 +161,16 @@ export interface AdminApiAssembly {
   ) => Promise<void>;
 }
 
+/** 装配引导覆写（生产缺省不传=读 KV;单测注入以保零连接前提——币种是账本身份不可静默回落） */
+export interface AdminAssemblyBootstrap {
+  readonly platformCurrency?: string;
+}
+
 // eslint-disable-next-line max-lines-per-function -- 装配根 composition root:线性依赖组装,拆段只会层层透传上下文
-export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
+export async function assembleAdminApi(
+  config: AdminApiConfig,
+  bootstrap: AdminAssemblyBootstrap = {},
+): Promise<AdminApiAssembly> {
   const logger = createLogger({ level: config.logLevel, serviceName: 'admin-api', pretty: false });
   const otel = initOtel({
     serviceName: 'admin-api',
@@ -169,6 +182,8 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     metricsExportIntervalMs: config.otelMetricsIntervalMs,
   });
   const db = createDb({ url: config.databaseUrl, ...config.dbPool });
+  // 平台币种启动读（写一次 KV;替代 ADMIN_CURRENCY 常量——单一真相;测试可覆写）
+  const platformCurrency = bootstrap.platformCurrency ?? (await readPlatformCurrency(db));
 
   // 登录面装置:Redis 守卫双闸（不可达 fail-closed 503,路由层翻译）+
   // SMTP mailer（三要素齐才建,null = 2FA fail-closed）+ jti 吊销面
@@ -264,6 +279,9 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     ...(mailer != null ? { mailer } : {}),
     sessionRevocation,
     auditSink: createIdentityAuditSinkBridge((dbLike, entry) => writeAudit(dbLike, entry)),
+    // TOTP secret 静态加密（S1：identity_totp.secret 不再明文落库；遗留明文行
+    // 读取回落 + 重挂换密文收敛——见 identity loadedSecret）
+    cipher: createCipher(config.encryptionKey),
   });
 
   // billing:postgres store 细粒度直组(store 引用留在手上——operations 幂等用例需要)
@@ -278,9 +296,10 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
       accounts: billingStore.accountContext,
     },
     {
-      guards: config.walletGuards,
-      currency: config.currency,
+      guards: { ...config.walletGuards, currencies: [platformCurrency] },
+      currency: platformCurrency,
       resolver: createAdminFundingResolver(),
+      usageDefectBreaker: 5,
       failurePolicy: config.settlePolicy,
       clock: () => new Date(),
       onError: (error, context) => {
@@ -309,6 +328,10 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     vendors: vendorProfileNames(),
   };
 
+  // 后置审计统一底座:best-effort 语义单点(失败记 error 日志,不反噬已提交业务)——
+  // control-plane 桥与登录/step-up/2FA/后置审计闭包共用,不散落 .catch(() => {})
+  const bestEffortAudit = createBestEffortAuditSink(db, (obj, msg) => logger.error(obj, msg));
+
   const controlPlane = createControlPlane({
     db,
     cipher: createCipher(config.encryptionKey),
@@ -330,7 +353,7 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     voucherMaxBytes: config.voucherMaxBytes,
     fx: config.fx,
     // 审计桥:best-effort 运营审计(provider/model/fx/目录);资金类同事务缺省 postgres
-    audit: createBestEffortAuditSink(db, (obj, msg) => logger.error(obj, msg)),
+    audit: bestEffortAudit,
   });
 
   const observability = createObservability({ db });
@@ -342,7 +365,10 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
   const notifications: Notifications = createNotifications({
     db,
     cipher: createCipher(config.encryptionKey),
-    urlGuard: { assert: (url, opts) => assertSafeUrl(url, { allowLocal: opts.allowLocal }) },
+    urlGuard: {
+      assert: (url, opts) => assertSafeUrl(url, { allowLocal: opts.allowLocal }),
+      assertAddress: (address, opts) => assertSafeAddress(address, { allowLocal: opts.allowLocal }),
+    },
     logger: { warn: (obj, msg) => logger.warn(obj, msg) },
     webhookAllowLocalUrl: config.webhookAllowLocalUrl,
     config: {
@@ -356,26 +382,7 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     },
   });
 
-  // 动态 RBAC 启动对账:代码侧 enforced 注册表 ⊆ DB 活动码——
-  // 发版新增码忘了补种子即拒启（绝不静默全站 403）;DB 不可达仅告警（单测装配形态）。
-  // async IIFE 等价原 then/catch:对账失败随 catch 吞为告警,不阻塞启动路径。
-  void (async () => {
-    try {
-      const active = await controlPlane.rbac.permissions.activeCodes();
-      const set = new Set(active);
-      for (const code of ENFORCED_CODES) {
-        if (!set.has(code)) {
-          logger.error(
-            { code },
-            'rbac enforced code missing from DB permissions — refusing to start',
-          );
-          process.exit(1);
-        }
-      }
-    } catch {
-      logger.warn('rbac startup reconciliation skipped (db unreachable)');
-    }
-  })();
+  // 动态 RBAC 启动对账已上移进程入口(startup-rbac.ts)——assembly 纯组装,无启动副作用。
 
   return {
     logger,
@@ -401,27 +408,27 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
       }),
     inviteLinkBase: config.adminFrontendUrl ?? null,
     stepupAudit: (entry) =>
-      writeAudit(db, {
+      bestEffortAudit.record({
         actor: 'system',
         adminId: entry.adminId,
         action: entry.action,
         targetType: 'admin',
         targetId: entry.adminId,
         detail: entry.ip != null ? { ip: entry.ip } : {},
-      }).catch(() => {}),
+      }),
     twoFactorAudit: (entry) =>
-      writeAudit(db, {
+      bestEffortAudit.record({
         actor: 'admin',
         adminId: entry.adminId,
         action: 'settings.two_factor',
         targetType: 'admin',
         targetId: entry.adminId,
         detail: { enabledFrom: entry.enabledFrom, enabledTo: entry.enabledTo },
-      }).catch(() => {}),
+      }),
     loginAudit: (entry) =>
-      writeAudit(db, {
+      bestEffortAudit.record({
         actor: 'system',
-        ...(entry.adminId != null ? { adminId: entry.adminId } : { adminId: null }),
+        adminId: entry.adminId,
         action: entry.action,
         targetType: 'admin',
         targetId: entry.adminId,
@@ -430,7 +437,7 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
           ...(entry.email !== undefined ? { email: entry.email } : {}),
           ...(entry.twoFactor !== undefined ? { twoFactor: entry.twoFactor } : {}),
         },
-      }).catch(() => {}),
+      }),
     // 任务存储直组 postgres 适配器（管理读侧不装配 createInference 全家桶——
     // 本 app 无推理热路径,任务表读侧是唯一消费面）
     generationTasks: createPostgresGenerationTaskStore(db),
@@ -446,13 +453,13 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
       generateCode: generateRedeemCode,
     }),
     postAudit: (entry) =>
-      writeAudit(db, {
+      bestEffortAudit.record({
         actor: entry.actor,
         adminId: entry.adminId,
         action: entry.action,
         targetType: entry.targetType,
         targetId: entry.targetId,
-        ...(entry.detail !== null ? { detail: entry.detail } : {}),
+        detail: entry.detail,
       }),
     // WalletTx 是 billing 的不透明事务句柄（仅 adapters 构造;根出口不可名状）;
     // 同事务审计桥在唯一装配面做一次形状适配——底层即同一 drizzle 事务,业务代码零感知

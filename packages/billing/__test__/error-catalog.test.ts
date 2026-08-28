@@ -17,6 +17,8 @@ const EXPECTED: Record<string, string> = {
   invalid_amount: 'invalid_input',
   invalid_ref: 'invalid_input',
   insufficient_balance: 'quota_exhausted',
+  debit_floor_conflict: 'conflict',
+  funds_held_in_flight: 'quota_exhausted',
   insufficient_cash: 'quota_exhausted',
   credit_limit_conflict: 'conflict',
   authorization_not_active: 'conflict',

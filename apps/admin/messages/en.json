@@ -67,7 +67,8 @@
     "tracing": "Tracing",
     "logs": "Request logs",
     "usageLogs": "Usage logs",
-    "auditLogs": "Audit log"
+    "auditLogs": "Audit log",
+    "funds": "Funds"
   },
   "auth": {
     "landingTitle": "{name} Admin",
@@ -217,7 +218,12 @@
     "clear": "Clear",
     "filter": "Filter",
     "invalidInteger": "Enter an integer",
-    "delete": "Delete"
+    "delete": "Delete",
+    "debitFloor": "Debit floor",
+    "debitFloorSource": "Floor source",
+    "debitFloorDefault": "Default",
+    "debitFloorManual": "Manual",
+    "setDebitFloor": "Set floor"
   },
   "users": {
     "title": "Users",
@@ -278,6 +284,11 @@
     "unbind": "(Unbind)",
     "bindFailed": "Failed to bind rate card",
     "rateCardUpdated": "Rate card updated",
+    "debitFloorTitle": "Set debit floor - {subject}",
+    "debitFloorDescription": "Current {floor} ({source}). 0 = no overdraft; once reached, new requests are rejected until topped up. Manual overrides are never touched by the global apply-default.",
+    "debitFloorInvalid": "Debit floor must be a non-negative number",
+    "debitFloorFailed": "Failed to set debit floor",
+    "debitFloorSet": "Debit floor updated",
     "backToUsers": "Back to users",
     "userNotFound": "User not found",
     "amountChange": "Change",
@@ -1139,7 +1150,21 @@
       },
       "enable": "Enable",
       "disable": "Disable"
-    }
+    },
+    "debitFloor": "Debit floor default",
+    "debitFloorDescription": "Global overdraft ceiling for settlement over-collection (0 = no overdraft; per-user overridable)",
+    "debitFloorHint": "New wallets adopt it automatically; existing users sync via \"Apply default\" (manual overrides untouched). Negative balance locks new requests until topped up.",
+    "debitFloorApply": "Apply to existing",
+    "debitFloorApplyResult": "Updated {applied}, skipped {skipped} (below-line or manual)",
+    "debitFloorApplyFailed": "Apply default failed",
+    "reservationPolicy": "Reservation policy",
+    "reservationPolicyDescription": "full = full conservative reservation (default, zero advance risk); fixed = vendor-style threshold (admit above threshold, post-pay by usage, overdraft clamped by debit floor)",
+    "reservationPolicyHint": "Gateways pick up changes within cache TTL (default 15s), no restart needed. The fixed threshold is admission-only; charges settle by actual usage.",
+    "reservationModeFull": "Full (conservative)",
+    "reservationModeFixed": "Fixed threshold (vendor-style)",
+    "reservationAmount": "Threshold amount",
+    "reservationLimit": "Per-request exposure limit",
+    "reservationLimitSave": "Save limit"
   },
   "landing": {
     "announcement": "🎉 Tillgate— multi-provider LLM API gateway",
@@ -1322,5 +1347,28 @@
       "permission_not_found": "Permission node not found",
       "endpoint_not_found": "Binding not found"
     }
+  },
+  "funds": {
+    "tabChannels": "Channel funds",
+    "tabRisk": "Risk parameters",
+    "tabFx": "FX & currency",
+    "fxTitle": "Catalog FX (USD→CNY)",
+    "fxDescription": "Conversion base for USD-priced models: auto fetch or manual override; effective = base ×(1+buffer%)",
+    "fxMode": "Mode",
+    "fxModeAuto": "Auto",
+    "fxModeOverride": "Override",
+    "fxBase": "Base rate",
+    "fxEffective": "Effective rate",
+    "fxFetchedAt": "Fetched at",
+    "fxOverride": "Override rate",
+    "fxSetOverride": "Set override",
+    "fxClearOverride": "Clear to auto",
+    "fxRefresh": "Force refresh",
+    "fxBuffer": "Buffer",
+    "fxSetBuffer": "Save buffer",
+    "fxHint": "Receipts snapshot the rate at request time (fxRateId traceable); override freezes market following.",
+    "currencyTitle": "Platform currency (ledger)",
+    "currencyDescription": "Ledger and pricing currency of the whole platform (write-once)",
+    "currencyHint": "Locked once ledger/channel funds/usage exists (409); changing requires an explicit migration. Services read it at startup — restart to apply."
   }
 }

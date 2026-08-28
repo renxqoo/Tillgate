@@ -36,6 +36,14 @@ const keyPathParam: OpenApiParam = {
   schema: z.string().min(1).max(64),
 };
 
+const debitFloorDefaultSchema = z.object({ floor: z.string() });
+const billingReservationSchema = z.object({
+  mode: z.enum(['full', 'fixed']),
+  amount: z.string().optional(),
+});
+const billingReservationLimitSchema = z.object({ limit: z.string() });
+const platformCurrencySchema = z.object({ currency: z.string() });
+
 export const settingsEndpoints = [
   {
     method: 'get',
@@ -52,6 +60,75 @@ export const settingsEndpoints = [
     summary: '计费时区写（IANA 名；生效节奏 = 网关缓存 TTL，历史账单自带时段标签不受影响）',
     body: settingsContracts.billingTimezoneUpdate,
     response: { schema: billingTimezoneSchema },
+    errors: [400, 401, 403],
+  },
+  {
+    method: 'get',
+    path: '/v1/settings/debit-floor-default',
+    tag: 'settings',
+    summary: '透支地板全局默认读（未配置 = "0" 不透支;新建钱包套用 + 批量刷默认基准）',
+    response: { schema: debitFloorDefaultSchema },
+    errors: [401, 403],
+  },
+  {
+    method: 'put',
+    path: '/v1/settings/debit-floor-default',
+    tag: 'settings',
+    summary: '透支地板全局默认写（即时生效;新钱包创建时套用;存量需调批量刷默认）',
+    body: settingsContracts.debitFloorDefaultUpdate,
+    response: { schema: debitFloorDefaultSchema },
+    errors: [400, 401, 403],
+  },
+  {
+    method: 'get',
+    path: '/v1/settings/platform-currency',
+    tag: 'settings',
+    summary: '平台币种读（未配置 = CNY;写一次——各 app 启动读取）',
+    response: { schema: platformCurrencySchema },
+    errors: [401, 403],
+  },
+  {
+    method: 'put',
+    path: '/v1/settings/platform-currency',
+    tag: 'settings',
+    summary: '平台币种写（写一次:存在账本/渠道资金/用量记录即 409 锁定;换币需显式迁移）',
+    body: settingsContracts.platformCurrencyUpdate,
+    response: { schema: platformCurrencySchema },
+    errors: [400, 401, 403, 409],
+  },
+  {
+    method: 'get',
+    path: '/v1/settings/billing-reservation-limit',
+    tag: 'settings',
+    summary: '单笔预估敞口上限读（未配置 = 1000;防单笔巨亏的结构性保险丝,网关 TTL 拾取）',
+    response: { schema: billingReservationLimitSchema },
+    errors: [401, 403],
+  },
+  {
+    method: 'put',
+    path: '/v1/settings/billing-reservation-limit',
+    tag: 'settings',
+    summary: '单笔预估敞口上限写（预估超限即 402 reservation_limit_exceeded;正金额）',
+    body: settingsContracts.billingReservationLimitUpdate,
+    response: { schema: billingReservationLimitSchema },
+    errors: [400, 401, 403],
+  },
+  {
+    method: 'get',
+    path: '/v1/settings/billing-reservation',
+    tag: 'settings',
+    summary: '预扣策略读（未配置 = full 全额保守预扣;网关 TTL 缓存内拾取）',
+    response: { schema: billingReservationSchema },
+    errors: [401, 403],
+  },
+  {
+    method: 'put',
+    path: '/v1/settings/billing-reservation',
+    tag: 'settings',
+    summary:
+      '预扣策略写（full 全额保守 / fixed 固定门槛厂商式——余额过门槛即放行,实际用量后付费结算,超出部分受 debit_floor 地板封底）',
+    body: settingsContracts.billingReservationUpdate,
+    response: { schema: billingReservationSchema },
     errors: [400, 401, 403],
   },
   {

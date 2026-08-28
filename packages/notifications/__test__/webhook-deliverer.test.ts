@@ -1,50 +1,69 @@
 /**
- * webhook http 适配器:fetch 直击(SSRF/签名/POST 分支)。
- * fetch 全局打桩;SSRF 守卫用可编程替身(真守卫行为归 ai 包自测)。
+ * webhook http 适配器:守卫拨号传输注入面(SSRF/签名/POST 分支)。
+ * 传输用可编程替身(拨号层守卫语义归 node-transport 自测);SSRF 守卫用替身
+ * (真守卫行为归 ai 包自测)。
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { createWebhookDeliverer } from '../src/adapters/webhook/http-deliverer';
+import type { GuardedHttpPost } from '../src/adapters/webhook/node-transport';
 import type { UrlGuard } from '../src/ports/url-guard';
 import { defined } from './defined';
 
-interface FetchCall {
-  url: string;
-  init: RequestInit;
+interface TransportCall {
+  url: URL;
+  headers: Record<string, string>;
+  body: string;
+  timeoutMs: number;
 }
 
-function stubFetch(
+function stubTransport(
   handler: (
-    call: FetchCall,
-  ) => { status: number; body?: string } | Promise<{ status: number; body?: string }>,
+    call: TransportCall,
+  ) => { ok: boolean; status: number } | Promise<{ ok: boolean; status: number }>,
 ) {
-  const calls: FetchCall[] = [];
-  const fn = vi.fn(async (url: string | URL, init?: RequestInit) => {
-    const call = { url: String(url), init: init ?? {} };
+  const calls: TransportCall[] = [];
+  const transport: GuardedHttpPost = async (input) => {
+    const call = {
+      url: input.url,
+      headers: { ...input.headers },
+      body: input.body,
+      timeoutMs: input.timeoutMs,
+    };
     calls.push(call);
-    const res = await handler(call);
-    return new Response(res.body ?? 'ok', { status: res.status });
-  });
-  vi.stubGlobal('fetch', fn);
-  return { calls, fn };
+    return await handler(call);
+  };
+  return { calls, transport };
 }
 
 const permissive: UrlGuard = {
   async assert(url) {
     return new URL(url);
   },
+  assertAddress: () => {},
 };
 
-afterEach(() => vi.unstubAllGlobals());
+/** 恒失败传输（网络异常/超时收敛形态——deliverer 端口契约:布尔不抛） */
+const failingTransport: GuardedHttpPost = async () => ({ ok: false, status: 0 });
+
+function delivererOf(
+  over: Partial<Parameters<typeof createWebhookDeliverer>[0]> & { transport?: GuardedHttpPost },
+) {
+  return createWebhookDeliverer({
+    guard: permissive,
+    timeoutMs: 1_000,
+    allowLocal: false,
+    logger: { warn: () => {} },
+    ...over,
+  });
+}
 
 describe('createWebhookDeliverer', () => {
   it('POST 签名头口径:体/签名/头集合与 DESIGN §2.4 一致(自洽验签)', async () => {
-    const { calls } = stubFetch(() => ({ status: 200 }));
+    const { calls, transport } = stubTransport(() => ({ ok: true, status: 200 }));
     const warnings: string[] = [];
-    const deliverer = createWebhookDeliverer({
-      guard: permissive,
-      timeoutMs: 1_000,
-      allowLocal: false,
+    const deliverer = delivererOf({
+      transport,
       logger: { warn: (obj, msg) => warnings.push(`${msg}:${JSON.stringify(obj)}`) },
     });
     const ok = await deliverer.deliver({
@@ -57,8 +76,7 @@ describe('createWebhookDeliverer', () => {
     expect(ok).toBe(true);
     expect(calls).toHaveLength(1);
     const call = defined(calls[0], 'calls[0]');
-    const headers = call.init.headers as Record<string, string>;
-    const body = call.init.body as string;
+    const { headers, body } = call;
     const timestamp = headers['x-notify-timestamp'];
     // 体 = {event, timestamp, payload}(timestamp 与头一致)
     expect(JSON.parse(body)).toEqual({
@@ -74,23 +92,26 @@ describe('createWebhookDeliverer', () => {
     expect(headers['x-notify-delivery']).toBe('9:11');
     expect(headers['x-notify-event']).toBe('billing_dead');
     expect(headers['content-type']).toBe('application/json');
-    expect(call.init.method).toBe('POST');
+    expect(call.url.toString()).toBe('https://hooks.example.test/h');
+    expect(call.timeoutMs).toBe(1_000);
     expect(warnings).toHaveLength(0);
   });
 
   it('SSRF 守卫拦截:warn + false,不发请求', async () => {
-    const { calls } = stubFetch(() => ({ status: 200 }));
+    const { calls, transport } = stubTransport(() => ({ ok: true, status: 200 }));
     const warnings: Array<{ url?: string; error?: string }> = [];
     const blocking: UrlGuard = {
       async assert() {
         throw new Error('private network blocked');
       },
+      assertAddress: () => {},
     };
     const deliverer = createWebhookDeliverer({
       guard: blocking,
       timeoutMs: 1_000,
       allowLocal: false,
       logger: { warn: (obj) => warnings.push(obj as { url?: string }) },
+      transport,
     });
     const ok = await deliverer.deliver({
       url: 'http://127.0.0.1/hook',
@@ -111,13 +132,15 @@ describe('createWebhookDeliverer', () => {
         seen.push({ url, allowLocal: opts.allowLocal });
         return new URL(url);
       },
+      assertAddress: () => {},
     };
-    stubFetch(() => ({ status: 200 }));
+    const { transport } = stubTransport(() => ({ ok: true, status: 200 }));
     const deliverer = createWebhookDeliverer({
       guard,
       timeoutMs: 1_000,
       allowLocal: true,
       logger: { warn: () => {} },
+      transport,
     });
     await deliverer.deliver({
       url: 'http://10.0.0.1/h',
@@ -130,12 +153,10 @@ describe('createWebhookDeliverer', () => {
   });
 
   it('非 2xx 响应:warn + false(可重试)', async () => {
-    stubFetch(() => ({ status: 503, body: 'down' }));
+    const { transport } = stubTransport(() => ({ ok: false, status: 503 }));
     const warnings: Array<{ status?: number }> = [];
-    const deliverer = createWebhookDeliverer({
-      guard: permissive,
-      timeoutMs: 1_000,
-      allowLocal: false,
+    const deliverer = delivererOf({
+      transport,
       logger: { warn: (obj) => warnings.push(obj as { status?: number }) },
     });
     const ok = await deliverer.deliver({
@@ -149,19 +170,8 @@ describe('createWebhookDeliverer', () => {
     expect(warnings[0]?.status).toBe(503);
   });
 
-  it('网络异常/超时:收敛为 false 不抛(端口契约)', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        throw new Error('network unreachable');
-      }),
-    );
-    const deliverer = createWebhookDeliverer({
-      guard: permissive,
-      timeoutMs: 1_000,
-      allowLocal: false,
-      logger: { warn: () => {} },
-    });
+  it('传输失败(网络异常/超时收敛):false 不抛(端口契约)', async () => {
+    const deliverer = delivererOf({ transport: failingTransport });
     await expect(
       deliverer.deliver({
         url: 'https://x.test/h',
@@ -174,13 +184,8 @@ describe('createWebhookDeliverer', () => {
   });
 
   it('空 url:立即 false,不触守卫不发请求', async () => {
-    const { calls } = stubFetch(() => ({ status: 200 }));
-    const deliverer = createWebhookDeliverer({
-      guard: permissive,
-      timeoutMs: 1_000,
-      allowLocal: false,
-      logger: { warn: () => {} },
-    });
+    const { calls, transport } = stubTransport(() => ({ ok: true, status: 200 }));
+    const deliverer = delivererOf({ transport });
     await expect(
       deliverer.deliver({ url: '', secret: 's', event: 'e', payload: {}, deliveryId: '1:1' }),
     ).resolves.toBe(false);

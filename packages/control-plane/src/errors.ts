@@ -109,6 +109,31 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     message: 'Billing timezone must be a valid IANA timezone name',
     zh: '计费时区必须是合法的 IANA 时区名',
   },
+  invalid_debit_floor: {
+    category: 'invalid_input',
+    message: 'Debit floor default must be a non-negative decimal amount',
+    zh: '透支地板默认必须为非负十进制金额',
+  },
+  invalid_reservation_policy: {
+    category: 'invalid_input',
+    message: 'Reservation policy must be full or fixed with a positive amount',
+    zh: '预扣策略必须为 full，或 fixed 且金额为正数',
+  },
+  invalid_reservation_limit: {
+    category: 'invalid_input',
+    message: 'Reservation limit must be a positive decimal amount',
+    zh: '单笔预估敞口上限必须为正十进制金额',
+  },
+  invalid_platform_currency: {
+    category: 'invalid_input',
+    message: 'Platform currency must be a 3-letter uppercase ISO 4217 code',
+    zh: '平台币种必须为 3 位大写 ISO 4217 码',
+  },
+  platform_currency_locked: {
+    category: 'conflict',
+    message: 'Platform currency is locked once ledger, channel funds or usage exists',
+    zh: '存在账本/渠道资金/用量记录后平台币种已锁定（换币需显式迁移）',
+  },
 
   // ── integrations（第三方集成动态配置） ──
   integration_unknown: {

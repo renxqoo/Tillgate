@@ -34,6 +34,7 @@ function harness() {
     quota: world.quota,
     billing: world.billing,
     wallet,
+    walletStore: walletMemory.store,
   });
   const ctx = {
     userId: 0,
@@ -123,7 +124,7 @@ describe('payg 来源', () => {
     expect(defined((await wallet.accounts(userId))[0]).balance).toBe('7');
   });
 
-  it('settle 超额：#over 补充授权（负余额路径）+ 原单结算，总扣款精确', async () => {
+  it('settle 超额：可用不足钳到可收额（不形成负余额），差额 waived 上报', async () => {
     const { wallet, payg, ctx, tx } = harness();
     const userId = nextUser();
     await wallet.credit({ userId, amount: '2', refType: 'topup', refId: 'f4' });
@@ -134,7 +135,8 @@ describe('payg 来源', () => {
       now: new Date(),
       context: { ...ctx, userId },
     });
-    await payg.settle(tx, {
+    // 应收 5；可用 = 2 − 2(在途) = 0 → 全额放弃，余额归零不为负
+    const settled = await payg.settle(tx, {
       userId,
       requestId: 'req-p3',
       reservation,
@@ -142,8 +144,9 @@ describe('payg 来源', () => {
       over: '3',
       now: new Date(),
     });
+    expect(settled.waived).toBe('3');
     const account = defined((await wallet.accounts(userId))[0]);
-    expect(account.balance).toBe('-3'); // 2 − 5
+    expect(account.balance).toBe('0'); // 2 − 2（无 #over 可收）
     expect(account.inFlight).toBe('0');
   });
 
@@ -303,7 +306,7 @@ describe('subscription 来源', () => {
     void context;
   });
 
-  it('纯订阅链超额：over 走 #over 钱包补扣（负余额）', async () => {
+  it('纯订阅链超额：over 钳到钱包可收额（负余额不形成），差额 waived', async () => {
     const { wallet, world, subscription, ctx, tx } = harness();
     const userId = nextUser();
     await wallet.credit({ userId, amount: '1', refType: 'topup', refId: 'f6' });
@@ -316,7 +319,7 @@ describe('subscription 来源', () => {
       now: new Date(),
       context,
     });
-    await subscription.settle(tx, {
+    const settled = await subscription.settle(tx, {
       userId,
       requestId: 'req-s3',
       reservation,
@@ -324,7 +327,9 @@ describe('subscription 来源', () => {
       over: '2',
       now: new Date(),
     });
-    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('-1');
+    // 钱包余额 1 全额可收（无在途）→ 收 1 弃 1
+    expect(settled.waived).toBe('1');
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('0');
     expect(defined(world.fixtures.subscriptions.get(subscriptionId)).usedAmount).toBe('5');
   });
 
@@ -362,5 +367,133 @@ describe('funding registry(铁律 16 分支封口)', () => {
   it('未注册类型显式拒绝(fail-fast,不静默返回 undefined)', () => {
     const registry = createFundingRegistry([]);
     expect(() => registry.get('payg')).toThrow(/funding source not registered/);
+  });
+});
+
+describe('payg 超收钳制（#over 死信回归）', () => {
+  it('可用不足：按可收额入账 + waived 上报，余额不为负、在途归零', async () => {
+    const { wallet, payg, ctx, tx } = harness();
+    const userId = nextUser();
+    await wallet.credit({ userId, amount: '2', refType: 'topup', refId: 'oc1' });
+    const reservation = await payg.reserve(tx, {
+      userId,
+      requestId: 'req-oc1',
+      amount: '1',
+      now: new Date(),
+      context: { ...ctx, userId },
+    });
+    // 应收 5（consume 1 + over 4）；可用 = 2 − 1(在途) = 1 → 只收 1，放弃 3
+    const settled = await payg.settle(tx, {
+      userId,
+      requestId: 'req-oc1',
+      reservation,
+      consume: '1',
+      over: '4',
+      now: new Date(),
+    });
+    expect(settled.waived).toBe('3');
+    const account = defined((await wallet.accounts(userId))[0]);
+    expect(account.balance).toBe('0');
+    expect(account.inFlight).toBe('0');
+  });
+
+  it('可用为零：全额放弃，不产生 #over 授权', async () => {
+    const { wallet, payg, ctx, tx } = harness();
+    const userId = nextUser();
+    await wallet.credit({ userId, amount: '1', refType: 'topup', refId: 'oc2' });
+    const reservation = await payg.reserve(tx, {
+      userId,
+      requestId: 'req-oc2',
+      amount: '1',
+      now: new Date(),
+      context: { ...ctx, userId },
+    });
+    const settled = await payg.settle(tx, {
+      userId,
+      requestId: 'req-oc2',
+      reservation,
+      consume: '1',
+      over: '2',
+      now: new Date(),
+    });
+    expect(settled.waived).toBe('2');
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('0');
+  });
+
+  it('可用充足：全额收取 waived=0', async () => {
+    const { wallet, payg, ctx, tx } = harness();
+    const userId = nextUser();
+    await wallet.credit({ userId, amount: '10', refType: 'topup', refId: 'oc3' });
+    const reservation = await payg.reserve(tx, {
+      userId,
+      requestId: 'req-oc3',
+      amount: '1',
+      now: new Date(),
+      context: { ...ctx, userId },
+    });
+    const settled = await payg.settle(tx, {
+      userId,
+      requestId: 'req-oc3',
+      reservation,
+      consume: '1',
+      over: '0.5',
+      now: new Date(),
+    });
+    expect(settled.waived).toBe('0');
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('8.5');
+  });
+});
+
+describe('payg 超收钳制 × 透支地板（受控负余额）', () => {
+  it('地板内扣负：over 可收到 可用+地板，余额触底不为零', async () => {
+    const { wallet, payg, ctx, tx } = harness();
+    const userId = nextUser();
+    await wallet.credit({ userId, amount: '2', refType: 'topup', refId: 'df1' });
+    await wallet.setDebitFloor({ userId, amount: '3' });
+    const reservation = await payg.reserve(tx, {
+      userId,
+      requestId: 'req-df1',
+      amount: '1',
+      now: new Date(),
+      context: { ...ctx, userId },
+    });
+    // 应收 5（consume 1 + over 4）；可收 = 可用 1 + 地板 3 = 4 → 全收，余额触底 −3 = −地板
+    const settled = await payg.settle(tx, {
+      userId,
+      requestId: 'req-df1',
+      reservation,
+      consume: '1',
+      over: '4',
+      now: new Date(),
+    });
+    expect(settled.waived).toBe('0');
+    const account = defined((await wallet.accounts(userId))[0]);
+    expect(account.balance).toBe('-3');
+    expect(account.inFlight).toBe('0');
+  });
+
+  it('地板外仍放弃：负余额深度不穿透地板', async () => {
+    const { wallet, payg, ctx, tx } = harness();
+    const userId = nextUser();
+    await wallet.credit({ userId, amount: '1', refType: 'topup', refId: 'df2' });
+    await wallet.setDebitFloor({ userId, amount: '2' });
+    const reservation = await payg.reserve(tx, {
+      userId,
+      requestId: 'req-df2',
+      amount: '1',
+      now: new Date(),
+      context: { ...ctx, userId },
+    });
+    // 应收 10；可收 = 0(可用) + 2(地板) = 2 → 弃 8，余额恰好 −2 = 地板
+    const settled = await payg.settle(tx, {
+      userId,
+      requestId: 'req-df2',
+      reservation,
+      consume: '1',
+      over: '9',
+      now: new Date(),
+    });
+    expect(settled.waived).toBe('7');
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('-2');
   });
 });

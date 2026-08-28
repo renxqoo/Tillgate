@@ -15,7 +15,7 @@
 - 时间：UTC，ISO 8601。
 - 金额对外展示为元（小数），内部 `numeric(38,18)` 元 + Decimal 全精度（`packages/billing/src/domain/money.ts` 单一真相；本契约不含金额字段，控制台接口按需）。
 - 所有对外错误响应统一信封：`{"error": {"code", "message", "context"?}}`。**code 为命名空间目录码**（`gateway.invalid_body` / `http.unauthorized` / `inference.model_not_found` / `billing.insufficient_balance` 等）——码表由各能力包错误目录在 app 错误面装配期合成（见 §3）。
-- 上游响应透传时**剥离上游敏感信息**（内容层脱敏：内部寻址替换为 `[upstream]`、真实模型名替换为对外目录名、长度截断默认 200 字符；细节层只进日志关联 requestId，`apps/gateway/src/http/sanitize.ts`）。
+- 上游响应透传时**剥离上游敏感信息**（内容层脱敏：出站单点在 inference `dispatchFailure`（`packages/inference/src/application/failover.ts`）——候选链真实模型名逐个映射对外目录名 + 内部寻址替换为 `[redacted]` + 长度截断默认 512 字符；细节层只进日志关联 requestId，机制件 `packages/ai/src/errors/sanitize.ts`）。
 - 请求体上限默认 **10MB**（`GATEWAY_BODY_LIMIT_BYTES`，超出 413）；multipart 上传文件上限 16MB（`GATEWAY_UPLOAD_MAX_FILE_BYTES`，且被请求体上限钳制）。
 - 鉴权按已注册端点路径挂载：未注册路径 404 而非 401。
 

@@ -12,6 +12,7 @@ import { videoSchema, musicSchema } from '../contracts/generation';
 import { requestSummaryOf } from '../middleware/request-log.js';
 import type { AuthEnv } from '../middleware/api-key';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
+import { requestSignalOf } from './inference-input';
 import { GatewayErrors } from '../openai-error-face';
 function invalidBody(json: (b: unknown, s: 400) => Response, issues: { message?: string }[]) {
   return json(
@@ -72,7 +73,7 @@ function submitResponse(
 
 /** 提交处理工厂（schema 校验 → 准入 → generation.submit；失败释放 TPM 预占） */
 function submitHandler(
-  deps: { inference: Inference; rateLimit?: RateLimitGate },
+  deps: { inference: Inference; rateLimit?: RateLimitGate; drainSignal?: AbortSignal },
   kind: 'video' | 'music',
   schema: typeof videoSchema | typeof musicSchema,
 ) {
@@ -100,6 +101,7 @@ function submitHandler(
         },
         kind,
         body: parsed.data,
+        signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
       });
       return submitResponse(c, {
         result,
@@ -116,6 +118,7 @@ function submitHandler(
 export function generationRoutes(deps: {
   inference: Inference;
   rateLimit?: RateLimitGate;
+  drainSignal?: AbortSignal;
 }): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
 

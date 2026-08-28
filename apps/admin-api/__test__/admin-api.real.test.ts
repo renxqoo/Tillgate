@@ -41,7 +41,7 @@ describe('admin-api 真实 PG 冒烟', () => {
     process.env.ENCRYPTION_KEY ??= 'real-smoke-encryption-key-0123456789';
     process.env.IDENTITY_CODE_PEPPER ??= 'real-smoke-pepper-0123456789';
     const config = loadAdminApiConfig();
-    const assembly = assembleAdminApi(config);
+    const assembly = await assembleAdminApi(config);
     try {
       const app = createAdminApp({
         pingDb: () => ping(assembly.db),

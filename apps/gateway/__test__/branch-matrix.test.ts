@@ -46,7 +46,7 @@ describe('限流闸维度矩阵', () => {
   it('rpm 拒绝无 retryAfterSec → 缺省 60 上下文', async () => {
     await expect(
       admitRequest(
-        { limiter: limiter({ rpm: { allowed: false } }), globalRpm: null },
+        { limiter: limiter({ rpm: { allowed: false } }), globalRpm: null, preauthIpRpm: null },
         {
           requestId: 'r',
           auth: auth(),
@@ -70,7 +70,7 @@ describe('限流闸维度矩阵', () => {
     };
     await expect(
       admitRequest(
-        { limiter: spy, globalRpm: null },
+        { limiter: spy, globalRpm: null, preauthIpRpm: null },
         {
           requestId: 'r',
           auth: auth({ tpmLimit: null }),
@@ -92,7 +92,7 @@ describe('限流闸维度矩阵', () => {
       return { allowed: true };
     };
     const handle = await admitRequest(
-      { limiter: spy, globalRpm: null },
+      { limiter: spy, globalRpm: null, preauthIpRpm: null },
       {
         requestId: 'r',
         auth: auth({
@@ -209,7 +209,10 @@ describe('catalog 渠道可选列 / billing 可选字段透传', () => {
         signal: async () => {},
         reserveChannel: async () => ({ allowed: true, remaining: '0', switched: false }),
       } as never,
-      { reservationLimit: '1', reservationPolicy: { mode: 'full' } },
+      {
+        resolveReservationLimit: async () => '1',
+        resolveReservationPolicy: async () => ({ mode: 'full' }),
+      },
     );
     const candidate: QuoteCandidate = {
       mappingId: 1,
@@ -261,6 +264,8 @@ describe('catalog 快照杂项防御', () => {
       pricingUnit: 'weird',
       unitPrice: '0',
       pricingGroup: null,
+      rpmLimit: null,
+      tpmLimit: null,
       isFree: false,
       fallbackModels: null,
       billingPolicy: null,

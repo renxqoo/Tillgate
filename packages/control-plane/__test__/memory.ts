@@ -997,6 +997,8 @@ function toActiveRow(row: MemoryModelRow): ActiveMappingRow {
     pricingUnit: row.pricingUnit,
     unitPrice: row.unitPrice,
     pricingGroup: row.pricingGroup ?? null,
+    rpmLimit: row.rpmLimit ?? null,
+    tpmLimit: row.tpmLimit ?? null,
     isFree: row.isFree,
     fallbackModels: row.fallbackModels ?? null,
     billingPolicy: row.billingPolicy,

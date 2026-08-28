@@ -34,6 +34,8 @@ const mapping = (
   pricingUnit: 'token',
   unitPrice: '0',
   pricingGroup: null,
+  rpmLimit: null,
+  tpmLimit: null,
   isFree: false,
   fallbackModels: null,
   billingPolicy: null,
@@ -73,6 +75,20 @@ const card = (coefficients: UserRateCardContext['coefficients']): UserRateCardCo
   cardName: 'vip',
   status: 0,
   coefficients,
+});
+
+describe('catalog-port：模型级限流列透传', () => {
+  it('ActiveMappingRow 的 rpm/tpm 限额进快照（admitModel 钩子消费面）', async () => {
+    const catalog = createGatewayCatalog(
+      stores({
+        mappings: [mapping({ id: 1, externalName: 'm-main', rpmLimit: 60, tpmLimit: 90_000 })],
+      }),
+    );
+    expect(defined(await catalog.findMapping('m-main', noCard))).toMatchObject({
+      rpmLimit: 60,
+      tpmLimit: 90_000,
+    });
+  });
 });
 
 describe('catalog-port：系数解析（C-G2）', () => {
@@ -379,8 +395,8 @@ describe('billing-port（C-G3）', () => {
     const { api, calls } = spyApi();
     const admissions: number[] = [];
     const port = createGatewayBilling(api as never, {
-      reservationLimit: '1000',
-      reservationPolicy: { mode: 'fixed', amount: '0.5' },
+      resolveReservationLimit: async () => '1000',
+      resolveReservationPolicy: async () => ({ mode: 'fixed', amount: '0.5' }),
       assertCapacity: async () => {
         admissions.push(1);
       },
@@ -416,8 +432,8 @@ describe('billing-port（C-G3）', () => {
   it('authorize：候选链全免费（isFree 标记或全零价）→ explicitlyFree', async () => {
     const { api, calls } = spyApi();
     const port = createGatewayBilling(api as never, {
-      reservationLimit: '1000',
-      reservationPolicy: { mode: 'full' },
+      resolveReservationLimit: async () => '1000',
+      resolveReservationPolicy: async () => ({ mode: 'full' }),
     });
     await port.authorize({
       requestId: 'r',
@@ -440,8 +456,8 @@ describe('billing-port（C-G3）', () => {
   it('signal：蛇形→点分词表四事件直译', async () => {
     const { api, calls } = spyApi();
     const port = createGatewayBilling(api as never, {
-      reservationLimit: '1',
-      reservationPolicy: { mode: 'full' },
+      resolveReservationLimit: async () => '1',
+      resolveReservationPolicy: async () => ({ mode: 'full' }),
     });
     await port.signal({ type: 'upstream_started', requestId: 'r', leaseOwner: 'o', leaseMs: 100 });
     await port.signal({ type: 'lease_renewed', requestId: 'r', leaseOwner: 'o', leaseMs: 100 });
@@ -464,11 +480,107 @@ describe('billing-port（C-G3）', () => {
     expect(receiptEvent.receipt.usage.inputTokens).toBe(1);
   });
 
+  it('TPM 预占收尾接线：succeeded→backfill（billing 先行）/ lease_renewed→renew / failed→release', async () => {
+    const { api } = spyApi();
+    const order: string[] = [];
+    const calls = {
+      backfill: [] as Array<[string, string[], number]>,
+      renew: [] as string[],
+      release: [] as string[],
+    };
+    const limiter = {
+      backfillTpm: async (requestId: string, dims: string[], tokens: number) => {
+        order.push('backfill');
+        calls.backfill.push([requestId, dims, tokens]);
+      },
+      renewTpm: async (requestId: string) => {
+        order.push('renew');
+        calls.renew.push(requestId);
+      },
+      releaseTpm: async (requestId: string) => {
+        order.push('release');
+        calls.release.push(requestId);
+      },
+    };
+    const port = createGatewayBilling({ ...api, signal: api.signal } as never, {
+      resolveReservationLimit: async () => '1',
+      resolveReservationPolicy: async () => ({ mode: 'full' }),
+      limiter: limiter as never,
+    });
+    await port.signal({ type: 'lease_renewed', requestId: 'r-1', leaseOwner: 'o', leaseMs: 100 });
+    await port.signal({ type: 'request_failed', requestId: 'r-2', reason: 'boom' });
+    await port.signal({
+      type: 'request_succeeded',
+      requestId: 'r-3',
+      receipt: {
+        requestId: 'r-3',
+        userId: 42,
+        apiKeyId: 7,
+        realModel: 'gpt-x-real',
+        channelId: 3,
+        usage: { inputTokens: 100, cachedInputTokens: 10, outputTokens: 50, estimated: false },
+      } as never,
+    });
+    expect(calls.renew).toEqual(['r-1']);
+    expect(calls.release).toEqual(['r-2']);
+    // 实值口径 = 输入 + 缓存命中 + 输出（TPM 窗口按原始吞吐）；维度串与准入闸同源
+    expect(calls.backfill).toEqual([
+      ['r-3', ['key:7', 'user:42', 'model:gpt-x-real', 'channel:3'], 160],
+    ]);
+    expect(order).toEqual(['renew', 'release', 'backfill']);
+    // 未注入 limiter → 零收尾调用（兼容形态）
+    const bare = createGatewayBilling(api as never, {
+      resolveReservationLimit: async () => '1',
+      resolveReservationPolicy: async () => ({ mode: 'full' }),
+    });
+    await expect(
+      bare.signal({
+        type: 'request_succeeded',
+        requestId: 'r-4',
+        receipt: {
+          requestId: 'r-4',
+          userId: 1,
+          apiKeyId: null,
+          realModel: 'm',
+          channelId: null,
+          usage: { inputTokens: 1, cachedInputTokens: 0, outputTokens: 1, estimated: false },
+        } as never,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('TPM 收尾与 billing 结算解耦：api.signal 抛错时 release 仍执行（finally）', async () => {
+    const released: string[] = [];
+    const limiter = {
+      backfillTpm: async () => {},
+      renewTpm: async () => {},
+      releaseTpm: async (requestId: string) => {
+        released.push(requestId);
+      },
+    };
+    const failingApi = {
+      authorize: async () => {},
+      signal: async () => {
+        throw new Error('settle db down');
+      },
+      reserveChannel: async () => ({ allowed: true, remaining: '0', switched: false }),
+    };
+    const port = createGatewayBilling(failingApi as never, {
+      resolveReservationLimit: async () => '1',
+      resolveReservationPolicy: async () => ({ mode: 'full' }),
+      limiter: limiter as never,
+    });
+    await expect(
+      port.signal({ type: 'request_failed', requestId: 'r-x', reason: 'boom' }),
+    ).rejects.toThrow('settle db down'); // billing 错误照常上抛（重试链兜底）
+    expect(released).toEqual(['r-x']); // TPM 释放不丢
+  });
+
   it('reserveChannel：官方价口径（coefficient=1）amount 自算 + allowed 收窄', async () => {
     const { api, calls } = spyApi();
     const port = createGatewayBilling(api as never, {
-      reservationLimit: '1',
-      reservationPolicy: { mode: 'full' },
+      resolveReservationLimit: async () => '1',
+      resolveReservationPolicy: async () => ({ mode: 'full' }),
     });
     const result = await port.reserveChannel({
       requestId: 'r',
@@ -597,6 +709,79 @@ describe('billing-timezone 读取器（TTL 缓存 + 单飞行 + 回落）', () =
     const [a, b] = await Promise.all([read(), read()]);
     expect(a).toBe('UTC');
     expect(b).toBe('UTC');
+    expect(queries).toBe(1);
+  });
+});
+
+describe('billing-reservation 读取器（TTL 缓存 + 单飞行 + full 回落）', () => {
+  it('KV fixed 取值;缺失/垃圾值回落 full;TTL 内不重复查;过期后刷新', async () => {
+    const { createBillingReservationPolicyReader } =
+      await import('../src/adapters/reservation-policy.js');
+    const db = fakeBillingTimezoneDb([{ value: { mode: 'fixed', amount: '0.01' } }]);
+    const read = createBillingReservationPolicyReader({ db: db as never, ttlMs: 60_000 });
+    expect(await read()).toEqual({ mode: 'fixed', amount: '0.01' });
+    expect(await read()).toEqual({ mode: 'fixed', amount: '0.01' }); // TTL 内走缓存
+    expect(db.reads()).toBe(1);
+
+    // 缺失/零金额/未知模式 → full 保守预扣（fail-closed）
+    for (const raw of [null, { value: { mode: 'fixed', amount: '0' } }, { value: { mode: 'x' } }]) {
+      const fallbackDb = fakeBillingTimezoneDb([raw]);
+      const readFallback = createBillingReservationPolicyReader({
+        db: fallbackDb as never,
+        ttlMs: 60_000,
+      });
+      expect(await readFallback()).toEqual({ mode: 'full' });
+    }
+
+    // TTL 过期（ttlMs=1）→ 下一请求重查
+    const refreshDb = fakeBillingTimezoneDb([{ value: { mode: 'full' } }]);
+    const readRefresh = createBillingReservationPolicyReader({
+      db: refreshDb as never,
+      ttlMs: 1,
+    });
+    expect(await readRefresh()).toEqual({ mode: 'full' });
+    await new Promise((r) => {
+      setTimeout(r, 3);
+    });
+    expect(await readRefresh()).toEqual({ mode: 'full' });
+    expect(refreshDb.reads()).toBe(2);
+  });
+
+  it('KV 读失败抛错（fail-loud——策略事故不静默回落错档预扣）', async () => {
+    const { createBillingReservationPolicyReader } =
+      await import('../src/adapters/reservation-policy.js');
+    const db = {
+      query: {
+        systemConfigs: {
+          findFirst: async () => {
+            throw new Error('db down');
+          },
+        },
+      },
+    };
+    const read = createBillingReservationPolicyReader({ db: db as never, ttlMs: 60_000 });
+    await expect(read()).rejects.toThrow('db down');
+  });
+
+  it('并发读合并单飞行（一次刷新一轮查询）', async () => {
+    const { createBillingReservationPolicyReader } =
+      await import('../src/adapters/reservation-policy.js');
+    let queries = 0;
+    const db = {
+      query: {
+        systemConfigs: {
+          findFirst: () =>
+            new Promise((resolve) => {
+              queries += 1;
+              setTimeout(() => resolve({ value: { mode: 'fixed', amount: '0.01' } }), 5);
+            }),
+        },
+      },
+    };
+    const read = createBillingReservationPolicyReader({ db: db as never, ttlMs: 60_000 });
+    const [a, b] = await Promise.all([read(), read()]);
+    expect(a).toEqual({ mode: 'fixed', amount: '0.01' });
+    expect(b).toEqual({ mode: 'fixed', amount: '0.01' });
     expect(queries).toBe(1);
   });
 });

@@ -4,8 +4,8 @@
 cd /Users/w/Desktop/work/Tillgate
 cp .env.example .env
 
-# 六把密钥一次性换成强随机值（弱值/空值启动即拒绝）
-for k in JWT_SECRET ADMIN_JWT_SECRET ENCRYPTION_KEY IDENTITY_CODE_PEPPER CLIENT_CODE_PEPPER CHANNEL_API_KEY_ENCRYPTION; do
+# 五把密钥一次性换成强随机值（弱值/空值启动即拒绝）
+for k in JWT_SECRET ADMIN_JWT_SECRET ENCRYPTION_KEY IDENTITY_CODE_PEPPER CLIENT_CODE_PEPPER; do
   sed -i.bak -E "s|^#?[[:space:]]?${k}=.*|${k}=$(openssl rand -hex 32)|" .env; done; rm -f .env.bak
 
 # trace 链路接收令牌（compose 插值 :? 必需，不配 compose 直接报错）
@@ -17,7 +17,7 @@ sed -i.bak "s|^# OAUTH_FRONTEND_URL=.*|OAUTH_FRONTEND_URL=https://localhost|" .e
 
 # 库与 Redis 密码（compose 用这两个键拼容器内的 DATABASE_URL/REDIS_URL 并建 Redis requirepass）
 sed -i.bak "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 16)|" .env
-echo "REDIS_PASSWORD=$(openssl rand -hex 16)" >> .env    # example 里默认 root123，直接追加覆盖
+sed -i.bak "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=$(openssl rand -hex 16)|" .env    # example 默认 root123；原位替换——追加会产生双键，first-match 读取方会拿到弱值
 
 chmod 600 .env && rm -f .env.bak
 ```

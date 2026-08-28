@@ -18,7 +18,6 @@ import {
   getMarketingSignupGiftAction,
   type IntegrationSettingItem,
 } from '@/server/settings-actions';
-import { BillingTimezoneCard } from './billing-timezone-card';
 import { EmailTwoFactorCard } from './email-two-factor-card';
 import { IntegrationCards } from './integration-cards';
 import { TotpCard } from './totp-card';
@@ -26,13 +25,10 @@ import { TotpCard } from './totp-card';
 export function SettingsContent({
   me,
   error,
-  canUpdateTimezone,
   canManageIntegrations,
 }: {
   me: AdminMeInfo | null;
   error: string | null;
-  /** settings:update 持有者可写计费时区；否则只读展示当前值 */
-  canUpdateTimezone: boolean;
   /** settings:integrations 持有者可见集成/SMTP 配置与启停操作位 */
   canManageIntegrations: boolean;
 }) {
@@ -72,7 +68,6 @@ export function SettingsContent({
 
       <TotpCard totpEnabled={me?.totpEnabled ?? false} />
 
-      <BillingTimezoneCard canUpdate={canUpdateTimezone} />
       {/* 集成卡区按词表渲染（ORDER 含 smtp——独立卡） */}
       <IntegrationCards
         items={integrations}

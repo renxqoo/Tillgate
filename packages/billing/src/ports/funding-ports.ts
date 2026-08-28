@@ -82,4 +82,12 @@ export interface ChannelExposureStore {
     tx: WalletConn,
     input: { channelId: number; upstreamCost: string; now: Date },
   ): Promise<boolean>;
+  /**
+   * 用量证据缺陷计数（验收门钳制事实）：原子 +1 并在计数 ≥ threshold 时熔断
+   * （仅启用态）。返回递增后计数与是否触发熔断——审计/告警载荷。
+   */
+  recordUsageDefect(
+    tx: WalletConn,
+    input: { channelId: number; threshold: number; now: Date },
+  ): Promise<{ defects: number; broken: boolean } | null>;
 }

@@ -54,9 +54,9 @@ describe.skipIf(url == null)('wallet 快路径（真 PG）', () => {
     return store.transaction((tx) => store.conditionalReserve(tx, input));
   }
 
-  it('authorize 三档守卫（完整链;信用/现金/超额拒/#over 负余额）', async () => {
+  it('authorize 三档守卫（完整链;信用/现金/超额拒）', async () => {
     const id = await freshUser('10');
-    // 信用口径:8 过;现金口径:2 过;超额:拒 insufficient_balance;#over:负余额过
+    // 信用口径:8 过;现金口径:2 过;超额:拒 insufficient_balance
     expect(
       (
         await wallet.authorize({
@@ -81,19 +81,8 @@ describe.skipIf(url == null)('wallet 快路径（真 PG）', () => {
     await expect(
       wallet.authorize({ userId: id, amount: '0.001', refType: 'test', refId: `fp-3c-${runTag}` }),
     ).rejects.toMatchObject({ code: 'billing.insufficient_balance' });
-    expect(
-      (
-        await wallet.authorize({
-          userId: id,
-          amount: '5',
-          refType: 'billing',
-          refId: `fp-3d-${runTag}#over`,
-          collectOverage: true,
-        })
-      ).status,
-    ).toBe('active');
     // 自清:释放全部持有
-    for (const refId of [`fp-3a-${runTag}`, `fp-3b-${runTag}`, `fp-3d-${runTag}#over`]) {
+    for (const refId of [`fp-3a-${runTag}`, `fp-3b-${runTag}`]) {
       await wallet.release({
         refType: refId.endsWith('#over') ? 'billing' : 'test',
         refId,
@@ -102,19 +91,14 @@ describe.skipIf(url == null)('wallet 快路径（真 PG）', () => {
     }
   });
 
-  it('frozen 账户 → 原子门 0 行（status 守卫,#over 也不借道）', async () => {
+  it('frozen 账户 → 原子门 0 行（status 守卫）', async () => {
     const { sql } = await import('drizzle-orm');
     const id = await freshUser('5');
     const accountId = await store.transaction((tx) => store.ensureUserAccount(tx, id, 'CNY'));
     await db.execute(
       sql`update wallet_accounts set status = 'frozen' where id = ${accountId}::uuid`,
     );
-    expect(
-      await gate({ accountId, amount: '1', guardKind: 'credit', collectOverage: false }),
-    ).toBeNull();
-    expect(
-      await gate({ accountId, amount: '1', guardKind: 'credit', collectOverage: true }),
-    ).toBeNull();
+    expect(await gate({ accountId, amount: '1', guardKind: 'credit' })).toBeNull();
   });
 
   it('无限额 50 并发 authorize：钱包原子门串行吞吐（in_flight 精确、全部成功）', async () => {

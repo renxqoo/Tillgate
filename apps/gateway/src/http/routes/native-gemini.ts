@@ -5,17 +5,19 @@ import { requestSummaryOf } from '../middleware/request-log.js';
  * 翻译函数来自 @tillgate/ai gemini-chat 协议模块（与出站共用一套真相）；译为规范形
  * 后走 chat 管线（鉴权/白名单/计费/限流与所有端点完全一致）。
  */
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { HttpErrors } from '@tillgate/http';
 import type { Inference } from '@tillgate/inference';
 import {
+  admissionTokenUpperBound,
   canonicalStreamToGeminiStream,
   chatResponseToGemini,
-  conservativeInputTokenUpperBound,
+  defaultInferenceDefaults,
   geminiRequestToChat,
+  type OutputCapConfig,
 } from '@tillgate/inference';
 import type { AuthEnv } from '../middleware/api-key';
-import { toInferenceInput } from './inference-input';
+import { requestSignalOf, toInferenceInput } from './inference-input';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { encodeDelivered, sseResponse } from '../openai-envelope';
 import { GatewayErrors } from '../openai-error-face';
@@ -32,40 +34,80 @@ function parseModelAction(
   return { model, stream: action === 'streamGenerateContent' };
 }
 
+/** Gemini 外部体 → 规范形 chat body（模型名与流式标志注入） */
+function canonicalGeminiBody(
+  raw: Record<string, unknown>,
+  model: string,
+  stream: boolean,
+): Record<string, unknown> {
+  const canonical = geminiRequestToChat(raw, model) as unknown as Record<string, unknown>;
+  canonical.model = model;
+  canonical.stream = stream;
+  return canonical;
+}
+
+/** 入站解析（路径参数 + JSON 体 + 日志摘要）；不合法形态直接抛业务错 */
+async function readGeminiRequest(
+  c: Context<AuthEnv>,
+): Promise<{ model: string; stream: boolean; raw: Record<string, unknown> }> {
+  const parsed = parseModelAction(c.req.param('modelAction'));
+  if (parsed == null) {
+    throw HttpErrors.business('not_found', {
+      detail: 'Path not found (supported: :generateContent / :streamGenerateContent)',
+    });
+  }
+  const raw = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+  const summary = requestSummaryOf(c.req.method, raw);
+  if (summary != null) c.set('requestLogSummary', summary);
+  if (!raw) {
+    throw GatewayErrors.business('invalid_body', {
+      detail: 'Request body must be a JSON object',
+    });
+  }
+  return { ...parsed, raw };
+}
+
+/** 准入预占估算（输入 + 输出上界；与 chat 端点同式——gemini 原生恒 chat 族） */
+function geminiAdmissionEstimate(
+  outputCap: OutputCapConfig | undefined,
+  canonical: Record<string, unknown>,
+): number {
+  const config =
+    outputCap ??
+    (() => {
+      const defaults = defaultInferenceDefaults().output;
+      return { defaultMax: defaults.defaultMaxOutputTokens, exposureCap: defaults.exposureCap };
+    })();
+  return admissionTokenUpperBound('chat', canonical, config);
+}
+
 export function geminiNativeRoutes(deps: {
   inference: Inference;
   rateLimit?: RateLimitGate;
+  outputCap?: OutputCapConfig;
+  /** 服务端 drain 信号（与客户端断连信号合成） */
+  drainSignal?: AbortSignal;
 }): Hono<AuthEnv> {
   return new Hono<AuthEnv>().post('/v1beta/models/:modelAction', async (c) => {
-    const parsed = parseModelAction(c.req.param('modelAction'));
-    if (parsed == null) {
-      throw HttpErrors.business('not_found', {
-        detail: 'Path not found (supported: :generateContent / :streamGenerateContent)',
-      });
-    }
-    const { model, stream } = parsed;
-    const raw = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
-    const genSummary = requestSummaryOf(c.req.method, raw);
-    if (genSummary != null) c.set('requestLogSummary', genSummary);
-    if (!raw) {
-      throw GatewayErrors.business('invalid_body', {
-        detail: 'Request body must be a JSON object',
-      });
-    }
+    const { model, stream, raw } = await readGeminiRequest(c);
 
     const auth = c.get('auth');
     const requestId = c.get('requestId');
-    const canonical = geminiRequestToChat(raw, model) as unknown as Record<string, unknown>;
-    canonical.model = model;
-    canonical.stream = stream;
+    const canonical = canonicalGeminiBody(raw, model, stream);
 
     const admit = await admitRequest(deps.rateLimit, {
       requestId,
       auth,
-      estimatedTokens: conservativeInputTokenUpperBound(canonical),
+      estimatedTokens: geminiAdmissionEstimate(deps.outputCap, canonical),
     });
     try {
-      const input = toInferenceInput({ requestId, auth, body: canonical, endpoint: 'chat' });
+      const input = toInferenceInput({
+        requestId,
+        auth,
+        body: canonical,
+        endpoint: 'chat',
+        signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
+      });
       const result = stream ? await deps.inference.stream(input) : await deps.inference.chat(input);
       if ('stream' in result && result.ok && result.status === 200) {
         return sseResponse(canonicalStreamToGeminiStream(result.stream, model), requestId);

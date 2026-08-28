@@ -77,6 +77,10 @@ describe('inviteMember', () => {
       email: ' New@X.IO ',
     });
     expect(inv.token).toMatch(/^[0-9a-f]{32}$/);
+    // S4：落库形态 = sha256 哈希键（64 hex——明文只在本次响应下发；只读库泄露不可占席）
+    const { invitationTokenHash } = await import('../src/domain/org.js');
+    const stored = await h.store.findInvitationByToken(h.ctx.db, invitationTokenHash(inv.token));
+    expect(stored?.token).toMatch(/^[0-9a-f]{64}$/);
     expect(await h.store.countPendingInvitations(h.ctx.db, org.id)).toBe(1);
     const again = await h.api.getOrgDetail({ userId: owner.id, orgId: org.id });
     expect(defined(again.invitations[0], 'again.invitations[0]').email).toBe('new@x.io'); // 规范化落库
@@ -112,6 +116,26 @@ describe('inviteMember', () => {
     await expect(
       h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'bad' }),
     ).rejects.toMatchObject({ code: 'accounts.email_invalid' });
+  });
+
+  it('S4 回归:token 落库为 sha256 哈希——原始 token 可查,库内值不可查(泄露不可占席)', async () => {
+    const { h, owner, org } = teamOrg();
+    const inv = await h.api.inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: 'new@x.io',
+    });
+    const byRaw = await h.store.findInvitationByToken(h.ctx.db, inv.token);
+    expect(byRaw).toBeNull(); // 明文 token 不在库内（等值查询不命中）
+    const { invitationTokenHash } = await import('../src/domain/org.js');
+    const stored = await h.store.findInvitationByToken(h.ctx.db, invitationTokenHash(inv.token));
+    expect(stored?.email).toBe('new@x.io');
+    expect(stored?.token).not.toBe(inv.token); // 库内是哈希形态
+    // 接受路径用原始 token（应用层先哈希再查）
+    const acceptor = h.store.seed.user({ id: 300, email: 'new@x.io' });
+    await expect(
+      h.api.acceptInvitation({ token: inv.token, acceptorUserId: acceptor.id }),
+    ).resolves.toEqual({ orgId: org.id });
   });
 
   it('席位闸:active ≥ quantity → seats_full(v1 qty=1 owner 占满)', async () => {
@@ -183,10 +207,11 @@ describe('acceptInvitation', () => {
       code: 'accounts.invitation_revoked',
     });
 
+    const { invitationTokenHash } = await import('../src/domain/org.js');
     const mismatched = h.store.seed.invitation({
       orgId: org.id,
       email: 'other@x.io',
-      token: 't-mismatch',
+      token: invitationTokenHash('t-mismatch'),
     });
     await expect(
       h.api.acceptInvitation({ token: 't-mismatch', acceptorUserId: acceptor.id }),
@@ -249,9 +274,12 @@ describe('acceptInvitation', () => {
       code: 'accounts.seats_full',
     });
     expect(await h.store.countActiveMembers(h.ctx.db, org.id)).toBe(1); // 未复活/未插入
+    const { invitationTokenHash } = await import('../src/domain/org.js');
     expect(
-      defined(await h.store.findInvitationByToken(h.ctx.db, inv.token), 'findInvitationByToken')
-        .status,
+      defined(
+        await h.store.findInvitationByToken(h.ctx.db, invitationTokenHash(inv.token)),
+        'findInvitationByToken',
+      ).status,
     ).toBe(0); // 邀请未被消费
   });
 

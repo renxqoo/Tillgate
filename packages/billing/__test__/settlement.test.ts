@@ -51,16 +51,23 @@ function harness() {
     currency: 'CNY',
     clock: () => new Date(),
   });
+  const errors: string[] = [];
   const settlement = createSettlementApi({
+    onDead: (data) => {
+      errors.push(`dead ${data.requestId}: ${data.lastError}`);
+    },
     store,
     walletStore: walletMemory.store,
     fundingRegistry,
     channels: world.channels,
+    usageDefectBreaker: 5,
     failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
     clock: () => new Date(),
-    onError: () => {},
+    onError: (error, context) => {
+      errors.push(`${context}: ${String(error).slice(0, 300)}`);
+    },
   });
-  return { wallet, walletMemory, world, billing, settlement };
+  return { wallet, walletMemory, world, billing, settlement, errors };
 }
 
 function receiptFor(
@@ -93,7 +100,15 @@ function receiptFor(
 }
 
 /** 全链推进到 settlement_pending（authorize → signal succeeded） */
-async function toPending(h: ReturnType<typeof harness>, inputTokens = 1_000_000) {
+async function toPending(
+  h: ReturnType<typeof harness>,
+  inputTokens = 1_000_000,
+  opts: {
+    inputUpper?: number;
+    reservationPolicy?: { mode: 'full' } | { mode: 'fixed'; amount: string };
+    reservationLimit?: string;
+  } = {},
+) {
   const userId = nextUser();
   await h.wallet.credit({ userId, amount: '10', refType: 'topup', refId: `s-${userId}` });
   const requestId = nextRequestId();
@@ -112,12 +127,13 @@ async function toPending(h: ReturnType<typeof harness>, inputTokens = 1_000_000)
           outputPrice: '0',
           cacheInputPrice: '0',
           coefficient: '1',
-          inputTokenUpperBound: 1_000_000,
+          inputTokenUpperBound: opts.inputUpper ?? 1_000_000,
           billingPolicyFingerprint: null,
         },
       ],
     },
-    reservationLimit: '10',
+    ...(opts.reservationPolicy !== undefined ? { reservationPolicy: opts.reservationPolicy } : {}),
+    reservationLimit: opts.reservationLimit ?? '10',
     authorizationTtlMs: 60_000,
   });
   await h.billing.signal({
@@ -403,6 +419,7 @@ describe('结算渠道链路与钩子', () => {
         quota: h.world.quota,
       }),
       channels: h.world.channels,
+      usageDefectBreaker: 5,
       failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
       clock: () => new Date(),
       onError: () => {},
@@ -551,6 +568,7 @@ describe('分支封口补充', () => {
         store: h.world.billing,
         quota: h.world.quota,
       }),
+      usageDefectBreaker: 5,
       failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
       clock: () => new Date(),
       onError: () => {},
@@ -614,6 +632,205 @@ describe('结算 usage 投影冲突红灯', () => {
     const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
     const outcome = await h.settlement.processClaim(defined(claim));
     expect(outcome).toBe('dead');
+    expect(defined(h.world.fixtures.requests.get(requestId)).status).toBe('dead');
+  });
+});
+
+describe('超收钳制（#over 死信回归：巨量 usage 不再阻死结算）', () => {
+  it('actual 超预留且超可用：钳到可收额，差额 waived 落库，余额不为负', async () => {
+    const h = harness();
+    // fixed 预留 0.01 + 界内大发票（upper 100M，收据 100M × 2/1M = 200）→ 可用 10 全收
+    const { userId, requestId } = await toPending(h, 100_000_000, {
+      inputUpper: 100_000_000,
+      reservationPolicy: { mode: 'fixed', amount: '0.01' },
+      reservationLimit: '1000',
+    });
+    const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    const outcome = await h.settlement.processClaim(defined(claim));
+    expect(outcome).toBe('settled');
+    const account = defined((await h.wallet.accounts(userId))[0]);
+    expect(account.balance).toBe('0'); // 10 − (2 预留内 + 8 可收) —— 恒不为负
+    expect(account.inFlight).toBe('0');
+    const row = defined(h.world.fixtures.requests.get(requestId));
+    expect(row.status).toBe('settled');
+    expect(row.waivedAmount).toBe('190');
+    const usage = defined(h.world.fixtures.usageLogs.get(requestId));
+    expect(usage.calculatedAmount).toBe('10'); // 投影按实收（应收 − 放弃）
+  });
+
+  it('可用恰好覆盖超额：全额收取 waived=0', async () => {
+    const h = harness();
+    const { userId, requestId } = await toPending(h, 5_000_000, {
+      inputUpper: 100_000_000,
+      reservationPolicy: { mode: 'fixed', amount: '0.01' },
+      reservationLimit: '1000',
+    }); // 应收 10（5M × 2/1M）= 恰好可用
+    const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    expect(await h.settlement.processClaim(defined(claim))).toBe('settled');
+    expect(defined((await h.wallet.accounts(userId))[0]).balance).toBe('0');
+    expect(defined(h.world.fixtures.requests.get(requestId)).waivedAmount).toBe('0');
+  });
+});
+
+describe('批量结算（账户行锁摊薄）', () => {
+  it('settleClaims：两单一事务全部落定（余额/在途/usage 各自正确）', async () => {
+    const h = harness();
+    const a = await toPending(h);
+    const b = await toPending(h);
+    const claims = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    expect(claims).toHaveLength(2);
+    const results = await h.settlement.settleClaims(claims);
+    expect(results.map((r) => r.outcome)).toEqual(['settled', 'settled']);
+    expect(defined((await h.wallet.accounts(a.userId))[0]).balance).toBe('8');
+    expect(defined((await h.wallet.accounts(b.userId))[0]).balance).toBe('8');
+    expect(defined(h.world.fixtures.requests.get(a.requestId)).status).toBe('settled');
+    expect(defined(h.world.fixtures.requests.get(b.requestId)).status).toBe('settled');
+  });
+
+  it('批内毒账单：整批回滚上抛（调用方回退逐张隔离）', async () => {
+    const h = harness();
+    const good = await toPending(h);
+    const bad = await toPending(h);
+    const row = defined(h.world.fixtures.requests.get(bad.requestId));
+    row.receipt = { ...row.receipt, inputPrice: 'garbage' };
+    const claims = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    await expect(h.settlement.settleClaims(claims)).rejects.toThrow();
+    // 回退逐张：好单结算、毒单死信
+    expect(await h.settlement.processClaim(defined(claims[0]))).toMatch(/settled|dead/);
+    expect(await h.settlement.processClaim(defined(claims[1]))).toMatch(/settled|dead/);
+    expect(defined(h.world.fixtures.requests.get(good.requestId)).status).toBe('settled');
+    expect(defined(h.world.fixtures.requests.get(bad.requestId)).status).toBe('dead');
+  });
+
+  it('空批安全返回', async () => {
+    const h = harness();
+    expect(await h.settlement.settleClaims([])).toEqual([]);
+  });
+});
+
+describe('用量验收门（症状回归：上游伪造巨量发票曾打穿渠道预算至 -3999 万）', () => {
+  /** 伪造发票场景装置：quote 界内物理上限小，发票 3000 万 token（物理不可能） */
+  async function forgedInvoiceCase(h: ReturnType<typeof harness>, channelId: number) {
+    const userId = nextUser();
+    await h.wallet.credit({ userId, amount: '20010', refType: 'topup', refId: `fg-${userId}` });
+    const requestId = nextRequestId();
+    await h.billing.authorize({
+      requestId,
+      userId,
+      stream: false,
+      quote: {
+        maxOutputTokens: 100,
+        candidates: [
+          {
+            mappingId: 1,
+            externalModel: 'm',
+            realModel: 'm',
+            inputPrice: '2000',
+            outputPrice: '0',
+            cacheInputPrice: '0',
+            coefficient: '1',
+            inputTokenUpperBound: 1_000,
+            billingPolicyFingerprint: null,
+          },
+        ],
+      },
+      reservationLimit: '1000',
+      authorizationTtlMs: 60_000,
+    });
+    await h.billing.reserveChannel({ requestId, channelId, amount: '2' });
+    await h.billing.signal({
+      type: 'request.succeeded',
+      requestId,
+      receipt: receiptFor(requestId, userId, {
+        channelId,
+        inputPrice: '2000',
+        outputPrice: '0',
+        usage: {
+          inputTokens: 20_000_000,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          estimated: false,
+        },
+      }),
+    });
+    return { userId, requestId };
+  }
+
+  it('伪造 3000 万 token 发票：钳到准入界结算，渠道预算不穿底，缺陷 +1 不熔断', async () => {
+    const h = harness();
+    const channelId = seedChannel(h.world, { upstreamBudget: '1000' });
+    const { userId, requestId } = await forgedInvoiceCase(h, channelId);
+    const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    expect(await h.settlement.processClaim(defined(claim))).toBe('settled');
+
+    const channel = defined(h.world.fixtures.channelsMap.get(channelId));
+    // 旧实现此处预算 = 1000 − 40000 = −39000（穿底）；新实现按验收值 2 扣减
+    expect(channel.upstreamBudget).toBe('998');
+    expect(channel.usageEvidenceDefects).toBe(1);
+    expect(channel.status).toBe(0); // 未过阈不熔断
+    // 用户按验收值计费（1000 × 2000/1M = 2）
+    const usage = defined(h.world.fixtures.usageLogs.get(requestId));
+    expect(usage.calculatedAmount).toBe('2');
+    const account = defined((await h.wallet.accounts(userId))[0]);
+    expect(account.balance).toBe('20008');
+  });
+
+  it('累计缺陷过阈 → 渠道熔断（status=3）', async () => {
+    const h = harness();
+    const channelId = seedChannel(h.world, { upstreamBudget: '1000' });
+    for (let i = 0; i < 5; i++) {
+      await forgedInvoiceCase(h, channelId);
+    }
+    const claims = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    for (const claim of claims) {
+      expect(await h.settlement.processClaim(defined(claim))).toBe('settled');
+    }
+    const channel = defined(h.world.fixtures.channelsMap.get(channelId));
+    expect(channel.usageEvidenceDefects).toBe(5);
+    expect(channel.status).toBe(3);
+  });
+
+  it('B4 经济闭合（界内发票但渠道预留低于应收官方成本）→ DefectError 死信', async () => {
+    const h = harness();
+    const channelId = seedChannel(h.world, { upstreamBudget: '10' });
+    const userId = nextUser();
+    await h.wallet.credit({ userId, amount: '10', refType: 'topup', refId: `b4-${userId}` });
+    const requestId = nextRequestId();
+    await h.billing.authorize({
+      requestId,
+      userId,
+      stream: false,
+      quote: {
+        maxOutputTokens: 0,
+        candidates: [
+          {
+            mappingId: 1,
+            externalModel: 'm',
+            realModel: 'm',
+            inputPrice: '2',
+            outputPrice: '0',
+            cacheInputPrice: '0',
+            coefficient: '1',
+            inputTokenUpperBound: 1_000_000,
+            billingPolicyFingerprint: null,
+          },
+        ],
+      },
+      reservationLimit: '10',
+      authorizationTtlMs: 60_000,
+    });
+    // 人为制造不一致：渠道预留 0.5 < 界内应收 2（正常授权链路不可能——预留=最坏Case）
+    await h.billing.reserveChannel({ requestId, channelId, amount: '0.5' });
+    await h.billing.signal({
+      type: 'request.succeeded',
+      requestId,
+      receipt: receiptFor(requestId, userId, {
+        channelId,
+        usage: { inputTokens: 1_000_000, cachedInputTokens: 0, outputTokens: 0, estimated: false },
+      }),
+    });
+    const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    expect(await h.settlement.processClaim(defined(claim))).toBe('dead');
     expect(defined(h.world.fixtures.requests.get(requestId)).status).toBe('dead');
   });
 });

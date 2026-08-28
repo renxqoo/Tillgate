@@ -25,7 +25,6 @@ function createSchema(production: boolean) {
     CLIENT_DB_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
     CLIENT_DB_MAX_USES: z.coerce.number().int().positive().default(1_000),
     /** 记账币种（billing guards 注入；充值/赠送/订阅同一口径） */
-    CLIENT_CURRENCY: z.string().default('CNY'),
     /** 用户面会话 JWT 密钥（与管理面、网关 App JWT 物理隔离） */
     JWT_SECRET: secretSchema('JWT_SECRET', production ? 32 : 16),
     /** 会话有效期（秒） */
@@ -37,7 +36,7 @@ function createSchema(production: boolean) {
     /** 邮箱验证码挑战：有效期/发送冷却/最大尝试次数 */
     CLIENT_CHALLENGE_TTL_MS: z.coerce.number().int().positive().default(600_000),
     CLIENT_CHALLENGE_COOLDOWN_MS: z.coerce.number().int().positive().default(60_000),
-    CLIENT_CHALLENGE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(10),
+    CLIENT_CHALLENGE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
     /** TOTP（MFA 预留词表；用户面暂不开放端点——identity 配置必填项） */
     CLIENT_TOTP_ISSUER: z.string().min(1).max(255).default('Tillgate'),
     /** 邮箱自助注册开关（关闭只留既有账号登录） */

@@ -49,6 +49,8 @@ const ACTIVE_MAPPING_COLUMNS = {
   pricingUnit: modelMappings.pricingUnit,
   unitPrice: modelMappings.unitPrice,
   pricingGroup: modelMappings.pricingGroup,
+  rpmLimit: modelMappings.rpmLimit,
+  tpmLimit: modelMappings.tpmLimit,
   isFree: modelMappings.isFree,
   fallbackModels: modelMappings.fallbackModels,
   billingPolicy: modelMappings.billingPolicy,

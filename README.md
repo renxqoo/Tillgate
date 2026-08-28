@@ -51,7 +51,7 @@ git clone https://github.com/renxqoo/Tillgate.git && cd Tillgate
 bun install                        # dependencies (bun.lock)
 cp .env.example .env               # required keys only; everything else has safe defaults
 # generate the required secrets (weak/empty values refuse to boot):
-for k in JWT_SECRET ADMIN_JWT_SECRET ENCRYPTION_KEY IDENTITY_CODE_PEPPER CLIENT_CODE_PEPPER CHANNEL_API_KEY_ENCRYPTION; do
+for k in JWT_SECRET ADMIN_JWT_SECRET ENCRYPTION_KEY IDENTITY_CODE_PEPPER CLIENT_CODE_PEPPER; do
   sed -i.bak -E "s|^#?[[:space:]]?${k}=.*|${k}=$(openssl rand -hex 32)|" .env; done; rm -f .env.bak
 docker compose --env-file .env -f docker/compose.dev.yml up -d   # postgres + redis
 bun packages/db/scripts/provision-fresh.ts   # fresh-db pre-provision (idempotent; required before first migrate)
@@ -81,7 +81,7 @@ git clone https://github.com/renxqoo/Tillgate.git && cd Tillgate
 # 2) Production .env — the ONLY config surface
 cp .env.example .env && vim .env
 #   Must change: JWT_SECRET / ADMIN_JWT_SECRET / ENCRYPTION_KEY / IDENTITY_CODE_PEPPER /
-#   CLIENT_CODE_PEPPER / CHANNEL_API_KEY_ENCRYPTION (strong random),
+#   CLIENT_CODE_PEPPER (strong random),
 #   POSTGRES_PASSWORD / REDIS_PASSWORD / TRACE_RECEIVER_TOKEN / OAUTH_API_BASE;
 #   NODE_ENV=production. DATABASE_URL / REDIS_URL are injected by compose automatically.
 chmod 600 .env

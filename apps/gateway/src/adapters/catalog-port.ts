@@ -152,6 +152,9 @@ async function toSnapshotRow(input: {
       pricingGroup: row.pricingGroup,
     }),
     billingPolicyFingerprint: policyFingerprint(row.billingPolicy),
+    ...(row.rpmLimit != null ? { rpmLimit: row.rpmLimit } : {}),
+    ...(row.tpmLimit != null ? { tpmLimit: row.tpmLimit } : {}),
+    ...(row.contextLength != null ? { contextLength: row.contextLength } : {}),
     ...(resolved.overrides?.pricingWindow != null
       ? { pricingWindow: resolved.overrides.pricingWindow }
       : {}),

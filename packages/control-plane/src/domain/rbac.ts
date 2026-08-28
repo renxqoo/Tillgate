@@ -38,6 +38,8 @@ export const ENFORCED_CODES = [
   'funds:revoke',
   'funds:create',
   'funds:retry',
+  'funds:floor',
+  'funds:fx',
   'funds:abandon',
   // catalog
   'catalog:read',

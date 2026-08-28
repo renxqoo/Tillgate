@@ -6,7 +6,7 @@ import {
   varchar,
   smallint,
   timestamp,
-    index,
+  index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { users } from './users.js';

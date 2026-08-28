@@ -101,12 +101,12 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
     const config = loadGatewayConfig({
       DATABASE_URL: `${baseUrl}?options=-c%20search_path%3D${schema}`,
       REDIS_URL: defined(redisUrl, 'REDIS_URL'),
-      CHANNEL_API_KEY_ENCRYPTION: 'aB3daB3daB3daB3daB3daB3daB3daB3d',
+      ENCRYPTION_KEY: 'aB3daB3daB3daB3daB3daB3daB3daB3d',
       JWT_SECRET: 'eF5geF5geF5geF5geF5geF5geF5geF5g',
       NODE_ENV: 'test',
       OTEL_TRACES_MODE: 'off',
     });
-    assembly = assembleGateway(config);
+    assembly = await assembleGateway(config);
     app = createGatewayApp({
       inference: assembly.inference,
       reader: {

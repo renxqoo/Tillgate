@@ -21,14 +21,8 @@ export default async function SettingsPage() {
   }
   // 按钮级显隐：无 settings:update → 时区只读；
   // 无 settings:integrations → 集成/SMTP 操作位隐藏。权威判定在 admin-api ACL。
-  const canUpdateTimezone = me != null && hasPerm(me, 'settings:update');
   const canManageIntegrations = me != null && hasPerm(me, 'settings:integrations');
   return (
-    <SettingsContent
-      me={me}
-      error={loadError}
-      canUpdateTimezone={canUpdateTimezone}
-      canManageIntegrations={canManageIntegrations}
-    />
+    <SettingsContent me={me} error={loadError} canManageIntegrations={canManageIntegrations} />
   );
 }

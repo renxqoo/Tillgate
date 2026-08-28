@@ -652,6 +652,55 @@
       "when": 1788830400000,
       "tag": "0093_admin_resend_invite_endpoint",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1788916800000,
+      "tag": "0094_billing_requests_waived_amount",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1789003200000,
+      "tag": "0095_wallet_debit_floor",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1789089600000,
+      "tag": "0096_debit_floor_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1789096800000,
+      "tag": "0097_billing_reservation_policy_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1789100400000,
+      "tag": "0098_channel_usage_evidence_defects",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1789104000000,
+      "tag": "0099_billing_reservation_limit_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1789188000000,
+      "tag": "0100_funds_center_module",
+      "breakpoints": true
     }
   ]
 }

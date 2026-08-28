@@ -12,8 +12,10 @@ import {
   securityHeaders,
   requestIdMiddleware,
   HttpErrors,
+  type DbBudgetOptions,
 } from '@tillgate/http';
 import type { Inference } from '@tillgate/inference';
+import type { OutputCapConfig } from '@tillgate/inference';
 import type { RequestLogStore } from '@tillgate/observability';
 import { otelMiddleware } from './http/middleware/otel';
 import { requestLogMiddleware } from './http/middleware/request-log';
@@ -23,7 +25,7 @@ import {
   type AuthGuards,
   type AuthReadModel,
 } from './http/middleware/api-key';
-import type { RateLimitGate } from './http/middleware/rate-limit';
+import { preauthIpRateLimitMiddleware, type RateLimitGate } from './http/middleware/rate-limit';
 import { inferenceEndpoints } from './http/contracts/inference-endpoints';
 import { inferenceRoutes, enginesAliasRoutes } from './http/routes/inference-endpoints';
 import { geminiNativeRoutes } from './http/routes/native-gemini';
@@ -55,11 +57,18 @@ export interface GatewayAppDeps {
     tokenTtlSeconds: number;
   };
   rateLimit?: RateLimitGate;
+  /** 输出上界口径（准入预占与 inference prepare 共用配置；缺省取包缺省） */
+  outputCap?: OutputCapConfig;
+  /**
+   * 服务端 drain 信号（停机宽限耗尽时以 ServerDrainAbort abort——驱动
+   * server_draining 终态分类；与客户端断连信号在各入口合成）。
+   */
+  drainSignal?: AbortSignal;
   oauthIpGuard?: AuthFailureGuard;
   corsOrigins?: readonly string[];
   bodyLimitBytes?: number;
   /** DB 并发预算门(万级形态入口排队;缺省关闭——不注入即旁路) */
-  dbBudget?: { limit: number; maxQueue: number; waitTimeoutMs: number };
+  dbBudget?: DbBudgetOptions;
   uploadLimits?: {
     imageMime: ReadonlySet<string>;
     audioMime: ReadonlySet<string>;
@@ -67,6 +76,45 @@ export interface GatewayAppDeps {
   };
   trustedProxyHops: number;
   logger?: { error(obj: unknown, msg: string): void };
+}
+
+/**
+ * 预认证链挂载（顺序即契约）：
+ * 1. per-IP 硬限——未认证洪水不经过任何鉴权维度限流，且每发都写 request_logs（写放大），
+ *    故本闸挂日志之前：超限 429 直接出站、不写日志；/v1 与 /v1beta 双入口同一 IP 桶。
+ * 2. requestLog——鉴权之前，401/429 也入日志（「记录一切 /v1 与 /v1beta 请求」语义）。
+ */
+function mountPreauthChain(app: Hono<AuthEnv>, deps: GatewayAppDeps): void {
+  const gate = deps.rateLimit;
+  if (gate != null && gate.preauthIpRpm != null) {
+    const preauth = preauthIpRateLimitMiddleware({
+      limiter: gate.limiter,
+      maxPerMinute: gate.preauthIpRpm,
+      trustedProxyHops: deps.trustedProxyHops,
+    });
+    app.use('/v1/*', preauth);
+    app.use('/v1beta/*', preauth);
+    // /oauth/token 是第三个公网入口（不在 /v1 前缀下）：未认证洪水在 ipGuard 锁定
+    // 前每发都是一次 verifyAppClient DB 读 + 2 个 Redis 写——同闸覆盖
+    app.use('/oauth/token', preauth);
+  }
+  const requestLog = requestLogMiddleware({
+    store: deps.requestLogs,
+    ...(deps.logger != null ? { logger: deps.logger } : {}),
+    trustedProxyHops: deps.trustedProxyHops,
+  });
+  app.use('/v1/*', requestLog);
+  app.use('/v1beta/*', requestLog);
+}
+
+/** 推理路由族共用依赖束（装配字段条件展开收口一处） */
+function inferenceRouteDepsOf(deps: GatewayAppDeps) {
+  return {
+    inference: deps.inference,
+    ...(deps.rateLimit != null ? { rateLimit: deps.rateLimit } : {}),
+    ...(deps.outputCap != null ? { outputCap: deps.outputCap } : {}),
+    ...(deps.drainSignal != null ? { drainSignal: deps.drainSignal } : {}),
+  };
 }
 
 // eslint-disable-next-line max-lines-per-function -- HTTP 装配平铺：中间件链与路由挂载顺序即契约
@@ -116,15 +164,7 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
     return c.json({ ok: true });
   });
 
-  // requestLog 前置到鉴权之前：401/429 也入日志（「记录一切 /v1 请求」语义）
-  app.use(
-    '/v1/*',
-    requestLogMiddleware({
-      store: deps.requestLogs,
-      ...(deps.logger != null ? { logger: deps.logger } : {}),
-      trustedProxyHops: deps.trustedProxyHops,
-    }),
-  );
+  mountPreauthChain(app, deps);
 
   const authMiddleware = () =>
     apiKeyMiddleware(deps.reader, deps.authGuards, {
@@ -140,10 +180,7 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
   }
   app.route('/v1/models', modelsRoutes(deps.models));
 
-  const routeDeps = {
-    inference: deps.inference,
-    ...(deps.rateLimit != null ? { rateLimit: deps.rateLimit } : {}),
-  };
+  const routeDeps = inferenceRouteDepsOf(deps);
   for (const endpoint of inferenceEndpoints) {
     app.use(endpoint.path, authMiddleware());
     app.route(endpoint.path, inferenceRoutes(routeDeps, endpoint));

@@ -248,7 +248,7 @@ function gate(released: string[]) {
       released.push(id);
     },
   } as unknown as SlidingWindowLimiter;
-  return { limiter, globalRpm: null } satisfies RateLimitGate;
+  return { limiter, globalRpm: null, preauthIpRpm: null } satisfies RateLimitGate;
 }
 
 describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {

@@ -46,7 +46,7 @@ describe('敞口守卫（同一口径）', () => {
   it('不足时按口径分流错误码（insufficient_balance / insufficient_cash，context 携带口径事实）', () => {
     let caught: unknown;
     try {
-      assertCanDebit(account, new Decimal('12.01'), 1);
+      assertCanDebit(account, new Decimal('15.01'), 1);
     } catch (error) {
       caught = error;
     }
@@ -56,13 +56,38 @@ describe('敞口守卫（同一口径）', () => {
     expect(caught.context).toEqual({
       userId: 1,
       available: '12',
-      required: '12.01',
+      required: '15.01',
       currency: 'CNY',
     });
 
     expectBusinessCode(
-      () => assertCanDebit(account, new Decimal('7.01'), 1, { allowCredit: false }),
+      () => assertCanDebit(account, new Decimal('10.01'), 1, { allowCredit: false }),
       'billing.insufficient_cash',
+    );
+  });
+
+  it('余额本体充足仅被在途占用 → funds_held_in_flight（重试语义，非充值语义）', () => {
+    let caught: unknown;
+    try {
+      // 12.01 ≤ 余额+授信 15，但 available 12 不足 → 在途占用
+      assertCanDebit(account, new Decimal('12.01'), 1);
+    } catch (error) {
+      caught = error;
+    }
+    if (!isBusinessError(caught)) throw new Error('expected business rejection');
+    expect(caught.code).toBe('billing.funds_held_in_flight');
+    expect(caught.category).toBe('quota_exhausted');
+    expect(caught.context).toEqual({
+      userId: 1,
+      available: '12',
+      required: '12.01',
+      currency: 'CNY',
+      inFlight: '3',
+    });
+    // 现金口径同分流：7.01 ≤ 余额 10，现金 available 7 不足
+    expectBusinessCode(
+      () => assertCanDebit(account, new Decimal('7.01'), 1, { allowCredit: false }),
+      'billing.funds_held_in_flight',
     );
   });
 

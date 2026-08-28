@@ -132,7 +132,7 @@ export async function setupE2EAdmin(): Promise<E2EAdminWorld | null> {
   applyAdminJourneyEnv();
 
   const config = loadAdminApiConfig();
-  const assembly = assembleAdminApi(config);
+  const assembly = await assembleAdminApi(config);
 
   // 进货行/审计行 admin_id 外键指向 admins——令牌 subject 必须是真实管理员
   const adminRows = await assembly.db

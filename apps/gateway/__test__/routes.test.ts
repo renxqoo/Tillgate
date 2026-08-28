@@ -14,6 +14,7 @@ function withErrorFace<E extends AuthEnv>(app: Hono<E>): Hono<E> {
   app.onError(errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
   return app;
 }
+import { ServerDrainAbort, asServerDrainAbort } from '@tillgate/ai';
 import type { Inference, ChatDelivered } from '@tillgate/inference';
 import type { MiddlewareHandler } from 'hono';
 import {
@@ -27,6 +28,7 @@ import { geminiNativeRoutes } from '../src/http/routes/native-gemini';
 import { modelsRoutes } from '../src/http/routes/models';
 import { generationRoutes } from '../src/http/routes/generation';
 import { oauthTokenRoutes } from '../src/http/routes/oauth-token';
+import type { AuthFailureGuard } from '@tillgate/runtime';
 import { modalityMultipartRoutes } from '../src/http/routes/modality-multipart';
 import { inferenceEndpoints } from '../src/http/contracts/inference-endpoints';
 import { defined } from './defined';
@@ -69,23 +71,92 @@ function stubInference(over: Partial<Inference> = {}): Inference {
   } as Inference;
 }
 
-function harness(inference: Inference) {
+/** 记录型守卫（可编程锁定集合） */
+function recordingGuard(lockedKeys: Set<string>): {
+  guard: AuthFailureGuard;
+  calls: { failures: string[]; successes: string[] };
+} {
+  const calls = { failures: [] as string[], successes: [] as string[] };
+  const guard = {
+    isLocked: async (key: string) => ({ locked: lockedKeys.has(key), retryAfterSec: 60 }),
+    recordFailure: async (key: string) => {
+      calls.failures.push(key);
+      return { locked: false, retryAfterSec: 60 };
+    },
+    recordSuccess: async (key: string) => {
+      calls.successes.push(key);
+    },
+  };
+  return { guard, calls };
+}
+
+function oauthApp(guard: AuthFailureGuard) {
+  return withErrorFace(
+    new Hono<AuthEnv>().route(
+      '/oauth/token',
+      oauthTokenRoutes({
+        verifyAppClient: async ({ clientId, clientSecret }) =>
+          clientId === 'app_0123456789abcdef' && clientSecret === 's'
+            ? { id: 5, appId: 'app-1', userId: 42, scope: null }
+            : null,
+        jwtSecret: JWT.secret,
+        tokenTtlSeconds: 3_600,
+        issuer: JWT.issuer,
+        audience: JWT.audience,
+        ipGuard: guard,
+        trustedProxyHops: 0,
+      }),
+    ),
+  );
+}
+
+/** 记录型限流闸（RPM 放行；TPM 预占入参全记录） */
+function recordingGate() {
+  const calls = {
+    reserveTpmAll: [] as Array<[Array<{ dimension: string; estimatedTokens: number }>, string]>,
+    checkAll: 0,
+  };
+  const limiter = {
+    checkAll: async () => {
+      calls.checkAll += 1;
+      return { allowed: true };
+    },
+    reserveTpmAll: async (
+      dims: Array<{ dimension: string; estimatedTokens: number }>,
+      requestId: string,
+    ) => {
+      calls.reserveTpmAll.push([dims, requestId]);
+      return { allowed: true };
+    },
+    check: async () => ({ allowed: true }),
+    releaseTpm: async () => {},
+  };
+  return { gate: { limiter, globalRpm: null, preauthIpRpm: null } as never, calls };
+}
+
+function harness(inference: Inference, opts: { drainSignal?: AbortSignal } = {}) {
   const app = withErrorFace(new Hono<AuthEnv>());
   app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
   app.use('/v1beta/*', apiKeyMiddleware(READER, undefined, JWT));
-  for (const ep of inferenceEndpoints) app.route(ep.path, inferenceRoutes({ inference }, ep));
+  const routeDeps = {
+    inference,
+    ...(opts.drainSignal != null ? { drainSignal: opts.drainSignal } : {}),
+  };
+  for (const ep of inferenceEndpoints) {
+    app.route(ep.path, inferenceRoutes(routeDeps, ep));
+  }
   const embeddings = defined(
     inferenceEndpoints.find((e) => e.path === '/v1/embeddings'),
     'embeddings endpoint',
   );
-  app.route('/v1/engines/:model', enginesAliasRoutes({ inference }, embeddings));
-  app.route('/', geminiNativeRoutes({ inference }));
-  app.route('/', generationRoutes({ inference }));
+  app.route('/v1/engines/:model', enginesAliasRoutes(routeDeps, embeddings));
+  app.route('/', geminiNativeRoutes(routeDeps));
+  app.route('/', generationRoutes(routeDeps));
   app.route(
     '/oauth/token',
     oauthTokenRoutes({
       verifyAppClient: async ({ clientId, clientSecret }) =>
-        clientId === 'ci-1' && clientSecret === 's'
+        clientId === 'app_0123456789abcdef' && clientSecret === 's'
           ? { id: 5, appId: 'app-1', userId: 42, scope: { rpm: 10 } }
           : null,
       jwtSecret: JWT.secret,
@@ -323,7 +394,7 @@ describe('oauth token（三形态 + 闭环）', () => {
     const app = harness(stubInference());
     const ok = await post(app, '/oauth/token', {
       grant_type: 'client_credentials',
-      client_id: 'ci-1',
+      client_id: 'app_0123456789abcdef',
       client_secret: 's',
     });
     expect(ok.status).toBe(200);
@@ -338,14 +409,14 @@ describe('oauth token（三形态 + 闭环）', () => {
     const form = await app.request('/oauth/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: 'grant_type=client_credentials&client_id=ci-1&client_secret=s',
+      body: 'grant_type=client_credentials&client_id=app_0123456789abcdef&client_secret=s',
     });
     expect(form.status).toBe(200);
 
     const basic = await app.request('/oauth/token', {
       method: 'POST',
       headers: {
-        authorization: `Basic ${Buffer.from('ci-1:s').toString('base64')}`,
+        authorization: `Basic ${Buffer.from('app_0123456789abcdef:s').toString('base64')}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify({ grant_type: 'client_credentials' }),
@@ -354,7 +425,7 @@ describe('oauth token（三形态 + 闭环）', () => {
 
     const bad = await post(app, '/oauth/token', {
       grant_type: 'client_credentials',
-      client_id: 'ci-1',
+      client_id: 'app_0123456789abcdef',
       client_secret: 'wrong',
     });
     expect(bad.status).toBe(401);
@@ -362,7 +433,7 @@ describe('oauth token（三形态 + 闭环）', () => {
 
     const badGrant = await post(app, '/oauth/token', {
       grant_type: 'password',
-      client_id: 'ci-1',
+      client_id: 'app_0123456789abcdef',
       client_secret: 's',
     });
     expect(badGrant.status).toBe(400);
@@ -397,7 +468,7 @@ describe('oauth token（三形态 + 闭环）', () => {
     );
     const tokenRes = await post(app, '/oauth/token', {
       grant_type: 'client_credentials',
-      client_id: 'ci-1',
+      client_id: 'app_0123456789abcdef',
       client_secret: 's',
     });
     const { access_token: token } = (await tokenRes.json()) as { access_token: string };
@@ -407,6 +478,236 @@ describe('oauth token（三形态 + 闭环）', () => {
       body: JSON.stringify({ model: 'm', messages: [{}] }),
     });
     expect(res.status).toBe(200);
+  });
+});
+
+describe('客户端取消信号贯通（c.req.raw.signal → ChatInput.signal）', () => {
+  it.each([
+    ['/v1/chat/completions', { model: 'm', messages: [{}] }],
+    ['/v1/engines/gpt-4o/embeddings', { input: 'x' }],
+  ])('%s 透传请求 signal 给 inference', async (path, body) => {
+    const seen: unknown[] = [];
+    const inference = stubInference({
+      chat: async (input) => {
+        seen.push(input);
+        return { ok: true, status: 200, body: {} };
+      },
+    });
+    const app = harness(inference);
+    const controller = new AbortController();
+    const res = await app.request(path, {
+      method: 'POST',
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    expect(res.status).toBe(200);
+    expect((seen[0] as { signal?: AbortSignal }).signal).toBe(controller.signal);
+  });
+
+  it('gemini 原生 /v1beta 入口透传请求 signal', async () => {
+    const seen: unknown[] = [];
+    const inference = stubInference({
+      chat: async (input) => {
+        seen.push(input);
+        return { ok: true, status: 200, body: {} };
+      },
+    });
+    const app = harness(inference);
+    const controller = new AbortController();
+    const res = await app.request('/v1beta/models/gemini-x:generateContent', {
+      method: 'POST',
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+      signal: controller.signal,
+    });
+    expect(res.status).toBe(200);
+    expect((seen[0] as { signal?: AbortSignal }).signal).toBe(controller.signal);
+  });
+
+  it('multipart 族入口透传请求 signal', async () => {
+    const seen: unknown[] = [];
+    const inference = stubInference({
+      chat: async (input) => {
+        seen.push(input);
+        return { ok: true, status: 200, body: {} };
+      },
+    });
+    const app = withErrorFace(new Hono<AuthEnv>());
+    app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
+    app.route('/', modalityMultipartRoutes({ inference }, { bodyLimitBytes: 10 * 1024 * 1024 }));
+    const controller = new AbortController();
+    const form = new FormData();
+    form.append('model', 'img-x');
+    form.append('prompt', 'a cat');
+    form.append('image', new File([new Uint8Array([1, 2, 3])], 'cat.png', { type: 'image/png' }));
+    const res = await app.request('/v1/images/edits', {
+      method: 'POST',
+      headers: { authorization: 'Bearer sk_k' },
+      body: form,
+      signal: controller.signal,
+    });
+    expect(res.status).toBe(200);
+    expect((seen[0] as { signal?: AbortSignal }).signal).toBe(controller.signal);
+  });
+
+  it('generation 提交入口透传请求 signal', async () => {
+    const seen: unknown[] = [];
+    const inference = stubInference({
+      generation: {
+        submit: async (input) => {
+          seen.push(input);
+          return { ok: true, taskId: '019c0b7d-0000-7000-8000-0000000000aa', expiresAt: 1 };
+        },
+        query: async () => null as never,
+        adminList: async () => ({ rows: [], total: 0 }),
+        settledAmounts: async () => new Map(),
+      },
+    });
+    const app = harness(inference);
+    const controller = new AbortController();
+    const res = await app.request('/v1/video/generations', {
+      method: 'POST',
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'video-x', prompt: 'a cat', duration: 6 }),
+      signal: controller.signal,
+    });
+    expect(res.status).toBe(201);
+    expect((seen[0] as { signal?: AbortSignal }).signal).toBe(controller.signal);
+  });
+});
+
+describe('oauth token 爆破守卫（S7：clientId 校验 + 成功解锁）', () => {
+  it('畸形 clientId（非 app_+16hex）→ 401 且不触守卫（键空间不被任意串污染）', async () => {
+    const { guard, calls } = recordingGuard(new Set());
+    const app = oauthApp(guard);
+    const res = await post(app, '/oauth/token', {
+      grant_type: 'client_credentials',
+      client_id: 'x'.repeat(500),
+      client_secret: 's',
+    });
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as { error: string }).error).toBe('invalid_client');
+    expect(calls.failures).toHaveLength(0); // 不计数、不写键
+  });
+
+  it('client 维被锁 + 合法凭证 → 验证通过并清锁（持有人不被连坐死锁）；错凭证仍 401', async () => {
+    const { guard, calls } = recordingGuard(new Set(['client:app_0123456789abcdef']));
+    const app = oauthApp(guard);
+    const ok = await post(app, '/oauth/token', {
+      grant_type: 'client_credentials',
+      client_id: 'app_0123456789abcdef',
+      client_secret: 's',
+    });
+    expect(ok.status).toBe(200); // 锁定态合法持有人可验证解锁
+    expect(calls.successes).toContain('client:app_0123456789abcdef');
+    const bad = await post(app, '/oauth/token', {
+      grant_type: 'client_credentials',
+      client_id: 'app_0123456789abcdef',
+      client_secret: 'wrong',
+    });
+    expect(bad.status).toBe(401);
+    expect(((await bad.json()) as { error_description: string }).error_description).toContain(
+      'locked',
+    );
+  });
+});
+
+describe('TPM 预占口径（B8：含输出上界；B7：模态族豁免）', () => {
+  /** 带 TPM 限额的 reader（TPM 维存在时豁免/预占才可观测） */
+  const LIMITED_READER: AuthReadModel = {
+    resolveKeyByHash: async () => ({
+      keyId: 7,
+      userId: 42,
+      rpmLimit: 60,
+      tpmLimit: 100_000,
+      allowPaygFallback: false,
+      userRpmLimit: null,
+      userTpmLimit: null,
+    }),
+    resolveApp: async () => null,
+  };
+
+  it('chat 端点预占 = 输入字节 + min(max_tokens×n, cap)（与 billing 敞口同式）', async () => {
+    const { gate, calls } = recordingGate();
+    const app = withErrorFace(new Hono<AuthEnv>());
+    app.use('/v1/*', apiKeyMiddleware(LIMITED_READER, undefined, JWT));
+    const chatEndpoint = defined(
+      inferenceEndpoints.find((e) => e.path === '/v1/chat/completions'),
+      'chat endpoint',
+    );
+    app.route(
+      chatEndpoint.path,
+      inferenceRoutes({ inference: stubInference(), rateLimit: gate }, chatEndpoint),
+    );
+    const body = { model: 'm', messages: [{}], max_tokens: 100 };
+    const res = await post(app, '/v1/chat/completions', body);
+    expect(res.status).toBe(200);
+    const dims = calls.reserveTpmAll[0]?.[0];
+    expect(dims).toBeDefined();
+    // 输入字节 + 声明 max_tokens（未声明时按缺省 4096——不小于纯输入）
+    const inputBytes = Buffer.byteLength(JSON.stringify(body), 'utf8');
+    expect(dims?.[0]?.estimatedTokens).toBe(inputBytes + 100);
+  });
+
+  it('multipart 模态族：RPM 照查、TPM 维豁免（按张/按秒计价——预占恒 0 的假口径移除）', async () => {
+    const { gate, calls } = recordingGate();
+    const app = withErrorFace(new Hono<AuthEnv>());
+    app.use('/v1/*', apiKeyMiddleware(LIMITED_READER, undefined, JWT));
+    app.route('/', modalityMultipartRoutes({ inference: stubInference(), rateLimit: gate }));
+    const form = new FormData();
+    form.append('model', 'img-x');
+    form.append('prompt', 'a cat');
+    form.append('image', new File([new Uint8Array([1, 2, 3])], 'cat.png', { type: 'image/png' }));
+    const res = await app.request('/v1/images/edits', {
+      method: 'POST',
+      headers: { authorization: 'Bearer sk_k' },
+      body: form,
+    });
+    expect(res.status).toBe(200);
+    expect(calls.checkAll).toBe(1); // RPM 维照查
+    expect(calls.reserveTpmAll).toHaveLength(0); // TPM 维不预占
+  });
+});
+
+describe('server_draining 生产者（drain 信号合成 + reason 透传）', () => {
+  it('drainSignal 注入时：inference 收到合成信号，abort reason 为 ServerDrainAbort（终态分类可用）', async () => {
+    const drain = new AbortController();
+    const seen: AbortSignal[] = [];
+    const inference = stubInference({
+      chat: async (input) => {
+        seen.push(input.signal as AbortSignal);
+        // 在途时触发宽限耗尽式 abort
+        drain.abort(new ServerDrainAbort());
+        return { ok: true, status: 200, body: {} };
+      },
+    });
+    const app = harness(inference, { drainSignal: drain.signal });
+    const res = await post(app, '/v1/chat/completions', { model: 'm', messages: [{}] });
+    expect(res.status).toBe(200);
+    const signal = defined(seen[0], 'seen[0]');
+    expect(signal.aborted).toBe(true);
+    expect(asServerDrainAbort(signal.reason)).not.toBeNull(); // drain 标记贯通
+    expect(signal.reason).toBeInstanceOf(ServerDrainAbort);
+  });
+
+  it('无 drainSignal 时信号原样透传（客户端断连语义不变——B1 契约保持）', async () => {
+    const seen: AbortSignal[] = [];
+    const inference = stubInference({
+      chat: async (input) => {
+        seen.push(input.signal as AbortSignal);
+        return { ok: true, status: 200, body: {} };
+      },
+    });
+    const app = harness(inference);
+    const client = new AbortController();
+    await app.request('/v1/chat/completions', {
+      method: 'POST',
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'm', messages: [{}] }),
+      signal: client.signal,
+    });
+    expect(seen[0]).toBe(client.signal); // 同一引用（不包一层）
   });
 });
 

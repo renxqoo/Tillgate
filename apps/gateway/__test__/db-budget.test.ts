@@ -30,4 +30,14 @@ describe('gatewayDbBudget', () => {
   it('pool 1：预算 1 = 池容量，零余量 → fail-fast', () => {
     expect(() => gatewayDbBudget(1)).toThrow(/DB_POOL_MAX must be >= 2/);
   });
+
+  it('drainSignal 可选透传（db-budget-signals）：缺省不带字段,传入即注入且不影响推导', () => {
+    expect(gatewayDbBudget(10).drainSignal).toBeUndefined();
+    const { signal } = new AbortController();
+    const budget = gatewayDbBudget(10, signal);
+    expect(budget.drainSignal).toBe(signal);
+    expect(budget.limit).toBe(8);
+    expect(budget.maxQueue).toBe(20_000);
+    expect(budget.waitTimeoutMs).toBe(120_000);
+  });
 });

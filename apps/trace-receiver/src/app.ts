@@ -32,7 +32,7 @@ export interface ReceiverAppDeps {
   /** 共享令牌;未配置（开发内网）时放行——生产强制由 config 层 fail-fast */
   token?: string;
   /** 5xx 服务端日志出口(pino 结构兼容;缺省静默) */
-  logger?: { error(obj: Record<string, unknown>, msg?: string): void };
+  logger?: { error(obj: unknown, msg?: string): void };
 }
 
 /** /v1/traces 请求体上限:OTLP JSON 批次远小于此;无上限则整读任意体积 → OOM/存储耗尽 */
@@ -58,6 +58,8 @@ export function createReceiverApp(deps: ReceiverAppDeps): Hono {
     // 健康探针豁免鉴权:/readyz /livez 只返回探活状态、无敏感数据——
     // 若一并挡 401,compose/K8s healthcheck（不带 Bearer）会让容器永久 unhealthy
     if (c.req.path === '/readyz' || c.req.path === '/livez') return next();
+    // 无令牌放行仅可达于显式 TRACE_RECEIVER_OPEN=true(config fail-fast 保证——
+    // 装配遗漏不会再走到这里;启动日志会打 auth: 'open(dev)')
     if (deps.token === undefined) return next();
     const auth = c.req.header('authorization') ?? '';
     if (!timingSafeTokenEqual(auth, `Bearer ${deps.token}`)) {
@@ -96,10 +98,9 @@ export function createReceiverApp(deps: ReceiverAppDeps): Hono {
       await deps.pingDb();
       return c.json({ status: 'ok', dependencies: { postgres: 'up' } });
     } catch (error) {
-      return c.json(
-        { status: 'fail', dependencies: { postgres: 'down' }, error: (error as Error).message },
-        503,
-      );
+      // 故障细节只进日志——公开探针不回显驱动错误串(S6)
+      deps.logger?.error({ err: error }, 'readyz ping failed');
+      return c.json({ status: 'fail', dependencies: { postgres: 'down' } }, 503);
     }
   });
 

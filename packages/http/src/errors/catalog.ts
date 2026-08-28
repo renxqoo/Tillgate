@@ -53,6 +53,18 @@ export const HttpErrors = defineErrorCatalog('http', {
   not_found: { category: 'not_found', message: 'Path not found', zh: '路径不存在' },
 
   // ── DB 并发预算门（db-budget 中间件抛点;unavailable → 503,客户端按 Retry-After 重试）──
+  /** 客户端断连放弃（入口/排队中）：死连接不占预算不执行业务链,防幻影负载 */
+  db_budget_abandoned: {
+    category: 'unavailable',
+    message: 'DB concurrency budget wait abandoned, client disconnected',
+    zh: '数据库并发预算等待已放弃（客户端已断开）',
+  },
+  /** 停机排水拒流：drain 宽限耗尽,排队者立即出局、新到立即拒 */
+  db_budget_draining: {
+    category: 'unavailable',
+    message: 'Server draining, DB concurrency budget closed, retry later',
+    zh: '服务停机排水中，数据库并发预算已关闭，请稍后重试',
+  },
   /** 预算队列已满：立即拒绝（不排队）——入口背压,过载保护 */
   db_budget_full: {
     category: 'unavailable',

@@ -71,6 +71,7 @@ function harness() {
     walletStore: walletMemory.store,
     fundingRegistry,
     channels: world.channels,
+    usageDefectBreaker: 5,
     failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
     clock: () => new Date('2026-08-23T00:00:00Z'),
     onError: () => {},

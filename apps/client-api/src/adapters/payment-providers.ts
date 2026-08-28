@@ -32,14 +32,16 @@ export function createClientPayments(args: {
   readonly orderLimiter: FixedWindowCounter;
   readonly logger: Logger;
   readonly clock: () => Date;
+  /** 平台币种（写一次 KV 启动读;支付/充值面同源） */
+  readonly platformCurrency: string;
 }): PaymentsApi {
-  const { config, db, wallet, logger, clock, reader } = args;
+  const { config, db, wallet, logger, clock, reader, platformCurrency } = args;
   return createPaymentsApi({
     store: args.store,
     orders: createPostgresPaymentOrderStore(db),
     wallet,
-    providers: [dynamicEpayProvider(reader), dynamicStripeProvider(reader, config.CLIENT_CURRENCY)],
-    currency: config.CLIENT_CURRENCY,
+    providers: [dynamicEpayProvider(reader), dynamicStripeProvider(reader, platformCurrency)],
+    currency: platformCurrency,
     exchangeRate: config.TOPUP_EXCHANGE_RATE,
     topupMin: config.TOPUP_MIN,
     topupMax: config.TOPUP_MAX,

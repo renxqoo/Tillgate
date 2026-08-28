@@ -29,6 +29,7 @@ export function UsersContent({
           <TableHead className="text-right">{t('reservedBalance')}</TableHead>
           <TableHead className="text-right">{t('availableBalance')}</TableHead>
           <TableHead className="text-right">{tc('creditLimit')}</TableHead>
+          <TableHead className="text-right">{tc('debitFloor')}</TableHead>
           <TableHead className="text-right">{tc('dailySpendLimit')}</TableHead>
           <TableHead className="w-44">{tc('lastLogin')}</TableHead>
           <TableHead className="w-16 text-center">{tc('actions')}</TableHead>

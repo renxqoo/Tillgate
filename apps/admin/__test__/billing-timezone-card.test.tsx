@@ -23,7 +23,7 @@ vi.mock('@/server/settings-actions', async () => {
   };
 });
 
-import { BillingTimezoneCard } from '../src/features/settings/billing-timezone-card';
+import { BillingTimezoneCard } from '../src/features/funds/billing-timezone-card';
 
 function renderCard(canUpdate: boolean) {
   return render(

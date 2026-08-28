@@ -24,6 +24,13 @@ import { createDb, closeDb, type Db, type DbTx } from '../src/index.js';
 const PROVISION_FILES = [
   '../migrations/0059_wallet_ledger_operations_convergence.sql',
   '../migrations/0076_identity_tables.sql',
+  // 0059 的 create or replace function 是「替换」而非幂等——重放会把
+  // wallet_assert_account_coherent 倒回旧版（0069/0095 的后续版本被覆盖，
+  // 表现为每次 up -d 后透支地板/负余额结算神秘失效）。provision 末尾必须
+  // 追加「最新触发改版迁移」重放函数终态；后续再改此函数时同步更新此处。
+  '../migrations/0095_wallet_debit_floor.sql',
+  // 0097：预扣策略端点 ACL 绑定（幂等 INSERT——NOT EXISTS 守卫，空库 provision 同样收口）
+  '../migrations/0097_billing_reservation_policy_admin.sql',
 ] as const;
 
 function loadEnvFile(): void {

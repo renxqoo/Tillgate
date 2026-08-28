@@ -173,6 +173,97 @@ describe('请求日志（记录一切 /v1 请求）', () => {
     expect(typeof entry.durationMs).toBe('number');
   });
 
+  it('/v1beta Gemini 原生请求也入日志（与 /v1 同语义——补观测缺口）', async () => {
+    logs.length = 0;
+    const app = makeApp();
+    await app.request('/v1beta/models/gemini-x:generateContent', {
+      method: 'POST',
+      headers: { ...STATIC_KEY_AUTH.headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+    });
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({
+      statusCode: 200,
+      method: 'POST',
+      path: '/v1beta/models/gemini-x:generateContent',
+    });
+  });
+
+  it('预认证 per-IP 限流：超限 429 且不写 request_logs（未认证洪水写放大收口）', async () => {
+    logs.length = 0;
+    let checks = 0;
+    const limiter = {
+      check: async () => {
+        checks += 1;
+        return { allowed: checks <= 2 };
+      },
+    };
+    const app = makeApp({
+      rateLimit: { limiter: limiter as never, globalRpm: null, preauthIpRpm: 2 },
+    });
+    const flood = () =>
+      app.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+    expect((await flood()).status).toBe(401); // 未超预认证闸 → 到鉴权层 401（写日志）
+    expect((await flood()).status).toBe(401);
+    const blocked = await flood();
+    expect(blocked.status).toBe(429);
+    expect(((await blocked.json()) as { error: { code: string } }).error.code).toBe(
+      'gateway.rate_limit_exceeded',
+    );
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
+    expect(logs).toHaveLength(2); // 被预认证闸拒绝的请求不写日志
+  });
+
+  it('预认证闸覆盖 /oauth/token：超限 429 且不进凭证验证（第三公网入口同闸）', async () => {
+    logs.length = 0;
+    let verifyCalls = 0;
+    let checks = 0;
+    const limiter = {
+      check: async () => {
+        checks += 1;
+        return { allowed: checks <= 1 };
+      },
+    };
+    const app = makeApp({
+      verifyAppClient: async () => {
+        verifyCalls += 1;
+        return null;
+      },
+      rateLimit: { limiter: limiter as never, globalRpm: null, preauthIpRpm: 1 },
+    });
+    const post = () =>
+      app.request('/oauth/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          grant_type: 'client_credentials',
+          client_id: 'app_0123456789abcdef',
+          client_secret: 's',
+        }),
+      });
+    await post(); // 闸内 → 进凭证验证
+    expect(verifyCalls).toBe(1);
+    const blocked = await post(); // 超限 → 429 快速拒
+    expect(blocked.status).toBe(429);
+    expect(((await blocked.json()) as { error: { code: string } }).error.code).toBe(
+      'gateway.rate_limit_exceeded',
+    );
+    expect(verifyCalls).toBe(1); // 未再触 DB 读
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
+    expect(logs).toHaveLength(0); // 被拒流量不写日志
+  });
+
   it('写失败不阻塞请求（best-effort）', async () => {
     const app = makeApp({
       requestLogs: {

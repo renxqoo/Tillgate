@@ -11,7 +11,7 @@ const secret = (seed: string, len: number) =>
 const BASE = {
   DATABASE_URL: 'postgres://u:p@localhost:5432/db',
   REDIS_URL: 'redis://localhost:6379',
-  CHANNEL_API_KEY_ENCRYPTION: secret('aB3d', 32),
+  ENCRYPTION_KEY: secret('aB3d', 32),
   JWT_SECRET: secret('eF5g', 32),
 };
 
@@ -22,13 +22,12 @@ describe('缺省值与推导', () => {
     expect(c.otel.authToken).toBeUndefined();
     expect(c.redisTopology).toEqual({ kind: 'direct' });
     expect(c.port).toBe(8_080);
-    expect(c.currency).toBe('CNY');
-    expect(c.reservationLimit).toBe('1000');
-    expect(c.reservationPolicy).toEqual({ mode: 'full' });
+    expect(c.reservationPolicyTtlMs).toBe(15_000);
     expect(c.authorizationTtlMs).toBe(300_000);
     expect(c.generationTaskTtlMs).toBe(3_600_000);
     expect(c.generationLeaseGraceMs).toBe(30_000);
     expect(c.globalRpm).toBe(2_000);
+    expect(c.preauthIpRpm).toBe(1_200);
     expect(c.upstreamDeadlineMs).toBe(120_000);
     expect(c.upstreamConnectTimeoutMs).toBe(10_000);
     expect(c.bodyLimitBytes).toBe(10 * 1024 * 1024);
@@ -39,6 +38,7 @@ describe('缺省值与推导', () => {
     expect(c.oauth.tokenTtlSeconds).toBe(3_600);
     expect(c.output).toEqual({ defaultMaxOutputTokens: 4_096, exposureCap: 32_768 });
     expect(c.settleSignal).toEqual({ attempts: 5, baseDelayMs: 500 });
+    expect(c.drainFinalizeMs).toBe(5_000);
     expect(c.corsOrigins).toEqual([]);
   });
 
@@ -67,15 +67,16 @@ describe('缺省值与推导', () => {
       GATEWAY_BODY_LIMIT_BYTES: '16MB',
       GATEWAY_UPLOAD_MAX_FILE_BYTES: '32MB',
       GATEWAY_CORS_ORIGINS: 'https://a.example, https://b.example',
-      BILLING_RESERVATION_MODE: 'fixed',
-      BILLING_FIXED_RESERVATION_AMOUNT: '0.5',
+      BILLING_RESERVATION_POLICY_TTL_MS: '5000',
       GLOBAL_RPM: '0',
+      PREAUTH_IP_RPM: '0',
     });
     expect(c.bodyLimitBytes).toBe(16 * 1024 * 1024);
     expect(c.uploadLimits.maxFileBytes).toBe(16 * 1024 * 1024);
     expect(c.corsOrigins).toEqual(['https://a.example', 'https://b.example']);
-    expect(c.reservationPolicy).toEqual({ mode: 'fixed', amount: '0.5' });
+    expect(c.reservationPolicyTtlMs).toBe(5_000);
     expect(c.globalRpm).toBeNull(); // 0 = 不限
+    expect(c.preauthIpRpm).toBeNull(); // 0 = 不设预认证闸
   });
 
   it('OTLP 覆盖：mode/endpoint/TRACE_RECEIVER_TOKEN → otel.authToken', () => {
@@ -92,10 +93,9 @@ describe('缺省值与推导', () => {
     });
   });
 
-  it('ENCRYPTION_KEY 回落：CHANNEL_API_KEY_ENCRYPTION 缺省时旧键兜底', () => {
-    const { CHANNEL_API_KEY_ENCRYPTION: _drop, ...rest } = BASE;
-    const c = loadGatewayConfig({ ...rest, ENCRYPTION_KEY: secret('hI7j', 32) });
-    expect(c.channelApiKeyEncryption).toBe(secret('hI7j', 32));
+  it('加密根键透传：ENCRYPTION_KEY 直达 encryptionKey 配置面', () => {
+    const c = loadGatewayConfig({ ...BASE, ENCRYPTION_KEY: secret('hI7j', 32) });
+    expect(c.encryptionKey).toBe(secret('hI7j', 32));
   });
 });
 
@@ -104,21 +104,12 @@ describe('fail-closed', () => {
     expect(() => loadGatewayConfig({ ...BASE, DATABASE_URL: undefined })).toThrow();
     expect(() => loadGatewayConfig({ ...BASE, REDIS_URL: 'notaurl' })).toThrow();
     expect(() => loadGatewayConfig({ ...BASE, JWT_SECRET: 'short' })).toThrow();
-    expect(() =>
-      loadGatewayConfig({ ...BASE, CHANNEL_API_KEY_ENCRYPTION: secret('xY9z', 16) }),
-    ).toThrow();
+    expect(() => loadGatewayConfig({ ...BASE, ENCRYPTION_KEY: secret('xY9z', 16) })).toThrow();
   });
 
-  it('fixed 模式缺金额拒绝；金额串非法拒绝', () => {
-    expect(() => loadGatewayConfig({ ...BASE, BILLING_RESERVATION_MODE: 'fixed' })).toThrow(
-      /BILLING_FIXED_RESERVATION_AMOUNT/,
-    );
+  it('预扣策略 TTL 下限 1s（过短 = KV 读放大）', () => {
     expect(() =>
-      loadGatewayConfig({
-        ...BASE,
-        BILLING_RESERVATION_MODE: 'fixed',
-        BILLING_FIXED_RESERVATION_AMOUNT: '-1',
-      }),
+      loadGatewayConfig({ ...BASE, BILLING_RESERVATION_POLICY_TTL_MS: '999' }),
     ).toThrow();
   });
 

@@ -16,8 +16,8 @@ function parse(env: Record<string, string | undefined>) {
 }
 
 describe('缺省值(开发内网最小配置)', () => {
-  it('仅 DATABASE_URL 即可装配,部署缺省逐项落位', () => {
-    const config = parse({ ...BASE });
+  it('仅 DATABASE_URL(+显式开放逃生门)即可装配,部署缺省逐项落位', () => {
+    const config = parse({ ...BASE, TRACE_RECEIVER_OPEN: 'true' });
     expect(config).toMatchObject({
       logLevel: 'info',
       databaseUrl: 'postgres://u:p@host:5432/db',
@@ -39,6 +39,7 @@ describe('缺省值(开发内网最小配置)', () => {
   it('显式覆盖优先于缺省', () => {
     const config = parse({
       ...BASE,
+      TRACE_RECEIVER_OPEN: 'true',
       LOG_LEVEL: 'debug',
       TRACE_RECEIVER_PORT: '9000',
       TRACE_BATCH_MAX: '50',
@@ -68,12 +69,14 @@ describe('otel 模式推导', () => {
         OTEL_TRACES_MODE: 'memory',
       }).otelMode,
     ).toBe('memory');
-    expect(parse({ ...BASE, OTEL_TRACES_MODE: 'console' }).otelMode).toBe('console');
+    expect(
+      parse({ ...BASE, TRACE_RECEIVER_OPEN: 'true', OTEL_TRACES_MODE: 'console' }).otelMode,
+    ).toBe('console');
   });
 
   it('mode=otlp 缺端点不在 config 报错——fail-fast 单一所有者是 initOtel(装配层测试锁定)', () => {
     // config 只透传;assembleReceiver 才触发 observabilityErrors.otel_endpoint_missing
-    const config = parse({ ...BASE, OTEL_TRACES_MODE: 'otlp' });
+    const config = parse({ ...BASE, TRACE_RECEIVER_OPEN: 'true', OTEL_TRACES_MODE: 'otlp' });
     expect(config.otelMode).toBe('otlp');
     expect(config.otelEndpoint).toBeUndefined();
   });
@@ -96,15 +99,23 @@ describe('fail-fast 闸(抛 zod 错误)', () => {
 });
 
 describe('令牌三道门 + 生产强制(修正确保闸门真的会触发)', () => {
-  it('生产缺令牌 → fail-fast(v1 从 strip 后的 parse 读 NODE_ENV,此闸恒不触发——v2 修正)', () => {
+  it('缺令牌 → fail-fast(任意环境——S10:不再只按 NODE_ENV 字面量推断)', () => {
     expect(() => parse({ ...BASE, NODE_ENV: 'production' })).toThrow(/TRACE_RECEIVER_TOKEN/);
+    // 非 production(裸跑/staging/uat/未设)同样拒绝:装配遗漏不再静默敞口
+    expect(() => parse({ ...BASE })).toThrow(/TRACE_RECEIVER_TOKEN/);
+    expect(() => parse({ ...BASE, NODE_ENV: 'development' })).toThrow(/TRACE_RECEIVER_TOKEN/);
   });
 
-  it('生产配强令牌 → 通过;开发缺令牌 → 放行', () => {
+  it('TRACE_RECEIVER_OPEN=true 显式逃生门(隔离本机开发)→ 无令牌放行;配强令牌 → 通过', () => {
+    expect(
+      parse({ ...BASE, TRACE_RECEIVER_OPEN: 'true', NODE_ENV: 'development' }).receiverToken,
+    ).toBeUndefined();
     expect(
       parse({ ...BASE, NODE_ENV: 'production', TRACE_RECEIVER_TOKEN: STRONG_TOKEN }).receiverToken,
     ).toBe(STRONG_TOKEN);
-    expect(parse({ ...BASE }).receiverToken).toBeUndefined();
+    // OPEN 只认显式 true——false/垃圾值不放行
+    expect(() => parse({ ...BASE, TRACE_RECEIVER_OPEN: 'false' })).toThrow(/TRACE_RECEIVER_TOKEN/);
+    expect(() => parse({ ...BASE, TRACE_RECEIVER_OPEN: '1' })).toThrow(z.ZodError); // 非法布尔形态直接拒
   });
 
   it.each([

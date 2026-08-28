@@ -78,6 +78,8 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
     devDb = createDb({
       url: process.env.DB_TEST_URL ?? defined(process.env.DATABASE_URL, 'DATABASE_URL'),
       poolMax: 2,
+      idleTimeoutMillis: 5_000,
+      connectionTimeoutMillis: 3_000,
     });
     const row = await devDb.execute<{
       base_url: string;

@@ -60,6 +60,10 @@ export function UserProfileCard({
           <Field label={t('availableBalance')} value={fmtBalance(user.availableBalance)} />
           <Field label={tc('creditLimit')} value={fmtBalance(user.creditLimit)} />
           <Field
+            label={tc('debitFloor')}
+            value={`${fmtBalance(user.debitFloor)}（${tc(user.debitFloorSource === 'manual' ? 'debitFloorManual' : 'debitFloorDefault')}）`}
+          />
+          <Field
             label={tc('dailySpendLimit')}
             value={
               user.dailySpendLimit === null ? tc('unlimited') : fmtBalance(user.dailySpendLimit)

@@ -111,6 +111,7 @@ function harness() {
     walletStore: walletMemory.store,
     fundingRegistry,
     channels: world.channels,
+    usageDefectBreaker: 5,
     failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
     clock: () => new Date(),
     onError: () => {},
@@ -278,6 +279,7 @@ describe('未注入 outbox：行为不变（可靠通知是可选增强）', () 
     const h = harness();
     const { userId, requestId, claim } = await toClaimed(h);
     const bare = createSettleClaimUseCase({
+      usageDefectBreaker: 5,
       store: h.store,
       fundingRegistry: createDefaultFundingRegistry({
         wallet: h.wallet,

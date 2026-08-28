@@ -286,15 +286,20 @@ describe('oauth.authorize / callback(state 半程)', () => {
     });
   });
 
-  it('上游交换失败 → oauth_profile_failed(不吞细节)', async () => {
+  it('上游交换失败 → oauth_profile_failed（原文只进日志；context 不携带 detail——不随信封出站）', async () => {
     const h = harness();
     const { createIdentity } = await import('../src/identity.js');
     const { TEST_CONFIG } = await import('../src/testing/harness.js');
+    const warned: Array<Record<string, unknown>> = [];
     const api = createIdentity({
       db: h.ctx.db,
       txRetry: h.ctx.txRetry,
       clock: h.ctx.clock,
-      logger: { warn: () => {} },
+      logger: {
+        warn: (obj: Record<string, unknown>) => {
+          warned.push(obj);
+        },
+      },
       config: TEST_CONFIG,
       store: h.store,
       oauthStateStore: h.oauthState,
@@ -308,17 +313,24 @@ describe('oauth.authorize / callback(state 半程)', () => {
       },
     });
     const auth = await api.oauth.authorize({ provider: 'github', redirectUri: 'https://cb' });
-    await expect(
-      api.oauth.callback({
+    const rejected = (await api.oauth
+      .callback({
         provider: 'github',
         code: 'c',
         state: auth.state,
         redirectUri: 'https://cb',
-      }),
-    ).rejects.toMatchObject({
-      code: 'identity.oauth_profile_failed',
-      context: { detail: 'token exchange failed: 502' },
-    });
+      })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      )) as { code: string; context?: Record<string, unknown> } | null;
+    if (rejected == null) throw new Error('expected oauth callback to reject');
+    expect(rejected.code).toBe('identity.oauth_profile_failed');
+    // 出站 context 只含 provider——上游原始 message（可能含内部寻址/响应细节）不可进信封
+    expect(rejected.context).toEqual({ provider: 'github' });
+    expect(JSON.stringify(rejected.context)).not.toContain('token exchange failed');
+    // 排障面保真：warn 日志携带原始 message
+    expect(warned.some((entry) => String(entry.err).includes('token exchange failed'))).toBe(true);
   });
 });
 

@@ -1,6 +1,6 @@
 /**
  * 动态 RBAC 契约测试：
- *   1. enforced 注册表封闭性——42 码全量、无重复、域词表合法、与迁移种子逐码对账
+ *   1. enforced 注册表封闭性——43 码全量、无重复、域词表合法、与迁移种子逐码对账
  *      （迁移 SQL 文本解析,双源一致性锁死——种子漂移即红）;
  *   2. granted() 判定原语（isSuper 短路 / 集合包含 / 未知码拒绝）;
  *   3. roles/permissions/endpoints 用例族守卫矩阵（super 全锁/挂载守卫/码冲突/
@@ -28,10 +28,10 @@ import {
 } from './memory';
 import type { PermissionNode, RoleRecord } from '../src/ports/rbac-store';
 
-describe('enforced 注册表封闭性（DESIGN §2 = 41 码）', () => {
+describe('enforced 注册表封闭性（DESIGN §2 增量至 44 码——funds:fx 见 docs/funds-center/DESIGN.md）', () => {
   it('全量清单逐一列出,无重复,域前缀合法', () => {
-    expect([...ENFORCED_CODES]).toHaveLength(42);
-    expect(new Set(ENFORCED_CODES).size).toBe(42);
+    expect([...ENFORCED_CODES]).toHaveLength(44);
+    expect(new Set(ENFORCED_CODES).size).toBe(44);
     for (const code of ENFORCED_CODES) {
       const domain = defined(code.split(':')[0]);
       expect(PERMISSION_DOMAINS).toContain(domain);
@@ -56,20 +56,18 @@ describe('enforced 注册表封闭性（DESIGN §2 = 41 码）', () => {
       ),
       'utf8',
     );
-    // 0087 追加种子（集成写权限拆分）并入对账面——双源 = 注册表 ↔ 全部权限种子迁移
-    const sql87 = readFileSync(
-      join(
-        import.meta.dirname,
-        '..',
-        '..',
-        'db',
-        'migrations',
-        '0087_settings_integrations_permission.sql',
-      ),
-      'utf8',
-    );
+    // 0087/0096 追加种子（集成写权限拆分/透支地板）并入对账面——双源 = 注册表 ↔ 全部权限种子迁移
+    const extraSeeds = [
+      '0087_settings_integrations_permission.sql',
+      '0096_debit_floor_admin.sql',
+      '0100_funds_center_module.sql',
+    ]
+      .map((file) =>
+        readFileSync(join(import.meta.dirname, '..', '..', 'db', 'migrations', file), 'utf8'),
+      )
+      .join('');
     const seeded = new Set(
-      [...(sql + sql87).matchAll(/'([a-z]+:[a-z-]+)'/g)].map((match) => defined(match[1])),
+      [...(sql + extraSeeds).matchAll(/'([a-z]+:[a-z-]+)'/g)].map((match) => defined(match[1])),
     );
     for (const code of ENFORCED_CODES) {
       expect(seeded.has(code), `seed missing: ${code}`).toBe(true);

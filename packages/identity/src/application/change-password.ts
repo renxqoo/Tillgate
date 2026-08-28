@@ -45,9 +45,12 @@ async function changePasswordWithinLock(
       operation: 'change_password',
     });
   }
+  // 锚线取应用时钟（与令牌 iatMs 同域）：DB now() 跨时钟域（app 与 DB 不同宿主时
+  // 有毫秒级偏差）会把改密后当场重签的新令牌误杀在锚线下。
   const before = await ctx.anchorStore.advanceAnchor(tx, {
     realm: args.realm,
     userId: args.userId,
+    at: ctx.clock.now(),
   });
   // 安全审计同事务写入:回滚即无审计行,写入失败随事务回滚
   await auditWithinTx(

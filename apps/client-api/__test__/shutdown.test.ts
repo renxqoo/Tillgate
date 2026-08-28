@@ -66,4 +66,25 @@ describe('client-api shutdown', () => {
     expect(h.exitCodes).toEqual([0]);
     expect(h.calls.filter((c) => c === 'server')).toHaveLength(1);
   });
+
+  it('宽限耗尽透传 drain 钩子（db-budget-signals：预算门排队的停机出局接线）', async () => {
+    const h = buildHarness();
+    const order: string[] = [];
+    const shutdown = createClientShutdown({
+      ...h.deps,
+      graceMs: 100, // 下界钳到 1s——宽限耗尽走 drain 路径
+      drain: {
+        abort: () => {
+          order.push('drain-abort');
+        },
+      },
+      exit: h.exit,
+    });
+    shutdown('SIGTERM');
+    await new Promise((r) => {
+      setTimeout(r, 1_150);
+    });
+    // drain abort 在宽限耗尽时触发（自然收口已先行 exit(0);此处只锁停机侧接线）
+    expect(order).toEqual(['drain-abort']);
+  });
 });

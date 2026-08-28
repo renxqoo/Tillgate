@@ -32,6 +32,7 @@ const DEV_FAKE_ADMIN: AdminMeInfo = {
     'users:set-password',
     'funds:read',
     'funds:adjust',
+    'funds:floor',
     'funds:recharge',
     'funds:gift',
     'funds:close',

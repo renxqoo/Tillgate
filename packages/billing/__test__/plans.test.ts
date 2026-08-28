@@ -21,6 +21,7 @@ function harness() {
       guards: { refTypes: ['billing'], currencies: ['CNY'], internalAccounts: ['outside'] },
       currency: 'CNY',
       resolver: world.resolver,
+      usageDefectBreaker: 5,
       failurePolicy: { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 2 },
       clock: () => new Date('2026-08-23T00:00:00Z'),
       onError: () => {},

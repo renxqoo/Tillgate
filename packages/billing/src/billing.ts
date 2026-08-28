@@ -54,6 +54,8 @@ export interface CreateBillingConfig {
   resolver: FundingSourceResolver;
   /** 结算失败策略（次数/退避必填注入） */
   failurePolicy: SettleFailurePolicyConfig;
+  /** 用量证据缺陷熔断阈值（验收门钳制计数 ≥ 阈值 → 渠道熔断；装配必填） */
+  usageDefectBreaker: number;
   /**
    * 时钟（装配必填单点注入，向下传递到全部用例——零隐藏缺省；
    * 钱包动词内部的 DB 时钟权威路径不经此）
@@ -72,6 +74,8 @@ export interface CreateBillingConfig {
   wake?: (requestId: string) => void;
   onSettled?: SettlementDeps['onSettled'];
   onDead?: SettlementDeps['onDead'];
+  /** 验收门钳制观察钩子（提交后 best-effort） */
+  onUsageDefect?: SettlementDeps['onUsageDefect'];
   /** 死信复核同事务审计 port（app 装配桥 observability writeAudit;缺省丢弃） */
   reviewAuditTx?: SettlementDeps['reviewAuditTx'];
 }
@@ -130,12 +134,14 @@ export function createBilling(stores: BillingStores, config: CreateBillingConfig
     walletStore: stores.walletStore,
     fundingRegistry,
     channels: stores.channels,
+    usageDefectBreaker: config.usageDefectBreaker,
     failurePolicy: config.failurePolicy,
     clock: config.clock,
     outbox: config.outbox,
     onError: config.onError,
     onSettled: config.onSettled,
     onDead: config.onDead,
+    onUsageDefect: config.onUsageDefect,
     ...(config.reviewAuditTx !== undefined ? { reviewAuditTx: config.reviewAuditTx } : {}),
   });
   const subscriptionsEnv: SubscriptionsEnv = {
@@ -178,7 +184,11 @@ const defaultChannelsUnavailable: ChannelExposureStore = {
       'billing.channel_exposure_unassembled',
     );
   },
-  deductBudgetAndMaybeBreak() {
+  async recordUsageDefect() {
+    // 渠道面未装配（单测/局部装配形态）——缺陷计数不可用即不可熔断，返回 null
+    return null;
+  },
+  async deductBudgetAndMaybeBreak() {
     throw new DefectError(
       'channel exposure store not assembled',
       'billing.channel_exposure_unassembled',
