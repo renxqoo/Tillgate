@@ -14,6 +14,8 @@ export interface ClientShutdownDeps {
   readonly db: { end(): Promise<unknown> };
   readonly graceMs: number;
   readonly logger?: Logger;
+  /** 宽限耗尽时的在途请求预算中止（db-budget 队列出局;形状对齐 runtime ShutdownDeps） */
+  readonly drain?: { abort(): void; finalizeMs?: number };
   /** 退出函数（测试注入）；正常路径 0 / 强退 1 */
   readonly exit?: (code: number) => never;
 }
@@ -26,6 +28,7 @@ export function createClientShutdown(deps: ClientShutdownDeps): (signal: string)
     redis: deps.redis,
     db: deps.db,
     graceMs: deps.graceMs,
+    ...(deps.drain != null ? { drain: deps.drain } : {}),
     ...(deps.logger != null ? { log: deps.logger } : {}),
     ...(deps.exit != null ? { exit: deps.exit } : {}),
   });

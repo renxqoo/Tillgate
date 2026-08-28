@@ -8,8 +8,10 @@ import { HttpErrors } from '../src/errors/catalog';
  */
 
 describe('HttpErrors 目录内容', () => {
-  it('码集封闭（17 码，装配即锁）', () => {
+  it('码集封闭（19 码，装配即锁）', () => {
     expect([...HttpErrors.codes].toSorted()).toEqual([
+      'http.db_budget_abandoned',
+      'http.db_budget_draining',
       'http.db_budget_full',
       'http.db_budget_timeout',
       'http.invalid_idempotency_key',
@@ -59,6 +61,19 @@ describe('HttpErrors 目录内容', () => {
       'idempotency-key must be 1-64 characters of letters, digits, underscores or hyphens',
     );
     expect(err.context).toEqual({ length: 200 });
+  });
+
+  it('db-budget 取消族新码：abandoned/draining 双语与 category（db-budget-signals 方案）', () => {
+    expect(HttpErrors.get('http.db_budget_abandoned')).toEqual({
+      category: 'unavailable',
+      message: 'DB concurrency budget wait abandoned, client disconnected',
+      zh: '数据库并发预算等待已放弃（客户端已断开）',
+    });
+    expect(HttpErrors.get('http.db_budget_draining')).toEqual({
+      category: 'unavailable',
+      message: 'Server draining, DB concurrency budget closed, retry later',
+      zh: '服务停机排水中，数据库并发预算已关闭，请稍后重试',
+    });
   });
 });
 

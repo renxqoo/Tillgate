@@ -12,6 +12,7 @@ import {
   securityHeaders,
   requestIdMiddleware,
   HttpErrors,
+  type DbBudgetOptions,
 } from '@tillgate/http';
 import type { Inference } from '@tillgate/inference';
 import type { OutputCapConfig } from '@tillgate/inference';
@@ -67,7 +68,7 @@ export interface GatewayAppDeps {
   corsOrigins?: readonly string[];
   bodyLimitBytes?: number;
   /** DB 并发预算门(万级形态入口排队;缺省关闭——不注入即旁路) */
-  dbBudget?: { limit: number; maxQueue: number; waitTimeoutMs: number };
+  dbBudget?: DbBudgetOptions;
   uploadLimits?: {
     imageMime: ReadonlySet<string>;
     audioMime: ReadonlySet<string>;

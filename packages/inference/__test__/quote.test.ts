@@ -89,3 +89,50 @@ describe('application/quote：请求预检（白名单/目录/上界/估算）',
     expect(prepared.upstreamBody).toEqual({ model: 'gpt-x', input: 'hi' });
   });
 });
+
+describe('application/quote：contextLength 钳制（全额预扣过押收敛）', () => {
+  const now = new Date('2026-08-24T03:00:00+08:00');
+
+  it('输出上界 ≤ 窗口 − 输入字节上界，转发体同步注入该上限', async () => {
+    const catalog = fakeCatalog({ 'gpt-x': mapping({ contextLength: 4096 }) }, {});
+    const prepared = await prepareChatRequest({
+      catalog,
+      defaults: defaultInferenceDefaults(),
+      requestId: 'r',
+      now,
+      auth: baseAuth,
+      body: { model: 'gpt-x', messages: [{ role: 'user', content: 'x'.repeat(1000) }] },
+    });
+    const expected = 4096 - prepared.inputUpperBound;
+    expect(expected).toBeGreaterThan(0);
+    expect(expected).toBeLessThan(4096);
+    expect(prepared.outputCap).toBe(expected);
+    expect(prepared.upstreamBody.max_completion_tokens).toBe(expected);
+  });
+
+  it('窗口未配置：不钳制（缺省上界）', async () => {
+    const catalog = fakeCatalog({ 'gpt-x': mapping() }, {});
+    const prepared = await prepareChatRequest({
+      catalog,
+      defaults: defaultInferenceDefaults(),
+      requestId: 'r',
+      now,
+      auth: baseAuth,
+      body: { model: 'gpt-x', messages: [{ role: 'user', content: 'hi' }] },
+    });
+    expect(prepared.outputCap).toBe(4096);
+  });
+
+  it('窗口 − 输入 ≤ 0：不钳制（输入超窗由上游自然拒绝）', async () => {
+    const catalog = fakeCatalog({ 'gpt-x': mapping({ contextLength: 10 }) }, {});
+    const prepared = await prepareChatRequest({
+      catalog,
+      defaults: defaultInferenceDefaults(),
+      requestId: 'r',
+      now,
+      auth: baseAuth,
+      body: { model: 'gpt-x', messages: [{ role: 'user', content: 'hi' }] },
+    });
+    expect(prepared.outputCap).toBe(4096);
+  });
+});

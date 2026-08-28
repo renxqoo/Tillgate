@@ -36,6 +36,7 @@ function toCandidate(mapping: ModelMappingSnapshot): QuoteCandidate {
     billingPolicyFingerprint: mapping.billingPolicyFingerprint,
     ...(mapping.rpmLimit != null ? { rpmLimit: mapping.rpmLimit } : {}),
     ...(mapping.tpmLimit != null ? { tpmLimit: mapping.tpmLimit } : {}),
+    ...(mapping.contextLength != null ? { contextLength: mapping.contextLength } : {}),
     ...(mapping.isFree === true ? { isFree: true } : {}),
   };
 }

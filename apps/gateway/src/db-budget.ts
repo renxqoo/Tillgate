@@ -5,6 +5,8 @@
  * （node 池队列塌吞吐 / Bun SQL 楔死，FINDINGS F-6）。池小到预算放不进池内
  * （< 2，连 1 并发都无余量）才 fail-fast；小池压力形态（如 e2e 池 2）按
  * 公式收敛到 limit=1，不拒绝。
+ * drainSignal 装配注入（进程入口的停机排水控制器;缺省不带——测试/嵌入形态
+ * 无排水感知,行为与无信号一致）。
  */
 import type { DbBudgetOptions } from '@tillgate/http';
 
@@ -15,7 +17,7 @@ const POOL_HEADROOM = 2;
 /** 池充足时的目标余量（fire-and-forget 日志 + 旁路 DB 工作） */
 const TARGET_MARGIN = 32;
 
-export function gatewayDbBudget(poolMax: number): DbBudgetOptions {
+export function gatewayDbBudget(poolMax: number, drainSignal?: AbortSignal): DbBudgetOptions {
   if (poolMax < 2) {
     throw new Error(
       `gateway DB_POOL_MAX must be >= 2 (got ${poolMax}): ` +
@@ -29,5 +31,6 @@ export function gatewayDbBudget(poolMax: number): DbBudgetOptions {
     ),
     maxQueue: 20_000,
     waitTimeoutMs: 120_000,
+    ...(drainSignal != null ? { drainSignal } : {}),
   };
 }

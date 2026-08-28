@@ -18,6 +18,8 @@ export interface AdminShutdownDeps {
   readonly db: Db;
   readonly graceMs: number;
   readonly logger: Logger;
+  /** 宽限耗尽时的在途请求预算中止（db-budget 队列出局;形状对齐 runtime ShutdownDeps） */
+  readonly drain?: { abort(): void; finalizeMs?: number };
   /** 退出函数注入缝(测试;缺省 process.exit) */
   readonly exit?: (code: number) => never;
 }
@@ -31,6 +33,7 @@ export function createAdminShutdown(deps: AdminShutdownDeps): (signal: string) =
     db: { end: () => closeDb(deps.db) },
     graceMs: deps.graceMs,
     log: deps.logger,
+    ...(deps.drain != null ? { drain: deps.drain } : {}),
     ...(deps.exit !== undefined ? { exit: deps.exit } : {}),
   });
 }

@@ -30,7 +30,12 @@ export async function resetPassword(
     async (tx) => {
       await advisoryLock(tx, credentialSetLockKey(userId));
       await ctx.credentialStore.resetPassword(tx, { userId, passwordHash: newHash });
-      const before = await ctx.anchorStore.advanceAnchor(tx, { realm, userId });
+      // 同 change-password：锚线用应用时钟，避免跨时钟域误杀重置后重签的会话
+      const before = await ctx.anchorStore.advanceAnchor(tx, {
+        realm,
+        userId,
+        at: ctx.clock.now(),
+      });
       // 安全审计同事务写入:回滚即无审计行,写入失败随事务回滚
       await auditWithinTx(
         tx,
