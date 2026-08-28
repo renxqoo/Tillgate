@@ -56,10 +56,11 @@ async function seedFallbackAdmin(url: string): Promise<void> {
     connectionTimeoutMillis: 3_000,
   });
   try {
-    // admins 必填 email/password_hash（client-journey seedRedeemCode 同形状——占位哈希不可登录）
+    // 占位管理员行：凭据列已随 0089 退役；role_id NOT NULL（0082 起）挂 super_admin
     await db.execute(
-      sql`insert into admins (email, password_hash, status)
-          values (${SEEDED_ADMIN_EMAIL}, 'e2e:unused:1:1:1', 0)
+      sql`insert into admins (email, status, role_id)
+          values (${SEEDED_ADMIN_EMAIL}, 0,
+            (select id from roles where code = 'super_admin' limit 1))
           on conflict (email) do nothing`,
     );
   } finally {

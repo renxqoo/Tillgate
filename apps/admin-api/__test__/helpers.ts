@@ -77,6 +77,7 @@ export function fakeDeps(overrides: {
   sendInviteLink?: AdminAppDeps['sendInviteLink'];
   inviteLinkBase?: AdminAppDeps['inviteLinkBase'];
   mailerConfigured?: AdminAppDeps['mailerConfigured'];
+  postAudit?: AdminAppDeps['postAudit'];
 }): AdminAppDeps {
   return {
     pingDb: overrides.pingDb ?? (async () => {}),
@@ -116,6 +117,12 @@ export function fakeDeps(overrides: {
     wallet: {
       accounts: async () => [],
       setCreditLimit: async () => {
+        throw new Error('fake not wired');
+      },
+      setDebitFloor: async () => {
+        throw new Error('fake not wired');
+      },
+      applyDefaultFloor: async () => {
         throw new Error('fake not wired');
       },
       credit: async () => {
@@ -196,9 +203,11 @@ export function fakeDeps(overrides: {
       },
       ...overrides.review,
     } as AdminAppDeps['review'],
-    postAudit: async () => {
-      /* 后置审计替身:默认静默 */
-    },
+    postAudit:
+      overrides.postAudit ??
+      (async () => {
+        /* 后置审计替身:默认静默 */
+      }),
     controlPlane: fakeControlPlane(overrides.controlPlane),
     observability: fakeObservability(overrides.observability) as AdminAppDeps['observability'],
     // 通知渠道管理面(默认空列表;CRUD 动词测试覆写——键为 channels 动词名)
@@ -320,6 +329,22 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
     // 运营系统配置面（默认 notWired——settings 域测试覆写）
     settings: {
       billingTimezone: {
+        read: notWired,
+        update: notWired,
+      },
+      debitFloorDefault: {
+        read: notWired,
+        update: notWired,
+      },
+      billingReservation: {
+        read: notWired,
+        update: notWired,
+      },
+      billingReservationLimit: {
+        read: notWired,
+        update: notWired,
+      },
+      platformCurrency: {
         read: notWired,
         update: notWired,
       },

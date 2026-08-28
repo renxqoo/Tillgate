@@ -14,7 +14,7 @@ import { Decimal } from '@tillgate/billing';
 import { createCipher } from '@tillgate/runtime';
 import {
   defined,
-  E2E_CHANNEL_ENCRYPTION_KEY,
+  E2E_ENCRYPTION_KEY,
   E2EKeys,
   E2E_MODEL,
   E2E_REAL_MODEL,
@@ -185,7 +185,7 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
     const { world, gateway, worker, keys, video } = w();
     const FUND = '5'; // 视频押 6s×0.5=3 元
     // 专属 minimax 协议 provider 指向 mock（video 任务操作面）
-    const cipher = createCipher(E2E_CHANNEL_ENCRYPTION_KEY);
+    const cipher = createCipher(E2E_ENCRYPTION_KEY);
     const stamp = Date.now().toString(36);
     const provider = await world.db.execute<{ id: number }>(sql`
       insert into providers (name, base_url, protocol, vendor)

@@ -80,6 +80,39 @@ describe('users-actions', () => {
     });
   });
 
+  it('setDebitFloorAction：PUT /v1/users/:id/debit-floor；负数/垃圾前置校验拒绝且零 fetch', async () => {
+    const { mod, calls } = await loadModule('../src/server/users-actions', [
+      { status: 200, body: { ok: true, floorAfter: '0.5', source: 'manual' } },
+    ]);
+    await expect(mod.setDebitFloorAction(7, { floor: '-0.5' })).resolves.toEqual({
+      error: 'debitFloorInvalid',
+    });
+    await expect(mod.setDebitFloorAction(7, { floor: '' })).resolves.toEqual({
+      error: 'debitFloorInvalid',
+    });
+    expect(calls).toHaveLength(0);
+    await expect(mod.setDebitFloorAction(7, { floor: '0.5' })).resolves.toEqual({});
+    expect(last(calls)).toMatchObject({
+      method: 'PUT',
+      url: 'http://localhost:8082/v1/users/7/debit-floor',
+      body: { floor: '0.5' },
+    });
+    // 0 合法 = 不透支
+    await expect(mod.setDebitFloorAction(7, { floor: '0' })).resolves.toEqual({});
+  });
+
+  it('setDebitFloorAction：非 2xx 错误信封映射为 error message（英文透传）', async () => {
+    const { mod } = await loadModule('../src/server/users-actions', [
+      {
+        status: 409,
+        body: { error: { code: 'billing.debit_floor_conflict', message: 'floor below exposure' } },
+      },
+    ]);
+    await expect(mod.setDebitFloorAction(7, { floor: '0.1' })).resolves.toEqual({
+      error: 'floor below exposure',
+    });
+  });
+
   it('setPasswordAction：短密码被拒；合规密码走端点', async () => {
     const { mod, calls } = await loadModule('../src/server/users-actions', [
       { status: 200, body: {} },

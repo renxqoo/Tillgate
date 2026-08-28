@@ -6,6 +6,7 @@ import { BriefcaseIcon, Loader2Icon, UserIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { AdjustDialog } from '@/features/users/adjust-user-dialog';
+import { DebitFloorDialog } from '@/features/users/debit-floor-user-dialog';
 import { GiftDialog } from '@/features/users/gift-user-dialog';
 import { PasswordDialog } from '@/features/users/set-user-password-dialog';
 import type { AdminUserRow } from '@tillgate/api-client';
@@ -39,6 +40,7 @@ export function UserActions({ user }: { readonly user: AdminUserRow }) {
     <div className="flex items-center gap-2">
       <AdjustDialog user={user} />
       <GiftDialog user={user} />
+      <DebitFloorDialog user={user} />
       <PasswordDialog user={user} />
       <Button
         size="sm"

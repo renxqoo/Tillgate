@@ -32,7 +32,6 @@ describe('loadAdminApiConfig', () => {
     expect(config.corsOrigins).toEqual([]);
     expect(config.bodyLimitBytes).toBe(4_194_304);
     expect(config.shutdownGraceMs).toBe(10_000);
-    expect(config.currency).toBe('CNY');
     expect(config.walletGuards.refTypes).toEqual(
       expect.arrayContaining(['billing', 'topup', 'admin', 'gift', 'referral']),
     );

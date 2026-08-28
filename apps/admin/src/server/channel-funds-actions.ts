@@ -30,7 +30,7 @@ export async function rechargeChannelAction(input: RechargeInput): Promise<{ err
       voucherDataUrl: input.voucherDataUrl || undefined,
       remark: input.remark?.trim() || undefined,
     });
-    revalidatePath('/dashboard/channel-funds');
+    revalidatePath('/dashboard/funds');
     return {};
   } catch (error) {
     return { error: error instanceof ApiError ? error.message : t('rechargeFailed') };
@@ -56,7 +56,7 @@ export async function adjustChannelAction(input: AdjustInput): Promise<{ error?:
       amount: input.amount,
       remark: input.remark?.trim() || undefined,
     });
-    revalidatePath('/dashboard/channel-funds');
+    revalidatePath('/dashboard/funds');
     return {};
   } catch (error) {
     return { error: error instanceof ApiError ? error.message : t('adjustFailed') };

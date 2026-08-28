@@ -25,7 +25,6 @@ function createSchema(production: boolean) {
     CLIENT_DB_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
     CLIENT_DB_MAX_USES: z.coerce.number().int().positive().default(1_000),
     /** 记账币种（billing guards 注入；充值/赠送/订阅同一口径） */
-    CLIENT_CURRENCY: z.string().default('CNY'),
     /** 用户面会话 JWT 密钥（与管理面、网关 App JWT 物理隔离） */
     JWT_SECRET: secretSchema('JWT_SECRET', production ? 32 : 16),
     /** 会话有效期（秒） */

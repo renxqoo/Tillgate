@@ -14,11 +14,12 @@ import {
   type OperationRun,
   type WalletApi,
 } from '@tillgate/billing';
-import { operationId } from '@tillgate/http';
+import { jsonBody, operationId } from '@tillgate/http';
 import type { Observability } from '@tillgate/observability';
+import type { ControlPlane } from '@tillgate/control-plane';
 import type { SessionEnv } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
-import { usersContracts } from '../contracts/users';
+import { debitFloorUpdateSchema, usersContracts } from '../contracts/users';
 import { toTransactionWireRow } from '../presenters/users';
 import { toAuditWireRow } from '../presenters/observability';
 
@@ -44,7 +45,21 @@ export type WriteAuditInTx = (
 
 export interface UsersFundsRoutesDeps {
   readonly accounts: Pick<AccountUseCases, 'userExists'>;
-  readonly wallet: Pick<WalletApi, 'credit' | 'transfer' | 'statement'>;
+  readonly wallet: Pick<
+    WalletApi,
+    'accounts' | 'credit' | 'transfer' | 'statement' | 'setDebitFloor' | 'applyDefaultFloor'
+  >;
+  /** 透支地板全局默认读（批量刷默认的基准——control-plane settings 面） */
+  readonly controlPlane: Pick<ControlPlane, 'settings'>;
+  /** 后置审计闭包（非事务端点——提交后旁路语义，与 plans/redeem 域同款） */
+  readonly postAudit: (entry: {
+    actor: 'admin';
+    adminId: number;
+    action: string;
+    targetType: string;
+    targetId: string;
+    detail: Record<string, unknown>;
+  }) => Promise<unknown>;
   readonly operations: OperationsUseCase;
   readonly writeAudit: WriteAuditInTx;
   readonly audit: Pick<Observability['audit'], 'listByTarget'>;
@@ -69,6 +84,43 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
   }
 
   // eslint-disable-next-line max-lines-per-function -- 管理员调账(资金域):事务内双侧转账与回执构造语义连续,lint 清零期不动资金逻辑
+  app.put('/v1/users/:id/debit-floor', jsonBody(debitFloorUpdateSchema), async (c) => {
+    const id = idParam(c.req.param('id'));
+    const body = c.req.valid('json');
+    await assertUser(id);
+    const before = await deps.wallet.accounts(id);
+    const prior = before.find((row) => row.kind === 'user')?.debitFloor ?? '0';
+    const result = await deps.wallet.setDebitFloor({ userId: id, amount: body.floor });
+    await deps
+      .postAudit({
+        actor: 'admin',
+        adminId: c.get('adminId'),
+        action: 'wallet.set_debit_floor',
+        targetType: 'user',
+        targetId: String(id),
+        detail: { before: prior, after: result.debitFloorAfter, source: 'manual' },
+      })
+      .catch(() => {});
+    return c.json({ ok: true, floorAfter: result.debitFloorAfter, source: 'manual' });
+  });
+
+  app.post('/v1/wallets/debit-floor/apply-default', async (c) => {
+    const { floor } = await deps.controlPlane.settings.debitFloorDefault.read();
+    const result = await deps.wallet.applyDefaultFloor({ floor });
+    await deps
+      .postAudit({
+        actor: 'admin',
+        adminId: c.get('adminId'),
+        action: 'wallet.apply_default_floor',
+        targetType: 'system',
+        targetId: 'wallet_accounts',
+        detail: { floor, applied: result.applied, skipped: result.skipped },
+      })
+      .catch(() => {});
+    return c.json({ ...result, floor });
+  });
+
+  // eslint-disable-next-line max-lines-per-function -- 调账资金动词事务体:幂等键+双路径+审计平铺(同族既有惯例)
   app.post('/v1/users/:id/adjust', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = usersContracts.adjust.parse(await c.req.json());

@@ -12,6 +12,9 @@ import type { CreateBillingConfig } from './billing.js';
 
 export { createBilling };
 export {
+  readPlatformCurrency,
+} from './adapters/postgres/platform-currency-reader.js';
+export {
   createPostgresWalletStore,
   type PostgresWalletStoreOptions,
 } from './adapters/postgres/wallet-store.js';
@@ -53,6 +56,7 @@ export function createPostgresBilling(
       guards: options.guards,
       currency: options.currency,
       resolver: options.resolver,
+      usageDefectBreaker: options.usageDefectBreaker,
       failurePolicy: options.failurePolicy,
       clock: options.clock,
       outbox: options.outbox,

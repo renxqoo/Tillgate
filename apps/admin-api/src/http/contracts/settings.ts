@@ -4,6 +4,7 @@
  * 集成字段级校验（词表/URL/端口/enc: 拒绝）在 control-plane 用例——契约层只拦形状。
  */
 import * as z from 'zod';
+import { nonNegativeMoneyString } from './common';
 
 export const settingsContracts = {
   /** IANA 名结构性校验在 control-plane 用例（invalid_billing_timezone）——契约层只拦形状 */
@@ -19,4 +20,25 @@ export const settingsContracts = {
   integrationsProbe: z.object({
     config: z.record(z.string().min(1).max(64), z.string().min(1).max(1024).nullable()).optional(),
   }),
+  /** 透支地板全局默认（非负金额串；新建钱包套用 + 存量批量刷默认的基准） */
+  debitFloorDefaultUpdate: z.object({ floor: nonNegativeMoneyString }),
+  /** 预扣策略：full 全额保守 / fixed 固定门槛（厂商式准入；金额必须为正） */
+  /** 平台币种（写一次——3 位大写 ISO 4217；处女系统守卫在用例） */
+  platformCurrencyUpdate: z.object({
+    currency: z.string().regex(/^[A-Z]{3}$/, 'must be a 3-letter uppercase ISO 4217 code'),
+  }),
+  billingReservationLimitUpdate: z.object({
+    limit: nonNegativeMoneyString.refine((v) => !/^0+(?:\.0+)?$/.test(v), {
+      message: 'limit must be positive',
+    }),
+  }),
+  billingReservationUpdate: z.discriminatedUnion('mode', [
+    z.object({ mode: z.literal('full') }),
+    z.object({
+      mode: z.literal('fixed'),
+      amount: nonNegativeMoneyString.refine((v) => !/^0+(?:\.0+)?$/.test(v), {
+        message: 'fixed amount must be positive',
+      }),
+    }),
+  ]),
 } as const;

@@ -54,17 +54,14 @@ describe('RBAC 行操作按钮权限显隐', () => {
     }
   });
 
-  it('设置页：server 端按 settings:update / settings:integrations 计算并下传（SMTP 独立卡后在集成卡区）', () => {
+  it('设置页：server 端按 settings:integrations 计算并下传（SMTP 独立卡后在集成卡区）', () => {
     const pageSrc = src(page('settings'));
-    expect(pageSrc, '设置页缺时区写门控').toContain("hasPerm(me, 'settings:update')");
     expect(pageSrc, '设置页缺集成操作门控').toContain("hasPerm(me, 'settings:integrations')");
     const assembler = src(settingsFeature('index.tsx'));
-    expect(assembler).toContain('canUpdate={canUpdateTimezone}');
     expect(assembler).toContain('canManage={canManageIntegrations}');
     // 2FA/TOTP 卡属 SELF 域不挂码——组装器不向其传任何权限布尔（SMTP 入口在独立集成卡）
     expect(assembler).toContain('<EmailTwoFactorCard me={me} />');
-    const timezone = src(settingsFeature('billing-timezone-card.tsx'));
-    expect(timezone).toContain('{canUpdate ? ('); // 无权 → 只读展示,无选择器/保存钮
+
     const card = src(settingsFeature(join('integration-cards', 'integration-card.tsx')));
     expect(count(card, '{canManage ? (')).toBe(1); // 配置钮（标题行）
     const toggle = src(settingsFeature(join('integration-cards', 'toggle-row.tsx')));

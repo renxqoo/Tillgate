@@ -8,6 +8,13 @@
 import type { ControlPlaneEnv } from '../control-plane';
 import type { FxDeps } from '../application/fx/fx-shared';
 import type { UpdateBillingTimezoneDeps } from '../application/settings/update-billing-timezone';
+import type { ReadDebitFloorDefaultDeps } from '../application/settings/read-debit-floor-default';
+import type { UpdateDebitFloorDefaultDeps } from '../application/settings/update-debit-floor-default';
+import type { ReadBillingReservationDeps } from '../application/settings/read-billing-reservation';
+import type { UpdateBillingReservationDeps } from '../application/settings/update-billing-reservation';
+import type { ReadBillingReservationLimitDeps } from '../application/settings/read-billing-reservation-limit';
+import type { UpdateBillingReservationLimitDeps } from '../application/settings/update-billing-reservation-limit';
+import type { UpdatePlatformCurrencyDeps } from '../application/settings/update-platform-currency';
 import type { UpdateIntegrationDeps } from '../application/integrations/update-integration';
 import type { ProbeSmtpDeps } from '../application/integrations/probe-smtp';
 import type { SourceCacheDeps } from '../application/catalog/fetch-source-models';
@@ -50,7 +57,15 @@ export interface SectionDeps {
   readonly auditTx: AuditTxSink;
   readonly voucherStorage: VoucherStorage;
   readonly fxDeps: FxDeps;
-  readonly settingsDeps: UpdateBillingTimezoneDeps;
+  readonly settingsDeps: UpdateBillingTimezoneDeps &
+    ReadDebitFloorDefaultDeps &
+    UpdateDebitFloorDefaultDeps &
+    ReadBillingReservationDeps &
+    UpdateBillingReservationDeps &
+    ReadBillingReservationLimitDeps &
+    UpdateBillingReservationLimitDeps;
+  /** 币种写依赖（含处女系统探针——装配注入三表存在性查询） */
+  readonly currencyDeps: UpdatePlatformCurrencyDeps;
   readonly integrationDeps: UpdateIntegrationDeps;
   readonly smtpProbeDeps: ProbeSmtpDeps;
   readonly sourceDeps: SourceCacheDeps;

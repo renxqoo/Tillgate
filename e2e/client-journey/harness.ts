@@ -41,7 +41,14 @@ export async function startMockGithub(): Promise<MockGithub> {
   const state: MockGithub = {
     server: null as unknown as Server,
     baseUrl: '',
-    profile: { id: 0, login: 'e2e-user', name: 'E2E User', email: '' },
+    // github 身份 id 随机化：find-or-create 按 (provider, id) 匹配——恒 0 会
+    // 命中共享开发库里历史运行的同身份用户（旧邮箱/旧属主串扰断言）。
+    profile: {
+      id: Number(`${Date.now()}`.slice(-9)),
+      login: 'e2e-user',
+      name: 'E2E User',
+      email: '',
+    },
     requests: [],
   };
   state.server = createServer((req, res) => {
@@ -151,6 +158,9 @@ function buildHarnessEnv(appUrl: string, githubEndpoints?: GithubEndpoints): Nod
     TOPUP_MIN: '1',
     TOPUP_MAX: '100000',
     TOPUP_EXCHANGE_RATE: '1',
+    // OAuth 基地址（env 域，0088 起）：回调白名单/authorize 重定向按 harness 实例地址
+    OAUTH_API_BASE: appUrl,
+    OAUTH_FRONTEND_URL: appUrl,
     // GitHub 社交登录：凭据/基地址经 DB 种子（seedIntegrationSettings——动态配置真路径）；
     // mock 上游端点覆盖保持 env（ENDPOINTS_JSON 是 env 专属逃生门）
     ...(githubEndpoints != null
@@ -334,6 +344,9 @@ export async function bootHarness(options: {
   const config = loadClientApiConfig(env);
   const mailer = createCaptureMailer();
   const assembly = await assembleClientApi(config, { mailer });
+  // reader 预热：latest() 首调返回全关快照（后台异步刷新）——boot 后立即
+  // 查询 providers 会拿到 []。旅程断言在种子后即时生效，先同步 resolve() 一次。
+  await assembly.integrationReader.resolve().catch(() => {});
   const app = createClientApiApp(assembly.deps);
   await new Promise<void>((resolve) => {
     serve({ fetch: app.fetch, port: options.appPort, hostname: '127.0.0.1' }, () => resolve());
@@ -397,14 +410,15 @@ export async function seedRedeemCode(
   code: string,
   amount: string,
 ): Promise<void> {
-  // admins.role_id NOT NULL（迁移 0082 起）——播种行挂 super_admin（缺 role_id 触发 23502）
+  // admins.role_id NOT NULL（迁移 0082 起）——播种行挂 super_admin（缺 role_id 触发 23502）；
+  // 凭据列已随 0089 退役（单一真相在 identity 七表）——占位行仅需 email/status/role_id
   await db.execute(
-    sql`insert into admins (email, password_hash, status, role_id)
-        values ('e2e-admin@tillgate.invalid', 'e2e:unused:1:1:1', 0,
+    sql`insert into admins (email, status, role_id)
+        values ('e2e-admin@tillgate.invalid', 0,
           (select id from roles where code = 'super_admin' limit 1))
         on conflict (email) do nothing`,
   );
-  // admins 必填 email/password_hash——播种专用行（cleanupSeeds 按 email 回收）
+  // 播种专用行（cleanupSeeds 按 email 回收）
   await db.execute(
     sql`insert into redeem_batches (name, amount, total, used_count, created_by)
         values ('e2e-batch', ${amount}, 1, 0, (

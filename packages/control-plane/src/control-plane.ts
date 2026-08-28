@@ -68,6 +68,11 @@ import type { RateCardListItem } from './application/rates/list-rate-cards';
 import type { ListRateCardUsersInput } from './application/rates/list-rate-card-users';
 import type { RateCardHealth } from './application/rates/check-rate-card-health';
 import type { UpdateBillingTimezoneInput } from './application/settings/update-billing-timezone';
+import type { UpdateDebitFloorDefaultInput } from './application/settings/update-debit-floor-default';
+import type { UpdateBillingReservationInput } from './application/settings/update-billing-reservation';
+import type { UpdateBillingReservationLimitInput } from './application/settings/update-billing-reservation-limit';
+import type { UpdatePlatformCurrencyInput } from './application/settings/update-platform-currency';
+import type { FundingReservationPolicy } from '@tillgate/billing';
 import type { UpdateIntegrationInput } from './application/integrations/update-integration';
 import type { IntegrationListItem } from './application/integrations/list-integrations';
 import type {
@@ -109,6 +114,7 @@ import { createModelSection } from './sections/model-section';
 import { createRateCardSection } from './sections/rate-card-section';
 import { createFxSection } from './sections/fx-section';
 import { createSettingsSection } from './sections/settings-section';
+import { walletAccounts, channelRecharges, usageLogs } from '@tillgate/db';
 import { createCatalogSection } from './sections/catalog-section';
 
 /** 装配环境（全部必填注入；可选覆盖件有包内缺省实现） */
@@ -273,6 +279,26 @@ export interface ControlPlane {
       read(): Promise<{ timezone: string | null }>;
       update(input: UpdateBillingTimezoneInput): Promise<{ timezone: string }>;
     };
+    /** 透支地板全局默认（system_configs['debit_floor_default']；键真相在 billing） */
+    debitFloorDefault: {
+      read(): Promise<{ floor: string }>;
+      update(input: UpdateDebitFloorDefaultInput): Promise<{ floor: string }>;
+    };
+    /** 预扣策略（system_configs['billing_reservation_policy']；网关 TTL 热读） */
+    billingReservation: {
+      read(): Promise<{ policy: FundingReservationPolicy }>;
+      update(input: UpdateBillingReservationInput): Promise<{ policy: FundingReservationPolicy }>;
+    };
+    /** 单笔预估敞口上限（system_configs['billing_reservation_limit']；网关 TTL 热读） */
+    billingReservationLimit: {
+      read(): Promise<{ limit: string }>;
+      update(input: UpdateBillingReservationLimitInput): Promise<{ limit: string }>;
+    };
+    /** 平台币种（写一次——处女系统才可改；各 app 启动读） */
+    platformCurrency: {
+      read(): Promise<{ currency: string }>;
+      update(input: UpdatePlatformCurrencyInput): Promise<{ currency: string }>;
+    };
     /** 第三方集成动态配置（integration_settings） */
     readonly integrations: {
       list(): Promise<{ integrations: readonly IntegrationListItem[] }>;
@@ -343,6 +369,7 @@ function smtpProbeDepsOf(env: ControlPlaneEnv, stores: ResolvedStores): ProbeSmt
   };
 }
 
+// eslint-disable-next-line max-lines-per-function -- facade 装配根：段构建器一次分发，拆段只会层层透传上下文
 export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
   const audit = env.audit ?? createPostgresAuditSink(env.db);
   const auditTx = env.auditTx ?? postgresAuditTxSink;
@@ -369,6 +396,20 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
     voucherStorage,
     fxDeps,
     settingsDeps,
+    // 币种写一次守卫探针：钱包/渠道进货/用量任一存在行 = 非处女（换币走显式迁移）
+    currencyDeps: {
+      db: env.db,
+      stores: { settings: stores.settings },
+      audit,
+      systemVirgin: async (db) => {
+        const [wallet, recharge, usage] = await Promise.all([
+          db.$count(walletAccounts),
+          db.$count(channelRecharges),
+          db.$count(usageLogs),
+        ]);
+        return wallet === 0 && recharge === 0 && usage === 0;
+      },
+    },
     integrationDeps,
     smtpProbeDeps,
     sourceDeps,

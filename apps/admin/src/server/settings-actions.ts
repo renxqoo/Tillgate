@@ -117,3 +117,108 @@ export async function testIntegrationAction(
     return { error: error instanceof ApiError ? error.message : tc('saveFailed') };
   }
 }
+
+/** 透支地板全局默认读（未配置 = "0" 不透支） */
+export async function getDebitFloorDefaultAction(): Promise<{
+  floor: string;
+  error?: string;
+}> {
+  try {
+    return await adminApi().get<{ floor: string }>('/v1/settings/debit-floor-default');
+  } catch {
+    return { floor: '0', error: 'unavailable' };
+  }
+}
+
+/** 透支地板全局默认写（即时生效;新钱包套用;存量需手动刷默认）。 */
+export async function updateDebitFloorDefaultAction(floor: string): Promise<{
+  ok?: true;
+  error?: string;
+}> {
+  const tc = await getTranslations('common');
+  try {
+    await adminApi().put('/v1/settings/debit-floor-default', { floor } satisfies { floor: string });
+    return { ok: true };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('saveFailed') };
+  }
+}
+
+/** 存量批量刷默认地板（仅 default 来源;manual 永不覆盖）。 */
+export async function applyDebitFloorDefaultAction(): Promise<
+  { ok: true; applied: number; skipped: number } | { ok?: false; error: string }
+> {
+  const tc = await getTranslations('common');
+  try {
+    const res = await adminApi().post<{ applied: number; skipped: number; floor: string }>(
+      '/v1/wallets/debit-floor/apply-default',
+    );
+    return { ok: true, applied: res.applied, skipped: res.skipped };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('actionFailed') };
+  }
+}
+
+/** 预扣策略读（未配置 = full 全额保守预扣） */
+export async function getBillingReservationAction(): Promise<{
+  policy: { mode: 'full' | 'fixed'; amount?: string } | null;
+  error?: string;
+}> {
+  try {
+    const res = await adminApi().get<{ policy: { mode: 'full' | 'fixed'; amount?: string } }>(
+      '/v1/settings/billing-reservation',
+    );
+    return { policy: res.policy };
+  } catch {
+    return { policy: null, error: 'unavailable' };
+  }
+}
+
+/** 预扣策略写（网关 TTL 缓存内拾取;fixed 金额必须为正——与后端二道防线同口径） */
+export async function updateBillingReservationAction(
+  policy: { mode: 'full' } | { mode: 'fixed'; amount: string },
+): Promise<{ ok?: true; error?: string }> {
+  const tc = await getTranslations('common');
+  if (policy.mode === 'fixed' && !/^\d{1,20}(?:\.\d{1,18})?$/.test(policy.amount)) {
+    return { error: 'invalidAmount' };
+  }
+  if (policy.mode === 'fixed' && /^0+(?:\.0+)?$/.test(policy.amount)) {
+    return { error: 'invalidAmount' };
+  }
+  try {
+    await adminApi().put('/v1/settings/billing-reservation', policy);
+    return { ok: true };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('saveFailed') };
+  }
+}
+
+/** 单笔预估敞口上限读（未配置 = 1000） */
+export async function getBillingReservationLimitAction(): Promise<{
+  limit: string;
+  error?: string;
+}> {
+  try {
+    const res = await adminApi().get<{ limit: string }>('/v1/settings/billing-reservation-limit');
+    return { limit: res.limit };
+  } catch {
+    return { limit: '1000', error: 'unavailable' };
+  }
+}
+
+/** 单笔预估敞口上限写（正金额；网关 TTL 缓存内拾取） */
+export async function updateBillingReservationLimitAction(limit: string): Promise<{
+  ok?: true;
+  error?: string;
+}> {
+  const tc = await getTranslations('common');
+  if (!/^\d{1,20}(?:\.\d{1,18})?$/.test(limit) || /^0+(?:\.0+)?$/.test(limit)) {
+    return { error: 'invalidAmount' };
+  }
+  try {
+    await adminApi().put('/v1/settings/billing-reservation-limit', { limit } satisfies { limit: string });
+    return { ok: true };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('saveFailed') };
+  }
+}

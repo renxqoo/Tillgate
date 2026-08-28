@@ -15,6 +15,8 @@ import { createSettlementQueue } from './settlement-queue';
 export interface SettlementDispatchConfig {
   readonly ownerId: string;
   readonly batchSize: number;
+  /** 批量结算每轮上限（含被通知的这条；1 = 关闭批量） */
+  readonly settleBatchSize: number;
   readonly claimLeaseMs: number;
   readonly backoffBaseMs: number;
   readonly bullmq: {
@@ -37,7 +39,7 @@ export interface SettlementDispatch {
 }
 
 export function createSettlementDispatch(deps: {
-  settlement: Pick<SettlementApi, 'claim' | 'processClaim' | 'listDueRequestIds'>;
+  settlement: Pick<SettlementApi, 'claim' | 'settleClaims' | 'processClaim' | 'listDueRequestIds'>;
   config: SettlementDispatchConfig;
   onError: (error: unknown, context: string) => void;
   logger: Logger;
@@ -46,6 +48,7 @@ export function createSettlementDispatch(deps: {
     settlement: deps.settlement,
     ownerId: deps.config.ownerId,
     claimLeaseMs: deps.config.claimLeaseMs,
+    batchSize: deps.config.settleBatchSize,
     onError: deps.onError,
   });
   const queue = createSettlementQueue({

@@ -127,7 +127,7 @@ it.skipIf(!hasEnv)(
         port,
         env: {
           DATABASE_URL: world.scopedUrl,
-          CHANNEL_API_KEY_ENCRYPTION: 'e2e-channel-key-0123456789abcdef',
+          ENCRYPTION_KEY: 'e2e-channel-key-0123456789abcdef',
           JWT_SECRET: 'e2e-jwt-secret-0123456789abcdef012345',
           GATEWAY_AI_ALLOW_LOCAL_URL: 'true',
         },

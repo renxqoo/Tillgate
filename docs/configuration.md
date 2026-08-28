@@ -30,8 +30,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `REDIS_URL` | Redis 连接串（密码形态 `redis://:pass@host:6379`）。gateway / client-api / admin-api 与 worker 必填；trace-receiver 不消费 |
 | `JWT_SECRET` | 用户面会话 + 网关 App JWT 签发密钥；≥32 随机（开发 16） |
 | `ADMIN_JWT_SECRET` | 管理面独立密钥（admin-api）；恒 ≥32。与 `JWT_SECRET` 仍应配不同随机值（v2 变化：不再启动时强校验「不相同」——identity realm 隔离使跨面 token 本就互不认账，见 `packages/identity/src/adapters/jwt/jose-tokens.ts`） |
-| `ENCRYPTION_KEY` | ≥32 随机；运行时对称加密根密钥（AES-256-GCM `enc:v1`）。admin-api（渠道 Key 落库加密）与 client-api（密码信封）**必填**；gateway 未配 `CHANNEL_API_KEY_ENCRYPTION` 时回退用它 |
-| `CHANNEL_API_KEY_ENCRYPTION` | ≥32 随机；渠道上游 Key 加密专用键。**worker 必配此键（无回退——只配 `ENCRYPTION_KEY` 时 worker 拒绝启动，以 `apps/worker/src/config.ts` schema 实测为准）**；gateway 优先用它、缺省回退 `ENCRYPTION_KEY` |
+| `ENCRYPTION_KEY` | ≥32 随机；运行时对称加密根密钥（AES-256-GCM `enc:v1`），全服务（admin-api / client-api / gateway / worker）**必填且同值**：渠道上游 Key 落库加密、密码信封、integration settings、TOTP secret 跨进程加解密共用 |
 | `IDENTITY_CODE_PEPPER` | ≥16 随机（生产建议 ≥32）；管理面挑战/恢复码 HMAC pepper（admin-api 装配必填） |
 | `CLIENT_CODE_PEPPER` | ≥16 随机（生产 32）；client-api 用户面验证码 HMAC pepper（与管理面 pepper 分离） |
 
@@ -166,7 +165,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `WORKER_BALANCE_LOW_THRESHOLD` | `5` | balance_low 预警阈值（元） |
 | `WORKER_SHUTDOWN_GRACE_MS` | `15000` | 优雅停机 |
 | SSRF | `false` | `WORKER_AI_ALLOW_LOCAL_URL` / `WORKER_WEBHOOK_ALLOW_LOCAL_URL`（生产恒 false） |
-| `CHANNEL_API_KEY_ENCRYPTION` | 必填 | ≥32；渠道 Key 解密专用键，**无 ENCRYPTION_KEY 回退** |
+| `ENCRYPTION_KEY` | 必填 | ≥32；对称加密根键（渠道 Key 解密等），与全服务同值 |
 
 > worker 的 PG LISTEN/NOTIFY 保留为低延迟门铃，BullMQ 承载结算调度；PG 恢复扫描是确定性兜底。
 
@@ -226,7 +225,7 @@ compose 部署由 `environment` 段注入：
 | `INTERNAL_API_TOKEN` | （移除） | v1 的 BFF 内部令牌机制未迁入 v2；BFF 出站靠会话 cookie + 容器网络隔离 |
 | `WORKER_SETTLE_WAKEUP` | `WORKER_SETTLE_WAKE` | 键名缩短；实现由 BullMQ 唤醒改为 PG LISTEN/NOTIFY |
 | `EMAIL_CODE_REQUIRED=always/never` | `on`/`off` | 值域更名（`auto` 不变） |
-| `ENCRYPTION_KEY`（全服务一把） | `ENCRYPTION_KEY` + `CHANNEL_API_KEY_ENCRYPTION` | 渠道 Key 加密拆出专用键：worker 必配专用键，gateway 专用键优先/回退根键，admin-api/client-api 仍用根键 |
+| `ENCRYPTION_KEY`（全服务一把） | `ENCRYPTION_KEY` | 渠道 Key 加密专用键已并回根键（曾拆分的 `CHANNEL_API_KEY_ENCRYPTION` 因 admin-api 加密侧从未支持造成跨进程解密失败，已删除统一） |
 | —（v1 无） | `IDENTITY_CODE_PEPPER` / `CLIENT_CODE_PEPPER` | identity 挑战/验证码域 HMAC pepper（管理面/用户面分离） |
 | `GATEWAY_BODY_LIMIT_BYTES=10485760` | `GATEWAY_BODY_LIMIT_BYTES=10MB` | 网关两个 body/upload 键从纯数字改为字节量串（`b/kb/mb/gb`） |
 | `LOGIN_*`（client-api 与 admin-api 同键） | client-api 保留 `LOGIN_*`；admin-api 改 `ADMIN_LOGIN_*` | 管理面爆破锁独立成键（阈值/窗口默认亦不同：1h 窗/15m 锁） |

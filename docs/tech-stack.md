@@ -20,7 +20,7 @@
 | Redis | ioredis | 限流计数 / 爆破守卫 / 会话吊销线 / OAuth state / 队列锁 |
 | 事件唤醒 | **PG LISTEN/NOTIFY** | worker 结算即时唤醒（纯门铃，可丢）；结算以 DB poll 为权威，定时扫描兜底（`apps/worker/src/wakeup/postgres-notify.ts`） |
 | JWT | jose | 签发/验签（网关与控制台会话均 HS256 起步） |
-| 加密 | node:crypto **AES-256-GCM** | 渠道上游 Key（`CHANNEL_API_KEY_ENCRYPTION`，32 字节环境变量） |
+| 加密 | node:crypto **AES-256-GCM** | 渠道上游 Key（`ENCRYPTION_KEY` 根键派生，32 字节） |
 | 密码哈希 | node:crypto **scrypt**（`scrypt:N:r:p:<saltHex>:<hashHex>`） | 本地账号兜底登录；哑哈希保证等量计算防枚举（v1 为 argon2） |
 | 金额运算 | **decimal.js** + `numeric(38,18)` 字符串读写 | `packages/billing/src/domain/money.ts` 单一真相 |
 | 邮件 | nodemailer（identity 登录码 / notifications 投递） | SMTP 装配注入 |
@@ -180,7 +180,7 @@ client-api┘
 | 项 | 措施 |
 |---|---|
 | TLS | nginx 终止 HTTPS（Let's Encrypt + certbot，续期显式触发 + reload）；管理面接口不暴露公网 |
-| 上游 Key | AES-256-GCM 加密落库（`CHANNEL_API_KEY_ENCRYPTION`），管理面编辑不回显 |
+| 上游 Key | AES-256-GCM 加密落库（`ENCRYPTION_KEY` 根键），管理面编辑不回显 |
 | 虚拟 Key / 充值码 / client_secret | 只存 SHA-256 哈希，明文仅创建时展示一次 |
 | SSRF 防护 | `ai` transport 硬门（协议 + 域名校验，禁内网/回环）；逃生门仅非生产 |
 | 请求体 | 10MB 上限（上传单文件 16MB + MIME 白名单）；SSE 响应不缓冲 |

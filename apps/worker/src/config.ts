@@ -36,6 +36,8 @@ const envSchema = z
     WORKER_BASE_DELAY_MS: z.coerce.number().int().min(1).default(15_000),
     WORKER_MAX_DELAY_MS: z.coerce.number().int().min(1).default(600_000),
     WORKER_SETTLE_WAKE: strictBooleanSchema(true),
+    /** 用量证据缺陷熔断阈值（结算验收门钳制计数 ≥ 阈值 → 渠道熔断） */
+    WORKER_USAGE_DEFECT_BREAKER: z.coerce.number().int().min(1).default(5),
     WORKER_SETTLE_INTERVAL_MS: z.coerce.number().int().min(1).default(30_000),
     // ---- BullMQ 结算调度(2026-08-26 增量):连接/前缀/并发/保险丝 ----
     WORKER_REDIS_URL: z.string().min(1).optional(),
@@ -46,6 +48,9 @@ const envSchema = z
     WORKER_BULLMQ_PREFIX: z.string().min(1).default('{bull}'),
     WORKER_SETTLE_CONCURRENCY: z.coerce.number().int().min(1).default(8),
     WORKER_SETTLE_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(10),
+    /** 批量结算每轮上限（含被通知的这条；1 = 关闭批量）。结算吞吐瓶颈在
+     * platform_revenue 单行串行化——批内共享事务一次拿放账户锁摊薄成本。 */
+    WORKER_SETTLE_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(20),
     WORKER_RECOVER_INTERVAL_MS: z.coerce.number().int().min(1).default(15_000),
     WORKER_RECOVERY_BATCH_SIZE: z.coerce.number().int().min(1).default(50),
 
@@ -88,8 +93,9 @@ const envSchema = z
     WORKER_SHUTDOWN_GRACE_MS: z.coerce.number().int().min(1_000).default(15_000),
 
     // ---- 上游与逃生门 ----
-    CHANNEL_API_KEY_ENCRYPTION: secretSchema('CHANNEL_API_KEY_ENCRYPTION', 32),
-    ENCRYPTION_KEY: z.string().optional(),
+    // 对称加密根密钥（AES-256-GCM enc:v1）：渠道上游 Key 解密 + integration settings
+    // 密钥解密共用；与 admin-api/client-api 同键（跨进程加解密必须一致）
+    ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
     WORKER_AI_ALLOW_LOCAL_URL: strictBooleanSchema(false),
     WORKER_WEBHOOK_ALLOW_LOCAL_URL: strictBooleanSchema(false),
 
@@ -126,8 +132,11 @@ export interface WorkerConfig {
   readonly currency: string;
   readonly ownerId: string;
 
+  readonly usageDefectBreaker: number;
   readonly settle: {
     readonly batchSize: number;
+    /** 批量结算每轮上限（1 = 关闭批量） */
+    readonly settleBatchSize: number;
     readonly claimLeaseMs: number;
     readonly failurePolicy: {
       readonly maxAttempts: number;
@@ -176,7 +185,7 @@ export interface WorkerConfig {
   readonly health: { readonly port: number; readonly token: string | undefined };
   readonly shutdownGraceMs: number;
 
-  readonly channelApiKeyEncryption: string;
+  readonly encryptionKey: string;
   readonly aiAllowLocalUrl: boolean;
   readonly webhookAllowLocalUrl: boolean;
 
@@ -237,8 +246,10 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     databaseUrl: parsed.DATABASE_URL,
     currency: parsed.WORKER_CURRENCY,
     ownerId: parsed.WORKER_OWNER_ID,
+    usageDefectBreaker: parsed.WORKER_USAGE_DEFECT_BREAKER,
     settle: {
       batchSize: parsed.WORKER_BATCH_SIZE,
+      settleBatchSize: parsed.WORKER_SETTLE_BATCH_SIZE,
       claimLeaseMs: parsed.WORKER_CLAIM_LEASE_MS,
       failurePolicy: {
         maxAttempts: parsed.WORKER_MAX_ATTEMPTS,
@@ -287,7 +298,7 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     balanceLowThreshold: parsed.WORKER_BALANCE_LOW_THRESHOLD,
     health: { port: parsed.WORKER_HEALTH_PORT, token: parsed.WORKER_HEALTH_TOKEN },
     shutdownGraceMs: parsed.WORKER_SHUTDOWN_GRACE_MS,
-    channelApiKeyEncryption: parsed.CHANNEL_API_KEY_ENCRYPTION,
+    encryptionKey: parsed.ENCRYPTION_KEY,
     aiAllowLocalUrl: parsed.WORKER_AI_ALLOW_LOCAL_URL,
     webhookAllowLocalUrl: parsed.WORKER_WEBHOOK_ALLOW_LOCAL_URL,
     otelMode,

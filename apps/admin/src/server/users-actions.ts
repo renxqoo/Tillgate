@@ -28,6 +28,26 @@ export async function adjustBalanceAction(
   }
 }
 
+// ── 单用户透支地板覆盖（manual 来源；批量刷默认永不覆盖） ───────────────────
+export async function setDebitFloorAction(
+  id: number,
+  input: { floor: string },
+): Promise<{ error?: string }> {
+  const t = await getTranslations('users');
+  // 与后端 nonNegativeMoneyString 对齐的前置校验：非负十进制（0 = 不透支）
+  if (!/^\d+(?:\.\d+)?$/.test(input.floor)) {
+    return { error: t('debitFloorInvalid') };
+  }
+  try {
+    await adminApi().put(`/v1/users/${id}/debit-floor`, { floor: input.floor });
+    revalidatePath('/dashboard/users');
+    revalidatePath(`/dashboard/users/${id}`);
+    return {};
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('debitFloorFailed') };
+  }
+}
+
 // ── 重置密码 ────────────────────────────────────────────────────────────────
 export async function setPasswordAction(
   id: number,

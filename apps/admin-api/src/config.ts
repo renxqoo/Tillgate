@@ -12,7 +12,6 @@ const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const
 
 /** 管理面记账币种与钱包词表白名单（wallet guards 装配注入）；
  * refTypes 含 accounts 注册赠送/推荐族的 'gift'/'referral'——walletCredit 桥消费） */
-const ADMIN_CURRENCY = 'CNY';
 const WALLET_REF_TYPES = ['billing', 'topup', 'admin', 'gift', 'referral'] as const;
 const WALLET_INTERNAL_ACCOUNTS = ['outside', 'platform_revenue'] as const;
 
@@ -155,10 +154,8 @@ export interface AdminApiConfig {
   readonly corsOrigins: readonly string[];
   readonly bodyLimitBytes: number;
   readonly shutdownGraceMs: number;
-  readonly currency: typeof ADMIN_CURRENCY;
   readonly walletGuards: {
     readonly refTypes: readonly string[];
-    readonly currencies: readonly string[];
     readonly internalAccounts: readonly string[];
   };
   /** 缺省:开发 memory / 生产 off(显式配置优先) */
@@ -227,10 +224,8 @@ export function loadAdminApiConfig(env: NodeJS.ProcessEnv = process.env): AdminA
       parsed.CORS_ORIGINS === '' ? [] : parsed.CORS_ORIGINS.split(',').map((s) => s.trim()),
     bodyLimitBytes: parsed.ADMIN_BODY_LIMIT_BYTES,
     shutdownGraceMs: parsed.ADMIN_SHUTDOWN_GRACE_MS,
-    currency: ADMIN_CURRENCY,
     walletGuards: {
       refTypes: WALLET_REF_TYPES,
-      currencies: [ADMIN_CURRENCY],
       internalAccounts: WALLET_INTERNAL_ACCOUNTS,
     },
     otelMode,

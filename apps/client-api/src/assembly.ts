@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- 装配根 composition root：线性依赖组装，行数棘轮与拆分张力反向 */
 /**
  * 装配根：进程级依赖一次组装（db / Redis / 能力包 facade / 守卫 / 读面 / 路由产物）。
  * 全部可变值来自 config——本文件零字面量配置（领域常量除外并注明）。
@@ -8,9 +9,10 @@
  * 世界与平台收入镜像。跨能力 bridge（walletCredit / sessionInvalidation）
  * 不共享事务——赠送/归因本就是 best-effort 段。
  */
-import { suggestDbBudget } from '@tillgate/http';
+import type { DbBudgetOptions } from '@tillgate/http';
 import { createDb, ping, type Db, type TxRetryPolicy } from '@tillgate/db';
 import { bootIntegrationReader } from './adapters/integration-reader.js';
+import type { IntegrationSettingsReader } from '@tillgate/control-plane';
 import { createClientPayments } from './adapters/payment-providers.js';
 import {
   assertRedisReachable,
@@ -32,6 +34,7 @@ import {
   type PaymentsApi,
   type RedemptionApi,
 } from '@tillgate/billing';
+import { readPlatformCurrency } from '@tillgate/billing/composition';
 import {
   createPostgresBillingStore,
   createPostgresRedeemCodeStore,
@@ -60,14 +63,18 @@ export interface ClientApiAssembly {
   readonly accounts: AccountUseCases;
   readonly billing: Billing;
   readonly deps: ClientApiDeps;
+  /** 集成设置 reader（E2E 预热/运维刷缓存用；支付回调路径走 deps 内同实例） */
+  readonly integrationReader: IntegrationSettingsReader;
 }
 
 /** 存储时钟单点（identity/accounts/billing 同源注入） */
 const clock = (): Date => new Date();
 
-/** 装配覆盖缝：mailer 显式注入/置空（E2E capture mailer 消费；缺省按环境构造） */
+/** 装配覆盖缝：mailer 显式注入/置空（E2E capture mailer 消费；缺省按环境构造）；
+ * dbBudget 整体注入（进程入口持有停机排水 controller——gateway 同形态;缺省不带门） */
 export interface AssemblyOverrides {
   readonly mailer?: Mailer | null;
+  readonly dbBudget?: DbBudgetOptions;
 }
 
 // eslint-disable-next-line max-lines-per-function, complexity -- 装配根 composition root:线性依赖组装,拆段只会层层透传上下文
@@ -102,6 +109,8 @@ export async function assembleClientApi(
     idleTimeoutMillis: config.CLIENT_DB_IDLE_TIMEOUT_MS,
     connectionTimeoutMillis: config.CLIENT_DB_CONNECT_TIMEOUT_MS,
   });
+  // 平台币种启动读（写一次 KV;替代 CLIENT_CURRENCY env——单一真相）
+  const platformCurrency = await readPlatformCurrency(db);
 
   const redis = createRedisClient(
     config.REDIS_URL,
@@ -186,11 +195,12 @@ export async function assembleClientApi(
     {
       guards: {
         refTypes: ['gift', 'redeem', 'topup', 'subscription', 'referral'],
-        currencies: [config.CLIENT_CURRENCY],
+        currencies: [platformCurrency],
         internalAccounts: ['outside', 'platform_revenue'],
       },
-      currency: config.CLIENT_CURRENCY,
+      currency: platformCurrency,
       resolver: createPgFundingSourceResolver(),
+      usageDefectBreaker: 5,
       failurePolicy: {
         maxAttempts: config.CLIENT_SETTLE_MAX_ATTEMPTS,
         baseDelayMs: config.CLIENT_SETTLE_BASE_DELAY_MS,
@@ -207,6 +217,7 @@ export async function assembleClientApi(
     config,
     db,
     reader,
+    platformCurrency,
     store: billingStore,
     wallet: billing.wallet,
     orderLimiter: rateCounter,
@@ -300,7 +311,6 @@ export async function assembleClientApi(
     captchaSiteKey: captchaSiteKey(),
     emailCodeRequired: emailCodeRequired(),
   });
-
   const deps: ClientApiDeps = {
     protocol: {
       trustedProxyHops: config.TRUSTED_PROXY_HOPS,
@@ -309,8 +319,7 @@ export async function assembleClientApi(
       corsMaxAgeSeconds: config.CLIENT_CORS_MAX_AGE_SECONDS,
       bodyLimitBytes: config.CLIENT_BODY_LIMIT_BYTES,
     },
-    // DB 并发预算门:公网 ingress 入口排队(余量 2 给探针旁路;无 fire-and-forget 写入面)
-    dbBudget: suggestDbBudget(config.DB_POOL_MAX, 2),
+    dbBudget: overrides.dbBudget,
     logger: {
       error: (obj, msg) => logger.error(obj, msg),
     },
@@ -429,5 +438,15 @@ export async function assembleClientApi(
     },
   };
 
-  return { logger, otel, db, redis, identity, accounts, billing, deps };
+  return {
+    logger,
+    otel,
+    db,
+    redis,
+    identity,
+    accounts,
+    billing,
+    deps,
+    integrationReader: reader,
+  };
 }

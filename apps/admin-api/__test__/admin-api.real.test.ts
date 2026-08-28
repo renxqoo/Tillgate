@@ -41,14 +41,14 @@ describe('admin-api 真实 PG 冒烟', () => {
     process.env.ENCRYPTION_KEY ??= 'real-smoke-encryption-key-0123456789';
     process.env.IDENTITY_CODE_PEPPER ??= 'real-smoke-pepper-0123456789';
     const config = loadAdminApiConfig();
-    const assembly = assembleAdminApi(config);
+    const assembly = await assembleAdminApi(config);
     try {
       const app = createAdminApp({
         pingDb: () => ping(assembly.db),
         logger: assembly.logger,
         sessions: assembly.identity.sessions,
         accounts: assembly.accounts,
-        wallet: assembly.billing.wallet,
+            wallet: assembly.billing.wallet,
         operations: assembly.operations,
         writeAudit: assembly.writeAuditInTx,
         subscriptions: assembly.billing.subscriptions,

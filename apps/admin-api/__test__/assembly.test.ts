@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { closeDb } from '@tillgate/db';
 import { assembleAdminApi } from '../src/assembly';
 import { loadAdminApiConfig } from '../src/config';
@@ -19,14 +21,18 @@ const BASE: NodeJS.ProcessEnv = {
 };
 
 describe('assembleAdminApi', () => {
-  it('otlp 缺端点启动期 fail-fast(observability 单一所有者错误)', () => {
-    expect(() =>
-      assembleAdminApi(loadAdminApiConfig({ ...BASE, OTEL_TRACES_MODE: 'otlp' })),
-    ).toThrowError(/endpoint/i);
+  it('otlp 缺端点启动期 fail-fast(observability 单一所有者错误)', async () => {
+    await expect(
+      Promise.resolve().then(() =>
+        assembleAdminApi(loadAdminApiConfig({ ...BASE, OTEL_TRACES_MODE: 'otlp' })),
+      ),
+    ).rejects.toThrowError(/endpoint/i);
   });
 
   it('合法配置构造全量 facade(零连接;桥接件就位;loginAudit 分支矩阵)', async () => {
-    const assembly = assembleAdminApi(loadAdminApiConfig({ ...BASE }));
+    const assembly = await assembleAdminApi(loadAdminApiConfig({ ...BASE }), {
+      platformCurrency: 'CNY',
+    });
     try {
       expect(assembly.identity.sessions.validate).toBeTypeOf('function');
       expect(assembly.billing.wallet.credit).toBeTypeOf('function');
@@ -38,7 +44,7 @@ describe('assembleAdminApi', () => {
       expect(assembly.writeAuditInTx).toBeTypeOf('function');
 
       // loginAudit 形状适配分支全矩阵:adminId/ip/email/twoFactor 有无组合
-      // (writeAudit 落库失败被 best-effort 吞掉——分支在回调内求值,无需真连接)
+      // (writeAudit 落库失败被 sink 吞掉并记日志——分支在回调内求值,无需真连接)
       await assembly.loginAudit({
         action: 'auth.login.success',
         adminId: 9,
@@ -56,9 +62,32 @@ describe('assembleAdminApi', () => {
       await expect(
         assembly.loginAudit({ action: 'auth.login.2fa_challenge', adminId: 4, ip: null }),
       ).resolves.toBeUndefined();
+
+      // 同底座其余三桥:best-effort 契约 = 不抛(落库失败记日志不反噬)
+      await expect(
+        assembly.stepupAudit({ action: 'settings.stepup.failed', adminId: 2, ip: '5.6.7.8' }),
+      ).resolves.toBeUndefined();
+      await expect(
+        assembly.twoFactorAudit({ adminId: 3, enabledFrom: false, enabledTo: true }),
+      ).resolves.toBeUndefined();
+      await expect(
+        assembly.postAudit({
+          actor: 'admin',
+          adminId: 1,
+          action: 'probe.action',
+          targetType: 'user',
+          targetId: 7,
+          detail: null,
+        }),
+      ).resolves.toBeUndefined();
     } finally {
       void closeDb(assembly.db);
     }
+  });
+
+  it('assembly 纯组装:无 process.exit(启动策略在 startup-rbac.ts,exit 属进程生命周期层)', () => {
+    const src = readFileSync(join(import.meta.dirname, '../src/assembly.ts'), 'utf8');
+    expect(src).not.toContain('process.exit');
   });
 });
 

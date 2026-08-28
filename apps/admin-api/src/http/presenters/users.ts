@@ -38,6 +38,8 @@ export interface UserWireRow {
   reservedBalance: string;
   availableBalance: string;
   creditLimit: string;
+  debitFloor: string;
+  debitFloorSource: string;
   dailySpendLimit: string | null;
   status: number;
   isEnterprise: boolean;
@@ -53,16 +55,27 @@ export function walletEnrichmentOf(snapshots: readonly AccountSnapshot[]): {
   balance: string;
   reservedBalance: string;
   creditLimit: string;
+  debitFloor: string;
+  debitFloorSource: string;
   availableBalance: string;
 } {
   const [first] = snapshots;
   if (first === undefined) {
-    return { balance: '0', reservedBalance: '0', creditLimit: '0', availableBalance: '0' };
+    return {
+      balance: '0',
+      reservedBalance: '0',
+      creditLimit: '0',
+      debitFloor: '0',
+      debitFloorSource: 'default',
+      availableBalance: '0',
+    };
   }
   return {
     balance: first.balance,
     reservedBalance: first.inFlight,
     creditLimit: first.creditLimit,
+    debitFloor: first.debitFloor ?? '0',
+    debitFloorSource: first.debitFloorSource ?? 'default',
     availableBalance: new Decimal(first.balance)
       .plus(first.creditLimit)
       .minus(first.inFlight)
@@ -76,6 +89,8 @@ export function toUserWireRow(
     balance: string;
     reservedBalance: string;
     creditLimit: string;
+    debitFloor: string;
+    debitFloorSource: string;
     availableBalance: string;
   },
   rateCardName: string | null = null,
@@ -93,6 +108,8 @@ export function toUserWireRow(
     reservedBalance: enrichment.reservedBalance,
     availableBalance: enrichment.availableBalance,
     creditLimit: enrichment.creditLimit,
+    debitFloor: enrichment.debitFloor,
+    debitFloorSource: enrichment.debitFloorSource,
     dailySpendLimit: user.dailySpendLimit,
     status: user.status,
     isEnterprise: user.isEnterprise,

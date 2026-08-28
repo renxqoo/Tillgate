@@ -9,6 +9,7 @@ import {
   EyeIcon,
   GiftIcon,
   KeyRoundIcon,
+  LandmarkIcon,
   Loader2Icon,
   ScaleIcon,
   ShieldCheckIcon,
@@ -19,6 +20,7 @@ import { useTranslations } from 'next-intl';
 
 import type { RateCardOption, AdminUserRow } from '@tillgate/api-client';
 import { AdjustDialog } from '../adjust-user-dialog';
+import { DebitFloorDialog } from '../debit-floor-user-dialog';
 import { FreezeDialog } from '../freeze-user-dialog';
 import { GiftDialog } from '../gift-user-dialog';
 import { PasswordDialog } from '../set-user-password-dialog';
@@ -36,8 +38,10 @@ export function UserRowActionCell({
 }: {
   user: AdminUserRow;
   pending: boolean;
-  activeDialog: 'adjust' | 'gift' | 'password' | 'rate' | 'freeze' | null;
-  onDialogChange: (dialog: 'adjust' | 'gift' | 'password' | 'rate' | 'freeze' | null) => void;
+  activeDialog: 'adjust' | 'gift' | 'floor' | 'password' | 'rate' | 'freeze' | null;
+  onDialogChange: (
+    dialog: 'adjust' | 'gift' | 'floor' | 'password' | 'rate' | 'freeze' | null,
+  ) => void;
   onUnban: () => void;
   onToggleEnterprise: () => void;
   rateCards: ReadonlyArray<RateCardOption>;
@@ -58,6 +62,9 @@ export function UserRowActionCell({
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onDialogChange('rate')}>
           <BanknoteIcon /> {t('bindRateCard')}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onDialogChange('floor')}>
+          <LandmarkIcon /> {tc('setDebitFloor')}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled={pending} onClick={onToggleEnterprise}>
@@ -83,6 +90,12 @@ export function UserRowActionCell({
         user={user}
         trigger={null}
         open={activeDialog === 'adjust'}
+        onOpenChange={(open) => !open && onDialogChange(null)}
+      />
+      <DebitFloorDialog
+        user={user}
+        trigger={null}
+        open={activeDialog === 'floor'}
         onOpenChange={(open) => !open && onDialogChange(null)}
       />
       <FreezeDialog

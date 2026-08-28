@@ -6,11 +6,6 @@
 import * as z from 'zod';
 import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
 
-/** 正金额（20 位整数 + 18 位小数、非零） */
-const positiveDecimal = z
-  .string()
-  .regex(/^\d{1,20}(\.\d{1,18})?$/, 'must be a positive decimal string')
-  .refine((v) => Number(v) > 0, 'must be greater than zero');
 
 const BYTES_RE = /^(\d+(?:\.\d+)?)(b|kb|mb|gb)$/i;
 
@@ -55,12 +50,12 @@ function createSchema(production: boolean) {
       REDIS_SENTINEL_NAME: z.string().min(1).optional(),
       REDIS_SENTINEL_PASSWORD: z.string().min(1).optional(),
       DB_POOL_MAX: z.coerce.number().int().min(1).max(300).default(10),
-      GATEWAY_CURRENCY: z.string().length(3).default('CNY'),
       ADMISSION_MAX_PENDING: z.coerce.number().int().min(1).default(10_000),
       ADMISSION_MAX_OLDEST_MS: z.coerce.number().int().min(1_000).default(300_000),
-      BILLING_RESERVATION_MAX: positiveDecimal.default('1000'),
-      BILLING_RESERVATION_MODE: z.enum(['full', 'fixed']).default('full'),
-      BILLING_FIXED_RESERVATION_AMOUNT: positiveDecimal.optional(),
+      /** 用量证据缺陷熔断阈值（验收门钳制计数 ≥ 阈值 → 渠道熔断） */
+      BILLING_USAGE_DEFECT_BREAKER: z.coerce.number().int().min(1).default(5),
+      /** 预扣策略（system_configs KV）缓存 TTL——admin 改动后的拾取延迟上界 */
+      BILLING_RESERVATION_POLICY_TTL_MS: z.coerce.number().int().min(1_000).default(15_000),
       BILLING_AUTHORIZATION_TTL_MS: z.coerce.number().int().min(1_000).default(300_000),
       /** 计费时区（全系统统一；schedule 分时段策略的墙钟口径）缓存 TTL */
       BILLING_TIMEZONE_TTL_MS: z.coerce.number().int().min(1_000).default(60_000),
@@ -112,17 +107,10 @@ function createSchema(production: boolean) {
       JWT_AUDIENCE: z.string().min(1).default('ai-gateway-api'),
       JWT_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).default(3_600),
       JWT_SECRET: secretSchema('JWT_SECRET', production ? 32 : 16),
-      CHANNEL_API_KEY_ENCRYPTION: secretSchema('CHANNEL_API_KEY_ENCRYPTION', 32),
+      ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
       GATEWAY_CORS_ORIGINS: z.string().default(''),
     })
     .superRefine((v, ctx) => {
-      if (v.BILLING_RESERVATION_MODE === 'fixed' && v.BILLING_FIXED_RESERVATION_AMOUNT == null) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['BILLING_FIXED_RESERVATION_AMOUNT'],
-          message: 'required when BILLING_RESERVATION_MODE=fixed',
-        });
-      }
       if (v.REDIS_SENTINELS != null && v.REDIS_SENTINEL_NAME == null) {
         ctx.addIssue({
           code: 'custom',
@@ -147,11 +135,11 @@ export interface GatewayConfig {
         readonly sentinelPassword?: string;
       };
   readonly dbPoolMax: number;
-  readonly currency: string;
   readonly admissionMaxPending: number;
   readonly admissionMaxOldestMs: number;
-  readonly reservationLimit: string;
-  readonly reservationPolicy: { mode: 'full' } | { mode: 'fixed'; amount: string };
+  readonly usageDefectBreaker: number;
+  /** 预扣策略 KV 读缓存 TTL（策略本体在 system_configs，admin 面动态调整） */
+  readonly reservationPolicyTtlMs: number;
   readonly authorizationTtlMs: number;
   /** 计费时区缓存 TTL（system_configs 读取）与回落时区 */
   readonly billingTimezoneTtlMs: number;
@@ -191,7 +179,7 @@ export interface GatewayConfig {
   };
   readonly keyPrefix: string;
   readonly oauth: { jwtSecret: string; issuer: string; audience: string; tokenTtlSeconds: number };
-  readonly channelApiKeyEncryption: string;
+  readonly encryptionKey: string;
   readonly corsOrigins: readonly string[];
 }
 
@@ -214,11 +202,17 @@ export const ACCOUNTS_POLICY = {
 } as const;
 
 /** billing 钱包词表白名单（billing guards 必填） */
-export const BILLING_GUARDS = {
-  refTypes: ['billing', 'topup', 'admin', 'gift'],
-  currencies: ['CNY', 'USD'],
-  internalAccounts: ['outside', 'platform_revenue'],
-} as const;
+/**
+ * 钱包守卫词表（币种维度自平台币种派生——单一真相在 system_configs KV；
+ * 旧白名单的 'USD' 项全库无调用方，随 env 币种一并收敛）
+ */
+export function billingGuardsOf(platformCurrency: string) {
+  return {
+    refTypes: ['billing', 'topup', 'admin', 'gift'],
+    currencies: [platformCurrency],
+    internalAccounts: ['outside', 'platform_revenue'],
+  } as const;
+}
 
 const mimeSetOf = (raw: string): Set<string> =>
   new Set(
@@ -235,16 +229,6 @@ const DEPRECATED_KEYS = [
   'FREE_MODEL_DAILY_LIMIT',
   'GENERATION_MAX_ACTIVE_PER_USER',
 ] as const;
-
-/** fixed 模式 amount 收窄：schema superRefine 已锁死「mode=fixed ⇒ amount 在场」，缺失即契约破裂 */
-function requireFixedAmount(amount: string | undefined): string {
-  if (amount == null) {
-    throw new Error(
-      'BILLING_FIXED_RESERVATION_AMOUNT required when BILLING_RESERVATION_MODE=fixed',
-    );
-  }
-  return amount;
-}
 
 /** Redis 拓扑收窄：schema 已保证 Sentinel 节点在场时主名必定在场。 */
 function redisTopologyOf(parsed: {
@@ -284,11 +268,7 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     }
     raw[key] = value;
   }
-  const encryption = raw.CHANNEL_API_KEY_ENCRYPTION ?? raw.ENCRYPTION_KEY;
-  const parsed = createSchema(raw.NODE_ENV === 'production').parse({
-    ...raw,
-    CHANNEL_API_KEY_ENCRYPTION: encryption,
-  });
+  const parsed = createSchema(raw.NODE_ENV === 'production').parse(raw);
 
   // 生产 GLOBAL_RPM 硬顶（超配钳到 5000 并告警）
   let globalRpm: number | null = parsed.GLOBAL_RPM > 0 ? parsed.GLOBAL_RPM : null;
@@ -304,14 +284,10 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     redisUrl: parsed.REDIS_URL,
     redisTopology: redisTopologyOf(parsed),
     dbPoolMax: parsed.DB_POOL_MAX,
-    currency: parsed.GATEWAY_CURRENCY,
     admissionMaxPending: parsed.ADMISSION_MAX_PENDING,
     admissionMaxOldestMs: parsed.ADMISSION_MAX_OLDEST_MS,
-    reservationLimit: parsed.BILLING_RESERVATION_MAX,
-    reservationPolicy:
-      parsed.BILLING_RESERVATION_MODE === 'fixed'
-        ? { mode: 'fixed', amount: requireFixedAmount(parsed.BILLING_FIXED_RESERVATION_AMOUNT) }
-        : { mode: 'full' },
+    usageDefectBreaker: parsed.BILLING_USAGE_DEFECT_BREAKER,
+    reservationPolicyTtlMs: parsed.BILLING_RESERVATION_POLICY_TTL_MS,
     authorizationTtlMs: parsed.BILLING_AUTHORIZATION_TTL_MS,
     billingTimezoneTtlMs: parsed.BILLING_TIMEZONE_TTL_MS,
     billingTimezoneFallback: parsed.BILLING_TIMEZONE_DEFAULT,
@@ -363,7 +339,7 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
       audience: parsed.JWT_AUDIENCE,
       tokenTtlSeconds: parsed.JWT_TOKEN_TTL_SECONDS,
     },
-    channelApiKeyEncryption: parsed.CHANNEL_API_KEY_ENCRYPTION,
+    encryptionKey: parsed.ENCRYPTION_KEY,
     corsOrigins: parsed.GATEWAY_CORS_ORIGINS.split(',')
       .map((s) => s.trim())
       .filter(Boolean),

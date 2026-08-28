@@ -27,7 +27,7 @@ export function UserRowItem({
   const notify = useActionResult();
   const [pending, setPending] = useState(false);
   const [activeDialog, setActiveDialog] = useState<
-    'adjust' | 'gift' | 'password' | 'rate' | 'freeze' | null
+    'adjust' | 'gift' | 'floor' | 'password' | 'rate' | 'freeze' | null
   >(null);
 
   /** 解封直执行;封禁经 FreezeDialog(原因输入 + 确认,替代原生 prompt/confirm)。 */
@@ -107,6 +107,12 @@ export function UserRowItem({
         {formatMoney(user.availableBalance)}
       </TableCell>
       <TableCell className="text-right tabular-nums">{formatMoney(user.creditLimit)}</TableCell>
+      <TableCell className="text-right tabular-nums">
+        {formatMoney(user.debitFloor)}
+        <span className="ml-1 text-[10px] text-muted-foreground">
+          {user.debitFloorSource === 'manual' ? 'manual' : ''}
+        </span>
+      </TableCell>
       <TableCell className="text-right tabular-nums">
         {user.dailySpendLimit === null ? tc('unlimited') : formatMoney(user.dailySpendLimit)}
       </TableCell>

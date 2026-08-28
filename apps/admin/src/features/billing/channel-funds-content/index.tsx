@@ -56,7 +56,7 @@ export function ChannelFundsClient({
     else qs.delete('channelId');
     if (nextType !== 'all') qs.set('type', nextType);
     else qs.delete('type');
-    router.push(`/dashboard/channel-funds${qs.toString() ? `?${qs}` : ''}`);
+    router.push(`/dashboard/funds${qs.toString() ? `?${qs}` : ''}`);
   }
 
   return (

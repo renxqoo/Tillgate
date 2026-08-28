@@ -155,6 +155,10 @@ export interface AdminUserRow {
   availableBalance: string;
   /** 透支上限(元,>=0)。信用模型:balance 允许降到 -creditLimit。 */
   creditLimit: string;
+  /** 结算透支地板(元,>=0)。结算超收可负到 -(creditLimit+debitFloor);0 = 不透支。 */
+  debitFloor: string;
+  /** 地板来源:default=随全局默认(批量刷默认会覆盖);manual=管理员手工(批量永不动)。 */
+  debitFloorSource: 'default' | 'manual';
   /** 每日花费上限(元,NULL=不限)。 */
   dailySpendLimit: string | null;
   status: number;

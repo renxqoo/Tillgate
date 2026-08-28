@@ -129,7 +129,7 @@ interface E2E {
       const config = loadWorkerConfig({
         NODE_ENV: 'test',
         DATABASE_URL: scopedUrl,
-        CHANNEL_API_KEY_ENCRYPTION: `wk3y-zx9q-e2e-${'pad'.repeat(6)}`,
+        ENCRYPTION_KEY: `wk3y-zx9q-e2e-${'pad'.repeat(6)}`,
         OTEL_TRACES_MODE: 'off',
         WORKER_OWNER_ID: 'e2e-worker',
         WORKER_SETTLE_WAKE: 'true',
@@ -138,7 +138,7 @@ interface E2E {
         // BullMQ 结算调度 fail-closed(真实通道口径:REDIS_URL 根 .env 必配)
         REDIS_URL: defined(process.env.REDIS_URL, 'REDIS_URL'),
       } as unknown as NodeJS.ProcessEnv);
-      const worker = assembleWorker(config);
+      const worker = await assembleWorker(config);
       await pollUntil(async () => {
         // 唤醒监听建立探测（空批无害）——直到 LISTEN 生效
         await settleWakeChime(gatewayDb, 'e2e-listen-probe');

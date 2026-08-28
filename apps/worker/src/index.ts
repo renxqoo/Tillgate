@@ -15,7 +15,7 @@ const autostart =
 
 if (autostart) {
   const config = loadWorkerConfig();
-  const assembly = assembleWorker(config);
+  const assembly = await assembleWorker(config);
 
   assembly.scheduler.start();
 

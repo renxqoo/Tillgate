@@ -11,8 +11,7 @@
 |---|---|---|
 | `TRUSTED_PROXY_HOPS` | nginx 单层反向代理 = `1`；直连 = `0`（默认） | 配 0 又在代理后：限流/爆破锁按 nginx IP 聚合，防御退化。compose 已给 gateway/client-api/admin-api/两个前端注入 `1`；脱离 compose 自跑别漏 |
 | `JWT_SECRET` / `ADMIN_JWT_SECRET` | ≥32 随机且建议互不相同 | 生产 <32 拒绝启动。v2 变化：不再启动时强校验「不相同」——identity realm（`tillgate:admin`）使跨面 token 互不认账，但仍应独立随机值（同值扩大单键泄露的爆炸半径） |
-| `ENCRYPTION_KEY` | ≥32 字符，一次性生成、最高等级保管 | admin-api / client-api 拒绝启动；gateway 无 `CHANNEL_API_KEY_ENCRYPTION` 时也靠它 |
-| `CHANNEL_API_KEY_ENCRYPTION` | ≥32 字符（worker 专用） | **worker 拒绝启动**（无 `ENCRYPTION_KEY` 回退，以 `apps/worker/src/config.ts` schema 为准）。gateway 侧可省（回退根键） |
+| `ENCRYPTION_KEY` | ≥32 字符，一次性生成、最高等级保管 | admin-api / client-api / gateway / worker 全部拒绝启动（全服务对称加密根键：渠道上游 Key、integration settings、TOTP secret 等跨进程加解密共用） |
 | `IDENTITY_CODE_PEPPER` / `CLIENT_CODE_PEPPER` | ≥16 随机（生产建议 ≥32） | admin-api / client-api 拒绝启动（v2 新增必填，两把 pepper 必须不同值——管理面/用户面分离） |
 | `REDIS_PASSWORD` | 强随机（compose 用它建 Redis `requirepass` 并拼 `REDIS_URL`） | 缺省 `root123` = Redis 裸奔弱口令（仅开发默认） |
 | `POSTGRES_PASSWORD` | 强随机（compose 用它拼 `DATABASE_URL`） | 缺省 `postgres`，数据目录卷沿用旧值时改键不生效——首次建库前设好 |
@@ -47,11 +46,11 @@ v2 变化：v1 清单中的 `INTERNAL_API_TOKEN`（BFF 内部令牌）与 `FREE_
       （两条命令模板在 compose.yml certbot 注释里）。无域名 IP 部署用 `docker/compose.server.yml`
       （自签证书 + 8443，certbot 归入 profile 永不启动），且所有 compose 命令带 `--env-file .env`。
 
-## 三、密钥管理（ENCRYPTION_KEY / CHANNEL_API_KEY_ENCRYPTION）
+## 三、密钥管理（ENCRYPTION_KEY）
 
 > v2 变化：v1 的「双 key 窗在线轮换」（`ENCRYPTION_KEY_OLD` + `scripts/rotate-encryption-key.ts`）
 > **尚未移植到 v2**。v2 密文格式 `enc:v1` 与 v1 逐字节兼容（同密钥互解，见
-> `packages/runtime/src/crypto/cipher.ts`），但运行中改 `ENCRYPTION_KEY` / `CHANNEL_API_KEY_ENCRYPTION`
+> `packages/runtime/src/crypto/cipher.ts`），但运行中改 `ENCRYPTION_KEY`
 > = 存量渠道上游 Key 密文全部无法解密（渠道调用即刻失败）。因此：
 
 - [ ] 首次部署一次性生成 ≥32 强随机值，写入密码管理器最高等级条目——**丢失 = 渠道密文永久不可解**。
