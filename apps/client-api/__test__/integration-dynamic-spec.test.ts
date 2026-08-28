@@ -272,7 +272,7 @@ describe('B-2 规格：回调路由先 refresh 再验签（轮换后新 key 零�
       },
     } as unknown as Parameters<typeof createClientPayments>[0]['store'];
     const api = createClientPayments({
-    platformCurrency: 'CNY',
+      platformCurrency: 'CNY',
       config: loadClientApiConfig(BASE_ENV),
       db: {} as Db,
       reader,
@@ -422,7 +422,7 @@ describe('B-4 规格：stripe 下单打到快照 apiBase（私有化网关语义
       },
     };
     const api = createClientPayments({
-    platformCurrency: 'CNY',
+      platformCurrency: 'CNY',
       config: loadClientApiConfig(BASE_ENV),
       db: {} as Db,
       reader,

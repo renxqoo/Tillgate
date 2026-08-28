@@ -58,7 +58,10 @@ describe('GET/PUT /v1/settings/billing-reservation', () => {
       const put = await appWith().request('/v1/settings/billing-reservation', {
         method: 'PUT',
         headers: json,
-        body: JSON.stringify({ mode: p.mode, ...(p.amount !== undefined ? { amount: p.amount } : {}) }),
+        body: JSON.stringify({
+          mode: p.mode,
+          ...(p.amount !== undefined ? { amount: p.amount } : {}),
+        }),
       });
       expect(put.status).toBe(200);
       expect(await put.json()).toEqual(p.expect);
@@ -77,10 +80,11 @@ describe('GET/PUT /v1/settings/billing-reservation', () => {
   });
 });
 
-
 describe('GET/PUT /v1/settings/billing-reservation-limit', () => {
   it('read fallback 1000; write valid echoes (table)', async () => {
-    const read = await appWith().request('/v1/settings/billing-reservation-limit', { headers: json });
+    const read = await appWith().request('/v1/settings/billing-reservation-limit', {
+      headers: json,
+    });
     expect(read.status).toBe(200);
     expect(await read.json()).toEqual({ limit: '1000' });
     for (const limit of ['0.01', '100', '100000']) {
@@ -105,7 +109,6 @@ describe('GET/PUT /v1/settings/billing-reservation-limit', () => {
     }
   });
 });
-
 
 describe('GET/PUT /v1/settings/platform-currency', () => {
   it('read fallback CNY; write echoes (table)', async () => {

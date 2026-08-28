@@ -37,9 +37,7 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
 
   app.get('/v1/settings/integrations', async (c) => c.json(await integrations.list()));
 
-  app.get('/v1/settings/debit-floor-default', async (c) =>
-    c.json(await debitFloorDefault.read()),
-  );
+  app.get('/v1/settings/debit-floor-default', async (c) => c.json(await debitFloorDefault.read()));
 
   app.put(
     '/v1/settings/debit-floor-default',
@@ -47,17 +45,15 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
     async (c) => {
       const body = c.req.valid('json');
       // 审计在 control-plane 用例内（settings.debit_floor_default；与 billing_timezone 同族）
-      return c.json(await debitFloorDefault.update({ ctx: controlContextOf(c), floor: body.floor }));
+      return c.json(
+        await debitFloorDefault.update({ ctx: controlContextOf(c), floor: body.floor }),
+      );
     },
   );
 
-  app.get('/v1/settings/billing-reservation', async (c) =>
-    c.json(await billingReservation.read()),
-  );
+  app.get('/v1/settings/billing-reservation', async (c) => c.json(await billingReservation.read()));
 
-  app.get('/v1/settings/platform-currency', async (c) =>
-    c.json(await platformCurrency.read()),
-  );
+  app.get('/v1/settings/platform-currency', async (c) => c.json(await platformCurrency.read()));
 
   app.put(
     '/v1/settings/platform-currency',
@@ -81,7 +77,9 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
     async (c) => {
       const body = c.req.valid('json');
       // 审计在 control-plane 用例内（settings.billing_reservation_limit；网关 TTL 内拾取）
-      return c.json(await billingReservationLimit.update({ ctx: controlContextOf(c), limit: body.limit }));
+      return c.json(
+        await billingReservationLimit.update({ ctx: controlContextOf(c), limit: body.limit }),
+      );
     },
   );
 

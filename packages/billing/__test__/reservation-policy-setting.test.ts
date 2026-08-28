@@ -8,7 +8,9 @@ import { parseReservationPolicySetting } from '../src/application/billing/reserv
 describe('parseReservationPolicySetting', () => {
   it('full 原样通过（含省略 amount）', () => {
     expect(parseReservationPolicySetting({ mode: 'full' })).toEqual({ mode: 'full' });
-    expect(parseReservationPolicySetting({ mode: 'full', amount: '0.01' })).toEqual({ mode: 'full' });
+    expect(parseReservationPolicySetting({ mode: 'full', amount: '0.01' })).toEqual({
+      mode: 'full',
+    });
   });
 
   it('fixed + 正金额通过（表驱动）', () => {
@@ -27,7 +29,16 @@ describe('parseReservationPolicySetting', () => {
   });
 
   it('形状异常/未知模式/null → null（表驱动）', () => {
-    for (const raw of [null, undefined, 'fixed', 42, {}, { mode: 'other' }, { mode: 'fixed' }, { mode: 1, amount: '1' }]) {
+    for (const raw of [
+      null,
+      undefined,
+      'fixed',
+      42,
+      {},
+      { mode: 'other' },
+      { mode: 'fixed' },
+      { mode: 1, amount: '1' },
+    ]) {
       expect(parseReservationPolicySetting(raw)).toBeNull();
     }
   });

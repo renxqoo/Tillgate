@@ -8,7 +8,15 @@ import { useCallback, useEffect, useState, useTransition } from 'react';
 import { ArrowDownUpIcon, Loader2Icon, RefreshCwIcon, XCircleIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@tillgate/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+} from '@tillgate/ui';
 
 import { useActionResult } from '@/components/action-toast';
 import {
@@ -78,7 +86,9 @@ export function FxCard({ canManage }: { canManage: boolean }) {
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-4">
           <div>
             <dt className="text-muted-foreground">{t('fxMode')}</dt>
-            <dd className="font-medium">{state ? t(state.mode === 'override' ? 'fxModeOverride' : 'fxModeAuto') : '—'}</dd>
+            <dd className="font-medium">
+              {state ? t(state.mode === 'override' ? 'fxModeOverride' : 'fxModeAuto') : '—'}
+            </dd>
           </div>
           <div>
             <dt className="text-muted-foreground">{t('fxBase')}</dt>
@@ -90,7 +100,9 @@ export function FxCard({ canManage }: { canManage: boolean }) {
           </div>
           <div>
             <dt className="text-muted-foreground">{t('fxFetchedAt')}</dt>
-            <dd className="text-xs">{state?.fetchedAt ? new Date(state.fetchedAt).toLocaleString() : '—'}</dd>
+            <dd className="text-xs">
+              {state?.fetchedAt ? new Date(state.fetchedAt).toLocaleString() : '—'}
+            </dd>
           </div>
         </dl>
 
@@ -106,7 +118,11 @@ export function FxCard({ canManage }: { canManage: boolean }) {
                 placeholder={state?.baseRate ?? '7.2'}
                 disabled={pending}
               />
-              <Button size="sm" disabled={pending} onClick={() => run(() => setFxOverrideAction(overrideRate))}>
+              <Button
+                size="sm"
+                disabled={pending}
+                onClick={() => run(() => setFxOverrideAction(overrideRate))}
+              >
                 {pending && <Loader2Icon className="animate-spin" />}
                 {t('fxSetOverride')}
               </Button>
@@ -118,7 +134,12 @@ export function FxCard({ canManage }: { canManage: boolean }) {
               >
                 <XCircleIcon /> {t('fxClearOverride')}
               </Button>
-              <Button size="sm" variant="outline" disabled={pending} onClick={() => run(refreshFxAction)}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onClick={() => run(refreshFxAction)}
+              >
                 <RefreshCwIcon /> {t('fxRefresh')}
               </Button>
             </div>
@@ -132,7 +153,12 @@ export function FxCard({ canManage }: { canManage: boolean }) {
                 disabled={pending}
               />
               <span className="text-sm text-muted-foreground">%</span>
-              <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => setFxBufferAction(buffer))}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onClick={() => run(() => setFxBufferAction(buffer))}
+              >
                 {t('fxSetBuffer')}
               </Button>
             </div>

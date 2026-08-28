@@ -107,7 +107,9 @@ export async function updatePlatformCurrencyAction(currency: string): Promise<{
     return { error: 'invalidCurrency' };
   }
   try {
-    await adminApi().put('/v1/settings/platform-currency', { currency } satisfies { currency: string });
+    await adminApi().put('/v1/settings/platform-currency', { currency } satisfies {
+      currency: string;
+    });
     revalidatePath('/dashboard/funds');
     return { ok: true };
   } catch (error) {

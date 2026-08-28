@@ -108,7 +108,9 @@ describe('fail-closed', () => {
   });
 
   it('预扣策略 TTL 下限 1s（过短 = KV 读放大）', () => {
-    expect(() => loadGatewayConfig({ ...BASE, BILLING_RESERVATION_POLICY_TTL_MS: '999' })).toThrow();
+    expect(() =>
+      loadGatewayConfig({ ...BASE, BILLING_RESERVATION_POLICY_TTL_MS: '999' }),
+    ).toThrow();
   });
 
   it('生产弱 JWT 密钥拒绝（32 门槛）；开发 16 即可', () => {

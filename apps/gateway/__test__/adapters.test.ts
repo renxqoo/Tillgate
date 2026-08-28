@@ -715,9 +715,8 @@ describe('billing-timezone 读取器（TTL 缓存 + 单飞行 + 回落）', () =
 
 describe('billing-reservation 读取器（TTL 缓存 + 单飞行 + full 回落）', () => {
   it('KV fixed 取值;缺失/垃圾值回落 full;TTL 内不重复查;过期后刷新', async () => {
-    const { createBillingReservationPolicyReader } = await import(
-      '../src/adapters/reservation-policy.js'
-    );
+    const { createBillingReservationPolicyReader } =
+      await import('../src/adapters/reservation-policy.js');
     const db = fakeBillingTimezoneDb([{ value: { mode: 'fixed', amount: '0.01' } }]);
     const read = createBillingReservationPolicyReader({ db: db as never, ttlMs: 60_000 });
     expect(await read()).toEqual({ mode: 'fixed', amount: '0.01' });
@@ -749,9 +748,8 @@ describe('billing-reservation 读取器（TTL 缓存 + 单飞行 + full 回落�
   });
 
   it('KV 读失败抛错（fail-loud——策略事故不静默回落错档预扣）', async () => {
-    const { createBillingReservationPolicyReader } = await import(
-      '../src/adapters/reservation-policy.js'
-    );
+    const { createBillingReservationPolicyReader } =
+      await import('../src/adapters/reservation-policy.js');
     const db = {
       query: {
         systemConfigs: {
@@ -766,9 +764,8 @@ describe('billing-reservation 读取器（TTL 缓存 + 单飞行 + full 回落�
   });
 
   it('并发读合并单飞行（一次刷新一轮查询）', async () => {
-    const { createBillingReservationPolicyReader } = await import(
-      '../src/adapters/reservation-policy.js'
-    );
+    const { createBillingReservationPolicyReader } =
+      await import('../src/adapters/reservation-policy.js');
     let queries = 0;
     const db = {
       query: {

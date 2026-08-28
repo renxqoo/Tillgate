@@ -48,7 +48,7 @@ describe('admin-api 真实 PG 冒烟', () => {
         logger: assembly.logger,
         sessions: assembly.identity.sessions,
         accounts: assembly.accounts,
-            wallet: assembly.billing.wallet,
+        wallet: assembly.billing.wallet,
         operations: assembly.operations,
         writeAudit: assembly.writeAuditInTx,
         subscriptions: assembly.billing.subscriptions,

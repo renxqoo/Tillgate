@@ -216,7 +216,9 @@ export async function updateBillingReservationLimitAction(limit: string): Promis
     return { error: 'invalidAmount' };
   }
   try {
-    await adminApi().put('/v1/settings/billing-reservation-limit', { limit } satisfies { limit: string });
+    await adminApi().put('/v1/settings/billing-reservation-limit', { limit } satisfies {
+      limit: string;
+    });
     return { ok: true };
   } catch (error) {
     return { error: error instanceof ApiError ? error.message : tc('saveFailed') };

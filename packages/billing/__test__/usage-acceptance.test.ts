@@ -38,7 +38,11 @@ function receiptOf(usage: Partial<UsageReceipt['usage']>): UsageReceipt {
   } as UsageReceipt;
 }
 
-function quoteOf(bound: { maxOutputTokens?: number; inputUpper?: number; unitUpper?: number }): BillingQuote {
+function quoteOf(bound: {
+  maxOutputTokens?: number;
+  inputUpper?: number;
+  unitUpper?: number;
+}): BillingQuote {
   return {
     maxOutputTokens: bound.maxOutputTokens ?? 1000,
     candidates: [
@@ -67,7 +71,11 @@ describe('acceptTrustedUsage', () => {
   });
 
   it('估算收据不经验收门（我方口径有界性由构造保证）', () => {
-    const r = receiptOf({ estimated: true, inputTokens: 99_999_999, outputTokens: 88_888_888 } as never);
+    const r = receiptOf({
+      estimated: true,
+      inputTokens: 99_999_999,
+      outputTokens: 88_888_888,
+    } as never);
     const out = acceptTrustedUsage({ receipt: r, quote: quoteOf({}) });
     expect(out.receipt).toBe(r);
     expect(out.clamps).toEqual([]);
@@ -81,7 +89,10 @@ describe('acceptTrustedUsage', () => {
     expect(out.receipt.usage.inputTokens).toBe(30);
     expect(out.receipt.usage.outputTokens).toBe(100);
     expect(out.clamps.map((c) => c.kind).toSorted()).toEqual(['input_bound', 'output_cap']);
-    expect(out.clamps.find((c) => c.kind === 'input_bound')).toMatchObject({ original: 20_000_000, clamped: 30 });
+    expect(out.clamps.find((c) => c.kind === 'input_bound')).toMatchObject({
+      original: 20_000_000,
+      clamped: 30,
+    });
   });
 
   it('B3：证据字节钳输出（界内虚报收敛到观测证据）', () => {

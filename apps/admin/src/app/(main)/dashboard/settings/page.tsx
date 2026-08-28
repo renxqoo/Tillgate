@@ -23,10 +23,6 @@ export default async function SettingsPage() {
   // 无 settings:integrations → 集成/SMTP 操作位隐藏。权威判定在 admin-api ACL。
   const canManageIntegrations = me != null && hasPerm(me, 'settings:integrations');
   return (
-    <SettingsContent
-      me={me}
-      error={loadError}
-      canManageIntegrations={canManageIntegrations}
-    />
+    <SettingsContent me={me} error={loadError} canManageIntegrations={canManageIntegrations} />
   );
 }

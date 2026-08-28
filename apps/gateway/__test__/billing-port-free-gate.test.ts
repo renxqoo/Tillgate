@@ -40,7 +40,10 @@ function harness() {
       signal: async () => {},
       reserveChannel: async () => ({ allowed: true, remaining: '0', switched: false }),
     },
-    { resolveReservationLimit: async () => '10', resolveReservationPolicy: async () => ({ mode: 'full' }) },
+    {
+      resolveReservationLimit: async () => '10',
+      resolveReservationPolicy: async () => ({ mode: 'full' }),
+    },
   );
   return { port, quotes };
 }

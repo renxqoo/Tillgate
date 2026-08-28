@@ -25,7 +25,7 @@ const CONFIG = {
       }),
   },
   usageDefectBreaker: 5,
-    failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
+  failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
   clock: () => new Date(),
   onError: () => {},
 } as const;

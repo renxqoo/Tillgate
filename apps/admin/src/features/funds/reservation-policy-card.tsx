@@ -9,7 +9,15 @@ import { useEffect, useState, useTransition } from 'react';
 import { Loader2Icon, ShieldCheckIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@tillgate/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+} from '@tillgate/ui';
 
 import { useActionResult } from '@/components/action-toast';
 import {

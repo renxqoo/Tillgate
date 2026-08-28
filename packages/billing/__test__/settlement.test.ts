@@ -420,7 +420,7 @@ describe('结算渠道链路与钩子', () => {
       }),
       channels: h.world.channels,
       usageDefectBreaker: 5,
-    failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
+      failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
       clock: () => new Date(),
       onError: () => {},
       onSettled: (data) => {
@@ -569,7 +569,7 @@ describe('分支封口补充', () => {
         quota: h.world.quota,
       }),
       usageDefectBreaker: 5,
-    failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
+      failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
       clock: () => new Date(),
       onError: () => {},
       onDead: (data) => dead.push(data.requestId),

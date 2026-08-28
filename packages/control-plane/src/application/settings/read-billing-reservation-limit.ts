@@ -15,6 +15,8 @@ export async function readBillingReservationLimit(
   deps: ReadBillingReservationLimitDeps,
 ): Promise<{ limit: string }> {
   return {
-    limit: (await deps.stores.settings.readBillingReservationLimit(deps.db)) ?? DEFAULT_RESERVATION_LIMIT,
+    limit:
+      (await deps.stores.settings.readBillingReservationLimit(deps.db)) ??
+      DEFAULT_RESERVATION_LIMIT,
   };
 }

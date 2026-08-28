@@ -3,10 +3,7 @@
  * （分钟内全网关拾取，无需重启）。值域由 billing 解析单一实现兜底
  * （路由契约 zod 之外的二道防线——fixed 金额必须为正）。
  */
-import {
-  BILLING_RESERVATION_POLICY_KEY,
-  parseReservationPolicySetting,
-} from '@tillgate/billing';
+import { BILLING_RESERVATION_POLICY_KEY, parseReservationPolicySetting } from '@tillgate/billing';
 import { controlPlaneErrors } from '../../errors';
 import type { Db } from '@tillgate/db';
 import type { FundingReservationPolicy } from '@tillgate/billing';

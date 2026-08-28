@@ -209,7 +209,10 @@ describe('catalog 渠道可选列 / billing 可选字段透传', () => {
         signal: async () => {},
         reserveChannel: async () => ({ allowed: true, remaining: '0', switched: false }),
       } as never,
-      { resolveReservationLimit: async () => '1', resolveReservationPolicy: async () => ({ mode: 'full' }) },
+      {
+        resolveReservationLimit: async () => '1',
+        resolveReservationPolicy: async () => ({ mode: 'full' }),
+      },
     );
     const candidate: QuoteCandidate = {
       mappingId: 1,

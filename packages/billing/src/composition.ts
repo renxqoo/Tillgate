@@ -11,9 +11,7 @@ import type { FundingSourceResolver } from './ports/funding-ports.js';
 import type { CreateBillingConfig } from './billing.js';
 
 export { createBilling };
-export {
-  readPlatformCurrency,
-} from './adapters/postgres/platform-currency-reader.js';
+export { readPlatformCurrency } from './adapters/postgres/platform-currency-reader.js';
 export {
   createPostgresWalletStore,
   type PostgresWalletStoreOptions,

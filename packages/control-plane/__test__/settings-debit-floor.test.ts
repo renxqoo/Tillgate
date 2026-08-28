@@ -95,8 +95,8 @@ describe('updateDebitFloorDefault', () => {
   it('audit sink 故障不反噬（best-effort 降级路径）', async () => {
     const { deps, audit } = makeDeps('0');
     audit.fail.on = true;
-    await expect(
-      updateDebitFloorDefault(deps, { ctx: adminCtx(), floor: '2' }),
-    ).resolves.toEqual({ floor: '2' });
+    await expect(updateDebitFloorDefault(deps, { ctx: adminCtx(), floor: '2' })).resolves.toEqual({
+      floor: '2',
+    });
   });
 });

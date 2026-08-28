@@ -29,10 +29,13 @@ export default async function FundsPage() {
   const canUpdateTimezone = me != null && hasPerm(me, 'settings:update');
   const canManageFx = me != null && hasPerm(me, 'funds:fx');
 
-  const channelsRes = await fetchAdminList<AdminChannelRow>('/v1/channels', { pageSize: 100 }).catch(
-    () => null,
-  );
-  const channels: ChannelOption[] = (channelsRes?.rows ?? []).map((x) => ({ id: x.id, name: x.name }));
+  const channelsRes = await fetchAdminList<AdminChannelRow>('/v1/channels', {
+    pageSize: 100,
+  }).catch(() => null);
+  const channels: ChannelOption[] = (channelsRes?.rows ?? []).map((x) => ({
+    id: x.id,
+    name: x.name,
+  }));
   const fundsRes = await fetchAdminList<AdminChannelFundRow>('/v1/channel-funds', {
     page: 1,
     pageSize: PAGE_SIZE,
@@ -57,7 +60,10 @@ export default async function FundsPage() {
           />
         </TabsContent>
 
-        <TabsContent value="risk" className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <TabsContent
+          value="risk"
+          className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+        >
           <DebitFloorCard canUpdate={canManageRisk} />
           <ReservationPolicyCard canUpdate={canManageRisk} />
           <BillingTimezoneCard canUpdate={canUpdateTimezone} />

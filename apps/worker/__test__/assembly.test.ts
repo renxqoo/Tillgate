@@ -53,7 +53,9 @@ describe('assembleWorker', () => {
   });
 
   it('WORKER_NOTIFY_ENABLED=false → notify 静音（不注册）', async () => {
-    const assembly = await assembleWorker(config({ WORKER_NOTIFY_ENABLED: 'false' }), { platformCurrency: 'CNY' });
+    const assembly = await assembleWorker(config({ WORKER_NOTIFY_ENABLED: 'false' }), {
+      platformCurrency: 'CNY',
+    });
     assemblies.push(assembly);
     expect(assembly.jobs.includes('notify')).toBe(false);
     expect(assembly.jobs).toHaveLength(6);
@@ -63,10 +65,7 @@ describe('assembleWorker', () => {
     // 旧手工记账 RUNNER_COUNT=6 会算 12+6+2=20 放行（漏 notify tick 与持锁
     // 双连接 tick，红队复审 R-2）；注册表派生 = 12 + (1+1+1+1+2+2+1) + 2 = 23 > 20
     await expect(
-      assembleWorker(
-        config({ WORKER_SETTLE_CONCURRENCY: '12' }),
-        { platformCurrency: 'CNY' },
-      ),
+      assembleWorker(config({ WORKER_SETTLE_CONCURRENCY: '12' }), { platformCurrency: 'CNY' }),
     ).rejects.toThrow(/worker DB pool 20 < worst-case DB concurrency 23/);
     // 静音 notify（6 tick，连接需求 8）+ 并发 10 = 20 恰好覆盖 → 放行
     const tight = await assembleWorker(
@@ -78,7 +77,9 @@ describe('assembleWorker', () => {
   });
 
   it('WORKER_SETTLE_WAKE=true → 唤醒消费端挂载（LISTEN 专用连接尽力建连，失败仅日志）', async () => {
-    const assembly = await assembleWorker(config({ WORKER_SETTLE_WAKE: 'true' }), { platformCurrency: 'CNY' });
+    const assembly = await assembleWorker(config({ WORKER_SETTLE_WAKE: 'true' }), {
+      platformCurrency: 'CNY',
+    });
     assemblies.push(assembly);
     expect(assembly.wakeup).not.toBeNull();
     // 初始建连对不可达库异步失败（sweep covers 口径）——close 幂等收口

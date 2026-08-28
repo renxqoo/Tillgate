@@ -90,7 +90,9 @@ export function DebitFloorDialog({
           <DialogDescription>
             {t('debitFloorDescription', {
               floor: formatMoney(user.debitFloor),
-              source: tc(user.debitFloorSource === 'manual' ? 'debitFloorManual' : 'debitFloorDefault'),
+              source: tc(
+                user.debitFloorSource === 'manual' ? 'debitFloorManual' : 'debitFloorDefault',
+              ),
             })}
           </DialogDescription>
         </DialogHeader>

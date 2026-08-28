@@ -182,7 +182,7 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
       }),
       channels: billingStore.channelStore,
       usageDefectBreaker: 5,
-    failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
+      failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
       clock: () => new Date(),
       onError: () => {},
     });

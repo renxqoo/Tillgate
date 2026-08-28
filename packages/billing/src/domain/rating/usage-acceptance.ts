@@ -16,8 +16,19 @@ import type { UsageReceipt } from './types.js';
 
 /** 钳制事实（审计与缺陷计数的载荷；original > clamped 才出现） */
 export interface UsageClamp {
-  readonly kind: 'output_cap' | 'input_bound' | 'cached_bound' | 'cache_write_bound' | 'unit_bound' | 'evidence_bound';
-  readonly field: 'outputTokens' | 'inputTokens' | 'cachedInputTokens' | 'cacheWriteTokens' | 'units';
+  readonly kind:
+    | 'output_cap'
+    | 'input_bound'
+    | 'cached_bound'
+    | 'cache_write_bound'
+    | 'unit_bound'
+    | 'evidence_bound';
+  readonly field:
+    | 'outputTokens'
+    | 'inputTokens'
+    | 'cachedInputTokens'
+    | 'cacheWriteTokens'
+    | 'units';
   readonly original: number;
   readonly clamped: number;
   /** 该次钳制依据的界值（审计定位用） */
@@ -49,7 +60,8 @@ function boundsOf(quote: QuoteLike, mappingId: number): Bound {
     return { outputCap: null, inputUpper: null, unitUpper: null };
   }
   const candidate = quote.candidates.find(
-    (c) => typeof c === 'object' && c !== null && (c as { mappingId?: unknown }).mappingId === mappingId,
+    (c) =>
+      typeof c === 'object' && c !== null && (c as { mappingId?: unknown }).mappingId === mappingId,
   );
   const c = candidate as { inputTokenUpperBound?: unknown; unitUpperBound?: unknown } | undefined;
   return {
@@ -65,49 +77,93 @@ function clampTo(value: number, bound: number | null): { value: number; clamped:
 }
 
 /** 输出侧钳制：先准入 cap，再证据字节（更紧者生效——两级各记一条钳制事实） */
-function clampOutput(
-  args: { outputTokens: number; bounds: Bound; evidence: number | null; clamps: UsageClamp[] },
-): number {
+function clampOutput(args: {
+  outputTokens: number;
+  bounds: Bound;
+  evidence: number | null;
+  clamps: UsageClamp[];
+}): number {
   const { outputTokens, bounds, evidence, clamps } = args;
   const cap = clampTo(outputTokens, bounds.outputCap);
   if (cap.clamped) {
-    clamps.push({ kind: 'output_cap', field: 'outputTokens', original: outputTokens, clamped: cap.value, bound: bounds.outputCap ?? 0 });
+    clamps.push({
+      kind: 'output_cap',
+      field: 'outputTokens',
+      original: outputTokens,
+      clamped: cap.value,
+      bound: bounds.outputCap ?? 0,
+    });
   }
   const byEvidence = clampTo(cap.value, evidence);
   if (byEvidence.clamped) {
-    clamps.push({ kind: 'evidence_bound', field: 'outputTokens', original: cap.value, clamped: byEvidence.value, bound: evidence ?? 0 });
+    clamps.push({
+      kind: 'evidence_bound',
+      field: 'outputTokens',
+      original: cap.value,
+      clamped: byEvidence.value,
+      bound: evidence ?? 0,
+    });
   }
   return byEvidence.value;
 }
 
+/** 可选侧字段钳制（0 值跳过——未上报字段不产生事实；kind 由字段名派生） */
+function clampOptionalField(args: {
+  usage: { cacheWriteTokens?: number; units?: number };
+  field: 'cacheWriteTokens' | 'units';
+  bound: number | null;
+  clamps: UsageClamp[];
+}): void {
+  const { usage, field, bound, clamps } = args;
+  const original = usage[field] ?? 0;
+  const b = clampTo(original, bound);
+  if (original > 0 && b.clamped) {
+    usage[field] = b.value;
+    clamps.push({
+      kind: field === 'cacheWriteTokens' ? 'cache_write_bound' : 'unit_bound',
+      field,
+      original,
+      clamped: b.value,
+      bound: bound ?? 0,
+    });
+  }
+}
+
 /** 输入侧钳制（就地写回副本）：input → cached（子集）→ cacheWrite（派生）→ units */
 function clampInputSide(
-  usage: { inputTokens: number; cachedInputTokens: number; cacheWriteTokens?: number; units?: number },
+  usage: {
+    inputTokens: number;
+    cachedInputTokens: number;
+    cacheWriteTokens?: number;
+    units?: number;
+  },
   bounds: Bound,
   clamps: UsageClamp[],
 ): void {
   const inputB = clampTo(usage.inputTokens, bounds.inputUpper);
   if (inputB.clamped) {
-    clamps.push({ kind: 'input_bound', field: 'inputTokens', original: usage.inputTokens, clamped: inputB.value, bound: bounds.inputUpper ?? 0 });
+    clamps.push({
+      kind: 'input_bound',
+      field: 'inputTokens',
+      original: usage.inputTokens,
+      clamped: inputB.value,
+      bound: bounds.inputUpper ?? 0,
+    });
   }
   usage.inputTokens = inputB.value;
   const cachedB = clampTo(usage.cachedInputTokens, inputB.value);
   if (cachedB.clamped) {
-    clamps.push({ kind: 'cached_bound', field: 'cachedInputTokens', original: usage.cachedInputTokens, clamped: cachedB.value, bound: inputB.value });
+    clamps.push({
+      kind: 'cached_bound',
+      field: 'cachedInputTokens',
+      original: usage.cachedInputTokens,
+      clamped: cachedB.value,
+      bound: inputB.value,
+    });
   }
   usage.cachedInputTokens = cachedB.value;
-  const writeOriginal = usage.cacheWriteTokens ?? 0;
-  const writeB = clampTo(writeOriginal, bounds.inputUpper);
-  if (writeOriginal > 0 && writeB.clamped) {
-    usage.cacheWriteTokens = writeB.value;
-    clamps.push({ kind: 'cache_write_bound', field: 'cacheWriteTokens', original: writeOriginal, clamped: writeB.value, bound: bounds.inputUpper ?? 0 });
-  }
-  const unitsOriginal = usage.units ?? 0;
-  const unitsB = clampTo(unitsOriginal, bounds.unitUpper);
-  if (unitsOriginal > 0 && unitsB.clamped) {
-    usage.units = unitsB.value;
-    clamps.push({ kind: 'unit_bound', field: 'units', original: unitsOriginal, clamped: unitsB.value, bound: bounds.unitUpper ?? 0 });
-  }
+  clampOptionalField({ usage, field: 'cacheWriteTokens', bound: bounds.inputUpper, clamps });
+  clampOptionalField({ usage, field: 'units', bound: bounds.unitUpper, clamps });
 }
 
 export function acceptTrustedUsage(input: {
