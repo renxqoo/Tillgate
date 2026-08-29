@@ -4,7 +4,7 @@
 业务全部来自能力包 facade，本 app 无业务 HTTP。结算调度由 BullMQ/Redis 承载，
 PG `LISTEN settle-wake` 作低延迟门铃，PG 状态机与恢复扫描作确定性兜底。
 
-设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md) · 相关 [ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)
+相关 [ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)
 
 ## 核心能力
 

@@ -1,5 +1,5 @@
 /**
- * 结算用量验收门（docs/usage-acceptance/DESIGN.md 测试口径）：
+ * 结算用量验收门：
  * 三界钳制矩阵 / 估算直通 / 旧数据缺界跳过 / 恰好等于界不钳 / 违规事实完整记录。
  */
 import { describe, expect, it } from 'vitest';

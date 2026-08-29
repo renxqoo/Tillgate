@@ -28,7 +28,7 @@ import {
 } from './memory';
 import type { PermissionNode, RoleRecord } from '../src/ports/rbac-store';
 
-describe('enforced 注册表封闭性（DESIGN §2 增量至 44 码——funds:fx 见 docs/funds-center/DESIGN.md）', () => {
+describe('enforced 注册表封闭性（增量至 44 码——含 funds:fx）', () => {
   it('全量清单逐一列出,无重复,域前缀合法', () => {
     expect([...ENFORCED_CODES]).toHaveLength(44);
     expect(new Set(ENFORCED_CODES).size).toBe(44);

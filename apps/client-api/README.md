@@ -3,7 +3,7 @@
 Hono 用户面 API（端口沿用 v1 `8081`）：会话/资料/Key/App/组织/钱包/兑换/支付/订阅/用量/定价/推荐。
 业务全部经能力包 facade，本 app 只保留协议与装配（P5）。
 
-设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md) · 错误码演进依据 [ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)
+错误码演进依据 [ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)
 
 ## 核心能力
 

@@ -3,8 +3,6 @@
 **发布候选第一号**(当前私有;发布改造见总纲 P6)。client-api / admin-api 调用封装:
 框架无关 transport / 错误 / 分页客户端 + 手写 DTO 快照 + `./next` BFF 装配子入口。
 
-设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md)
-
 ## 入口
 
 | 入口                        | 内容                                                                                                                           | 依赖                     |

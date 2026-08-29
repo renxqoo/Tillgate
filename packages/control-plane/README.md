@@ -1,7 +1,6 @@
 # @tillgate/control-plane
 
 > 控制面配置能力:Provider/Channel/Model/RateCard/fx/目录的管理用例与只读快照边界(总纲 P4.2)。
-> 设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md)
 
 一句话:「控制面配置」的全部写路径与配套读路径——Provider / Channel / Model 映射 /
 RateCard / 目录汇率(fx) / 多源模型目录(catalog),外加渠道运营资金(进货/调账)与

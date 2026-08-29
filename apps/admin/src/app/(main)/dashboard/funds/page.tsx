@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 const PAGE_SIZE = 20;
 
 /**
- * 资金中心（docs/funds-center/DESIGN.md）：资金管理单入口三页签——
+ * 资金中心：资金管理单入口三页签——
  * 渠道资金（原 channel-funds 页整体并入）/ 风控参数（自设置页迁入的三张卡）/
  * 汇率（消费 control-plane fx 既有用例）。卡片自治：各自带 server actions 与权限。
  */

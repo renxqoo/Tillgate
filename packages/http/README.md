@@ -1,7 +1,6 @@
 # @tillgate/http
 
 > 纯 HTTP/Hono 基础工具:错误渲染出口、校验、分页、可信网络提取、请求上下文、幂等键、安全件——不拥有 wire schema、零 DB/业务依赖。
-> 设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) ·
 > 裁决:[ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)(注册表归属)、[ADR-0002](../../docs/adr/0002-http-db-decoupling.md)(http↔db 解耦)
 
 一句话:`@tillgate/errors` 根契约的**第一消费者**——category → 默认渲染 + face

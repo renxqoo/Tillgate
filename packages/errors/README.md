@@ -1,8 +1,8 @@
 # @tillgate/errors
 
 > 内部错误根契约:三性根类 + category 闭集 + 命名空间错误目录 + 规范化错误记录——零业务/协议依赖的稳定叶子。
-> 裁决:[ADR-0001](../../docs/adr/0001-errors-registry-ownership.md) · 设计基线 [DESIGN.md](./DESIGN.md) ·
-> 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 完整使用文档（按角色的用法与示例）:[docs/usage.md](./docs/usage.md) ·
+> 裁决:[ADR-0001](../../docs/adr/0001-errors-registry-ownership.md) ·
+> 完整使用文档（按角色的用法与示例）:[docs/usage.md](./docs/usage.md) ·
 > 使用纪律:AGENTS.md §11
 
 一句话:**错误的身份与分类在抛出点定一次(目录),之后穿层透明传播;捕获只看

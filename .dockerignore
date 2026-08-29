@@ -1,6 +1,3 @@
-# 根级 .dockerignore——作用于 compose 全部构建（context 均为仓库根，见 docker/compose.yml）
-# 注意：docker/.dockerignore 不生效（Docker 只认「context 根/.dockerignore」或
-# 「<dockerfile 路径>.dockerignore」即 docker/Dockerfile.server.dockerignore）。
 **/node_modules
 **/dist
 **/.next

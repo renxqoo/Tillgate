@@ -8,7 +8,8 @@
  *     例：hops=1（单层 nginx）。客户端伪造 `X-Forwarded-For: fake` 时，nginx 追加真实
  *     IP 得 `fake, real`，取右数第 1 跳 = real——伪造头被结构性丢弃。
  *   - 部署责任：hops 必须等于真实代理层数；配错（代理后配 0 = 全员共享代理 IP，
- *     直连配 >0 = 恢复可伪造）属于部署错误，.env.example 有明确注释。
+ *     直连配 >0 = 恢复可伪造）属于部署错误，docs/configuration.md 的
+ *     TRUSTED_PROXY_HOPS 条目有明确说明。
  */
 import { isIP } from 'node:net';
 import type { Context } from 'hono';
