@@ -129,6 +129,18 @@ export const adminUsageRowSchema = z
       .boolean()
       .describe('估算结算标记(2026-08-17 政策):用户取消/完成缺 usage 按估算扣款'),
     estimateReason: z.string().nullable().describe('估算归属(estimated=true 时有值)'),
+    usageClamps: z
+      .array(
+        z.object({
+          kind: z.string().describe('钳制界:input_bound/output_cap/evidence_bound/…'),
+          field: z.string().describe('被钳字段:inputTokens/outputTokens/…'),
+          original: z.number().describe('上游发票原值'),
+          clamped: z.number().describe('验收后落账值'),
+          bound: z.number().describe('依据界值(准入界/证据界)'),
+        }),
+      )
+      .nullable()
+      .describe('结算验收门钳制事实(发票→验收轨迹;null = 诚实发票/估算收据未钳制)'),
     createdAt: z.string(),
   })
   .meta({

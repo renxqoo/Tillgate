@@ -581,6 +581,8 @@ export interface AdminUsageRow {
   estimated: boolean;
   /** 估算归属(estimated=true 时有值) */
   estimateReason: string | null;
+  /** 结算验收门钳制事实(发票→验收轨迹;null = 诚实发票/估算收据未钳制) */
+  usageClamps: { /** 钳制界:input_bound/output_cap/evidence_bound/… */kind: string; /** 被钳字段:inputTokens/outputTokens/… */field: string; /** 上游发票原值 */original: number; /** 验收后落账值 */clamped: number; /** 依据界值(准入界/证据界) */bound: number }[] | null;
   createdAt: string;
 }
 

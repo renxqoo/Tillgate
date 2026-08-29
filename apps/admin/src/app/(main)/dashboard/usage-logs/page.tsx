@@ -48,6 +48,51 @@ function estimateReasonKey(reason: string | null): string {
   }
 }
 
+/** 钳制界 → 可读文案 key（「发票 → 验收」轨迹的界说明） */
+function clampKindKey(kind: string): string {
+  switch (kind) {
+    case 'input_bound': {
+      return 'clampKindInputBound';
+    }
+    case 'output_cap': {
+      return 'clampKindOutputCap';
+    }
+    case 'evidence_bound': {
+      return 'clampKindEvidenceBound';
+    }
+    default: {
+      return 'clampKindOther';
+    }
+  }
+}
+
+/** 验收门钳定徽章（title 逐条列出「发票 → 验收 + 依据界」；无对应字段钳制 = 不渲染） */
+function clampBadge(
+  row: AdminUsageRow,
+  field: 'inputTokens' | 'outputTokens',
+  t: Awaited<ReturnType<typeof getTranslations<'usageLogs'>>>,
+) {
+  const facts = (row.usageClamps ?? []).filter((c) => c.field === field);
+  if (facts.length === 0) return null;
+  const title = facts
+    .map((c) =>
+      t('clampedTooltip', {
+        original: c.original.toLocaleString('en-US'),
+        clamped: c.clamped.toLocaleString('en-US'),
+        kind: t(clampKindKey(c.kind)),
+      }),
+    )
+    .join('；');
+  return (
+    <span
+      title={title}
+      className="ml-1 rounded bg-rose-500/15 px-1 text-[10px] leading-4 text-rose-700 dark:text-rose-300"
+    >
+      {t('clampedBadge')}
+    </span>
+  );
+}
+
 /** 用量表列定义（cell 渲染器随列声明平铺；t/tc/locale 经参数传入） */
 function buildUsageColumns(
   t: Awaited<ReturnType<typeof getTranslations<'usageLogs'>>>,
@@ -95,6 +140,7 @@ function buildUsageColumns(
                 {t('cached', { count: r.cachedInputTokens.toLocaleString('en-US') })}
               </span>
             ) : null}
+            {clampBadge(r, 'inputTokens', t)}
           </span>
         ),
     },
@@ -113,6 +159,7 @@ function buildUsageColumns(
         ) : (
           <span className="text-right text-xs tabular-nums">
             {r.outputTokens.toLocaleString('en-US')}
+            {clampBadge(r, 'outputTokens', t)}
           </span>
         ),
     },

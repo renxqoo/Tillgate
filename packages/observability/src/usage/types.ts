@@ -34,6 +34,19 @@ export interface UsageAdminListInput {
   offset: number;
 }
 
+/**
+ * 结算验收门钳制事实（形状同 billing domain/rating/usage-acceptance 的 UsageClamp
+ * ——jsonb 落库，本包按结构读取不引 billing 依赖）：上游发票超出准入界/证据界
+ * 被钳定的「original → clamped + 依据界」轨迹；null = 诚实发票/估算收据。
+ */
+export interface UsageClampFact {
+  readonly kind: string;
+  readonly field: string;
+  readonly original: number;
+  readonly clamped: number;
+  readonly bound: number;
+}
+
 /** 管理用量行(金额/单价 numeric 全精度字符串,Date 由 presenter 转 ISO) */
 export interface UsageAdminRow {
   readonly id: number;
@@ -64,6 +77,7 @@ export interface UsageAdminRow {
   readonly streamAborted: boolean;
   readonly estimated: boolean;
   readonly estimateReason: string | null;
+  readonly usageClamps: readonly UsageClampFact[] | null;
   readonly createdAt: Date;
 }
 

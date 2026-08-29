@@ -13,6 +13,7 @@ import {
   check,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { jsonb } from './jsonb.js';
 import { users } from './users.js';
 import { apps } from './apps.js';
 import { apiKeys } from './api-keys.js';
@@ -120,6 +121,12 @@ export const usageLogs = pgTable(
      * （「这笔是估算扣的、为什么」——取消三态 + 完成缺 usage 两态）。
      */
     estimateReason: varchar('estimate_reason', { length: 64 }),
+    /**
+     * 结算验收门钳制事实（billing domain/rating/usage-acceptance 的 UsageClamp 数组）：
+     * 上游发票超出准入界/证据界被钳定时记「original → clamped + 依据界」轨迹；
+     * NULL = 诚实发票或估算收据（未发生钳制）。列形状单一真相在 billing 域。
+     */
+    usageClamps: jsonb('usage_clamps'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

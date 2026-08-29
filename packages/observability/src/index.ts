@@ -87,6 +87,7 @@ export type {
   UsageGroupAxis,
   UsageAdminListInput,
   UsageAdminRow,
+  UsageClampFact,
   UsageGroupRow,
   UsageTrendRow,
   ChannelTtftRow,
