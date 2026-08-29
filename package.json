@@ -13,6 +13,7 @@
     "build": "bunx turbo build",
     "db:migrate": "cd packages/db && bun run  --env-file=../../.env  drizzle-kit migrate",
     "dev": "bunx turbo dev",
+    "docker:aio:build": "docker build -f docker/Dockerfile.aio -t renxqoo/tillgate:latest .",
     "docker:up": "docker compose --env-file .env -f docker/compose.yml up -d",
     "format": "bun x oxfmt --write .",
     "format:check": "bun x oxfmt --check .",
