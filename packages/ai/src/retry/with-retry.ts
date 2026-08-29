@@ -93,6 +93,8 @@ export async function withRetry<T>(
   opts: RetryOptions,
   onRetry?: (info: RetryAttemptInfo) => void,
 ): Promise<RetryResult<T>> {
+  // deadline 计时起点：剩余预算 = deadlineMs − 已耗时（判定必须用剩余而非全量）
+  const startedAt = Date.now();
   const controller = new AbortController();
   const deadlineTimer = setTimeout(
     () => controller.abort(new Error('retry deadline exceeded')),
@@ -118,7 +120,13 @@ export async function withRetry<T>(
       if (!canRetryError && !canRetryEmpty) return { outcome, attempts };
 
       if (outcome.empty) emptyCount += 1;
-      const delayMs = backoffDelayMs(attempts, opts.baseDelayMs, opts.maxDelayMs, opts.jitterRatio);
+      // Retry-After（rate_limited 专属）是退避下界：早于指数退避重发只会再吃一个 429
+      const backoff = backoffDelayMs(attempts, opts.baseDelayMs, opts.maxDelayMs, opts.jitterRatio);
+      const delayMs = Math.max(backoff, error.retryAfterMs ?? 0);
+      // 有效等待超过剩余 deadline：睡下去只会被 deadline 打断——立即放弃同渠道重试，
+      // 把最后错误交回编排层换渠（不把整段同渠道预算耗在注定失败的等待上）
+      const remainingMs = opts.deadlineMs - (Date.now() - startedAt);
+      if (delayMs > remainingMs) return { outcome, attempts };
       onRetry?.({ attempt: attempts, error, delayMs });
       await sleep(delayMs, signal);
       if (signal.aborted) return { outcome, attempts }; // deadline/调用方取消，不再重试
