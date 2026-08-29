@@ -3111,6 +3111,49 @@
             ],
             "description": "估算归属(estimated=true 时有值)"
           },
+          "usageClamps": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "description": "钳制界:input_bound/output_cap/evidence_bound/…"
+                    },
+                    "field": {
+                      "type": "string",
+                      "description": "被钳字段:inputTokens/outputTokens/…"
+                    },
+                    "original": {
+                      "type": "number",
+                      "description": "上游发票原值"
+                    },
+                    "clamped": {
+                      "type": "number",
+                      "description": "验收后落账值"
+                    },
+                    "bound": {
+                      "type": "number",
+                      "description": "依据界值(准入界/证据界)"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "field",
+                    "original",
+                    "clamped",
+                    "bound"
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "结算验收门钳制事实(发票→验收轨迹;null = 诚实发票/估算收据未钳制)"
+          },
           "createdAt": {
             "type": "string"
           }
@@ -3137,6 +3180,7 @@
           "streamAborted",
           "estimated",
           "estimateReason",
+          "usageClamps",
           "createdAt"
         ],
         "description": "管理端用量明细行(GET /v1/usage-logs;恒 status=0 只看已计费行)——估算扣款一等字段"

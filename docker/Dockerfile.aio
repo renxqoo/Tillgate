@@ -1,0 +1,99 @@
+# Tillgate AIO 单容器镜像——PostgreSQL / Redis / nginx + 全部 7 个应用打进一个镜像。
+# 入口契约（密钥/证书/启动顺序/监督）见 aio-entrypoint.sh 头注释；
+# 行为规格（端口、环境变量、数据目录）见 docs/deployment.md「单容器部署（AIO）」。
+#
+# 构建段三件事（全部在一个 builder 内完成，install 层全量共享）：
+#   1. 5 个后端服务的自包含 bundle（与 Dockerfile.server 同款，运行零 node_modules）
+#   2. 两个控制台的 Next standalone 产物（与 apps/client|admin/Dockerfile 同款）
+#   3. 迁移/引导载荷整体保留（与 Dockerfile.migrate 同款：node_modules + packages + apps）
+FROM oven/bun:1.4.0-alpine AS builder
+ARG GATEWAY_BASE=http://127.0.0.1:8080
+ARG NEXT_PUBLIC_DISPLAY_TZ=Asia/Shanghai
+ENV GATEWAY_BASE=${GATEWAY_BASE} NEXT_PUBLIC_DISPLAY_TZ=${NEXT_PUBLIC_DISPLAY_TZ}
+WORKDIR /repo
+COPY package.json bun.lock tsconfig.base.json tsconfig.next.json ./
+# bun patch 依赖(patchedDependencies)——漏拷则 --frozen-lockfile 直接报找不到 patch 文件
+COPY patches ./patches
+# manifest 先行：bun install 的输入只有根 manifest/lockfile/patches + 各 workspace 成员的
+# package.json——源码后拷，改源码不再打掉 install 层缓存。
+# 新增 workspace 成员时须同步补一行（漏拷则 --frozen-lockfile 报 workspace 成员缺失）。
+COPY packages/accounts/package.json packages/accounts/
+COPY packages/ai/package.json packages/ai/
+COPY packages/api-client/package.json packages/api-client/
+COPY packages/billing/package.json packages/billing/
+COPY packages/control-plane/package.json packages/control-plane/
+COPY packages/db/package.json packages/db/
+COPY packages/errors/package.json packages/errors/
+COPY packages/http/package.json packages/http/
+COPY packages/identity/package.json packages/identity/
+COPY packages/inference/package.json packages/inference/
+COPY packages/notifications/package.json packages/notifications/
+COPY packages/observability/package.json packages/observability/
+COPY packages/runtime/package.json packages/runtime/
+COPY packages/ui/package.json packages/ui/
+COPY apps/admin/package.json apps/admin/
+COPY apps/admin-api/package.json apps/admin-api/
+COPY apps/client/package.json apps/client/
+COPY apps/client-api/package.json apps/client-api/
+COPY apps/gateway/package.json apps/gateway/
+COPY apps/trace-receiver/package.json apps/trace-receiver/
+COPY apps/worker/package.json apps/worker/
+# 缓存挂载：bun 下载缓存跨构建持久（与其余 Dockerfile 共享同一缓存卷）
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile
+COPY packages ./packages
+COPY apps ./apps
+
+# 后端 5 服务 bundle：显式全量 bundle（无 --packages=external），workspace 源码直接
+# 打进产物，运行段才能零依赖。control-plane 的 models-dev 快照是运行时 require，
+# bun 全量 bundle 不内联 require 的 JSON——随各服务产物同级分发（见 Dockerfile.server）。
+RUN for app in gateway client-api admin-api worker trace-receiver; do \
+      bun build "apps/${app}/src/index.ts" --target=bun --format=esm --sourcemap --outdir="/out/server/${app}" \
+      && cp packages/control-plane/src/adapters/model-sources/models-dev-snapshot.json "/out/server/${app}/"; \
+    done
+
+# 两个控制台 Next standalone（顺序构建共享 turbo/bun 缓存）
+RUN bun run --filter "@tillgate/client..." build && bun run --filter "@tillgate/admin..." build
+
+# 迁移/引导载荷修剪（用户裁决 2026-08-29：依赖运行时首启下载，不进镜像）：
+# 只带 root 清单+锁文件+patches、packages 全源码（TS 以 --conditions=development 直跑）、
+# admin-api 源码（create-admin 脚本宿主）与其余 app 的 manifest（frozen-lockfile 的
+# workspace 成员完整性要求）。node_modules 由 aio-entrypoint 首启 bun install 装入
+# /data 缓存（锁哈希失效重装；AIO_NPM_REGISTRY 可覆盖源）。
+RUN mkdir -p /payload/apps \
+  && cp package.json bun.lock /payload/ \
+  && cp -r patches /payload/patches \
+  && cp -r packages /payload/packages \
+  && cp -r apps/admin-api /payload/apps/admin-api \
+  && for app in admin client client-api gateway trace-receiver worker; do \
+       mkdir -p "/payload/apps/$app" && cp "apps/$app/package.json" "/payload/apps/$app/"; \
+     done \
+  && cd /payload && find . -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1 > /payload/.payload-hash
+
+FROM oven/bun:1.4.0-alpine AS runtime
+ENV NODE_ENV=production
+# 基础设施：postgresql16（server+client，scram 认证）、redis、nginx、su-exec（子进程
+# 降权——postgres 拒绝 root 运行）、openssl（首启自签证书）。
+# redis 包不保证预建运行用户，兜底补一个（已存在则跳过）。
+RUN apk add --no-cache postgresql16 postgresql16-client redis nginx su-exec openssl \
+  && (addgroup -S redis 2>/dev/null || true) \
+  && (adduser -S -D -H -G redis -s /sbin/nologin redis 2>/dev/null || true)
+WORKDIR /app
+COPY --from=builder /out/server ./server
+# Next standalone 输出结构与项目目录一致（apps/<name>/server.js + 随附 node_modules）
+COPY --from=builder /repo/apps/client/.next/standalone ./console-client
+COPY --from=builder /repo/apps/client/.next/static ./console-client/apps/client/.next/static
+COPY --from=builder /repo/apps/admin/.next/standalone ./console-admin
+COPY --from=builder /repo/apps/admin/.next/static ./console-admin/apps/admin/.next/static
+# admin 落地页 hero 图在 public/——Next standalone 不打包 public，必须随镜像分发
+COPY --from=builder /repo/apps/admin/public ./console-admin/apps/admin/public
+# 迁移/引导载荷：清单+锁+源码（~35MB）；node_modules 首启下载入 /data（见 aio-entrypoint）
+COPY --from=builder /payload /opt/tillgate/repo
+COPY docker/aio-entrypoint.sh /usr/local/bin/aio-entrypoint
+COPY docker/nginx/nginx.aio.conf /app/nginx/aio.conf
+RUN chmod +x /usr/local/bin/aio-entrypoint
+# 80：/livez 探活 + HTTP→HTTPS 跳转；443：用户面板 + /v1；8443：管理后台（均 TLS）
+EXPOSE 80 443 8443
+# 首启含依赖下载（首次无缓存时数分钟）+ initdb + 全量迁移 + Next 冷启动；探针走 nginx:80
+HEALTHCHECK --start-period=600s --interval=15s --timeout=5s --retries=8 \
+  CMD wget -qO- http://127.0.0.1/livez >/dev/null || exit 1
+ENTRYPOINT ["/usr/local/bin/aio-entrypoint"]

@@ -2,13 +2,15 @@
 
 **[English](README.md)** | [文档](docs/) | [CHANGELOG](CHANGELOG.md)
 
-Tillgate 是一个可自托管的生产级 **LLM API 网关**：用统一的 OpenAI 兼容入口代理多家上游供应商，内置钱包计量计费、订阅体系、限额管控与全链路可观测。全链构建于 [Bun](https://bun.com)——后端 Hono + Drizzle + PostgreSQL + Redis，控制台 Next.js 16 + React 19 + Tailwind v4 + shadcn/ui。
+![CI](https://github.com/renxqoo/Tillgate/actions/workflows/ci.yml/badge.svg)
+
+Tillgate 是一个可自托管的 **LLM API 网关**：用统一的 OpenAI 兼容入口代理所有上游供应商，并把通常要花数月自建的部分全部内置——钱包计量计费、订阅体系、限额管控、管理后台、用户面板与逐请求链路追踪。全链 TypeScript，构建于 [Bun](https://bun.com)：后端 Hono · Drizzle · PostgreSQL · Redis · BullMQ，控制台 Next.js 16 + React 19 + Tailwind v4 + shadcn/ui。
 
 ```
-客户端 / Agent ──> 网关 (/v1，OpenAI 兼容)
-                     ├── 路由与故障转移 ──> OpenAI / DeepSeek / MiniMax / 通义千问 / Gemini / Anthropic …
-                     ├── 预扣 → 结算计费（双分录账本，PostgreSQL 权威）
-                     └── 链路追踪 / TTFT / 用量日志 ──> 管理后台
+客户端 / Agent ──> 网关（OpenAI · Claude · Gemini 三协议）
+                     ├── 路由与故障转移 ──> OpenAI / Anthropic / Gemini / Azure / Bedrock / Vertex / 通义千问 / MiniMax …
+                     ├── 预扣 → 结算计费（双分录账本，PostgreSQL 为资金唯一事实源）
+                     └── 链路追踪 · TTFT · 用量日志 ──> 管理后台
 ```
 
 ## 界面预览
@@ -21,102 +23,114 @@ Tillgate 是一个可自托管的生产级 **LLM API 网关**：用统一的 Ope
   <img src="docs/images/admin-console-zh-cn.png" alt="管理后台 — 仪表盘" width="49%">
 </p>
 
-## 仓库结构
+## 为什么选择 Tillgate
 
-Turborepo monorepo：7 个应用 + 14 个能力包。业务能力按真实边界聚合为包，
-包内统一 `domain / application / ports / adapters` 分层；应用是薄装配单元（配置 + HTTP 壳 + 接线）。
-目标结构与迁移纪律见 [docs/project-structure-refactoring.md](docs/project-structure-refactoring.md)，
-工程规范见 [AGENTS.md](AGENTS.md)。
+- **一条 `docker run` 起全栈。** All-in-one 镜像内置 PostgreSQL、Redis、nginx 与 TLS；密钥生成、数据库迁移、首个管理员账号在首次启动时自动完成，全部状态落在单个 `/data` 卷里。首次启动需联网 npm 下载依赖（可用 `AIO_NPM_REGISTRY` 指定镜像源），装好后缓存于 `/data`，后续启动完全离线。
+- **说你的 SDK 的语言。** OpenAI 的 `chat/completions`、`responses`、`completions`、`embeddings`、图像、语音、rerank，外加 Claude Messages 协议与 Gemini 原生端点，全部挂在同一个 base URL 后面——存量 OpenAI SDK 代码只改 `base_url`。
+- **扛得住崩溃的计费。** 双分录账本 + 幂等预扣 → 结算（命令指纹 + 冲突重放）+ 结算状态机；PostgreSQL 是资金的唯一事实源，金额全程 Decimal——绝不引入浮点。
+- **故障转移，而不是宕机。** 模型映射 × 加权渠道路由、渠道级预算与探活、熔断器、死凭据准入、换渠重试。
+- **全维度限额。** 按 Key 的 RPM/TPM、按 Key 日消费上限、模型白名单、组织成员计费——无论何种凭证形态，用户级限额恒生效。
+- **看清延迟与钱花在哪。** 双向 TTFT 指标（上游 vs 客户端体感首 token，按渠道 P50 + P95）、OTLP 链路追踪（单 trace 视图 + 拓扑图）、usage/request/audit 三类日志。
 
-```
-apps/       gateway · client-api · admin-api · worker · trace-receiver · client · admin   （装配单元）
-packages/   ai · inference · billing · accounts · identity · control-plane · notifications ·
-            observability · http · db · errors · runtime · api-client · ui                （能力包）
-e2e/        跨进程系统测试（mock / real / smoke 四个门）
-docs/       架构决策（adr/）、运维手册、深读导读
-```
+## 功能一览
+
+**网关与协议**
+
+- OpenAI 兼容面：`/v1/chat/completions`（流式/非流式）、`/v1/completions`、`/v1/responses`、`/v1/embeddings`、`/v1/images/generations`、`/v1/audio/speech`、`/v1/rerank`、`/v1/moderations`、`/v1/models`；Claude Messages 协议在 `/v1/messages`；Gemini 原生协议在 `/v1beta/models/*`；chat 支持多模态输入。
+- 双凭证：静态 `sk-` API Key 与网关签发的 App JWT（`/oauth/token`，面向 Agent）。
+- 异步生成：视频 / 音乐任务提交、轮询与回调结算。
+
+**上游传输库**（`packages/ai`，零内部依赖）
+
+- 8 个协议适配器：OpenAI 兼容、Anthropic、Gemini、Azure OpenAI、AWS Bedrock、Vertex AI、MiniMax、通义千问（dashscope）。
+- 零缓冲 SSE 中继、上游 usage 归一、token 估算器（兜底不回报 usage 的供应商）、厂商参数怪癖档案。
+- SSRF 硬防护：仅允许 HTTPS、环回/内网地址拒绝、DNS 解析后逐地址校验。
+
+**路由与可靠性**（`packages/inference`）
+
+- 加权渠道路由：渠道级预算、探活、熔断器、死凭据准入、换渠重试。
+- Redis Sentinel 支持；Redis 故障分级降级；结算唤醒走 PostgreSQL `LISTEN/NOTIFY`。
+
+**资金**（`packages/billing`）
+
+- 双分录账本、幂等预扣 → 结算、8 态结算状态机、资金来源瀑布（订阅额度 → PAYG 余额）、崩溃恢复与对账。
+- 套餐、费率卡（官方价 × 系数）、免费日限、升降级、充值码与邀请返利。
+- EPAY 与 Stripe 在线充值，webhook 对账入账。
+
+**账号与访问**
+
+- 双控制台开箱即用：管理后台（渠道/模型/费率卡/用户/订阅/支付/观测）与用户面板（Key/用量/账单/操练场），经类型化客户端（`packages/api-client`）消费 API。
+- GitHub / Google OAuth、Turnstile、SMTP 与支付凭据均在管理台运行时配置——轮换无需重新部署。
+- 事务性发件箱通知（webhook / 邮件），管理员可选邮箱验证码二次登录。
+
+**可观测**（`packages/observability`）
+
+- OTLP 链路追踪接收（单 trace 视图 + 拓扑图）、按渠道双向 TTFT 指标、usage/request/audit 三类日志与运营看板。
+
+**工程化**
+
+- 可执行架构：包边界（依赖白名单、显式 exports、无环）由 `scripts/check-package-boundaries.ts` 在 CI 强制执行，每个能力包带架构契约测试，根级四门（`typecheck` / `lint` / `test` / `build`）。
 
 ## 快速开始
 
-### 安装 —— 方式一：本地运行
+### 方式一 —— Docker（最快得到一个能用的网关）
 
-源码直跑 + 热重载（开发/贡献用）。前置条件：[Bun](https://bun.com) ≥ 1.4 与 Docker
-（仅用来跑 PostgreSQL + Redis）。
+一条命令起全栈，全部状态持久化在 `./data`：
+
+```bash
+docker run -d --name tillgate --restart always \
+  --log-opt max-size=10m --log-opt max-file=3 \
+  -p 443:443 -p 8443:8443 -p 80:80 \
+  -v "$PWD/data:/data" \
+  renxqoo/tillgate:latest
+```
+
+获取一次性管理员密码并观察启动进度：
+
+```bash
+docker logs -f tillgate                                    # 就绪后 Ctrl-C 退出，不影响服务
+docker exec tillgate cat /data/bootstrap-credentials.txt   # 读后即删该文件
+```
+
+| 入口               | 地址                                                |
+| ------------------ | --------------------------------------------------- |
+| 用户面板与推理 API | `https://<服务器IP>/` · `https://<服务器IP>/v1/...` |
+| 管理后台           | `https://<服务器IP>:8443`                           |
+
+首次启动自动生成自签证书（可信任它，或在你边缘层终止 TLS）。域名形态、外接数据库、多容器生产拓扑与高可用见[部署指南](docs/deployment.md)。
+
+### 方式二 —— 源码运行（开发用）
+
+前置条件：[Bun](https://bun.com) ≥ 1.4 与 Docker（仅用来跑 PostgreSQL + Redis）。
 
 ```bash
 git clone https://github.com/renxqoo/Tillgate.git && cd Tillgate
-bun install                        # 安装依赖（bun.lock）
-cp .env.example .env               # 只含必填键；其余配置全部有安全默认值
-# 生成必填密钥（弱值/空值启动即拒绝）：
+bun install                                            # 安装依赖（bun.lock）
+cp .env.example .env                                   # 只含必填键；其余配置全部有安全默认值
+# 生成五个必填密钥（弱值/空值启动即拒绝）：
 for k in JWT_SECRET ADMIN_JWT_SECRET ENCRYPTION_KEY IDENTITY_CODE_PEPPER CLIENT_CODE_PEPPER; do
   sed -i.bak -E "s|^#?[[:space:]]?${k}=.*|${k}=$(openssl rand -hex 32)|" .env; done; rm -f .env.bak
-docker compose --env-file .env -f docker/compose.dev.yml up -d   # 起 postgres + redis
-bun packages/db/scripts/provision-fresh.ts   # 空库前置建表（幂等；首次迁移前必跑）
-bun run db:migrate                 # 建表（91 个迁移，幂等）
-cd apps/admin-api && bun scripts/create-admin.ts --email=admin@ai-gateway.local --password=admin12345 --apply && cd ../..
-bun dev                            # turbo dev —— 全部七个应用，热重载
+docker compose --env-file .env -f docker/compose.dev.yml up -d   # 仅 postgres + redis
+bun packages/db/scripts/provision-fresh.ts             # 空库前置建表（幂等）
+bun run db:migrate                                     # 建表迁移（幂等）
+cd apps/admin-api && bun scripts/create-admin.ts --email=admin@ai-gateway.local --apply && cd ../..
+bun run dev                                            # 全部七个应用，热重载
 ```
 
-引导脚本创建开发管理员（`admin@ai-gateway.local` / `admin12345`，仅开发用；生产用同一脚本
-但不传 `--password`，现场生成一次性强密码）。不再有其他种子数据：用户自助注册，
-渠道/模型映射/费率卡在管理台创建（无费率卡 = 系数 1.0，设计内兜底）。
+`create-admin` 会为 `admin@ai-gateway.local` 打印一次性强密码（重复执行幂等跳过；生产引导用同一脚本，不落固定密码）。
 
-端口：网关 `8080` · client-api `8081` · admin-api `8082` · trace-receiver `8793` ·
-worker 健康 `8792` · 用户面板 `3001` · 管理后台 `3002`。
+| 服务                         | 端口            |
+| ---------------------------- | --------------- |
+| 网关 —— 推理 API             | `8080`          |
+| 用户面板                     | `3001`          |
+| 管理后台                     | `3002`          |
+| client-api / admin-api       | `8081` / `8082` |
+| worker 健康 / trace-receiver | `8792` / `8793` |
 
-### 安装 —— 方式二：Docker 部署
+### 发出第一个请求
 
-生产全套：所有服务容器化，nginx 前门 + TLS。前置条件：Docker 24+ 与 Compose ≥ 2.24.4；
-两个域名的 A 记录（如 `app.example.com` / `admin.example.com`）已指向服务器；
-防火墙放行 80/443。
-
-```bash
-# 1) 获取代码
-git clone https://github.com/renxqoo/Tillgate.git && cd Tillgate
-
-# 2) 生产 .env —— 唯一配置面
-cp .env.example .env && vim .env
-#   必改：JWT_SECRET / ADMIN_JWT_SECRET / ENCRYPTION_KEY / IDENTITY_CODE_PEPPER /
-#   CLIENT_CODE_PEPPER（强随机）、
-#   POSTGRES_PASSWORD / REDIS_PASSWORD / TRACE_RECEIVER_TOKEN / OAUTH_API_BASE；
-#   NODE_ENV=production。DATABASE_URL / REDIS_URL 由 compose 自动注入，无需手填。
-chmod 600 .env
-
-# 3) 起基础设施 + 一次性迁移
-docker compose --env-file .env -f docker/compose.yml up -d postgres redis
-docker compose --env-file .env -f docker/compose.yml up --build migrate
-# 首次部署建立第一个管理员（输出一次性强密码）
-docker compose --env-file .env -f docker/compose.yml run --rm --workdir /repo migrate \
-  bun --conditions=development apps/admin-api/scripts/create-admin.ts \
-  --email=admin@example.com --apply
-
-# 4) 首次 TLS 证书（standalone 模式——此刻 nginx 还没起）
-docker compose --env-file .env -f docker/compose.yml run --rm --entrypoint certbot -p 80:80 certbot \
-  certonly --standalone --cert-name gateway \
-  -d app.example.com -d admin.example.com \
-  --email you@example.com --agree-tos --no-eff-email
-
-# 5) 全量启动（首次构建约 10 分钟）
-docker compose --env-file .env -f docker/compose.yml up -d --build
-
-# 6) 验证
-curl -s http://localhost/livez          # {"ok":true}
-docker compose --env-file .env -f docker/compose.yml ps # migrate 为 Exited(0) 属正常
-```
-
-上线后必做：支付回调地址指向 `https://app.example.com/v1/payments/notify/epay|stripe`
-（漏配 = 充值不入账）；证书到期前续期（certbot renew + nginx reload，建议 cron）。
-完整清单见[部署清单](docs/deployment-checklist.md)，
-高可用拓扑见[高可用部署手册](docs/ha-deployment.md)。
-
-### 如何使用
-
-1. 登录**管理后台**（`http://localhost:3002`），本地用种子脚本创建的管理员
-   （`admin@ai-gateway.local`；生产使用部署步骤创建的首个管理员）。添加上游**渠道**（供应商 API Key）
-   与**模型映射**（对外模型名 → 真实模型 × 渠道）。出站调用有内置 SSRF 硬防护
-   （仅允许 HTTPS；环回/内网地址一律拒绝，DNS 解析后逐地址校验防 rebinding）。
-2. 在**用户面板**（`http://localhost:3001`）创建 **API Key**（可选按 Key 的 RPM/TPM 限额、
-   日消费上限、模型白名单）。
+1. 登录**管理后台**（`http://localhost:3002`，Docker 形态为 `https://<服务器IP>:8443`），添加上游**渠道**（供应商 base URL + API Key，落库自动加密）与**模型映射**（对外模型名 → 真实模型 × 渠道）。
+2. 在**用户面板**（`http://localhost:3001`）注册账号并创建 **API Key**——可选按 Key 的 RPM/TPM 限额、日消费上限与模型白名单。
 3. 像 OpenAI 一样调用：
 
 ```bash
@@ -125,30 +139,31 @@ curl http://localhost:8080/v1/chat/completions \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}],"stream":true}'
 ```
 
-生产部署（TLS、certbot、nginx、观测栈、HA 拓扑）是一套 compose 文件——见
-[部署清单](docs/deployment-checklist.md)与[高可用部署手册](docs/ha-deployment.md)。
-**生产环境切勿保留 `.env` 默认密钥**——必须轮换 `POSTGRES_PASSWORD`、`REDIS_PASSWORD`、
-`JWT_SECRET`、`ADMIN_JWT_SECRET`、`ENCRYPTION_KEY`。
+存量 OpenAI SDK 代码只改 base URL：
 
-## 具体功能
+```python
+from openai import OpenAI
 
-- **OpenAI 兼容网关** — `/v1/chat/completions`（流式/非流式）、`/v1/embeddings`、多模态输入，另有 Gemini（`/v1beta`）与 Anthropic 原生协议入口；双凭证：静态 API Key 与网关签发的 App JWT（`/oauth/token`，面向 Agent）。
-- **多供应商传输库**（`packages/ai`）— 独立上游库、零内部依赖（[ADR-0006](docs/adr/0006-ai-standalone-library.md)）：OpenAI 兼容 / Anthropic / Gemini / Azure OpenAI / AWS Bedrock / Vertex AI / MiniMax / 通义千问（dashscope）八协议适配，零缓冲 SSE 中继，上游 usage 归一，token 估算器（兜底不回报 usage 的供应商），厂商参数怪癖档案，SSRF 硬门。
-- **渠道路由与故障转移**（`packages/inference`）— 模型映射 × 加权渠道、渠道级预算与探活、熔断器、死凭据准入、换渠重试。
-- **钱包计费**（`packages/billing`）— 资金与计费唯一事实源：双分录账本、幂等预扣 → 结算（命令指纹 + 冲突重放）、8 态结算状态机、资金来源瀑布（订阅额度 → PAYG 余额）、崩溃恢复与对账（[ADR-0003](docs/adr/0003-wallet-ledger-merge-into-billing.md)）。
-- **订阅与定价** — 套餐、费率卡（官方价 × 系数）、免费日限、升降级、充值码与邀请返利。
-- **API Key 与限额** — 按 Key 的 RPM/TPM、日消费上限、模型白名单、组织成员计费；无论何种凭证形态，用户级限额恒生效。
-- **在线支付** — EPAY 与 Stripe 充值，webhook 对账入账。
-- **异步生成** — 视频 / 音乐任务提交、轮询与回调结算。
-- **可观测**（`packages/observability`）— OTLP 链路追踪接收（单 trace 视图 + 拓扑图）、**双向 TTFT 指标**（上游 vs 客户端体感首 token 延迟，按渠道 P50 + P95）、usage/request/audit 三类日志与运营看板。见[可观测手册](docs/observability.md)。
-- **通知与告警** — 事务性发件箱驱动的告警投递（worker）、Webhook / 邮件通知渠道、管理员可选邮箱验证码二次登录。
-- **故障韧性** — Redis Sentinel 支持；Redis 故障分级降级（限流 fail-open、爆破防护降级内存粗限、免费日限 fail-closed）；结算唤醒走 PostgreSQL LISTEN/NOTIFY——无队列中间件依赖。
-- **双控制台** — 管理后台（渠道/模型/费率卡/用户/订阅/支付/观测）与用户面板（Key/用量/账单/操练场），经类型化客户端（`packages/api-client`）消费 API。
-- **可执行架构** — 包边界（依赖白名单、显式 exports、无环）由 `scripts/check-package-boundaries.ts` 在 CI 强制执行；每个能力包带 DESIGN / IMPLEMENTATION / MIGRATION 文档（[AGENTS.md](AGENTS.md) §13）。
+client = OpenAI(base_url="http://localhost:8080/v1", api_key="sk-...")
+```
 
-## 总结
+## 仓库结构
 
-Tillgate 面向需要聚合或转售 LLM API 的团队，把通常要花数月自建的基础设施开箱化：兼容入口、供应商故障转移、能扛住崩溃的计费账本、全维度限额，以及能看清延迟与钱花在哪的链路追踪。深入阅读：[扣款全流程](docs/billing-flow-deep-dive.md) · [网关管线](docs/gateway-pipeline.md) · [技术选型](docs/tech-stack.md) · [API 契约](docs/api-contract.md) · [工程规范](AGENTS.md)。
+Turborepo monorepo：7 个应用 + 14 个能力包。应用是薄装配单元（配置 + HTTP 壳 + 接线）；业务能力在包内按 `domain / application / ports / adapters` 分层。工程规范见 [AGENTS.md](AGENTS.md)。
+
+```
+apps/       gateway · client-api · admin-api · worker · trace-receiver · client · admin   （装配单元）
+packages/   ai · inference · billing · accounts · identity · control-plane · notifications ·
+            observability · db · errors · http · runtime · api-client · ui                （能力包）
+e2e/        跨进程系统测试（mock / real / smoke 门）
+docker/     开发、生产与高可用拓扑的 compose 文件
+```
+
+## 文档
+
+- [部署指南](docs/deployment.md)—— 单容器 AIO、多容器 compose、高可用、外接数据库
+- [工具链基准测试](docs/benchmark-2026-08-21-bun-vs-node.md) —— 为什么全链 Bun
+- [CHANGELOG](CHANGELOG.md) · [贡献指南](CONTRIBUTING.md) · [安全策略](SECURITY.md) · [行为准则](CODE_OF_CONDUCT.md)
 
 ## 开源声明
 

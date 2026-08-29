@@ -2,8 +2,6 @@
 
 管理面全部页面装配（用户/渠道/模型/计费/链路运营）：BFF 持会话，经 `@tillgate/api-client` 调 admin-api，**零能力包直依赖**（架构测试锁定）。
 
-设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md)
-
 ## 核心能力
 
 - **BFF 会话**：登录/2FA 验码为 server action 直调 admin-api（裸 fetch），token 写 `ag_admin_session` HttpOnly cookie；浏览器永不见 JWT，出站由 client 注入 Bearer + `accept-language` + `x-forwarded-for`

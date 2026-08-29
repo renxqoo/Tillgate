@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+
+## [0.6.0] - 2026-08-29
+
 ### Changed —— 上游出口信任模型（ADR-0010）
 
 - **撤销上游 env 主机名白名单**：删除 `GATEWAY_UPSTREAM_ALLOWED_HOSTS` /
@@ -103,6 +106,32 @@ integrations/:key`）与邮箱验证码二次登录开关（`POST /v1/me/two-fac
   `OAUTH_FRONTEND_URL`（缺省回落本地、未配时找回链接 fail-closed）。理由：
   装配期读取的值不占 DB 集成设置任何卖点（即时生效/审计/step-up），且部署
   拓扑在部署层已有真相；管理台「OAuth 基地址」卡随之移除。
+
+### Added —— 0.6.0 新增
+
+- **用量封顶审计轨迹**：结算验收门把上游发票钳定到准入界时，`usage_logs`
+  新增 `usage_clamps` 列（migration 0101）记录「上游上报 original → 计费
+  clamped + 依据界」完整轨迹；管理台用量明细对被修正行显示「封顶」徽章与
+  悬停说明，响应透传契约不变。响应 usage 与账单不一致的对账困惑自此有行级答案。
+- **AIO 单容器镜像**（`renxqoo/tillgate`）：PostgreSQL / Redis / nginx +
+  全部 7 个应用打进一个镜像，一条 `docker run` 起全栈；镜像 539MB（依赖不进
+  镜像，首启 `bun install` 装入 `/data/repo` 并按载荷哈希缓存/失效，`AIO_NPM_REGISTRY`
+  可覆盖安装源）；密钥/证书/迁移/首个管理员首启自举，全部状态在 `/data`。
+
+### Fixed —— 0.6.0 修复
+
+- **空库引导必败（存量缺陷）**：`provision-fresh` 前置清单误含 0097（其
+  `INSERT INTO endpoint_permissions` 依赖 0084 才建的表）——任何全新数据库的
+  首次引导必炸；存量库因表已存在从未暴露。已从前置清单移除并固化「前置文件
+  写操作只能引用清单内更早文件所建表」的结构不变量测试（含 journal `when`
+  非递减断言——回退时间戳会被 drizzle-kit 静默跳过）。
+
+### Changed —— 0.6.0 变更
+
+- **README 全面重写**（中英双语）+ 新增 AIO 部署指南（docs/deployment.md：
+  单容器 / 多容器 compose / 互相迁移 / 参数表）；镜像命名空间统一为
+  `renxqoo/tillgate`，发布携带不可变版本/日期标签供回滚（迁移前向，回滚镜像
+  不回滚表结构）。
 
 ## [0.1.0] - 2026-08-21
 

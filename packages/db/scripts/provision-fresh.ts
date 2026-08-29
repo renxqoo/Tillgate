@@ -19,19 +19,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { createDb, closeDb, type Db, type DbTx } from '../src/index.js';
-
-/** 前置执行的幂等迁移文件（顺序即执行顺序；内容与 journal 内文件同源，不复制改写） */
-const PROVISION_FILES = [
-  '../migrations/0059_wallet_ledger_operations_convergence.sql',
-  '../migrations/0076_identity_tables.sql',
-  // 0059 的 create or replace function 是「替换」而非幂等——重放会把
-  // wallet_assert_account_coherent 倒回旧版（0069/0095 的后续版本被覆盖，
-  // 表现为每次 up -d 后透支地板/负余额结算神秘失效）。provision 末尾必须
-  // 追加「最新触发改版迁移」重放函数终态；后续再改此函数时同步更新此处。
-  '../migrations/0095_wallet_debit_floor.sql',
-  // 0097：预扣策略端点 ACL 绑定（幂等 INSERT——NOT EXISTS 守卫，空库 provision 同样收口）
-  '../migrations/0097_billing_reservation_policy_admin.sql',
-] as const;
+import { PROVISION_FILES } from './provision-files.js';
 
 function loadEnvFile(): void {
   let dir = dirname(fileURLToPath(import.meta.url));
@@ -92,7 +80,10 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exit(1);
-});
+// import.meta.main 守卫：CLI 直跑才执行；被测试 import 时只取 PROVISION_FILES 常量
+if (import.meta.main) {
+  main().catch((error: unknown) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

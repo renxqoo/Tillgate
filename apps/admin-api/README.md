@@ -3,7 +3,7 @@
 Hono 管理面 API：admin 会话鉴权 + 用户/Key/渠道/模型/费率/订阅资金/链路观测六域管理读写。
 **业务规则零重写**——全部经能力包 facade，app 只保留 config、assembly、协议路由、中间件、presenter 与生命周期。
 
-设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md) · 相关 [ADR-0001](../../docs/adr/0001-errors-registry-ownership.md) / [ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)
+相关 [ADR-0001](../../docs/adr/0001-errors-registry-ownership.md) / [ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)
 
 ## 核心能力
 

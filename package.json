@@ -1,6 +1,6 @@
 {
   "name": "tillgate",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Tillgate —— 多供应商 LLM API 网关：OpenAI 兼容入口、渠道路由与故障转移、钱包计费、订阅与限额、链路追踪。目标结构与迁移纪律见 docs/project-structure-refactoring.md",
   "license": "MIT",
@@ -13,6 +13,7 @@
     "build": "bunx turbo build",
     "db:migrate": "cd packages/db && bun run  --env-file=../../.env  drizzle-kit migrate",
     "dev": "bunx turbo dev",
+    "docker:aio:build": "docker build -f docker/Dockerfile.aio -t renxqoo/tillgate:latest .",
     "docker:up": "docker compose --env-file .env -f docker/compose.yml up -d",
     "format": "bun x oxfmt --write .",
     "format:check": "bun x oxfmt --check .",

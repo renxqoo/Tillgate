@@ -3,8 +3,6 @@
 仅服务端运行时基础设施包（总纲 §3.1）：config 校验、logging、crypto、redis、进程生命周期。
 **禁止业务规则 / 业务 SQL / HTTP route**；只可依赖 `@tillgate/errors`（ADR-0001）。
 
-施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md)（含逐模块审计裁决；本包无独立 DESIGN/MIGRATION）
-
 ## 核心能力
 
 - **config**：`strictBooleanSchema(default)`（布尔只收 true/false）与 `secretSchema(field, minLen)` 三道门（长度 ≥ minLen、非已知弱值、≥4 种不同字符）——各 app config.ts 的 zod 组装件

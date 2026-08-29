@@ -2,7 +2,7 @@
 
 > 上游协议库:透传中继 + 多协议适配 + 多模态 + 事件观察面(§3.6 数据面/观察面契约,零运维状态)。
 > 裁决:[ADR-0006](../../docs/adr/0006-ai-standalone-library.md)(保留为独立库、依赖图永久叶子);
-> 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md);装配注入形态 [ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)。
+> 装配注入形态 [ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)。
 
 一句话:单渠道内的机制链(参数抹平 → 单次尝试 → 重试 → 逐块透传);候选循环、路由、
 计费衔接全部在 `inference`。零 `@tillgate/*` 依赖,自有 `ErrorKind` 封闭词表。

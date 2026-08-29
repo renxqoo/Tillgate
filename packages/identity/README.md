@@ -1,7 +1,6 @@
 # @tillgate/identity
 
 > 身份认证能力:凭据、密码、统一挑战、MFA、OAuth 绑定、JWT 会话与吊销(总纲 §3/P4.1)。
-> 设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md)
 
 一句话:认证秘密的唯一所有者——标识↔主体绑定、密码、验证码挑战、TOTP、OAuth 绑定、
 JWT 会话与吊销线;不建用户资料行(userId 由 accounts 分配),会话校验只验

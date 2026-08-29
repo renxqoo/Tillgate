@@ -55,6 +55,7 @@ const adminListSelection = {
   streamAborted: usageLogs.streamAborted,
   estimated: usageLogs.estimated,
   estimateReason: usageLogs.estimateReason,
+  usageClamps: usageLogs.usageClamps,
   createdAt: usageLogs.createdAt,
 } as const;
 

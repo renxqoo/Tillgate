@@ -3,8 +3,6 @@
 通知能力包（总纲 §3/P4.1）：渠道 CRUD、事务性 outbox 入箱/认领/投递与告警模板。
 「何时告警、payload 语义」归各业务能力，本包只管「怎么送达」。
 
-设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md)
-
 ## 核心能力
 
 - **渠道管理**：webhook / email 渠道 CRUD 与订阅词表校验；webhook secret 经 `SecretCipher` 加密落库（enc:v1，与渠道 apiKeyEnc 同口径）

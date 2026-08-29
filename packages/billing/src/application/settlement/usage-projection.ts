@@ -6,6 +6,7 @@
  */
 import { Decimal } from '../../domain/money.js';
 import type { UsageReceipt } from '../../domain/rating/types.js';
+import type { UsageClamp } from '../../domain/rating/usage-acceptance.js';
 
 export interface UsageProjectionInput {
   receipt: UsageReceipt;
@@ -18,6 +19,13 @@ export interface UsageProjectionInput {
   upstreamCost: string;
   /** 订阅来源消耗（含吸收超额）；0 = 纯 PAYG */
   planConsume: string;
+  /** 验收门钳制事实（acceptTrustedUsage 产出；空/缺 = 诚实发票或估算收据） */
+  clamps?: readonly UsageClamp[];
+}
+
+/** 「发票 → 验收」轨迹列值：上游发票被验收门钳定的事实（空/缺 = null——诚实发票/估算收据） */
+function clampColumnOf(clamps: readonly UsageClamp[] | undefined): readonly UsageClamp[] | null {
+  return clamps != null && clamps.length > 0 ? [...clamps] : null;
 }
 
 export function usageLogProjection(input: UsageProjectionInput): Record<string, unknown> {
@@ -67,5 +75,6 @@ export function usageLogProjection(input: UsageProjectionInput): Record<string, 
     streamAborted: receipt.streamAborted,
     estimated: receipt.usage.estimated,
     estimateReason: receipt.usage.estimated ? (receipt.estimatedFor ?? null) : null,
+    usageClamps: clampColumnOf(input.clamps),
   };
 }

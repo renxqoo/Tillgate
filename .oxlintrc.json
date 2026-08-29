@@ -17,7 +17,7 @@
   "plugins": ["typescript", "unicorn", "react", "react-hooks", "promise"],
   // 本地 TS 插件集合(oxlint-plugins/,一个文件夹一个插件),路径相对本配置文件解析;
   // .ts 插件需宿主原生剥类型:Bun 任意版本,或 Node ≥22.18 / ^20.19
-  "jsPlugins": ["./oxlint-plugins/tillgate/index.ts", "./oxlint-plugins/boundaries/index.ts"],
+  "jsPlugins": ["./oxlint-plugins/multi-component/index.ts", "./oxlint-plugins/boundaries/index.ts"],
 
   "categories": {
     // 明确错误:类型误用、空指针、未定义行为等硬伤,全量 error
@@ -192,7 +192,7 @@
         // 一文件一组件/hook:出现第二个组件或 hook 定义即报告,
         // 拆分标准形态见 rule/component-split.md §2(一动词一文件、目录化)。
         // 存量棘轮:先 warn 不挡 CI,features 下的巨石组件拆完后升 error
-        "tillgate/no-multi-component": "error",
+        "multi-component/no-multi-component": "error",
         "eslint/max-lines-per-function": ["error", { "max": 150 }],
         // 三元嵌套是 JSX 三态渲染(loading/error/success)标准写法,放行;
         // 复杂条件仍应抽变量或抽组件
@@ -204,7 +204,7 @@
       // 此块必须排在 **/*.tsx 块之后才能对测试文件生效
       "files": ["**/__test__/**", "**/*.test.tsx", "**/*.spec.tsx", "**/testing/**"],
       "rules": {
-        "tillgate/no-multi-component": "off"
+        "multi-component/no-multi-component": "off"
       }
     },
     {

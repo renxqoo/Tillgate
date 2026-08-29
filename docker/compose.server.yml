@@ -2,7 +2,7 @@
 #
 # 用法（服务器 /opt/tillgate，docker/ 与 .env 同仓内布局）：
 #   docker compose --env-file .env -f docker/compose.yml build        # 服务器构建（x86_64 原生）
-#   # ——或 ACR：.env 设 TILLGATE_IMAGE_PREFIX=<registry>/<namespace> / TILLGATE_TAG=main
+#   # ——或自建 registry：.env 设 TILLGATE_IMAGE_PREFIX=<registry>/<namespace> / TILLGATE_TAG=main
 #   docker compose --env-file .env -f docker/compose.yml -f docker/compose.server.yml pull
 #   # ——或「本地构建 → 传输」：同名 tag → docker save | gzip → scp → docker load
 #   mkdir -p docker/nginx/certs-server

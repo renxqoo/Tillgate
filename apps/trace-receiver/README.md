@@ -3,7 +3,7 @@
 OTLP/HTTP JSON 接收 → 批量写 PG 日分区（trace_spans）；**过载即丢，绝不反压业务**。
 薄 app：decode/ingest/store/OTel 全部来自 `@tillgate/observability`，本 app 只持有 config、assembly、HTTP 面与进程生命周期（v2 仓第一个 app，装配范式先例）。
 
-施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md) · 能力基线 [observability DESIGN](../../packages/observability/DESIGN.md) · 错误目录 [ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)
+错误目录 [ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)
 
 ## 核心能力
 

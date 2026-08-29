@@ -1,7 +1,6 @@
 # @tillgate/accounts
 
 > 账号能力:用户资料、组织/成员/邀请、API Key、Application、推荐与拉新参数——账号事实唯一所有者,不保存认证秘密。
-> 设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md)
 
 一句话:用户/组织/凭证资料的**事实唯一所有者**;认证秘密在 `identity`,资金在 `billing`,
 本包只保存资料与账户关系,并经 port 与两者桥接。

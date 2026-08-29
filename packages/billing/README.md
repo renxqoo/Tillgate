@@ -1,9 +1,7 @@
 # @tillgate/billing
 
 > 唯一资金与计费事实源：金额、钱包、双分录账本、计价、订阅、支付、兑换、结算与恢复。
-> 裁决：[ADR-0003](../../docs/adr/0003-wallet-ledger-merge-into-billing.md)；
-> 设计基线 [DESIGN.md](./DESIGN.md)；施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md)；
-> 逐单元迁移记录 [MIGRATION-U0](./MIGRATION-U0.md) ~ [MIGRATION-U5](./MIGRATION-U5.md)。
+> 裁决：[ADR-0003](../../docs/adr/0003-wallet-ledger-merge-into-billing.md)。
 
 ## 1. 快速开始（app assembly）
 

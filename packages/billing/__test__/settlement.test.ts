@@ -164,6 +164,21 @@ describe('结算管线（claim → settle）', () => {
     expect(usage.billedBy).toBe('payg');
   });
 
+  it('发票超准入界 → 钳定结算 + usage_clamps 落「发票→验收」轨迹', async () => {
+    const h = harness();
+    // 准入界 100、发票 1M → 钳到 100；实扣 0.0002（100×2 元/1M）
+    const { userId, requestId } = await toPending(h, 1_000_000, { inputUpper: 100 });
+    const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    expect(await h.settlement.processClaim(defined(claim))).toBe('settled');
+    const usage = defined(h.world.fixtures.usageLogs.get(requestId));
+    expect(usage.inputTokens).toBe(100);
+    expect(usage.usageClamps).toEqual([
+      { kind: 'input_bound', field: 'inputTokens', original: 1_000_000, clamped: 100, bound: 100 },
+    ]);
+    expect(usage.calculatedAmount).toBe('0.0002');
+    expect(defined((await h.wallet.accounts(userId))[0]).balance).toBe('9.9998');
+  });
+
   it('部分结算 + 幂等回查：认领失效时 usage_logs 判 already_settled', async () => {
     const h = harness();
     const { userId } = await toPending(h, 250_000); // 实扣 0.5（预留 2）

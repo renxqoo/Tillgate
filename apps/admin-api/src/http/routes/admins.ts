@@ -8,7 +8,7 @@
  *      （绝不留「创建成功但永远登不上」的废号;create-admin 脚本同口径）
  *   4. 尽力投递邀请邮件（SMTP/链接基地未生效或投递失败 → inviteSent:false 不回滚：
  *      补偿 remove 只删资料行不级联凭据,回滚会留孤儿 identifier 死锁同邮箱重建;
- *      数据终态自洽,列表「重发邀请」补救——docs/admin-invite/DESIGN.md）
+ *      数据终态自洽,列表「重发邀请」补救）
  *   5. 全部落定才旁路审计（postAudit——detail 含 inviteSent 如实记录）
  *
  * 重发邀请 = 60s 冷却(Redis SET NX,发送前占用;投递失败不释放——防 SMTP 故障

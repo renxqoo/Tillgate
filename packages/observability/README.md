@@ -3,7 +3,7 @@
 可观测能力包（总纲 §3.1/P4.5）：OTel 装配、链路追踪、审计存储查询、请求日志与 usage 运维读侧。
 观测链路 best-effort，永不反压业务；基础结构化 logger 在 `packages/runtime`，**不在本包**——本包只消费最小 Logger 形状 `{ info, warn }`，不依赖 runtime。
 
-设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md) · 错误目录归属 [ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)
+错误目录归属 [ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)
 
 ## 核心能力
 

@@ -1,7 +1,6 @@
 # @tillgate/db
 
 > PostgreSQL 连接、事务、schema 与迁移——物理 schema 登记点,不放业务用例(内部依赖仅 @tillgate/errors,§5.1 白名单)。
-> 设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md)
 
 一句话:**物理 schema、迁移顺序和事务基础设施的统一登记点,不是业务事实所有者**——
 表定义在此登记,表语义的消费与演进属于各能力包(总纲 §3.4)。
@@ -42,7 +41,7 @@ cd apps/admin-api && bun scripts/create-admin.ts --email=you@example.com [--pass
 费率卡 → 管理台创建(无卡 = 系数 1.0 兜底,`billing/domain/rating/coefficient.ts`)。
 
 注意:`request_logs` 自迁移 0040 起是分区母表——禁止对它跑 `db:generate`
-(`drizzle.config.ts` 头注释 / IMPLEMENTATION.md B5)。
+(`drizzle.config.ts` 头注释)。
 
 ## 目录结构
 

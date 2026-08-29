@@ -224,6 +224,7 @@ async function settleOneInTx(
       calculatedAmount: chargedAmount.toString(),
       upstreamCost,
       planConsume: planConsume.toString(),
+      clamps,
     }),
   );
   if (!inserted) throw invariant('settle_usage_conflict');
