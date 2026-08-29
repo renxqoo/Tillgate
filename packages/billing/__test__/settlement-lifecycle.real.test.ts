@@ -210,7 +210,9 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
     expect(authorization).toMatchObject({ reservedAmount: '2', replayed: false });
     expect(defined((await wallet.accounts(userId))[0]).inFlight).toBe('2');
 
-    const reserved = await billing.reserveChannel({ requestId, channelId, amount: '1.5' });
+    // 渠道预留 ≥ 收据官方成本（B4 经济闭合：预留=物理最坏 Case；留 1.5 会被
+    // 结算验收门判 upstreamCost 2 > reserved 死信——旧值违反不变量）
+    const reserved = await billing.reserveChannel({ requestId, channelId, amount: '2' });
     expect(reserved).toMatchObject({ allowed: true });
 
     const signaled = await billing.signal({
