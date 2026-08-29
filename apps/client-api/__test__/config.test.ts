@@ -39,7 +39,7 @@ describe('client-api config', () => {
     expect(c.CLIENT_USAGE_TZ).toBe('Asia/Shanghai');
     expect(c.PRICING_CACHE_TTL_MS).toBe(30_000);
     expect(c.KEY_PREFIX).toBe('sk_');
-    expect(c.OTEL_TRACES_MODE).toBe('off');
+    expect(c.OTEL_TRACES_MODE).toBe('otlp'); // 默认开启（关闭显式设 off）
   });
 
   it('覆盖生效', () => {

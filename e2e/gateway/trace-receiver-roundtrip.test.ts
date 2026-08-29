@@ -39,7 +39,10 @@ async function waitForListRow(
 ): Promise<TraceListRow[]> {
   const deadline = Date.now() + deadlineMs;
   for (;;) {
-    const rows = (await traces.recent({ limit: 30 })).filter((r) => r.requestId === requestId);
+    // recent 契约：offset 必填、返回 { rows, total } 信封（见 observability TraceQueries）
+    const rows = (await traces.recent({ limit: 30, offset: 0 })).rows.filter(
+      (r) => r.requestId === requestId,
+    );
     if (rows.length > 0 || Date.now() > deadline) return rows;
     await sleep(1_000);
   }
@@ -72,7 +75,12 @@ beforeAll(async () => {
   });
   keys = new E2EKeys(world, gw.assembly.billingFacade);
   // admin-api 同款查询面，连 receiver 写入的共享 dev 库
-  devDb = createDb({ url: defined(process.env.DATABASE_URL, 'DATABASE_URL') });
+  devDb = createDb({
+    url: defined(process.env.DATABASE_URL, 'DATABASE_URL'),
+    poolMax: 8,
+    idleTimeoutMillis: 5_000,
+    connectionTimeoutMillis: 3_000,
+  });
 });
 
 afterAll(async () => {
@@ -98,7 +106,7 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
     const deadline = Date.now() + 20_000;
     let row: TraceListRow | undefined;
     for (;;) {
-      const recent = await traces.recent({ limit: 20 });
+      const { rows: recent } = await traces.recent({ limit: 20, offset: 0 });
       row = recent.find((r) => r.requestId === requestId);
       if (row || Date.now() > deadline) break;
       await sleep(1_000);

@@ -5,6 +5,15 @@
 
 ## [Unreleased]
 
+### Changed —— 链路追踪默认开启
+
+- **`OTEL_TRACES_MODE` 缺省 `off` → `otlp`**：gateway/client-api/admin-api/worker 四个
+  推流 app 及 compose/aio 部署统一默认开启，`OTEL_EXPORTER_OTLP_ENDPOINT` 内置缺省
+  `http://trace-receiver:8793`（可覆盖）；关闭显式设 `OTEL_TRACES_MODE=off`。
+  admin-api/worker 原「otlp 必须显式配端点」的启动校验随端点缺省化成为不可达死代码，
+  一并移除；admin-api 开发态 `memory` 缺省同被统一为 `otlp`（本地无接收端时设
+  `OTEL_TRACES_MODE=memory` 或 `off`）。生产接收端鉴权仍要求 `TRACE_RECEIVER_TOKEN`
+  （缺省对推送回 401）。
 
 ## [0.6.0] - 2026-08-29
 

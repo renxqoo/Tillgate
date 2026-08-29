@@ -75,7 +75,7 @@ export CLIENT_USAGE_TZ="${CLIENT_USAGE_TZ:-Asia/Shanghai}"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 # 全部服务都在本容器 nginx 之后
 export TRUSTED_PROXY_HOPS=1
-if [ "${OTEL_TRACES_MODE:-off}" = otlp ]; then
+if [ "${OTEL_TRACES_MODE:-otlp}" = otlp ]; then
   # 内置 trace-receiver 自动接线（8793）
   export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://127.0.0.1:8793}"
 fi

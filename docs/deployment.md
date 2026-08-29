@@ -270,7 +270,7 @@ docker compose exec -T postgres psql -U postgres -d tillgate < full.dump
 | `BOOTSTRAP_ADMIN_ENABLED` | `true` | 设为 `false` 关闭「管理员表为空时自动创建」 |
 | `CLIENT_USAGE_TZ` | `Asia/Shanghai` | 用量日汇总日界时区（IANA 名） |
 | `NEXT_PUBLIC_DISPLAY_TZ` | `Asia/Shanghai` | 面板展示时区（镜像构建期生效，运行时传入无效） |
-| `OTEL_TRACES_MODE` | `off` | 设为 `otlp` 启用链路追踪（内置接收端自动接线，管理台「链路追踪」页查看） |
+| `OTEL_TRACES_MODE` | `otlp` | 链路追踪默认开启（内置接收端自动接线，管理台「链路追踪」页查看）；关闭设 `off` |
 | `LOG_LEVEL` | `info` | 日志级别 |
 
 ### 多容器（compose）`.env` 键
@@ -294,7 +294,7 @@ install.sh 自动生成（勿手改；丢失或泄露按轮换流程处理）：
 | `TILLGATE_IMAGE_PREFIX` | `tillgate（本地构建标签）` | 镜像前缀（自建 registry 时替换） |
 | `TILLGATE_TAG` | `latest` | 镜像 tag（回滚时改为 `sha-xxxxxx`） |
 | `OAUTH_API_BASE` / `OAUTH_FRONTEND_URL` | 由 install.sh 按域名生成 | OAuth 回调白名单；IP 形态为 `https://localhost` |
-| `OTEL_TRACES_MODE` | `off` | 设为 `otlp` 启用链路追踪 |
+| `OTEL_TRACES_MODE` | `otlp` | 链路追踪默认开启；关闭设 `off` |
 | `CLIENT_USAGE_TZ` | `Asia/Shanghai` | 用量日汇总日界时区 |
 | `NEXT_PUBLIC_DISPLAY_TZ` | `Asia/Shanghai` | 面板展示时区（console-client 构建参数） |
 | `LOG_LEVEL` | `info` | 日志级别 |

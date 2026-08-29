@@ -102,20 +102,14 @@ const envSchema = z
     // ---- 邮件渠道（三要素缺一 = 不装配，email 渠道 fail-closed）----
 
     // ---- 观测 ----
-    OTEL_TRACES_MODE: z.enum(['off', 'memory', 'console', 'otlp']).optional(),
-    OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+    /** 链路追踪默认开启（otlp 推送；关闭显式设 off） */
+    OTEL_TRACES_MODE: z.enum(['off', 'memory', 'console', 'otlp']).default('otlp'),
+    OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().default('http://trace-receiver:8793'),
     TRACE_RECEIVER_TOKEN: z.string().min(1).optional(),
     OTEL_SERVICE_VERSION: z.string().min(1).default('0.1.0'),
     OTEL_METRICS_INTERVAL_MS: z.coerce.number().int().min(1_000).default(10_000),
   })
   .superRefine((v, ctx) => {
-    if (v.OTEL_TRACES_MODE === 'otlp' && v.OTEL_EXPORTER_OTLP_ENDPOINT == null) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['OTEL_EXPORTER_OTLP_ENDPOINT'],
-        message: 'required when OTEL_TRACES_MODE=otlp',
-      });
-    }
     if (v.REDIS_SENTINELS != null && v.REDIS_SENTINEL_NAME == null) {
       ctx.addIssue({
         code: 'custom',
@@ -218,8 +212,7 @@ function redisUrlOf(parsed: { WORKER_REDIS_URL?: string; REDIS_URL?: string }): 
 // eslint-disable-next-line max-lines-per-function -- env→config 逐字段搬运(zod schema 映射平铺,分支即字段)
 export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
   const parsed = envSchema.parse(env);
-  const otelMode: OtelMode =
-    parsed.OTEL_TRACES_MODE ?? (parsed.NODE_ENV === 'production' ? 'off' : 'off');
+  const otelMode: OtelMode = parsed.OTEL_TRACES_MODE;
 
   // SentinelTopology 是判别联合，须按分支显式构造（条件 spread 会把字段降级为可选）
   const bullmqBase = {

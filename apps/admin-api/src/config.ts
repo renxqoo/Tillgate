@@ -97,21 +97,15 @@ const envSchema = z
     ADMIN_BODY_LIMIT_BYTES: z.coerce.number().int().min(1).default(4_194_304),
     /** 优雅停机宽限上界（ms） */
     ADMIN_SHUTDOWN_GRACE_MS: z.coerce.number().int().min(1_000).default(10_000),
-    OTEL_TRACES_MODE: z.enum(['off', 'memory', 'console', 'otlp']).optional(),
-    OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+    /** 链路追踪默认开启（otlp 推送；关闭显式设 off；memory = 进程内查看页） */
+    OTEL_TRACES_MODE: z.enum(['off', 'memory', 'console', 'otlp']).default('otlp'),
+    OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().default('http://trace-receiver:8793'),
     /** OTLP 推送鉴权(Bearer)——与 trace-receiver 共用同键同值;缺此值对生产接收端 = span 全部 401 拒收 */
     TRACE_RECEIVER_TOKEN: z.string().min(1).optional(),
     OTEL_SERVICE_VERSION: z.string().min(1).default('0.1.0'),
     OTEL_METRICS_INTERVAL_MS: z.coerce.number().int().min(1_000).default(10_000),
   })
   .superRefine((env, ctx) => {
-    if (env.OTEL_TRACES_MODE === 'otlp' && env.OTEL_EXPORTER_OTLP_ENDPOINT === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['OTEL_EXPORTER_OTLP_ENDPOINT'],
-        message: 'OTEL_EXPORTER_OTLP_ENDPOINT is required when OTEL_TRACES_MODE=otlp',
-      });
-    }
     if (env.REDIS_SENTINELS != null && env.REDIS_SENTINEL_NAME == null) {
       ctx.addIssue({
         code: 'custom',
@@ -190,8 +184,7 @@ export interface AdminApiConfig {
 // eslint-disable-next-line max-lines-per-function -- env→config 逐字段搬运(zod schema 映射平铺,分支即字段)
 export function loadAdminApiConfig(env: NodeJS.ProcessEnv = process.env): AdminApiConfig {
   const parsed = envSchema.parse(env);
-  const otelMode: OtelMode =
-    parsed.OTEL_TRACES_MODE ?? (parsed.NODE_ENV === 'production' ? 'off' : 'memory');
+  const otelMode: OtelMode = parsed.OTEL_TRACES_MODE;
   return {
     logLevel: parsed.LOG_LEVEL,
     databaseUrl: parsed.DATABASE_URL,

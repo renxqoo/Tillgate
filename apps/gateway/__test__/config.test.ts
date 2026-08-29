@@ -18,7 +18,8 @@ const BASE = {
 describe('缺省值与推导', () => {
   it('缺省表（v1 等价值逐项）', () => {
     const c = loadGatewayConfig({ ...BASE });
-    expect(c.otel.mode).toBe('off');
+    expect(c.otel.mode).toBe('otlp'); // 链路追踪默认开启（关闭显式设 off）
+    expect(c.otel.endpoint).toBe('http://trace-receiver:8793'); // 端点内置缺省
     expect(c.otel.authToken).toBeUndefined();
     expect(c.redisTopology).toEqual({ kind: 'direct' });
     expect(c.port).toBe(8_080);
