@@ -137,7 +137,7 @@ describe('外键引用物化(契约:FK 目标必须在封闭表集合内)', () =
   });
 });
 
-describe('依赖边界(IMPLEMENTATION.md §6:零内部依赖)', () => {
+describe('依赖边界(零内部依赖)', () => {
   const srcDir = fileURLToPath(new URL('../src', import.meta.url));
 
   it('全部源文件 import 行无白名单外依赖(白名单:@tillgate/errors,AGENT.md §11)', () => {

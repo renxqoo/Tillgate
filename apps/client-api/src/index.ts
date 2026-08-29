@@ -11,7 +11,7 @@ import { createClientShutdown } from './shutdown.js';
 
 const config = loadClientApiConfig();
 // 停机排水 controller + DB 并发预算门（gateway 同形态:入口持有——宽限耗尽时
-// abort 预算门排队者,余量 2 给探针旁路;方案 docs/db-budget-signals/DESIGN.md）
+// abort 预算门排队者,余量 2 给探针旁路）
 const drainController = new AbortController();
 const { logger, otel, db, redis, deps } = await assembleClientApi(config, {
   dbBudget: { ...suggestDbBudget(config.DB_POOL_MAX, 2), drainSignal: drainController.signal },

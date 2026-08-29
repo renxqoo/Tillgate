@@ -1,7 +1,6 @@
 # @tillgate/inference
 
 > 推理用例:候选循环、路由调度、计费衔接与故障转移;渠道熔断/死凭据健康状态(AiEvent 订阅者,§3.6;单向依赖 @tillgate/ai)。
-> 设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md) ·
 > 相关裁决:[ADR-0006](../../docs/adr/0006-ai-standalone-library.md)(ai 独立库)、[ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)(装配注入形态)
 
 一句话:网关推理编排——预检 → `billing.authorize` → 候选循环(换渠道故障转移是本包

@@ -1,5 +1,5 @@
 /**
- * 透支地板管理面单测（方案 docs/debit-floor/DESIGN.md 测试口径）：
+ * 透支地板管理面单测：
  * 键值解析矩阵 / 新钱包套默认 / 手工覆盖 source / 批量刷默认（manual 不动、贴线跳过）/
  * 降低地板贴线冲突。内存 store + 注入 defaultFloor 解析器。
  */

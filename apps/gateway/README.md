@@ -3,7 +3,7 @@
 OpenAI/多协议推理入口（端口沿用 v1 `8080`）：协议适配 + 鉴权 + 限流 + 装配。
 推理编排、候选循环、计价收据、渠道健康全部来自 `@tillgate/inference` facade——app 零第二套业务规则。
 
-设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md) · 相关 [ADR-0004](../../docs/adr/0004-upstream-4xx-passthrough.md) / [ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)
+相关 [ADR-0004](../../docs/adr/0004-upstream-4xx-passthrough.md) / [ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)
 
 ## 核心能力
 
