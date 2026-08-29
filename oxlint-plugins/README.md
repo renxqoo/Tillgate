@@ -77,7 +77,9 @@ workspace 定位依赖本仓布局约定(workspace 只有一层 apps/_、package
 ```jsonc
 {
   "jsPlugins": ["./oxlint-plugins/multi-component/index.ts"], // 路径相对配置文件解析
-  "overrides": [{ "files": ["**/*.tsx"], "rules": { "multi-component/no-multi-component": "warn" } }],
+  "overrides": [
+    { "files": ["**/*.tsx"], "rules": { "multi-component/no-multi-component": "warn" } },
+  ],
 }
 ```
 

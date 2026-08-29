@@ -17,7 +17,10 @@
   "plugins": ["typescript", "unicorn", "react", "react-hooks", "promise"],
   // 本地 TS 插件集合(oxlint-plugins/,一个文件夹一个插件),路径相对本配置文件解析;
   // .ts 插件需宿主原生剥类型:Bun 任意版本,或 Node ≥22.18 / ^20.19
-  "jsPlugins": ["./oxlint-plugins/multi-component/index.ts", "./oxlint-plugins/boundaries/index.ts"],
+  "jsPlugins": [
+    "./oxlint-plugins/multi-component/index.ts",
+    "./oxlint-plugins/boundaries/index.ts"
+  ],
 
   "categories": {
     // 明确错误:类型误用、空指针、未定义行为等硬伤,全量 error
