@@ -63,7 +63,10 @@ export const statsTrendsSchema = z
     days: z.number().describe('回看天数（含今日）'),
     rows: z.array(statsTrendRowSchema),
   })
-  .meta({ id: 'StatsTrends', description: '按日趋势响应(GET /v1/stats/trends)' });
+  .meta({
+    id: 'StatsTrends',
+    description: '按日趋势响应(GET /v1/stats/trends;无流量日补零行,rows 恒为 days 天完整序列)',
+  });
 
 /** 请求日志行（presenter 不输出 attempts、apiKeyId 恒 null） */
 export const logRowSchema = z
@@ -315,7 +318,7 @@ export const observabilityEndpoints: readonly OpenApiEndpoint[] = [
     method: 'get',
     path: '/v1/stats/trends',
     tag: 'stats',
-    summary: '按日趋势（近 N 天含今日,北京日界;days 钳位 1..90）',
+    summary: '按日趋势（近 N 天含今日,北京日界;无流量日补零;days 钳位 1..90）',
     query: statsContracts.trends,
     response: { schema: statsTrendsSchema },
     errors: [400, 401],
