@@ -1,20 +1,16 @@
-# 镜像发布：main 分支推送（或手动触发）→ 构建 8 个 linux/amd64 镜像 → 推 ACR 个人版
-#
-# 产物命名：${ACR_REGISTRY}/${ACR_NAMESPACE}/<服务名>:main（移动标签，服务器 pull 用）
-#           + :sha-<commit>（不可变存档，回滚/审计用）
-# 服务器升级（不构建、只拉取）：
-#   docker login crpi-xxx.cn-hangzhou.personal.cr.aliyuncs.com
-#   docker compose --env-file .env -f docker/compose.yml -f docker/compose.server.yml pull
-#   docker compose --env-file .env -f docker/compose.yml -f docker/compose.server.yml up -d
-#
-# Secrets（repo Settings → Secrets → Actions）：ACR_REGISTRY / ACR_USERNAME / ACR_PASSWORD
-# Variables（Settings → Variables）：ACR_NAMESPACE（缺省回落 tillgate）
-
+# AIO 镜像发布（Docker Hub renxqoo/tillgate）：
+#   push main → latest + sha-<短哈希>（移动标签 + 不可变锚点）
+#   push v* 标签 → <版本号> + latest（正式发版；版本标签发布后不得重推）
+#   pull_request → 只构建验证（不推送）
+# Secrets（repo Settings → Secrets → Actions）：DOCKERHUB_USERNAME / DOCKERHUB_TOKEN
+#（Docker Hub Access Token；缺失时 main 推送会响亮失败——发布不允许静默跳过）
+# 多容器 compose 形态不在此发布：按 docs/deployment.md 从源码构建。
 name: docker-publish
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -24,51 +20,45 @@ concurrency:
 
 jobs:
   build-push:
-    name: build & push (amd64)
+    name: build & push AIO (amd64)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
-    env:
-      REGISTRY: ${{ secrets.ACR_REGISTRY }}
-      NAMESPACE: ${{ vars.ACR_NAMESPACE || 'tillgate' }}
-      POSTGRES_PASSWORD: ci-compose-only-postgres
-      REDIS_PASSWORD: ci-compose-only-redis
-      TRACE_RECEIVER_TOKEN: ci-compose-only-trace-token
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Prepare Compose environment
-        run: cp .env.example .env
-
-      - name: Login to ACR
+      - name: Docker Hub login
         if: github.event_name != 'pull_request'
-        run: echo "${{ secrets.ACR_PASSWORD }}" | docker login "$REGISTRY" -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 与 docker/compose.yml 同源构建（build args/platform 由 compose 定义，含 image 标签
-      # tillgate/<svc>:local）；顺序构建共享 Dockerfile.server 的 bun install 层缓存
-      - name: Build all images
-        run: docker compose --env-file .env -f docker/compose.yml build
-
-      - name: Push images
-        if: github.event_name != 'pull_request'
+      - name: Compute image tags
+        id: tags
         run: |
-          set -eu
-          services="gateway client-api admin-api worker trace-receiver console-client console-admin migrate"
-          for svc in $services; do
-            src="tillgate/${svc}:local"
-            remote_main="${REGISTRY}/${NAMESPACE}/${svc}:main"
-            remote_sha="${REGISTRY}/${NAMESPACE}/${svc}:sha-${GITHUB_SHA::7}"
-            echo "→ ${remote_main}"
-            docker tag "$src" "$remote_main"
-            docker tag "$src" "$remote_sha"
-            docker push --quiet "$remote_main"
-            docker push --quiet "$remote_sha"
-          done
-          echo "发布完成：${REGISTRY}/${NAMESPACE}/{${services// /,}}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "tags=renxqoo/tillgate:${GITHUB_REF#refs/tags/v},renxqoo/tillgate:latest" >> "$GITHUB_OUTPUT"
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            echo "tags=renxqoo/tillgate:latest,renxqoo/tillgate:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            # PR / 非主线分支：只构建验证（占位 tag 不推送）
+            echo "tags=tillgate/aio:pr-check" >> "$GITHUB_OUTPUT"
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Logout
-        if: always() && github.event_name != 'pull_request'
-        run: docker logout "$REGISTRY" || true
+      - name: Build AIO image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.aio
+          platforms: linux/amd64
+          push: ${{ steps.tags.outputs.push == 'true' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

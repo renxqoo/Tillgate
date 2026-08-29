@@ -169,14 +169,14 @@ docker stop tillgate && docker rm tillgate
 ### 1. 安装（两条命令）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/renqoo/Tillgate/main/docker/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/renxqoo/Tillgate/main/docker/install.sh | bash
 ./tillgate up
 ```
 
 先审阅再执行（可选）：
 
 ```bash
-curl -fsSL -o install.sh https://raw.githubusercontent.com/renqoo/Tillgate/main/docker/install.sh
+curl -fsSL -o install.sh https://raw.githubusercontent.com/renxqoo/Tillgate/main/docker/install.sh
 less install.sh && bash install.sh
 ```
 
@@ -291,7 +291,7 @@ install.sh 自动生成（勿手改；丢失或泄露按轮换流程处理）：
 | --- | --- | --- |
 | `POSTGRES_USER` | `postgres` | 容器 PG 用户 |
 | `POSTGRES_DB` | `tillgate` | 库名 |
-| `TILLGATE_IMAGE_PREFIX` | `ghcr.io/renqoo/tillgate` | 镜像前缀（自建 registry 时替换） |
+| `TILLGATE_IMAGE_PREFIX` | `tillgate（本地构建标签）` | 镜像前缀（自建 registry 时替换） |
 | `TILLGATE_TAG` | `latest` | 镜像 tag（回滚时改为 `sha-xxxxxx`） |
 | `OAUTH_API_BASE` / `OAUTH_FRONTEND_URL` | 由 install.sh 按域名生成 | OAuth 回调白名单；IP 形态为 `https://localhost` |
 | `OTEL_TRACES_MODE` | `off` | 设为 `otlp` 启用链路追踪 |
