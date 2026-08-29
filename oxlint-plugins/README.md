@@ -10,7 +10,7 @@ oxlint-plugins/
 ├── package.json            type: module + test/typecheck 脚本(非 workspace,不进 turbo 门禁)
 ├── tsconfig.json           继承根 tsconfig.base.json,插件 TS 的编辑器与 tsc 检查上下文
 ├── README.md
-├── tillgate/               一个插件一个文件夹,插件之间互不依赖
+├── multi-component/        一个插件一个文件夹,插件之间互不依赖
 │   ├── index.ts            definePlugin 汇总入口,meta.name 即规则 ID 前缀
 │   ├── rules/              一条规则一个文件 + 就近的 <rule>.test.ts
 │   │   ├── no-multi-component.ts
@@ -28,13 +28,13 @@ oxlint-plugins/
 ```
 
 新增规则:`rules/` 下新建 `<rule>.ts`,`export default defineRule({ meta, create })`,
-再到插件 `index.ts` 的 `rules` 表注册一行,规则 ID 即 `tillgate/<rule>`。
+再到插件 `index.ts` 的 `rules` 表注册一行,规则 ID 即 `<插件名>/<rule>`（当前 multi-component）。
 新增插件:新建 `oxlint-plugins/<name>/` 文件夹(同样的 index.ts + rules/ + test/ 形状),
 根 `.oxlintrc.json` 的 `jsPlugins` 加一条路径。
 
-## 插件 tillgate
+## 插件 multi-component
 
-### tillgate/no-multi-component
+### multi-component/no-multi-component
 
 判断一个 `.tsx` 文件内是否存在两个及以上的"组件/hook 定义",存在即报告:
 `max`(默认 1)之后的每个定义报 `exceed`;嵌套在其它函数体内定义的报 `nested`
@@ -76,8 +76,8 @@ workspace 定位依赖本仓布局约定(workspace 只有一层 apps/_、package
 
 ```jsonc
 {
-  "jsPlugins": ["./oxlint-plugins/tillgate/index.ts"], // 路径相对配置文件解析
-  "overrides": [{ "files": ["**/*.tsx"], "rules": { "tillgate/no-multi-component": "warn" } }],
+  "jsPlugins": ["./oxlint-plugins/multi-component/index.ts"], // 路径相对配置文件解析
+  "overrides": [{ "files": ["**/*.tsx"], "rules": { "multi-component/no-multi-component": "warn" } }],
 }
 ```
 
