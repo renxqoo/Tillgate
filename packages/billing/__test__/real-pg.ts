@@ -35,6 +35,38 @@ export function causeChainHasCode(error: unknown, code: string): boolean {
   return pgSqlState(error) === code;
 }
 
+/**
+ * 42P01 容忍白名单（迁移文件名）：db 链中少数历史迁移引用「在本回放序中后建」的表
+ * （identity provision 族——0055/0056/0057 的目标表 0076 才建）。容忍必须同时满足
+ * 三重判定：文件在白名单 + 错误码 42P01 + 服务端消息确为 relation ... does not exist。
+ * 单看错误码不可信：Bun SQL 的 errno 映射有损——曾把 42P10（invalid reference）错映
+ * 为 42P01 而被静默放行非法语句（e2e 装置同源缺陷，e2e/gateway/kit.ts 同款收紧）。
+ */
+const REPLAY_MISSING_RELATION_ALLOWLIST = new Set([
+  '0055_session_anchors_backfill.sql',
+  '0056_ledger_operations_backfill.sql',
+  '0057_payment_orders_fk_ledger_operations.sql',
+]);
+
+/** 沿 cause 链收集全部 message（drizzle 包装层是 Failed query…，服务端真话在 cause） */
+function chainMessages(error: unknown): string[] {
+  const messages: string[] = [];
+  let cur: unknown = error;
+  for (let depth = 0; cur != null && depth < 5; depth++) {
+    const { message } = cur as { message?: unknown };
+    if (typeof message === 'string') messages.push(message);
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return messages;
+}
+
+/** 全链回放容忍判定（纯函数；e2e/gateway/kit.ts 同款语义） */
+export function replayTolerates(error: unknown, file: string): boolean {
+  if (!REPLAY_MISSING_RELATION_ALLOWLIST.has(file)) return false;
+  if (!causeChainHasCode(error, '42P01')) return false;
+  return chainMessages(error).some((m) => /relation "[^"]+" does not exist/.test(m));
+}
+
 export interface RealWalletHarness {
   db: Db;
   api: WalletApi;
@@ -157,8 +189,8 @@ export async function setupRealFullSchema(label: string): Promise<RealFullSchema
       try {
         await db.execute(sql.raw(trimmed));
       } catch (error) {
-        // drizzle 包装 pg 错误——沿 cause 链探测 SQLSTATE（42P01 = 缺外部链表，容错跳过）
-        if (causeChainHasCode(error, '42P01')) continue;
+        // 白名单内且确为「关系不存在」才容忍（见 replayTolerates 注释）——其余响亮失败
+        if (replayTolerates(error, file)) continue;
         throw error;
       }
     }

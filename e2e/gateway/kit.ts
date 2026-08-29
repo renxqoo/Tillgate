@@ -88,9 +88,8 @@ async function replayMigrations(db: Db, schema: string): Promise<void> {
       try {
         await db.execute(sql.raw(trimmed));
       } catch (error) {
-        const code = pgErrorCode(error);
-        // 42P01 = 跨链引用的祖先表不在本回放集（identity provision 族）——容忍
-        if (code !== '42P01') throw error;
+        // 白名单内且确为「关系不存在」才容忍（见 replayTolerates 注释）——其余响亮失败
+        if (!replayTolerates(error, file)) throw error;
       }
     }
   }
@@ -106,6 +105,38 @@ function pgErrorCode(error: unknown): string | undefined {
     cur = (cur as { cause?: unknown }).cause;
   }
   return undefined;
+}
+
+/**
+ * 42P01 容忍白名单（迁移文件名）：db 链中少数历史迁移引用「在本回放序中后建」的表
+ * （identity provision 族——0055/0056/0057 的目标表 0076 才建）。容忍必须同时满足
+ * 三重判定：文件在白名单 + 错误码 42P01 + 服务端消息确为 relation ... does not exist。
+ * 单看错误码不可信：Bun SQL 的 errno 映射有损——曾把 42P10（invalid reference，
+ * UPDATE...FROM 引用目标表）错映为 42P01 而被静默放行，非法语句直通 e2e 世界。
+ */
+const REPLAY_MISSING_RELATION_ALLOWLIST = new Set([
+  '0055_session_anchors_backfill.sql',
+  '0056_ledger_operations_backfill.sql',
+  '0057_payment_orders_fk_ledger_operations.sql',
+]);
+
+/** 沿 cause 链收集全部 message（drizzle 包装层是 Failed query…，服务端真话在 cause） */
+function chainMessages(error: unknown): string[] {
+  const messages: string[] = [];
+  let cur: unknown = error;
+  for (let depth = 0; cur != null && depth < 5; depth++) {
+    const { message } = cur as { message?: unknown };
+    if (typeof message === 'string') messages.push(message);
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return messages;
+}
+
+/** 回放容忍判定（纯函数，kit-replay.test.ts 表驱动锁定） */
+export function replayTolerates(error: unknown, file: string): boolean {
+  if (!REPLAY_MISSING_RELATION_ALLOWLIST.has(file)) return false;
+  if (pgErrorCode(error) !== '42P01') return false;
+  return chainMessages(error).some((m) => /relation "[^"]+" does not exist/.test(m));
 }
 
 /** 世界种子落库：provider/channel/mapping/model_channels */
@@ -128,7 +159,7 @@ async function seedWorld(
     insert into model_mappings (external_name, real_model, input_price, output_price, cache_input_price)
     values (${E2E_MODEL}, ${E2E_REAL_MODEL}, ${E2E_INPUT_PRICE}, ${E2E_OUTPUT_PRICE}, ${E2E_CACHE_INPUT_PRICE}) returning id`);
   await db.execute(
-    sql`insert into model_channels (mapping_id, channel_id, weight, priority) values (${mapping.id}, ${channel.id}, 3, 2)`,
+    sql`insert into model_channels (mapping_id, channel_id, upstream_model, weight, priority) values (${mapping.id}, ${channel.id}, ${E2E_REAL_MODEL}, 3, 2)`,
   );
   return {
     mappingId: Number(mapping.id),
@@ -140,7 +171,7 @@ async function seedWorld(
 export async function setupE2EWorld(): Promise<E2EWorld> {
   if (E2E_URL == null) throw new Error('DB_TEST_URL / DATABASE_URL is required for e2e');
   const upstream = startMockUpstream();
-  await (upstream as unknown as { ready: Promise<void> }).ready;
+  await upstream.ready;
 
   const schema = `tillgate_e2e_${process.pid.toString(36)}_${Date.now().toString(36)}`;
   const [baseUrl] = E2E_URL.split('?');
@@ -150,7 +181,6 @@ export async function setupE2EWorld(): Promise<E2EWorld> {
     poolMax: 8,
     idleTimeoutMillis: 5_000,
     connectionTimeoutMillis: 3_000,
-    maxUses: 2_000,
   });
   await db.execute(sql.raw(`drop schema if exists ${schema} cascade`));
   await db.execute(sql.raw(`create schema ${schema}`));
