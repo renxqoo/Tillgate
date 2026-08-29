@@ -40,6 +40,7 @@ import { usersFundsRoutes } from './http/routes/users-funds';
 import { keysRoutes } from './http/routes/keys';
 import { providersRoutes } from './http/routes/providers';
 import { channelsRoutes } from './http/routes/channels';
+import { routingPolicyRoutes } from './http/routes/routing-policy';
 import { channelFundsRoutes } from './http/routes/channel-funds';
 import { modelsRoutes } from './http/routes/models';
 import { rateCardsRoutes } from './http/routes/rate-cards';
@@ -271,6 +272,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
   app.route('/', providersRoutes({ controlPlane: deps.controlPlane }));
   app.route('/', channelsRoutes({ controlPlane: deps.controlPlane }));
   app.route('/', channelFundsRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', routingPolicyRoutes({ controlPlane: deps.controlPlane }));
   app.route('/', modelsRoutes({ controlPlane: deps.controlPlane }));
   app.route('/', rateCardsRoutes({ controlPlane: deps.controlPlane }));
   app.route('/', fxRoutes({ controlPlane: deps.controlPlane }));

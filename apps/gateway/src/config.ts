@@ -78,11 +78,13 @@ function createSchema(production: boolean) {
       GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(100).default(10_000),
       /** SSRF 逃生门：仅非生产可用——生产误配 env 也恒关（与 admin-api 同口径） */
       GATEWAY_AI_ALLOW_LOCAL_URL: strictBooleanSchema(false),
+      ROUTING_POLICY_TTL_MS: z.coerce.number().int().min(1_000).max(300_000).default(15_000),
       GATEWAY_SHUTDOWN_GRACE_MS: z.coerce.number().int().min(1_000).default(60_000),
       /** 宽限耗尽 abort 在途请求后的收尾窗（信号结算/释放；再强退） */
       GATEWAY_DRAIN_FINALIZE_MS: z.coerce.number().int().min(1_000).default(5_000),
-      OTEL_TRACES_MODE: z.enum(['off', 'otlp']).default('off'),
-      OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+      /** 链路追踪默认开启（otlp 推送；关闭显式设 off）——部署/文档同口径 */
+      OTEL_TRACES_MODE: z.enum(['off', 'otlp']).default('otlp'),
+      OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().default('http://trace-receiver:8793'),
       /** OTLP 推送鉴权(Bearer)——与 trace-receiver 共用同键同值;缺此值对生产接收端 = span 全部 401 拒收 */
       TRACE_RECEIVER_TOKEN: z.string().min(1).optional(),
       OTEL_METRICS_INTERVAL_MS: z.coerce.number().int().min(1_000).default(10_000),
@@ -160,6 +162,8 @@ export interface GatewayConfig {
   readonly upstreamDeadlineMs: number;
   readonly upstreamConnectTimeoutMs: number;
   readonly aiAllowLocalUrl: boolean;
+  /** 路由策略热拾取间隔（管理台保存 → 生效的最大延迟） */
+  readonly routingPolicyTtlMs: number;
   readonly shutdownGraceMs: number;
   readonly drainFinalizeMs: number;
   readonly otel: {
@@ -305,6 +309,7 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     upstreamDeadlineMs: parsed.GATEWAY_UPSTREAM_DEADLINE_MS,
     upstreamConnectTimeoutMs: parsed.GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS,
     aiAllowLocalUrl: parsed.GATEWAY_AI_ALLOW_LOCAL_URL,
+    routingPolicyTtlMs: parsed.ROUTING_POLICY_TTL_MS,
     shutdownGraceMs: parsed.GATEWAY_SHUTDOWN_GRACE_MS,
     drainFinalizeMs: parsed.GATEWAY_DRAIN_FINALIZE_MS,
     otel: {

@@ -18,7 +18,8 @@ const BASE = {
 describe('缺省值与推导', () => {
   it('缺省表（v1 等价值逐项）', () => {
     const c = loadGatewayConfig({ ...BASE });
-    expect(c.otel.mode).toBe('off');
+    expect(c.otel.mode).toBe('otlp'); // 链路追踪默认开启（关闭显式设 off）
+    expect(c.otel.endpoint).toBe('http://trace-receiver:8793'); // 端点内置缺省
     expect(c.otel.authToken).toBeUndefined();
     expect(c.redisTopology).toEqual({ kind: 'direct' });
     expect(c.port).toBe(8_080);
@@ -111,6 +112,15 @@ describe('fail-closed', () => {
     expect(() =>
       loadGatewayConfig({ ...BASE, BILLING_RESERVATION_POLICY_TTL_MS: '999' }),
     ).toThrow();
+  });
+
+  it('路由策略 TTL：缺省 15s（管理台保存 → 生效的最大延迟）；下限 1s / 上限 5min', () => {
+    expect(loadGatewayConfig(BASE).routingPolicyTtlMs).toBe(15_000);
+    expect(loadGatewayConfig({ ...BASE, ROUTING_POLICY_TTL_MS: '1000' }).routingPolicyTtlMs).toBe(
+      1_000,
+    );
+    expect(() => loadGatewayConfig({ ...BASE, ROUTING_POLICY_TTL_MS: '999' })).toThrow();
+    expect(() => loadGatewayConfig({ ...BASE, ROUTING_POLICY_TTL_MS: '300001' })).toThrow();
   });
 
   it('生产弱 JWT 密钥拒绝（32 门槛）；开发 16 即可', () => {

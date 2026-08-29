@@ -19,6 +19,7 @@ import type {
   ChannelListRow,
   RechargeRow,
   RouteCandidateRow,
+  TaskChannelRow,
   RechargeSortField,
   ChannelListQuery,
 } from '../../ports/channel-store';
@@ -330,11 +331,13 @@ export const postgresChannelStore: ChannelStore = {
         providerBaseUrl: providers.baseUrl,
         providerProtocol: providers.protocol,
         providerVendor: providers.vendor,
+        upstreamModel: modelChannels.upstreamModel,
         priority: modelChannels.priority,
         weight: modelChannels.weight,
         rpmLimit: channels.rpmLimit,
         tpmLimit: channels.tpmLimit,
         upstreamBudget: channels.upstreamBudget,
+        upstreamRemaining: sql<string>`(${channels.upstreamBudget} - ${channels.upstreamReserved})::numeric`,
       })
       .from(modelChannels)
       .innerJoin(channels, eq(modelChannels.channelId, channels.id))
@@ -347,6 +350,14 @@ export const postgresChannelStore: ChannelStore = {
           eq(channels.status, 0),
           isNull(channels.deletedAt),
           isNull(providers.deletedAt),
+          // 渠道白名单交集：SQL NULL / 空数组 = 不限；非空数组须包含绑定出站名（标量包含）。
+          // 防御：契约外非数组值（含 jsonb null 标量）按不限放行——单行脏数据不熔断整条路由
+          or(
+            isNull(channels.models),
+            sql`jsonb_typeof(${channels.models}) <> 'array'`,
+            sql`jsonb_array_length(${channels.models}) = 0`,
+            sql`${channels.models} @> to_jsonb(${modelChannels.upstreamModel}::text)`,
+          ),
         ),
       )
       .orderBy(desc(modelChannels.priority), desc(modelChannels.weight));
@@ -357,7 +368,7 @@ export const postgresChannelStore: ChannelStore = {
 
   async findTaskChannel(db, channelId) {
     // 不按启用状态过滤：已提交任务所属渠道即使事后停用，轮询/代执行仍须可达
-    // （渠道级 priority/weight 对任务推进无意义，取表列原值填充形状）
+    // （渠道级 priority/weight 对任务推进无意义，取表列原值填充形状；出站名在任务行快照）
     const [row] = await db
       .select({
         channelId: channels.id,
@@ -373,10 +384,11 @@ export const postgresChannelStore: ChannelStore = {
         rpmLimit: channels.rpmLimit,
         tpmLimit: channels.tpmLimit,
         upstreamBudget: channels.upstreamBudget,
+        upstreamRemaining: sql<string>`(${channels.upstreamBudget} - ${channels.upstreamReserved})::numeric`,
       })
       .from(channels)
       .innerJoin(providers, eq(channels.providerId, providers.id))
       .where(eq(channels.id, channelId));
-    return (row as RouteCandidateRow | undefined) ?? null;
+    return (row as TaskChannelRow | undefined) ?? null;
   },
 };

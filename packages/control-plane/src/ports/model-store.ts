@@ -113,6 +113,8 @@ export interface ModelProbeChannelRow {
   readonly baseUrlOverride: string | null;
   readonly providerBaseUrl: string;
   readonly providerProtocol: string;
+  /** 该渠道的出站模型名（探针请求用它，不用映射规范名） */
+  readonly upstreamModel: string;
 }
 
 export type ModelSortField = 'id' | 'externalName' | 'realModel' | 'status' | 'createdAt';
@@ -150,14 +152,19 @@ export interface ModelStore {
     db: DbLike,
     input: {
       mappingId: number;
-      channels: Array<{ channelId: number; weight: number; priority: number }>;
+      channels: Array<{
+        channelId: number;
+        upstreamModel: string;
+        weight: number;
+        priority: number;
+      }>;
     },
   ): Promise<number>;
-  /** 页内映射的绑定渠道 id（列表回显 channelIds；未绑定 = 缺席，application 补 []） */
-  listChannelIdsByMappingIds(
+  /** 页内映射的绑定行（列表回显渠道+出站名；未绑定 = 缺席，application 补 []） */
+  listBindingsByMappingIds(
     db: DbLike,
     mappingIds: readonly number[],
-  ): Promise<Array<{ mappingId: number; channelId: number }>>;
+  ): Promise<Array<{ mappingId: number; channelId: number; upstreamModel: string }>>;
   /** 单映射的绑定渠道连接信息（模型探针用；含密文——仅 application 解密） */
   listBoundChannelsForProbe(
     db: DbLike,
@@ -166,7 +173,7 @@ export interface ModelStore {
   /** 目录导入幂等绑定：已绑定时不重复插（复合主键冲突跳过） */
   ensureModelChannelBinding(
     db: DbLike,
-    input: { mappingId: number; channelId: number },
+    input: { mappingId: number; channelId: number; upstreamModel: string },
   ): Promise<void>;
   /** 在架映射按真实名批量查（目录对比用：已导入回填卖价） */
   listEnabledByRealModels(

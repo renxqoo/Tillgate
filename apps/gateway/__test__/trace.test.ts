@@ -60,6 +60,7 @@ const channelA: ChannelCandidate = {
   vendor: null,
   baseUrl: 'https://up.example.com/v1',
   apiKeyEnc: 'enc-7',
+  upstreamModel: 'gpt-x-real',
   priority: 0,
   weight: 1,
 };

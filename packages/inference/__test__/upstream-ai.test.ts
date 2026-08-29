@@ -53,14 +53,14 @@ function fakeAi(handlers: {
 const req = {
   requestId: 'req-1',
   externalModel: 'gpt-x',
-  realModel: 'gpt-x-real',
+  upstreamModel: 'gpt-x-real',
   endpoint: 'chat' as const,
   body: { model: 'gpt-x', messages: [] },
   deadlineMs: 120_000,
 };
 
 describe('adapters/upstream-ai：ChannelDesc 组装 + 凭据注入 + 结果/事件映射', () => {
-  it('ChannelDesc：baseUrl/protocol 直传、凭据经 decrypt 注入、vendor 可选；模型名替换为 realModel', async () => {
+  it('ChannelDesc：baseUrl/protocol 直传、凭据经 decrypt 注入、vendor 可选；模型名替换为出站绑定名', async () => {
     const { ai, seen } = fakeAi({});
     const port = createUpstreamAi({ ai, decrypt: (enc) => `plain:${enc}` });
     await port.chat(channel({ vendor: 'deepseek' }), req);
@@ -79,6 +79,21 @@ describe('adapters/upstream-ai：ChannelDesc 组装 + 凭据注入 + 结果/事�
     // vendor=null 时不携带键（非 null 传值）
     await port.chat(channel(), req);
     expect(seen[1]?.desc).not.toHaveProperty('vendor');
+  });
+
+  it('出站模型名单一来源 = 请求级 upstreamModel（渠道候选不参与出站名解析）', async () => {
+    const { ai, seen } = fakeAi({});
+    const port = createUpstreamAi({ ai, decrypt: (s) => s });
+    await port.chat(channel({ channelId: 7, upstreamModel: 'vendor-a/gpt-x-real' }), req);
+    await port.chat(
+      channel({ channelId: 8, channelName: 'ch-8', upstreamModel: 'gpt-x-real' }),
+      req,
+    );
+    // 适配器只读请求出站名（构造点从渠道候选复制）；渠道差异不在此层出现
+    expect(seen.map((s) => (s.opts as { model: string }).model)).toEqual([
+      'gpt-x-real',
+      'gpt-x-real',
+    ]);
   });
 
   it('chat 结果零包装直通（可信 usage 与错误原样）；signal 透传', async () => {

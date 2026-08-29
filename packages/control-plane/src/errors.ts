@@ -196,6 +196,11 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     message: 'Exchange rate source failed',
     zh: '汇率源拉取失败',
   },
+  routing_policy_save_failed: {
+    category: 'unavailable',
+    message: 'Failed to persist routing policy',
+    zh: '路由策略保存失败',
+  },
 
   // ── catalog ──────────────────────────────────────────────────────────────
   catalog_source_not_found: {

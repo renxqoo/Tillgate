@@ -21,8 +21,8 @@ export interface UpstreamCallRequest {
   requestId: string;
   /** 请求对外模型名（错误上下文/日志关联） */
   externalModel: string;
-  /** 真实上游模型名（ai CallOptions.model 在适配器注入） */
-  realModel: string;
+  /** 出站上游模型名（绑定级——ai CallOptions.model 在适配器注入；身份/计费用候选 realModel） */
+  upstreamModel: string;
   endpoint: Endpoint;
   body: Record<string, unknown>;
   signal?: AbortSignal;

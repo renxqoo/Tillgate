@@ -1,6 +1,6 @@
 # 生产编排（tech-stack.md §4）
 # 链路追踪走内置 trace-receiver（PG 存储 + 管理台「链路追踪」页）：启用时各服务
-# OTEL_TRACES_MODE 改 otlp，OTEL_EXPORTER_OTLP_ENDPOINT 指向 trace-receiver:8793。
+# 链路追踪默认开启（OTEL_TRACES_MODE 缺省 otlp）；关闭设 off。端点缺省指向 trace-receiver:8793。
 
 name: tillgate
 
@@ -73,7 +73,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tillgate}
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
       GATEWAY_PORT: 8080
-      OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-off}
+      OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-otlp}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://trace-receiver:8793}
       # OTLP Bearer——与 trace-receiver 共用同键；缺此值 span 全部 401 拒收
       TRACE_RECEIVER_TOKEN: ${TRACE_RECEIVER_TOKEN:?TRACE_RECEIVER_TOKEN is required}
@@ -121,7 +121,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tillgate}
       TRUSTED_PROXY_HOPS: '1' # 经 FE BFF 透传的 XFF（右数第 1 跳 = 真实用户 IP）
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
-      OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-off}
+      OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-otlp}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://trace-receiver:8793}
       ADMIN_JWT_SECRET:
       IDENTITY_CODE_PEPPER:
@@ -164,7 +164,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tillgate}
       TRUSTED_PROXY_HOPS: '1' # 经 FE BFF 透传的 XFF（右数第 1 跳 = 真实用户 IP）
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
-      OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-off}
+      OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-otlp}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://trace-receiver:8793}
       CLIENT_CODE_PEPPER:
       POSTGRES_PASSWORD:
@@ -205,7 +205,7 @@ services:
       NODE_ENV: production # 防 .env 的 dev 值覆盖镜像 ENV(pino-pretty worker 在 bundle 里崩溃)
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tillgate}
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
-      OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-off}
+      OTEL_TRACES_MODE: ${OTEL_TRACES_MODE:-otlp}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://trace-receiver:8793}
       TRACE_RECEIVER_TOKEN: ${TRACE_RECEIVER_TOKEN:?TRACE_RECEIVER_TOKEN is required}
       JWT_SECRET:

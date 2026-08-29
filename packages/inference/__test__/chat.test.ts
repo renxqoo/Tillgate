@@ -130,6 +130,46 @@ describe('application/chat：非流式尝试（先结算后交付）', () => {
     s.detach();
   });
 
+  it('同一映射多渠道异名：换渠重试时出站名逐渠道取绑定名（旧实现两渠道同为规范名）', async () => {
+    const ai = fakeAi();
+    const upstream = fakeUpstream();
+    const billing = fakeBilling();
+    const catalog = fakeCatalog(
+      { 'gpt-x': mapping() },
+      {
+        'gpt-x-real': [
+          channel({
+            channelId: 1,
+            channelName: 'ch-a',
+            upstreamModel: 'vendor-a/gpt-x-real',
+            priority: 10,
+          }),
+          channel({ channelId: 2, channelName: 'ch-b', upstreamModel: 'gpt-x-real' }),
+        ],
+      },
+    );
+    const inference = buildInference({
+      ai: ai.ai,
+      catalog,
+      billing: billing.port,
+      upstream: upstream.port,
+    });
+    upstream.onChat(async (ch) =>
+      ch.channelId === 1
+        ? { ok: false, error: upstreamError('rate_limited', { retryAfterMs: 10 }) }
+        : { ok: true, usage: usage(), durationMs: 2 },
+    );
+    const delivered = await inference.chat({ auth: baseAuth, body, endpoint: 'chat' });
+    expect(delivered.ok).toBe(true);
+    // 两次尝试的出站名各自来自命中渠道的绑定名；对外名/收据仍是规范口径
+    expect(upstream.calls.map((c) => c.request.upstreamModel)).toEqual([
+      'vendor-a/gpt-x-real',
+      'gpt-x-real',
+    ]);
+    expect(upstream.calls.map((c) => c.request.externalModel)).toEqual(['gpt-x', 'gpt-x']);
+    inference.close();
+  });
+
   it('缺 usage：估算收据（ai 估算值优先）仍结算（不漏收零 usage 响应）', async () => {
     const s = setup();
     s.upstream.onChat(async () => ({ ok: true, durationMs: 3, body: { done: true } }));

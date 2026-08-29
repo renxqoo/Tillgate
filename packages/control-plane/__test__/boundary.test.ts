@@ -65,12 +65,14 @@ describe('composition 子入口（§5.3：adapter 可见性白名单的可执行
   it('adapter 只在 composition.ts 导出（根入口零 adapter；G1 起含 postgres store 工厂）', async () => {
     const composition = await import('../src/composition');
     expect(Object.keys(composition).toSorted()).toEqual([
+      'GLOBAL_SCOPE',
       'createOpenRouterSource',
       'createPostgresIntegrationSettingsReader',
       'modelsDevSource',
       'postgresChannelStore',
       'postgresModelStore',
       'postgresRateCardStore',
+      'postgresRoutingPolicyStore',
     ]);
   });
 
@@ -182,6 +184,7 @@ describe('错误目录码表封闭（词表 == DESIGN §2.3）', () => {
       'control_plane.role_immutable',
       'control_plane.role_in_use',
       'control_plane.role_not_found',
+      'control_plane.routing_policy_save_failed',
       'control_plane.voucher_too_large',
     ]);
   });

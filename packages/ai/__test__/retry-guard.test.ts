@@ -65,6 +65,64 @@ describe('retry/with-retry：重试语义与边界', () => {
     );
     expect(attempts).toBeLessThan(opts.maxAttempts);
   });
+  it('rate_limited 的 retryAfterMs 是退避下界（低于指数退避时抬高到 Retry-After）', async () => {
+    let n = 0;
+    const delays: number[] = [];
+    const rateLimited = new UpstreamError({ kind: 'rate_limited', retryAfterMs: 25 });
+    const { attempts } = await withRetry(
+      async () => {
+        n += 1;
+        return { ok: false as const, error: rateLimited };
+      },
+      opts,
+      (i) => delays.push(i.delayMs),
+    );
+    expect(attempts).toBe(opts.maxAttempts);
+    // opts.baseDelayMs=1/maxDelayMs=4 → 指数退避 1,2；retryAfterMs=25 抬高下界
+    expect(delays).toEqual([25, 25]);
+  });
+  it('retryAfterMs 低于指数退避时不影响（取较大者）', async () => {
+    let n = 0;
+    const delays: number[] = [];
+    const rateLimited = new UpstreamError({ kind: 'rate_limited', retryAfterMs: 1 });
+    await withRetry(
+      async () => {
+        n += 1;
+        return { ok: false as const, error: rateLimited };
+      },
+      opts,
+      (i) => delays.push(i.delayMs),
+    );
+    expect(delays).toEqual([1, 2]);
+  });
+  it('有效等待超过剩余 deadline：立即放弃同渠道重试（不睡到 deadline 打断）', async () => {
+    // retryAfterMsOf 解析上限 3600s——病态上游的权威下界不得吞掉整段同渠道预算
+    const rateLimited = new UpstreamError({ kind: 'rate_limited', retryAfterMs: 3_600_000 });
+    const retries: number[] = [];
+    const startedAt = Date.now();
+    const { outcome, attempts } = await withRetry(
+      async () => ({ ok: false as const, error: rateLimited }),
+      { ...opts, deadlineMs: 2_000 },
+      (i) => retries.push(i.delayMs),
+    );
+    expect(outcome).toEqual({ ok: false, error: rateLimited }); // 最后错误原样交回编排层
+    expect(attempts).toBe(1); // 未再消耗同渠道重试预算
+    expect(retries).toEqual([]); // 未真正重试 → 不发 onRetry
+    // 旧实现睡到 2s deadline 被打断才返回；判定后应立即返回
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+  });
+  it('剩余预算随耗时收紧：首次等待放行，第二次超剩余即放弃（判定用剩余而非全量）', async () => {
+    const rateLimited = new UpstreamError({ kind: 'rate_limited', retryAfterMs: 300 });
+    const delays: number[] = [];
+    const { attempts } = await withRetry(
+      async () => ({ ok: false as const, error: rateLimited }),
+      { ...opts, deadlineMs: 500 },
+      (i) => delays.push(i.delayMs),
+    );
+    // 首次失败剩余 ≈500ms > 300 → 睡后重试；第二次失败剩余 ≈200ms < 300 → 立即放弃
+    expect(attempts).toBe(2);
+    expect(delays).toEqual([300]);
+  });
   it('backoffDelayMs：指数 + 封顶 + jitter=0 确定性', () => {
     expect(backoffDelayMs(1, 10, 100, 0)).toBe(10);
     expect(backoffDelayMs(2, 10, 100, 0)).toBe(20);

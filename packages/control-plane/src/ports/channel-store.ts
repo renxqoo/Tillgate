@@ -39,7 +39,7 @@ export interface ChannelFundsRow {
   readonly status: number;
 }
 
-/** 网关路由候选行：启用渠道 + 密文 + 调度权重 */
+/** 网关路由候选行：启用渠道 + 密文 + 调度权重 + 绑定级出站模型名 */
 export interface RouteCandidateRow {
   readonly channelId: number;
   readonly channelName: string;
@@ -49,12 +49,19 @@ export interface RouteCandidateRow {
   readonly providerBaseUrl: string;
   readonly providerProtocol: string;
   readonly providerVendor: string | null;
+  /** 该渠道的出站模型名（model_channels.upstream_model——热路径出站名单一来源） */
+  readonly upstreamModel: string;
   readonly priority: number;
   readonly weight: number;
   readonly rpmLimit: number | null;
   readonly tpmLimit: number | null;
   readonly upstreamBudget: string;
+  /** 可用余额（upstream_budget - upstream_reserved；软水位降权信号，非准入硬闸） */
+  readonly upstreamRemaining: string;
 }
+
+/** worker 任务渠道行：路由候选去掉出站名（任务族的出站名在任务行快照，不在渠道） */
+export type TaskChannelRow = Omit<RouteCandidateRow, 'upstreamModel'>;
 
 /** 探针专用读（含密文——仅 application 解密用，返回面不回传） */
 export interface ChannelProbeRow {
@@ -192,11 +199,13 @@ export interface ChannelStore {
   /**
    * 真实模型 → 路由候选渠道（启用 status=0 且未删除、供应商未删除；基序 priority/weight
    * 降序——加权调度在 inference）。含渠道密文与渠道维限流/预算列（网关 admitChannel 消费）。
+   * 渠道白名单交集：channels.models 非空时仅保留绑定 upstream_model 命中白名单的行
+   * （NULL/空数组 = 不限——语义单一真相在本查询 SQL）。
    */
   findRouteCandidates(db: DbLike, realModel: string): Promise<RouteCandidateRow[]>;
   /**
    * 单渠道连接信息（worker 任务轮询/代执行的上游凭据源）。
    * by id 不按启用状态过滤——已提交任务所属渠道事后停用仍须可达。
    */
-  findTaskChannel(db: DbLike, channelId: number): Promise<RouteCandidateRow | null>;
+  findTaskChannel(db: DbLike, channelId: number): Promise<TaskChannelRow | null>;
 }

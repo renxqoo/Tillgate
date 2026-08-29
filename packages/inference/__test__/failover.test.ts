@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { isBusinessError } from '@tillgate/errors';
 import {
-  dispatchFailure,
   runCandidateLoop,
   type AttemptOutcome,
   type ExecutionDeps,
 } from '../src/application/failover';
+import { dispatchFailure } from '../src/application/dispatch';
 import { createChannelHealth } from '../src/health/channel-health';
+import { createRoutingMemory } from '../src/health/routing-memory';
+import { staticRoutingPolicy } from '../src/ports/routing';
 import { createMemoryHealthStore } from '../src/adapters/state-memory';
 import { defaultInferenceDefaults } from '../src/config';
 import { noopTrace } from '../src/ports/trace';
@@ -19,7 +21,7 @@ import {
   mapping,
   upstreamError,
 } from './harness';
-import type { PassthroughDelivered } from '../src/application/failover';
+import type { PassthroughDelivered } from '../src/application/dispatch';
 import type { PreparedRequest } from '../src/application/quote';
 
 const healthConfig = {
@@ -60,10 +62,11 @@ function candidateOf(mappingId: number, realModel: string): PreparedRequest['can
   };
 }
 
-/** 组装循环环境：catalog 给两候选各 1-2 渠道；upstream/billing/health 可编程 */
+/** 组装循环环境：catalog 给两候选各 1-2 渠道；upstream/billing/health/memory 可编程 */
 function setup(
   opts: {
     channelsByReal?: Record<string, ReturnType<typeof channel>[]>;
+    memoryStore?: ReturnType<typeof createMemoryHealthStore>;
   } = {},
 ) {
   // priority 5/4/0 严格分层——测试内顺序确定（同层加权随机会引入非确定性）
@@ -78,15 +81,20 @@ function setup(
   const billing = fakeBilling();
   const upstream = fakeUpstream();
   const health = createChannelHealth({ store: createMemoryHealthStore(), config: healthConfig });
+  const memoryStore = opts.memoryStore ?? createMemoryHealthStore();
+  const policy = staticRoutingPolicy();
+  const memory = createRoutingMemory({ store: memoryStore, policy });
   const deps: ExecutionDeps = {
     catalog,
     billing: billing.port,
     upstream: upstream.port,
     health,
+    memory,
+    policy,
     trace: noopTrace,
     defaults: defaultInferenceDefaults(),
   };
-  return { deps, billing, upstream, health, chA, chB, chC, channelsByReal };
+  return { deps, billing, upstream, health, memory, memoryStore, chA, chB, chC, channelsByReal };
 }
 
 describe('application/failover：候选 × 渠道双层循环', () => {
@@ -282,7 +290,7 @@ describe('application/failover：候选 × 渠道双层循环', () => {
         const result = await s.deps.upstream.chat(ctx.channel, {
           requestId: ctx.requestId,
           externalModel: 'gpt-x',
-          realModel: ctx.candidate.realModel,
+          upstreamModel: ctx.channel.upstreamModel,
           endpoint: 'chat',
           body: {},
           deadlineMs: 1_000,
@@ -366,6 +374,238 @@ describe('模型维准入钩子（admitModel）与渠道钩子作用域', () => 
   });
 });
 
+/** fire-and-forget 记账面的 flush（微任务 + 宏任务各一拍） */
+const flush = async () => {
+  await Promise.resolve();
+  await new Promise((r) => {
+    setTimeout(r, 0);
+  });
+};
+
+describe('跨请求路由记忆（惩罚箱 / 模型死记忆 / 死凭据 channel 维）', () => {
+  it('429 失败记账后，下个请求直接跳过该渠道（零重复撞击）', async () => {
+    const s = setup();
+    // 请求 1：ch-a 429 → dispatchFailure 记惩罚 → 换 ch-b 成功
+    await runCandidateLoop<Record<string, unknown> | PassthroughDelivered>(
+      s.deps,
+      preparedOf([candidateOf(1, 'real-1')]),
+      'req-1',
+      0,
+      undefined,
+      async (ctx): Promise<AttemptOutcome<Record<string, unknown> | PassthroughDelivered>> => {
+        if (ctx.channel.channelName === 'ch-a') {
+          return dispatchFailure(
+            s.deps,
+            ctx,
+            upstreamError('rate_limited', { status: 429, retryAfterMs: 10_000 }),
+          );
+        }
+        return { kind: 'respond', value: { ok: true } };
+      },
+    );
+    await flush();
+    expect(await s.memory.penalized(1)).toBe(true);
+    // 请求 2：ch-a 被 penalty 门跳过（无上游调用），直接 ch-b
+    const tried: string[] = [];
+    await runCandidateLoop(
+      s.deps,
+      preparedOf([candidateOf(1, 'real-1')]),
+      'req-2',
+      0,
+      undefined,
+      async (ctx): Promise<AttemptOutcome<string>> => {
+        tried.push(ctx.channel.channelName);
+        return { kind: 'respond', value: 'OK' };
+      },
+    );
+    expect(tried).toEqual(['ch-b']);
+  });
+
+  it('quota_exhausted 记账进惩罚箱；4xx 透传不记任何惩罚', async () => {
+    const s = setup();
+    const outcome = await dispatchFailure(
+      s.deps,
+      {
+        prepared: preparedOf([candidateOf(1, 'real-1')]),
+        requestId: 'req-q',
+        requestStartedAt: 0,
+        candidate: candidateOf(1, 'real-1'),
+        channel: s.chA,
+        channelAttempt: 1,
+        stickyKey: 'sticky:test',
+      },
+      upstreamError('quota_exhausted', { status: 402 }),
+    );
+    expect(outcome.kind).toBe('switch_channel');
+    await flush();
+    expect(await s.memory.penalized(1)).toBe(true);
+
+    const s2 = setup();
+    await dispatchFailure(
+      s2.deps,
+      {
+        prepared: preparedOf([candidateOf(1, 'real-1')]),
+        requestId: 'req-p',
+        requestStartedAt: 0,
+        candidate: candidateOf(1, 'real-1'),
+        channel: s2.chA,
+        channelAttempt: 1,
+        stickyKey: 'sticky:test',
+      },
+      upstreamError('invalid_request', { status: 400 }),
+    );
+    await flush();
+    expect(await s2.memory.penalized(1)).toBe(false);
+  });
+
+  it('死凭据按 channel 维：ch-a 连续 3 次 401 后跳过，同 host 的 ch-b 不连坐', async () => {
+    const s = setup();
+    for (let i = 0; i < 3; i++) {
+      await dispatchFailure(
+        s.deps,
+        {
+          prepared: preparedOf([candidateOf(1, 'real-1')]),
+          requestId: `req-d${i}`,
+          requestStartedAt: 0,
+          candidate: candidateOf(1, 'real-1'),
+          channel: s.chA,
+          channelAttempt: 1,
+          stickyKey: 'sticky:test',
+        },
+        upstreamError('invalid_api_key', { status: 401 }),
+      );
+    }
+    await flush();
+    const admission = await s.health.admit('openai-compatible://up.example.com', 2); // 同 host 另一渠道
+    expect(admission).toEqual({ ok: true });
+    const dead = await s.health.admit('openai-compatible://up.example.com', 1);
+    expect(dead).toEqual({ ok: false, reason: 'dead_credential' });
+  });
+
+  it('候选全渠道连续耗尽达阈值 → 死记忆跳过该候选（fallback 接手）', async () => {
+    const s = setup();
+    // 3 个请求：real-1 全渠道耗尽（next_candidate 也算候选失败）
+    for (let i = 0; i < 3; i++) {
+      await runCandidateLoop(
+        s.deps,
+        preparedOf([candidateOf(1, 'real-1'), candidateOf(2, 'real-2')]),
+        `req-m${i}`,
+        0,
+        undefined,
+        async (ctx): Promise<AttemptOutcome<string>> =>
+          ctx.candidate.realModel === 'real-1'
+            ? { kind: 'next_candidate', code: 'upstream_error' }
+            : { kind: 'respond', value: 'OK' },
+      );
+    }
+    await flush();
+    expect(await s.memory.deadModel('real-1')).toBe(true);
+    // 第 4 个请求：real-1 候选整体跳过（无渠道解析），直接 real-2
+    const attempted: string[] = [];
+    await runCandidateLoop(
+      s.deps,
+      preparedOf([candidateOf(1, 'real-1'), candidateOf(2, 'real-2')]),
+      'req-m4',
+      0,
+      undefined,
+      async (ctx): Promise<AttemptOutcome<string>> => {
+        attempted.push(ctx.candidate.realModel);
+        return { kind: 'respond', value: 'OK' };
+      },
+    );
+    expect(attempted).toEqual(['real-2']);
+  });
+
+  it('候选成功结算清零死记忆（自愈快路径）', async () => {
+    const s = setup();
+    for (let i = 0; i < 2; i++) {
+      await runCandidateLoop(
+        s.deps,
+        preparedOf([candidateOf(1, 'real-1')]),
+        `req-s${i}`,
+        0,
+        undefined,
+        async (): Promise<AttemptOutcome<string>> => ({ kind: 'respond', value: 'OK' }),
+      );
+    }
+    await flush();
+    // respond 成功（模拟 settle 面记账）
+    s.memory.recordModelSuccess('real-1');
+    await flush();
+    expect(await s.memory.deadModel('real-1')).toBe(false);
+  });
+
+  it('P2 回归：请求维门拒绝连续耗尽不判死模型（预算硬闸 / 渠道准入钩子）', async () => {
+    // 预算硬闸按「本请求敞口估算 vs 渠道剩余」拒绝——大请求 3 连发不得把模型
+    // 判死（旧实现无条件 recordModelFailure → 误伤所有用户 60s）
+    const s1 = setup();
+    s1.billing.onReserve(async () => false);
+    for (let i = 0; i < 3; i++) {
+      await expect(
+        runCandidateLoop(
+          s1.deps,
+          preparedOf([candidateOf(1, 'real-1')]),
+          `req-b${i}`,
+          0,
+          undefined,
+          async (): Promise<AttemptOutcome<string>> => ({ kind: 'respond', value: 'never' }),
+        ),
+      ).rejects.toSatisfy(
+        (e: unknown) => isBusinessError(e) && e.code === 'inference.no_available_channel',
+      );
+    }
+    await flush();
+    expect(await s1.memory.deadModel('real-1')).toBe(false);
+
+    // 渠道准入钩子（app 装配 RPM/TPM 预占——TPM 按请求估算，同属请求维信号）
+    const s2 = setup();
+    s2.deps.admitChannel = async () => false;
+    for (let i = 0; i < 3; i++) {
+      await expect(
+        runCandidateLoop(
+          s2.deps,
+          preparedOf([candidateOf(1, 'real-1')]),
+          `req-r${i}`,
+          0,
+          undefined,
+          async (): Promise<AttemptOutcome<string>> => ({ kind: 'respond', value: 'never' }),
+        ),
+      ).rejects.toSatisfy(
+        (e: unknown) => isBusinessError(e) && e.code === 'inference.no_available_channel',
+      );
+    }
+    await flush();
+    expect(await s2.memory.deadModel('real-1')).toBe(false);
+  });
+
+  it('P2 回归（防过滤过宽）：候选内存在真实上游失败仍计数（伴请求维拒绝不变）', async () => {
+    const s = setup();
+    // ch-a 上游真实失败（upstream_error）+ ch-b 渠道准入钩子拒（请求维）——
+    // 候选耗尽必须计数：过滤只豁免「全部渠道都只有请求维拒绝」的候选
+    s.deps.admitChannel = async (ch) => ch.channelName !== 'ch-b';
+    for (let i = 0; i < 3; i++) {
+      await expect(
+        runCandidateLoop(
+          s.deps,
+          preparedOf([candidateOf(1, 'real-1')]),
+          `req-mix${i}`,
+          0,
+          undefined,
+          async (ctx): Promise<AttemptOutcome<string>> =>
+            ctx.channel.channelName === 'ch-a'
+              ? { kind: 'switch_channel', code: 'upstream_error' }
+              : { kind: 'respond', value: 'never' },
+        ),
+      ).rejects.toSatisfy(
+        // 终局归因取最后失败（ch-b 准入拒绝覆盖 upstream_error → 渠道面竭尽）
+        (e: unknown) => isBusinessError(e) && e.code === 'inference.no_available_channel',
+      );
+    }
+    await flush();
+    expect(await s.memory.deadModel('real-1')).toBe(true);
+  });
+});
+
 describe('dispatchFailure 出站脱敏（单点收口——流式/非流式/任务三路共用）', () => {
   function ctxOf() {
     const chA = channel({ channelId: 1, channelName: 'ch-a' });
@@ -376,6 +616,7 @@ describe('dispatchFailure 出站脱敏（单点收口——流式/非流式/任�
       candidate: candidateOf(1, 'real-1'),
       channel: chA,
       channelAttempt: 1,
+      stickyKey: 'sticky:test',
     };
   }
 
@@ -416,5 +657,24 @@ describe('dispatchFailure 出站脱敏（单点收口——流式/非流式/任�
     );
     const { value } = outcome as { value: PassthroughDelivered };
     expect(value.message).toBeUndefined();
+  });
+
+  it('渠道绑定异名也进脱敏 needle：厂商拼写（如 vendor-a/real-1）→ 对外名', async () => {
+    const { deps } = setup();
+    const ctx = {
+      ...ctxOf(),
+      channel: channel({ channelId: 1, channelName: 'ch-a', upstreamModel: 'vendor-a/real-1' }),
+    };
+    const outcome = await dispatchFailure(
+      deps,
+      ctx,
+      upstreamError('invalid_request', {
+        status: 400,
+        message: 'model vendor-a/real-1 is deprecated',
+      }),
+    );
+    const { value } = outcome as { value: PassthroughDelivered };
+    // 旧实现只脱敏候选 realModel——厂商拼写原样出站，泄漏绑定异名
+    expect(value.message).toBe('model gpt-x is deprecated');
   });
 });

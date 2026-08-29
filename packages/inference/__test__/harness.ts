@@ -33,12 +33,13 @@ import type { GenerationTaskKind } from '../src/domain/generation';
 /** UpstreamError 快捷构造（机制位由派生表决定——测试不覆盖） */
 export function upstreamError(
   kind: ErrorKind,
-  opts: { status?: number; message?: string } = {},
+  opts: { status?: number; message?: string; retryAfterMs?: number } = {},
 ): UpstreamError {
   return new UpstreamErrorCtor({
     kind,
     ...(opts.message != null ? { message: opts.message } : {}),
     ...(opts.status != null ? { status: opts.status } : {}),
+    ...(opts.retryAfterMs != null ? { retryAfterMs: opts.retryAfterMs } : {}),
   });
 }
 
@@ -81,6 +82,7 @@ export function channel(overrides: Partial<ChannelCandidate> = {}): ChannelCandi
     vendor: null,
     baseUrl: 'https://up.example.com/v1',
     apiKeyEnc: 'enc-7',
+    upstreamModel: 'gpt-x-real',
     priority: 0,
     weight: 1,
     ...overrides,

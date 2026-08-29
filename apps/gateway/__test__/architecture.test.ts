@@ -37,6 +37,7 @@ describe('src 文件集合快照', () => {
       'adapters/billing-timezone.ts',
       'adapters/catalog-port.ts',
       'adapters/reservation-policy.ts',
+      'adapters/routing-policy.ts',
       'adapters/settle-wake.ts',
       'adapters/trace-port.ts',
       'app.ts',

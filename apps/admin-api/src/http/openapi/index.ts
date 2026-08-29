@@ -10,6 +10,7 @@
 import * as z from 'zod';
 import { plansContracts, redeemContracts, reviewContracts } from '../contracts/billing-admin';
 import { channelsContracts, providersContracts } from '../contracts/control-plane';
+import { routingPolicyContracts } from '../contracts/routing-policy';
 import { keysContracts } from '../contracts/users';
 import { modelsContracts } from '../contracts/models';
 import { rateCardsContracts } from '../contracts/rates';
@@ -19,6 +20,13 @@ import { usersEndpoints } from './users';
 import { adminsEndpoints, adminRowSchema, adminCreatedSchema } from './admins';
 import { rbacEndpoints, roleRowSchema, permissionNodeSchema } from './rbac';
 import { controlPlaneEndpoints } from './control-plane';
+import {
+  routingPolicyEndpoints,
+  routingOverviewRowSchema,
+  routingPolicyDefaultsSchema,
+  routingPolicyRecordSchema,
+  routingPolicySaveReceiptSchema,
+} from './routing-policy';
 import { modelsEndpoints } from './models';
 import { catalogEndpoints } from './catalog';
 import { rateCardsEndpoints } from './rates';
@@ -73,6 +81,7 @@ export const adminApiEndpoints: readonly OpenApiEndpoint[] = [
   ...adminsEndpoints,
   ...rbacEndpoints,
   ...controlPlaneEndpoints,
+  ...routingPolicyEndpoints,
   ...modelsEndpoints,
   ...catalogEndpoints,
   ...rateCardsEndpoints,
@@ -207,6 +216,16 @@ export const adminApiDtoComponents: readonly DtoComponent[] = [
   responseComponent('ChannelHealthRow', channelHealthRowSchema, 'tracing'),
   responseComponent('TraceTopologyResponse', traceTopologyResponseSchema, 'tracing'),
   responseComponent('TracingStatsResponse', tracingStatsResponseSchema, 'tracing'),
+  responseComponent('RoutingPolicyRecord', routingPolicyRecordSchema, 'routing'),
+  responseComponent('RoutingPolicyDefaults', routingPolicyDefaultsSchema, 'routing'),
+  requestBody(
+    'RoutingPolicySaveBody',
+    routingPolicyContracts.save,
+    '保存路由策略请求体（PUT /v1/routing-policy;policy 形状单一真相 = @tillgate/inference routingPolicySchema）',
+    'routing',
+  ),
+  responseComponent('RoutingPolicySaveReceipt', routingPolicySaveReceiptSchema, 'routing'),
+  responseComponent('RoutingOverviewRow', routingOverviewRowSchema, 'routing'),
 ];
 
 // ---- JSON Schema 转换与后处理 ----

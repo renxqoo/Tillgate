@@ -129,9 +129,9 @@ function createSchema(production: boolean) {
     CLIENT_TX_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(5),
     CLIENT_TX_BASE_DELAY_MS: z.coerce.number().int().min(0).default(15),
     CLIENT_TX_MAX_JITTER_MS: z.coerce.number().int().min(0).default(20),
-    /** OTel：off 完全 no-op / otlp 走 collector */
-    OTEL_TRACES_MODE: z.enum(['off', 'otlp']).default('off'),
-    OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+    /** OTel：off 完全 no-op / otlp 走 collector——默认开启（关闭显式设 off） */
+    OTEL_TRACES_MODE: z.enum(['off', 'otlp']).default('otlp'),
+    OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().default('http://trace-receiver:8793'),
     /** OTLP 推送鉴权(Bearer)——与 trace-receiver 共用同键同值;缺此值对生产接收端 = span 全部 401 拒收 */
     TRACE_RECEIVER_TOKEN: z.string().min(1).optional(),
     OTEL_METRICS_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),

@@ -117,6 +117,11 @@ export type { ClearFxOverrideInput } from './application/fx/clear-fx-override';
 export type { SetFxBufferInput } from './application/fx/set-fx-buffer';
 export type { ImportCatalogInput } from './application/catalog/import-catalog';
 export type { UpdateBillingTimezoneInput } from './application/settings/update-billing-timezone';
+export type {
+  RoutingPolicyRecord,
+  RoutingPolicyStore,
+  SaveRoutingPolicyInput,
+} from './ports/routing-policy-store';
 export type { UpdateIntegrationInput } from './application/integrations/update-integration';
 export type { IntegrationListItem } from './application/integrations/list-integrations';
 export type {

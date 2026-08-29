@@ -21,14 +21,7 @@ const BASE: NodeJS.ProcessEnv = {
 };
 
 describe('assembleAdminApi', () => {
-  it('otlp 缺端点启动期 fail-fast(observability 单一所有者错误)', async () => {
-    await expect(
-      Promise.resolve().then(() =>
-        assembleAdminApi(loadAdminApiConfig({ ...BASE, OTEL_TRACES_MODE: 'otlp' })),
-      ),
-    ).rejects.toThrowError(/endpoint/i);
-  });
-
+  // 「otlp 缺端点 fail-fast」用例随端点内置缺省化移除——schema 层已不可构造该形态
   it('合法配置构造全量 facade(零连接;桥接件就位;loginAudit 分支矩阵)', async () => {
     const assembly = await assembleAdminApi(loadAdminApiConfig({ ...BASE }), {
       platformCurrency: 'CNY',

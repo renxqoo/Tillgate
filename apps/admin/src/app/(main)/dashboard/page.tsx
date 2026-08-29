@@ -59,7 +59,7 @@ export default async function AdminDashboardPage() {
     down: downCount,
   } = countChannelHealth(stats);
 
-  // 趋势序列（近 14 天，含今日；无量的日子由后端缺行表示，图表自然断点）
+  // 趋势序列(近 14 天,含今日;后端对无流量日补零行,序列恒完整)
   const requestsSeries = trends.map((tr) => ({ date: tr.date, value: tr.requests }));
   const costSeries = trends.map((tr) => ({
     date: tr.date,

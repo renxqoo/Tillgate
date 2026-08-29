@@ -96,7 +96,9 @@ function dumpTrace(trace: ViewableTrace, label: string): void {
     }
   };
   console.log('  span tree:');
-  for (const r of (children.get() ?? []).toSorted((a, b) => a.startTimeMs - b.startTimeMs)) {
+  for (const r of (children.get(undefined) ?? []).toSorted(
+    (a, b) => a.startTimeMs - b.startTimeMs,
+  )) {
     render(r, 0);
   }
 }

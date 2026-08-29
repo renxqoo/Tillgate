@@ -148,6 +148,7 @@ describe('逻辑删除（回收站）', () => {
     await models.store.ensureModelChannelBinding(deps.db, {
       mappingId: mapping.id,
       channelId: channel.id,
+      upstreamModel: mapping.realModel,
     });
     await expect(
       deleteChannel(deps, { ctx: adminCtx(), channelId: channel.id }),
@@ -233,7 +234,7 @@ describe('批量导入（best-effort）', () => {
     expect(fakeCipher.decrypt(chan.apiKeyEnc)).toBe('sk-2');
     // 同名映射绑定建立（weight 1 / priority 0）
     expect(defined(models.rows.get(mapping.id)).bindings).toEqual([
-      { channelId: chan.id, weight: 1, priority: 0 },
+      { channelId: chan.id, upstreamModel: mapping.realModel, weight: 1, priority: 0 },
     ]);
   });
 

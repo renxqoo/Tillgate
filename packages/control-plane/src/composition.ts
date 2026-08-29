@@ -10,6 +10,7 @@ export { modelsDevSource } from './adapters/model-sources/models-dev-source';
 // ---- postgres store 工厂（热路径读的装配取件面） ----
 export { postgresModelStore } from './adapters/postgres/model-store';
 export { postgresChannelStore } from './adapters/postgres/channel-store';
+export { postgresRoutingPolicyStore, GLOBAL_SCOPE } from './adapters/postgres/routing-policy-store';
 export { postgresRateCardStore } from './adapters/postgres/rate-card-store';
 
 // ---- 集成动态配置 reader（消费进程装配取件） ----

@@ -290,7 +290,7 @@ export interface ProviderCreateBody {
 
 // ── models ─────────────────────────────────────
 
-/** 管理面模型映射行(GET /v1/models;channelIds 列表用例回显) */
+/** 管理面模型映射行(GET /v1/models;channels 绑定回显) */
 export interface AdminModelRow {
   id: number;
   externalName: string;
@@ -319,8 +319,8 @@ export interface AdminModelRow {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  /** 已绑定的渠道 id(供「绑定渠道」弹窗回显已选) */
-  channelIds: number[];
+  /** 已绑定渠道(含出站模型名;供「绑定渠道」弹窗回显已选与异名) */
+  channels: { channelId: number; /** 该渠道的出站模型名(厂商异名;缺省 = 映射规范名 realModel) */upstreamModel: string }[];
 }
 
 /** 创建模型映射请求体（POST /v1/models;字段真相 = contracts zod,价格十进制字符串,unitPrice 收 string | number） */
@@ -521,7 +521,7 @@ export interface StatsTrendRow {
   cost: string;
 }
 
-/** 按日趋势响应(GET /v1/stats/trends) */
+/** 按日趋势响应(GET /v1/stats/trends;无流量日补零行,rows 恒为 days 天完整序列) */
 export interface StatsTrends {
   /** 回看天数（含今日） */
   days: number;
@@ -772,4 +772,65 @@ export interface TraceTopologyResponse {
 /** GET /v1/tracing/stats 响应。 */
 export interface TracingStatsResponse {
   storage: { spans: number; oldestDays: number | null; partitions: string[] };
+}
+
+// ── routing ─────────────────────────────────────
+
+/** 路由策略记录（GET /v1/routing-policy 已配置分支） */
+export interface RoutingPolicyRecord {
+  /** 策略版本（每次保存行级自增——观测/回滚锚点） */
+  version: string;
+  /** 当前生效策略体（五段结构） */
+  policy: { version: number; scorers: { cacheAffinity: { enabled: boolean; boost: number; ttlMs: number; prefixChars: number }; budgetWatermark: { enabled: boolean; softRatio: number } }; retry: { sameChannelMaxRetries: number }; penalty: { rateLimitBaseMs: number; rateLimitMaxMs: number; quotaMs: number; conditionalBypass: boolean }; modelDead: { failureThreshold: number; ttlMs: number; windowMs: number }; wait: { enabled: boolean; maxWaitMs: number } };
+  /** 变更备注（最近一次保存） */
+  note: string | null;
+  /** 最近保存人（管理员标识） */
+  updatedBy: string | null;
+  /** 最近保存时刻（ISO 时间串） */
+  updatedAt: string;
+}
+
+/** 路由策略未配置回执（GET /v1/routing-policy 无 global 行时） */
+export interface RoutingPolicyDefaults {
+  unconfigured: true;
+  /** 编译期缺省策略（zod 内建 default 全展开） */
+  policy: { version: number; scorers: { cacheAffinity: { enabled: boolean; boost: number; ttlMs: number; prefixChars: number }; budgetWatermark: { enabled: boolean; softRatio: number } }; retry: { sameChannelMaxRetries: number }; penalty: { rateLimitBaseMs: number; rateLimitMaxMs: number; quotaMs: number; conditionalBypass: boolean }; modelDead: { failureThreshold: number; ttlMs: number; windowMs: number }; wait: { enabled: boolean; maxWaitMs: number } };
+}
+
+/** 保存路由策略请求体（PUT /v1/routing-policy;policy 形状单一真相 = @tillgate/inference routingPolicySchema） */
+export interface RoutingPolicySaveBody {
+  policy: { version?: number; scorers?: { cacheAffinity?: { enabled?: boolean; boost?: number; ttlMs?: number; prefixChars?: number }; budgetWatermark?: { enabled?: boolean; softRatio?: number } }; retry?: { sameChannelMaxRetries?: number }; penalty?: { rateLimitBaseMs?: number; rateLimitMaxMs?: number; quotaMs?: number; conditionalBypass?: boolean }; modelDead?: { failureThreshold?: number; ttlMs?: number; windowMs?: number }; wait?: { enabled?: boolean; maxWaitMs?: number } };
+  note?: string;
+}
+
+/** 路由策略保存回执（PUT /v1/routing-policy） */
+export interface RoutingPolicySaveReceipt {
+  ok: true;
+  version: string;
+  savedAt: string;
+}
+
+/** 渠道路由观测行（GET /v1/routing/channels-overview） */
+export interface RoutingOverviewRow {
+  channelId: number;
+  channelName: string;
+  /** 0 启用/1 禁用/2 维护/3 熔断/4 凭据无效 */
+  status: number;
+  priority: number | null;
+  /** 进货总额（元，numeric 字符串） */
+  upstreamBudget: string;
+  /** 剩余 = 进货 - 已占用（元，numeric 字符串） */
+  upstreamRemaining: string;
+  /** 近窗请求数（billing_requests 生命周期口径） */
+  requests: number;
+  /** 近窗失败数（released 且带失败原因口径） */
+  failures: number;
+  /** 近窗平均上游耗时（usage_logs 结算口径） */
+  avgDurationMs: number | null;
+  /** 近窗平均客户端首字延迟 */
+  avgClientTtftMs: number | null;
+  /** 近窗缓存命中输入 token（结算口径） */
+  cachedInputTokens: number;
+  /** 近窗输入 token 总量（结算口径） */
+  inputTokens: number;
 }

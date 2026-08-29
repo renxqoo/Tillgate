@@ -222,6 +222,20 @@ describe('结算管线（claim → settle）', () => {
     expect(defined(h.world.fixtures.requests.get(requestId)).status).toBe('dead');
   });
 
+  it('经济闭合违反：upstreamCost > 渠道预留 → 死信（B4 红灯不入账，不重试）', async () => {
+    const h = harness();
+    const { requestId } = await toPending(h);
+    // 收据官方成本 = 1M token × 2/M = 2；渠道认领只预留 1.5 → 结算验收门
+    // 判内部不一致（价格快照漂移/投影脱节）→ DefectError 死信家族
+    const row = defined(h.world.fixtures.requests.get(requestId));
+    row.channelReservedAmount = '1.5';
+    const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    const outcome = await h.settlement.processClaim(defined(claim));
+    expect(outcome).toBe('dead');
+    const after = defined(h.world.fixtures.requests.get(requestId));
+    expect(after.status).toBe('dead');
+  });
+
   it('瞬态失败：退避重试（retry_wait + 退避时间），再领成功', async () => {
     const h = harness();
     const { requestId } = await toPending(h);

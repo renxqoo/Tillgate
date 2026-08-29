@@ -83,13 +83,15 @@ export async function importChannels(
           weight: item.weight ?? 1,
           priority: item.priority ?? 0,
         });
-        // 目录条目按外部名绑定（缺映射跳过——目录名未建映射不算错）
+        // 目录条目按外部名绑定（缺映射跳过——目录名未建映射不算错；
+        // 出站名缺省 = 映射规范名，绑定后管理员可按渠道改名）
         for (const modelName of item.models ?? []) {
           const mapping = await deps.stores.model.findByExternalName(tx, modelName);
           if (mapping) {
             await deps.stores.model.ensureModelChannelBinding(tx, {
               mappingId: mapping.id,
               channelId: channel.id,
+              upstreamModel: mapping.realModel,
             });
           }
         }

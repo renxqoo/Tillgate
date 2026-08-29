@@ -111,12 +111,10 @@ describe('worker 配置 fail-closed', () => {
     expect(() => loadWorkerConfig(base({ ENCRYPTION_KEY: 'secret' }))).toThrow();
   });
 
-  it('OTEL mode=otlp 缺端点 fail-closed', () => {
-    expect(() => loadWorkerConfig(base({ OTEL_TRACES_MODE: 'otlp' }))).toThrow();
-    expect(() =>
-      loadWorkerConfig(
-        base({ OTEL_TRACES_MODE: 'otlp', OTEL_EXPORTER_OTLP_ENDPOINT: 'http://o:4318' }),
-      ),
-    ).not.toThrow();
+  it('OTel 缺省 otlp（默认开启）+ 端点内置缺省', () => {
+    const cfg = loadWorkerConfig(base());
+    expect(cfg.otelMode).toBe('otlp');
+    expect(cfg.otelEndpoint).toBe('http://trace-receiver:8793');
+    expect(loadWorkerConfig(base({ OTEL_TRACES_MODE: 'off' })).otelMode).toBe('off');
   });
 });

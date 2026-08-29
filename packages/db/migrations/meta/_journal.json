@@ -708,6 +708,34 @@
       "when": 1789191600000,
       "tag": "0101_usage_clamp_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1789278000000,
+      "tag": "0103_routing_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1789282000000,
+      "tag": "0104_routing_policy_endpoints",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1789286400000,
+      "tag": "0105_billing_requests_channel_created_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1789290000000,
+      "tag": "0106_model_channels_upstream_model",
+      "breakpoints": true
     }
   ]
 }

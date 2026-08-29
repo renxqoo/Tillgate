@@ -40,7 +40,7 @@ export function CostChart({ data }: { data: ReadonlyArray<{ date: string; value:
             />
           }
         />
-        <Bar dataKey="value" fill="var(--chart-2)" radius={[6, 6, 0, 0]} />
+        <Bar dataKey="value" fill="var(--chart-2)" radius={[6, 6, 0, 0]} maxBarSize={32} />
       </BarChart>
     </ChartContainer>
   );

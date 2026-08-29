@@ -67,8 +67,8 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
       insert into model_mappings (external_name, real_model, input_price, output_price, cache_input_price)
       values (${external}, 'real-drain', '60', '600', '1')`);
     await world.db.execute(sql`
-      insert into model_channels (mapping_id, channel_id, priority, weight)
-      select id, ${world.seed.channelId}, 1, 1 from model_mappings where external_name = ${external}`);
+      insert into model_channels (mapping_id, channel_id, priority, weight, upstream_model)
+      select id, ${world.seed.channelId}, 1, 1, real_model from model_mappings where external_name = ${external}`);
     drainModel = external;
   }, 180_000);
 

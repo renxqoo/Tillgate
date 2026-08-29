@@ -6,11 +6,8 @@ export { createInference } from './inference';
 export type { ChatInput, Inference, InferenceEnv } from './inference';
 export type { ChatDelivered } from './application/chat';
 export type { StreamDelivered } from './application/stream';
-export type {
-  PassthroughDelivered,
-  ChannelAdmission,
-  ModelAdmission,
-} from './application/failover';
+export type { PassthroughDelivered } from './application/dispatch';
+export type { ChannelAdmission, ModelAdmission } from './application/failover';
 export type { GenerationSubmitInput, GenerationSubmitOutcome } from './application/generation';
 export { createGenerationPollUseCase } from './application/generation-poll';
 export type {
@@ -39,6 +36,12 @@ export type {
   UpstreamTaskExecuteResult,
 } from './ports/upstream';
 export type { HealthStore, Versioned } from './ports/state';
+// ---- 智能路由公共面（策略 schema/reader/sticky——gateway 装配与管理台消费） ----
+export { routingPolicySchema, defaultRoutingPolicy } from './routing/policy';
+export type { RoutingPolicy } from './routing/policy';
+export { staticRoutingPolicy, createMemoryStickyStore } from './ports/routing';
+export type { RoutingPolicyReader, StickyStore } from './ports/routing';
+export type { RoutingMemory } from './health/routing-memory';
 export type {
   GenerationTaskStore,
   GenerationTaskRecord,

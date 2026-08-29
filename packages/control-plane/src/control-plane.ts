@@ -17,6 +17,11 @@ import type {
 } from './ports/rate-card-store';
 import type { FxStore } from './ports/fx-store';
 import type { SettingsStore } from './ports/settings-store';
+import type { RoutingOverviewRow } from './adapters/postgres/routing-overview';
+import { composeRoutingPolicySurface } from './sections/routing-section';
+
+import type { RoutingPolicyRecord, RoutingPolicyStore } from './ports/routing-policy-store';
+import type { SaveRoutingPolicyUsecaseInput } from './application/routing/save-policy';
 import type { IntegrationSettingsStore } from './ports/integration-settings-store';
 import type { AuditStore } from './ports/audit-store';
 import type { OperationsStore } from './ports/operations-store';
@@ -168,6 +173,8 @@ export interface ControlPlaneEnv {
     readonly permission?: PermissionStore;
     readonly endpoint?: EndpointStore;
   };
+  /** 路由策略存储覆盖（测试替身；缺省 postgres） */
+  routingPolicyStore?: RoutingPolicyStore;
 }
 
 export interface ControlPlane {
@@ -187,6 +194,12 @@ export interface ControlPlane {
       /** 缺省 active（在册）；deleted = 回收站 */
       view?: 'active' | 'deleted';
     }): Promise<ListResult<ProviderRecord>>;
+  };
+  readonly routingPolicy: {
+    get(): Promise<RoutingPolicyRecord | null>;
+    save(input: SaveRoutingPolicyUsecaseInput): Promise<{ version: string; savedAt: Date }>;
+    /** 渠道路由观测聚合（近 windowMs：用量/延迟/缓存命中/预算水位 + 渠道状态） */
+    channelsOverview(windowMs: number): Promise<RoutingOverviewRow[]>;
   };
   readonly channels: {
     create(input: CreateChannelInput): Promise<CreatedChannel>;
@@ -417,6 +430,11 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
   return {
     ...createProviderSection(deps),
     ...createChannelSection(deps),
+    ...composeRoutingPolicySurface({
+      db: env.db,
+      routingPolicyStore: env.routingPolicyStore,
+      audit,
+    }),
     rbac: composeRbacSurface(env.db, {
       role: stores.role,
       permission: stores.permission,

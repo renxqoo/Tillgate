@@ -17,7 +17,12 @@ export interface BindModelChannelsDeps {
 export interface BindModelChannelsInput {
   readonly ctx: ControlContext;
   readonly mappingId: number;
-  readonly channels: Array<{ channelId: number; weight?: number; priority?: number }>;
+  readonly channels: Array<{
+    channelId: number;
+    upstreamModel?: string;
+    weight?: number;
+    priority?: number;
+  }>;
 }
 
 export async function bindModelChannels(
@@ -31,8 +36,10 @@ export async function bindModelChannels(
   const bound = await deps.db.transaction((tx) =>
     deps.stores.model.replaceModelChannels(tx, {
       mappingId: input.mappingId,
+      // 出站名缺省物化为映射规范名——落库恒显式（热路径无 null 回落分支）
       channels: input.channels.map((ch) => ({
         channelId: ch.channelId,
+        upstreamModel: ch.upstreamModel ?? existing.realModel,
         weight: ch.weight ?? 1,
         priority: ch.priority ?? 0,
       })),
@@ -44,7 +51,10 @@ export async function bindModelChannels(
     action: 'model.bind_channels',
     targetType: 'model_mapping',
     targetId: input.mappingId,
-    detail: { channelIds: input.channels.map((ch) => ch.channelId) },
+    detail: {
+      channelIds: input.channels.map((ch) => ch.channelId),
+      upstreamModels: input.channels.map((ch) => ch.upstreamModel ?? existing.realModel),
+    },
   });
   return { bound };
 }

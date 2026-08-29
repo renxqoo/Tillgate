@@ -140,6 +140,8 @@ export const modelMappings = pgTable(
 /**
  * model_channels — 映射 × 渠道 关联
  * 上架约束：上架模型必须 ≥1 个可用渠道（应用层校验）
+ * upstream_model = 该渠道的出站模型名（同一映射多渠道异名的单一真相）：
+ * mapping.realModel 是能力规范名（身份/计费/统计），本列才是发往该渠道的模型名。
  */
 export const modelChannels = pgTable(
   'model_channels',
@@ -150,6 +152,8 @@ export const modelChannels = pgTable(
     channelId: bigint('channel_id', { mode: 'number' })
       .notNull()
       .references(() => channels.id),
+    /** 出站上游模型名（厂商各异名；绑定 API 缺省物化为映射 realModel，落库恒显式） */
+    upstreamModel: varchar('upstream_model', { length: 128 }).notNull(),
     weight: bigint('weight', { mode: 'number' }).notNull().default(1),
     priority: bigint('priority', { mode: 'number' }).notNull().default(0),
   },

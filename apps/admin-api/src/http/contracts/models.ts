@@ -157,12 +157,19 @@ const modelUpdateSchema = z.object({
   tpmLimit: z.coerce.number().int().positive().nullable().optional(),
 });
 
-/** 绑定全量替换（空数组 = 解绑全部）;上限防超长数组单事务压行锁 */
+/** 绑定全量替换（空数组 = 解绑全部）;上限防超长数组单事务压行锁。
+ *  upstreamModel 留空/空串 = 用映射规范名（application 物化，落库恒显式） */
 const modelBindSchema = z.object({
   channels: z
     .array(
       z.object({
         channelId: z.number().int().positive(),
+        upstreamModel: z
+          .string()
+          .trim()
+          .max(128)
+          .optional()
+          .transform((v) => (v === '' ? undefined : v)),
         weight: z.number().optional(),
         priority: z.number().optional(),
       }),

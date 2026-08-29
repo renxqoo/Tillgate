@@ -37,8 +37,8 @@ describe('loadAdminApiConfig', () => {
     );
     expect(config.dbPool.poolMax).toBe(10);
     expect(config.redisTopology).toEqual({ kind: 'direct' });
-    // OTel 缺省:非生产 memory
-    expect(config.otelMode).toBe('memory');
+    // OTel 缺省 otlp（默认开启；端点内置缺省 trace-receiver:8793）
+    expect(config.otelMode).toBe('otlp');
   });
 
   it('Redis Sentinel 拓扑需要主名并完整传递鉴权', () => {
@@ -78,15 +78,10 @@ describe('loadAdminApiConfig', () => {
     );
   });
 
-  it('生产环境 OTel 缺省 off;显式配置优先', () => {
-    expect(loadAdminApiConfig({ ...BASE, NODE_ENV: 'production' }).otelMode).toBe('off');
-    expect(
-      loadAdminApiConfig({
-        ...BASE,
-        OTEL_TRACES_MODE: 'otlp',
-        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel:4318',
-      }).otelMode,
-    ).toBe('otlp');
+  it('OTel 缺省 otlp（默认开启）;显式配置优先', () => {
+    expect(loadAdminApiConfig({ ...BASE, NODE_ENV: 'production' }).otelMode).toBe('otlp');
+    expect(loadAdminApiConfig({ ...BASE, OTEL_TRACES_MODE: 'memory' }).otelMode).toBe('memory');
+    expect(loadAdminApiConfig({ ...BASE, OTEL_TRACES_MODE: 'off' }).otelMode).toBe('off');
   });
 
   it('TRACE_RECEIVER_TOKEN → otelAuthToken(OTLP 推送鉴权,与接收端同键)', () => {
@@ -102,7 +97,6 @@ describe('loadAdminApiConfig', () => {
     ['ADMIN_JWT_SECRET 字符多样性不足', { ADMIN_JWT_SECRET: 'a'.repeat(40) }, 'ADMIN_JWT_SECRET'],
     ['ENCRYPTION_KEY 过短', { ENCRYPTION_KEY: 'short' }, 'ENCRYPTION_KEY'],
     ['IDENTITY_CODE_PEPPER 过短', { IDENTITY_CODE_PEPPER: 'short' }, 'IDENTITY_CODE_PEPPER'],
-    ['otlp 缺端点', { OTEL_TRACES_MODE: 'otlp' }, 'OTEL_EXPORTER_OTLP_ENDPOINT'],
     ['会话 TTL 越上界', { SESSION_TTL_SECONDS: '99999999' }, 'SESSION_TTL_SECONDS'],
     ['端口非整数', { ADMIN_API_PORT: 'abc' }, 'ADMIN_API_PORT'],
   ])('fail-fast:%s', (_name, patch, errorPath) => {

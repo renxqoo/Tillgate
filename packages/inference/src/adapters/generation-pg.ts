@@ -45,6 +45,7 @@ async function insertGenerationTask(db: Db, record: GenerationTaskRecord): Promi
     mappingId: record.mappingId,
     channelId: record.channelId,
     upstreamTaskId: record.upstreamTaskId,
+    upstreamModel: record.upstreamModel,
     kind: record.kind,
     status: record.status,
     params: record.params,
@@ -209,6 +210,7 @@ function mapActiveRow(row: {
   kind: string;
   status: string;
   upstreamTaskId: string | null;
+  upstreamModel: string;
   params: Record<string, unknown>;
   receiptTemplate: unknown;
   unitsSnapshot: string | null;
@@ -222,6 +224,7 @@ function mapActiveRow(row: {
     kind: row.kind as GenerationTaskKind,
     status: row.status === 'running' ? 'running' : 'queued',
     upstreamTaskId: row.upstreamTaskId,
+    upstreamModel: row.upstreamModel,
     params: row.params,
     receiptTemplate: row.receiptTemplate as unknown as GenerationTaskActiveRow['receiptTemplate'],
     unitsSnapshot: Number(row.unitsSnapshot ?? '1'),
@@ -243,6 +246,7 @@ async function listActiveTasks(
       kind: generationTasks.kind,
       status: generationTasks.status,
       upstreamTaskId: generationTasks.upstreamTaskId,
+      upstreamModel: generationTasks.upstreamModel,
       params: generationTasks.params,
       receiptTemplate: generationTasks.receiptTemplate,
       unitsSnapshot: generationTasks.unitsSnapshot,

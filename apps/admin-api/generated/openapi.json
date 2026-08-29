@@ -40,6 +40,9 @@
       "name": "channel-funds"
     },
     {
+      "name": "routing"
+    },
+    {
       "name": "models"
     },
     {
@@ -1538,12 +1541,25 @@
           "updatedAt": {
             "type": "string"
           },
-          "channelIds": {
+          "channels": {
             "type": "array",
             "items": {
-              "type": "number"
+              "type": "object",
+              "properties": {
+                "channelId": {
+                  "type": "number"
+                },
+                "upstreamModel": {
+                  "type": "string",
+                  "description": "该渠道的出站模型名(厂商异名;缺省 = 映射规范名 realModel)"
+                }
+              },
+              "required": [
+                "channelId",
+                "upstreamModel"
+              ]
             },
-            "description": "已绑定的渠道 id(供「绑定渠道」弹窗回显已选)"
+            "description": "已绑定渠道(含出站模型名;供「绑定渠道」弹窗回显已选与异名)"
           }
         },
         "required": [
@@ -1565,9 +1581,9 @@
           "deletedAt",
           "createdAt",
           "updatedAt",
-          "channelIds"
+          "channels"
         ],
-        "description": "管理面模型映射行(GET /v1/models;channelIds 列表用例回显)"
+        "description": "管理面模型映射行(GET /v1/models;channels 绑定回显)"
       },
       "ModelCreateBody": {
         "x-domain": "models",
@@ -2858,7 +2874,7 @@
           "days",
           "rows"
         ],
-        "description": "按日趋势响应(GET /v1/stats/trends)"
+        "description": "按日趋势响应(GET /v1/stats/trends;无流量日补零行,rows 恒为 days 天完整序列)"
       },
       "LogRow": {
         "x-domain": "stats",
@@ -3991,6 +4007,792 @@
           "storage"
         ],
         "description": "GET /v1/tracing/stats 响应。"
+      },
+      "RoutingPolicyRecord": {
+        "x-domain": "routing",
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "description": "策略版本（每次保存行级自增——观测/回滚锚点）"
+          },
+          "policy": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "default": 1,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "scorers": {
+                "default": {
+                  "cacheAffinity": {
+                    "enabled": false,
+                    "boost": 3,
+                    "ttlMs": 300000,
+                    "prefixChars": 4096
+                  },
+                  "budgetWatermark": {
+                    "enabled": true,
+                    "softRatio": 0.2
+                  }
+                },
+                "type": "object",
+                "properties": {
+                  "cacheAffinity": {
+                    "default": {
+                      "enabled": false,
+                      "boost": 3,
+                      "ttlMs": 300000,
+                      "prefixChars": 4096
+                    },
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "boost": {
+                        "default": 3,
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 5
+                      },
+                      "ttlMs": {
+                        "default": 300000,
+                        "type": "integer",
+                        "minimum": 10000,
+                        "maximum": 3600000
+                      },
+                      "prefixChars": {
+                        "default": 4096,
+                        "type": "integer",
+                        "minimum": 256,
+                        "maximum": 65536
+                      }
+                    },
+                    "required": [
+                      "enabled",
+                      "boost",
+                      "ttlMs",
+                      "prefixChars"
+                    ]
+                  },
+                  "budgetWatermark": {
+                    "default": {
+                      "enabled": true,
+                      "softRatio": 0.2
+                    },
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "softRatio": {
+                        "default": 0.2,
+                        "type": "number",
+                        "minimum": 0.01,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "enabled",
+                      "softRatio"
+                    ]
+                  }
+                },
+                "required": [
+                  "cacheAffinity",
+                  "budgetWatermark"
+                ]
+              },
+              "retry": {
+                "default": {
+                  "sameChannelMaxRetries": 3
+                },
+                "type": "object",
+                "properties": {
+                  "sameChannelMaxRetries": {
+                    "default": 3,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 6
+                  }
+                },
+                "required": [
+                  "sameChannelMaxRetries"
+                ]
+              },
+              "penalty": {
+                "default": {
+                  "rateLimitBaseMs": 2000,
+                  "rateLimitMaxMs": 60000,
+                  "quotaMs": 1800000,
+                  "conditionalBypass": true
+                },
+                "type": "object",
+                "properties": {
+                  "rateLimitBaseMs": {
+                    "default": 2000,
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 60000
+                  },
+                  "rateLimitMaxMs": {
+                    "default": 60000,
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 600000
+                  },
+                  "quotaMs": {
+                    "default": 1800000,
+                    "type": "integer",
+                    "minimum": 10000,
+                    "maximum": 86400000
+                  },
+                  "conditionalBypass": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "rateLimitBaseMs",
+                  "rateLimitMaxMs",
+                  "quotaMs",
+                  "conditionalBypass"
+                ]
+              },
+              "modelDead": {
+                "default": {
+                  "failureThreshold": 3,
+                  "ttlMs": 60000,
+                  "windowMs": 300000
+                },
+                "type": "object",
+                "properties": {
+                  "failureThreshold": {
+                    "default": 3,
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 10
+                  },
+                  "ttlMs": {
+                    "default": 60000,
+                    "type": "integer",
+                    "minimum": 5000,
+                    "maximum": 600000
+                  },
+                  "windowMs": {
+                    "default": 300000,
+                    "type": "integer",
+                    "minimum": 10000,
+                    "maximum": 3600000
+                  }
+                },
+                "required": [
+                  "failureThreshold",
+                  "ttlMs",
+                  "windowMs"
+                ]
+              },
+              "wait": {
+                "default": {
+                  "enabled": true,
+                  "maxWaitMs": 2000
+                },
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "maxWaitMs": {
+                    "default": 2000,
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 5000
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "maxWaitMs"
+                ]
+              }
+            },
+            "required": [
+              "version",
+              "scorers",
+              "retry",
+              "penalty",
+              "modelDead",
+              "wait"
+            ],
+            "description": "当前生效策略体（五段结构）"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "变更备注（最近一次保存）"
+          },
+          "updatedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近保存人（管理员标识）"
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "最近保存时刻（ISO 时间串）"
+          }
+        },
+        "required": [
+          "version",
+          "policy",
+          "note",
+          "updatedBy",
+          "updatedAt"
+        ],
+        "description": "路由策略记录（GET /v1/routing-policy 已配置分支）"
+      },
+      "RoutingPolicyDefaults": {
+        "x-domain": "routing",
+        "type": "object",
+        "properties": {
+          "unconfigured": {
+            "type": "boolean",
+            "const": true
+          },
+          "policy": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "default": 1,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "scorers": {
+                "default": {
+                  "cacheAffinity": {
+                    "enabled": false,
+                    "boost": 3,
+                    "ttlMs": 300000,
+                    "prefixChars": 4096
+                  },
+                  "budgetWatermark": {
+                    "enabled": true,
+                    "softRatio": 0.2
+                  }
+                },
+                "type": "object",
+                "properties": {
+                  "cacheAffinity": {
+                    "default": {
+                      "enabled": false,
+                      "boost": 3,
+                      "ttlMs": 300000,
+                      "prefixChars": 4096
+                    },
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "boost": {
+                        "default": 3,
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 5
+                      },
+                      "ttlMs": {
+                        "default": 300000,
+                        "type": "integer",
+                        "minimum": 10000,
+                        "maximum": 3600000
+                      },
+                      "prefixChars": {
+                        "default": 4096,
+                        "type": "integer",
+                        "minimum": 256,
+                        "maximum": 65536
+                      }
+                    },
+                    "required": [
+                      "enabled",
+                      "boost",
+                      "ttlMs",
+                      "prefixChars"
+                    ]
+                  },
+                  "budgetWatermark": {
+                    "default": {
+                      "enabled": true,
+                      "softRatio": 0.2
+                    },
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "softRatio": {
+                        "default": 0.2,
+                        "type": "number",
+                        "minimum": 0.01,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "enabled",
+                      "softRatio"
+                    ]
+                  }
+                },
+                "required": [
+                  "cacheAffinity",
+                  "budgetWatermark"
+                ]
+              },
+              "retry": {
+                "default": {
+                  "sameChannelMaxRetries": 3
+                },
+                "type": "object",
+                "properties": {
+                  "sameChannelMaxRetries": {
+                    "default": 3,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 6
+                  }
+                },
+                "required": [
+                  "sameChannelMaxRetries"
+                ]
+              },
+              "penalty": {
+                "default": {
+                  "rateLimitBaseMs": 2000,
+                  "rateLimitMaxMs": 60000,
+                  "quotaMs": 1800000,
+                  "conditionalBypass": true
+                },
+                "type": "object",
+                "properties": {
+                  "rateLimitBaseMs": {
+                    "default": 2000,
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 60000
+                  },
+                  "rateLimitMaxMs": {
+                    "default": 60000,
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 600000
+                  },
+                  "quotaMs": {
+                    "default": 1800000,
+                    "type": "integer",
+                    "minimum": 10000,
+                    "maximum": 86400000
+                  },
+                  "conditionalBypass": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "rateLimitBaseMs",
+                  "rateLimitMaxMs",
+                  "quotaMs",
+                  "conditionalBypass"
+                ]
+              },
+              "modelDead": {
+                "default": {
+                  "failureThreshold": 3,
+                  "ttlMs": 60000,
+                  "windowMs": 300000
+                },
+                "type": "object",
+                "properties": {
+                  "failureThreshold": {
+                    "default": 3,
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 10
+                  },
+                  "ttlMs": {
+                    "default": 60000,
+                    "type": "integer",
+                    "minimum": 5000,
+                    "maximum": 600000
+                  },
+                  "windowMs": {
+                    "default": 300000,
+                    "type": "integer",
+                    "minimum": 10000,
+                    "maximum": 3600000
+                  }
+                },
+                "required": [
+                  "failureThreshold",
+                  "ttlMs",
+                  "windowMs"
+                ]
+              },
+              "wait": {
+                "default": {
+                  "enabled": true,
+                  "maxWaitMs": 2000
+                },
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "maxWaitMs": {
+                    "default": 2000,
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 5000
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "maxWaitMs"
+                ]
+              }
+            },
+            "required": [
+              "version",
+              "scorers",
+              "retry",
+              "penalty",
+              "modelDead",
+              "wait"
+            ],
+            "description": "编译期缺省策略（zod 内建 default 全展开）"
+          }
+        },
+        "required": [
+          "unconfigured",
+          "policy"
+        ],
+        "description": "路由策略未配置回执（GET /v1/routing-policy 无 global 行时）"
+      },
+      "RoutingPolicySaveBody": {
+        "x-domain": "routing",
+        "type": "object",
+        "properties": {
+          "policy": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "default": 1,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "scorers": {
+                "default": {
+                  "cacheAffinity": {
+                    "enabled": false,
+                    "boost": 3,
+                    "ttlMs": 300000,
+                    "prefixChars": 4096
+                  },
+                  "budgetWatermark": {
+                    "enabled": true,
+                    "softRatio": 0.2
+                  }
+                },
+                "type": "object",
+                "properties": {
+                  "cacheAffinity": {
+                    "default": {
+                      "enabled": false,
+                      "boost": 3,
+                      "ttlMs": 300000,
+                      "prefixChars": 4096
+                    },
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "boost": {
+                        "default": 3,
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 5
+                      },
+                      "ttlMs": {
+                        "default": 300000,
+                        "type": "integer",
+                        "minimum": 10000,
+                        "maximum": 3600000
+                      },
+                      "prefixChars": {
+                        "default": 4096,
+                        "type": "integer",
+                        "minimum": 256,
+                        "maximum": 65536
+                      }
+                    }
+                  },
+                  "budgetWatermark": {
+                    "default": {
+                      "enabled": true,
+                      "softRatio": 0.2
+                    },
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "softRatio": {
+                        "default": 0.2,
+                        "type": "number",
+                        "minimum": 0.01,
+                        "maximum": 1
+                      }
+                    }
+                  }
+                }
+              },
+              "retry": {
+                "default": {
+                  "sameChannelMaxRetries": 3
+                },
+                "type": "object",
+                "properties": {
+                  "sameChannelMaxRetries": {
+                    "default": 3,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 6
+                  }
+                }
+              },
+              "penalty": {
+                "default": {
+                  "rateLimitBaseMs": 2000,
+                  "rateLimitMaxMs": 60000,
+                  "quotaMs": 1800000,
+                  "conditionalBypass": true
+                },
+                "type": "object",
+                "properties": {
+                  "rateLimitBaseMs": {
+                    "default": 2000,
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 60000
+                  },
+                  "rateLimitMaxMs": {
+                    "default": 60000,
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 600000
+                  },
+                  "quotaMs": {
+                    "default": 1800000,
+                    "type": "integer",
+                    "minimum": 10000,
+                    "maximum": 86400000
+                  },
+                  "conditionalBypass": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                }
+              },
+              "modelDead": {
+                "default": {
+                  "failureThreshold": 3,
+                  "ttlMs": 60000,
+                  "windowMs": 300000
+                },
+                "type": "object",
+                "properties": {
+                  "failureThreshold": {
+                    "default": 3,
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 10
+                  },
+                  "ttlMs": {
+                    "default": 60000,
+                    "type": "integer",
+                    "minimum": 5000,
+                    "maximum": 600000
+                  },
+                  "windowMs": {
+                    "default": 300000,
+                    "type": "integer",
+                    "minimum": 10000,
+                    "maximum": 3600000
+                  }
+                }
+              },
+              "wait": {
+                "default": {
+                  "enabled": true,
+                  "maxWaitMs": 2000
+                },
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "maxWaitMs": {
+                    "default": 2000,
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 5000
+                  }
+                }
+              }
+            }
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 255
+          }
+        },
+        "required": [
+          "policy"
+        ],
+        "description": "保存路由策略请求体（PUT /v1/routing-policy;policy 形状单一真相 = @tillgate/inference routingPolicySchema）"
+      },
+      "RoutingPolicySaveReceipt": {
+        "x-domain": "routing",
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "version": {
+            "type": "string"
+          },
+          "savedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "version",
+          "savedAt"
+        ],
+        "description": "路由策略保存回执（PUT /v1/routing-policy）"
+      },
+      "RoutingOverviewRow": {
+        "x-domain": "routing",
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "number"
+          },
+          "channelName": {
+            "type": "string"
+          },
+          "status": {
+            "type": "number",
+            "description": "0 启用/1 禁用/2 维护/3 熔断/4 凭据无效"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "upstreamBudget": {
+            "type": "string",
+            "description": "进货总额（元，numeric 字符串）"
+          },
+          "upstreamRemaining": {
+            "type": "string",
+            "description": "剩余 = 进货 - 已占用（元，numeric 字符串）"
+          },
+          "requests": {
+            "type": "number",
+            "description": "近窗请求数（billing_requests 生命周期口径）"
+          },
+          "failures": {
+            "type": "number",
+            "description": "近窗失败数（released 且带失败原因口径）"
+          },
+          "avgDurationMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "近窗平均上游耗时（usage_logs 结算口径）"
+          },
+          "avgClientTtftMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "近窗平均客户端首字延迟"
+          },
+          "cachedInputTokens": {
+            "type": "number",
+            "description": "近窗缓存命中输入 token（结算口径）"
+          },
+          "inputTokens": {
+            "type": "number",
+            "description": "近窗输入 token 总量（结算口径）"
+          }
+        },
+        "required": [
+          "channelId",
+          "channelName",
+          "status",
+          "priority",
+          "upstreamBudget",
+          "upstreamRemaining",
+          "requests",
+          "failures",
+          "avgDurationMs",
+          "avgClientTtftMs",
+          "cachedInputTokens",
+          "inputTokens"
+        ],
+        "description": "渠道路由观测行（GET /v1/routing/channels-overview）"
       }
     }
   },
@@ -15916,12 +16718,370 @@
         }
       }
     },
+    "/v1/routing-policy": {
+      "get": {
+        "tags": [
+          "routing"
+        ],
+        "summary": "当前生效路由策略（未配置时携带编译期缺省）",
+        "responses": {
+          "200": {
+            "description": "已配置 = RoutingPolicyRecord；未配置 = RoutingPolicyDefaults",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RoutingPolicyRecord"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RoutingPolicyDefaults"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "routing"
+        ],
+        "summary": "保存全局路由策略（version 自增 + 审计；网关 TTL 拾取热生效）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingPolicySaveBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "保存全局路由策略（version 自增 + 审计；网关 TTL 拾取热生效） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingPolicySaveReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/routing/channels-overview": {
+      "get": {
+        "tags": [
+          "routing"
+        ],
+        "summary": "近窗渠道路由观测（调参依据；windowMs 非法值回落 1h）",
+        "parameters": [
+          {
+            "name": "windowMs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "description": "观测窗口毫秒（缺省 3_600_000；越界/非法运行时回落缺省不 400）",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 86400000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "近窗渠道路由观测（调参依据；windowMs 非法值回落 1h） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RoutingOverviewRow"
+                      }
+                    }
+                  },
+                  "required": [
+                    "rows"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/models": {
       "get": {
         "tags": [
           "models"
         ],
-        "summary": "模型映射列表（channelIds 回显；view=deleted = 回收站）",
+        "summary": "模型映射列表（channels 绑定回显；view=deleted = 回收站）",
         "parameters": [
           {
             "name": "page",
@@ -15993,7 +17153,7 @@
         ],
         "responses": {
           "200": {
-            "description": "模型映射列表（channelIds 回显；view=deleted = 回收站） 成功响应",
+            "description": "模型映射列表（channels 绑定回显；view=deleted = 回收站） 成功响应",
             "content": {
               "application/json": {
                 "schema": {
@@ -16889,7 +18049,7 @@
         "tags": [
           "models"
         ],
-        "summary": "绑定渠道全量替换（空数组 = 解绑全部;上限 500）",
+        "summary": "绑定渠道全量替换（空数组 = 解绑全部;上限 500;upstreamModel 留空 = 映射规范名）",
         "parameters": [
           {
             "name": "id",
@@ -16921,6 +18081,10 @@
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
                         },
+                        "upstreamModel": {
+                          "type": "string",
+                          "maxLength": 128
+                        },
                         "weight": {
                           "type": "number"
                         },
@@ -16943,7 +18107,7 @@
         },
         "responses": {
           "200": {
-            "description": "绑定渠道全量替换（空数组 = 解绑全部;上限 500） 成功响应",
+            "description": "绑定渠道全量替换（空数组 = 解绑全部;上限 500;upstreamModel 留空 = 映射规范名） 成功响应",
             "content": {
               "application/json": {
                 "schema": {
@@ -26355,7 +27519,7 @@
         "tags": [
           "stats"
         ],
-        "summary": "按日趋势（近 N 天含今日,北京日界;days 钳位 1..90）",
+        "summary": "按日趋势（近 N 天含今日,北京日界;无流量日补零;days 钳位 1..90）",
         "parameters": [
           {
             "name": "days",
@@ -26371,7 +27535,7 @@
         ],
         "responses": {
           "200": {
-            "description": "按日趋势（近 N 天含今日,北京日界;days 钳位 1..90） 成功响应",
+            "description": "按日趋势（近 N 天含今日,北京日界;无流量日补零;days 钳位 1..90） 成功响应",
             "content": {
               "application/json": {
                 "schema": {

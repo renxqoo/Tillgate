@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "bun"]
+  },
+  "include": [
+    "gateway/**/*.ts",
+    "vitest.config.ts",
+    "vitest.real.config.ts",
+    "vitest.smoke.config.ts"
+  ],
+  "exclude": ["node_modules"]
+}

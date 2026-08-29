@@ -13,6 +13,7 @@ import type {
   ChannelProbeRow,
   RechargeRow,
   RouteCandidateRow,
+  TaskChannelRow,
 } from '../src/ports/channel-store';
 import type { ModelStore, ModelRecord, ActiveMappingRow } from '../src/ports/model-store';
 import type { AdminStore, AdminRecord } from '../src/ports/admin-store';
@@ -39,6 +40,8 @@ import type {
   EndpointBindingRecord,
   EndpointStore,
 } from '../src/ports/rbac-store';
+import type { RoutingPolicyRecord, RoutingPolicyStore } from '../src/ports/routing-policy-store';
+import { GLOBAL_SCOPE } from '../src/adapters/postgres/routing-policy-store';
 
 /** PG 唯一冲突同形错误（cause 链 code 判定兼容） */
 export function uniqueViolation(constraint: string): Error {
@@ -415,8 +418,9 @@ export function createMemoryChannelStore(
     },
 
     // ---- 网关热路径读。stand-in 局限：内存行不持 model_channels 绑定表，
-    // 不按 realModel 过滤（返回全部启用渠道）；过滤语义由 postgres.real 测试承担 ----
-    async findRouteCandidates(_db, _realModel) {
+    // 不按 realModel 过滤（返回全部启用渠道）；过滤语义由 postgres.real 测试承担。
+    // 出站名 stand-in = 请求的 realModel（内存无绑定行；异名语义由 postgres.real 承担）----
+    async findRouteCandidates(_db, realModel) {
       const out: RouteCandidateRow[] = [];
       for (const row of rows.values()) {
         if (row.status !== 0) continue;
@@ -432,17 +436,19 @@ export function createMemoryChannelStore(
           providerBaseUrl: provider?.baseUrl ?? '',
           providerProtocol: provider?.protocol ?? '',
           providerVendor: provider?.vendor ?? null,
+          upstreamModel: realModel,
           priority: row.priority,
           weight: row.weight,
           rpmLimit: row.rpmLimit,
           tpmLimit: row.tpmLimit,
           upstreamBudget: row.upstreamBudget,
+          upstreamRemaining: row.upstreamBudget,
         });
       }
       return out;
     },
 
-    async findTaskChannel(_db, channelId): Promise<RouteCandidateRow | null> {
+    async findTaskChannel(_db, channelId): Promise<TaskChannelRow | null> {
       // by id 不按启用状态过滤（停用渠道的已提交任务仍须可轮询）
       const row = rows.get(channelId);
       if (row == null) return null;
@@ -461,6 +467,7 @@ export function createMemoryChannelStore(
         rpmLimit: row.rpmLimit,
         tpmLimit: row.tpmLimit,
         upstreamBudget: row.upstreamBudget,
+        upstreamRemaining: row.upstreamBudget,
       };
     },
   };
@@ -470,7 +477,7 @@ export function createMemoryChannelStore(
 // ── models ───────────────────────────────────────────────────────────────────
 
 export interface MemoryModelRow extends ModelRecord {
-  bindings: Array<{ channelId: number; weight: number; priority: number }>;
+  bindings: Array<{ channelId: number; upstreamModel: string; weight: number; priority: number }>;
   /** 热路径读列（ModelRecord 管理面未含；postgres 行天然存在，内存行可选） */
   fallbackModels?: string[] | null;
   pricingGroup?: string | null;
@@ -568,11 +575,13 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
       if (row) row.bindings = [...input.channels];
       return input.channels.length;
     },
-    async listChannelIdsByMappingIds(_db, mappingIds) {
-      const out: Array<{ mappingId: number; channelId: number }> = [];
+    async listBindingsByMappingIds(_db, mappingIds) {
+      const out: Array<{ mappingId: number; channelId: number; upstreamModel: string }> = [];
       for (const row of rows.values()) {
         if (mappingIds.includes(row.id)) {
-          for (const b of row.bindings) out.push({ mappingId: row.id, channelId: b.channelId });
+          for (const b of row.bindings) {
+            out.push({ mappingId: row.id, channelId: b.channelId, upstreamModel: b.upstreamModel });
+          }
         }
       }
       return out;
@@ -587,12 +596,18 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
         baseUrlOverride: null,
         providerBaseUrl: 'https://provider.example.com/v1',
         providerProtocol: 'openai-compatible',
+        upstreamModel: b.upstreamModel,
       }));
     },
     async ensureModelChannelBinding(_db, input) {
       const row = rows.get(input.mappingId);
       if (row && !row.bindings.some((b) => b.channelId === input.channelId)) {
-        row.bindings.push({ channelId: input.channelId, weight: 1, priority: 0 });
+        row.bindings.push({
+          channelId: input.channelId,
+          upstreamModel: input.upstreamModel,
+          weight: 1,
+          priority: 0,
+        });
       }
     },
     async listEnabledByRealModels(_db, realModels) {
@@ -1356,4 +1371,47 @@ export function createMemoryIntegrationSettingsStore(
     };
   };
   return { store, rows, snapshot };
+}
+
+// ── routing policy ───────────────────────────────────────────────────────────
+
+export interface MemoryRoutingPolicyStore {
+  store: RoutingPolicyStore;
+  /** global 行直读（null = 未建）；行为等价锚点——与 postgres 适配器语义逐条对齐 */
+  state: { row: RoutingPolicyRecord | null };
+  /** 注入失败模式：置为 true 时 saveGlobal 抛错（用例翻译 routing_policy_save_failed 的契约各验） */
+  fail: { on: boolean };
+}
+
+/**
+ * routing_policies 内存替身：scope 单行 upsert 的行为等价——首建 version='1'，
+ * 再存 version 自增（与 SQL `version::bigint + 1` 同构）；note/updatedBy 未传保留
+ * 旧值（非清空）。SQL 专属语义（ON CONFLICT 行锁）由 postgres.real.test.ts 承担。
+ */
+export function createMemoryRoutingPolicyStore(): MemoryRoutingPolicyStore {
+  const state: { row: RoutingPolicyRecord | null } = { row: null };
+  const fail = { on: false };
+  let nextId = 1;
+  const store: RoutingPolicyStore = {
+    async findGlobal() {
+      const { row } = state;
+      return row == null ? null : { ...row, policy: { ...row.policy } };
+    },
+    async saveGlobal(_db, input) {
+      if (fail.on) throw new Error('routing policy store down');
+      const current = state.row;
+      const next: RoutingPolicyRecord = {
+        id: current?.id ?? nextId++,
+        scope: GLOBAL_SCOPE,
+        version: current == null ? '1' : String(BigInt(current.version) + BigInt(1)),
+        policy: { ...input.policy },
+        note: input.note ?? current?.note ?? null,
+        updatedBy: input.updatedBy ?? current?.updatedBy ?? null,
+        updatedAt: new Date(),
+      };
+      state.row = next;
+      return { ...next, policy: { ...next.policy } };
+    },
+  };
+  return { store, state, fail };
 }

@@ -8,7 +8,7 @@ import { modelsContracts } from '../contracts/models';
 import { idPathParam, listQuery, paginatedOf, okTrue, type OpenApiEndpoint } from './shared';
 import { channelTestResultSchema } from './control-plane';
 
-/** 管理面模型映射行（channelIds 由列表用例回显;无绑定 = 空数组） */
+/** 管理面模型映射行（channels 绑定回显;无绑定 = 空数组） */
 export const adminModelRowSchema = z
   .object({
     id: z.number(),
@@ -48,11 +48,20 @@ export const adminModelRowSchema = z
     deletedAt: z.string().nullable().describe('记录面逻辑删除时刻(回收站);null = 在册'),
     createdAt: z.string(),
     updatedAt: z.string(),
-    channelIds: z.array(z.number()).describe('已绑定的渠道 id(供「绑定渠道」弹窗回显已选)'),
+    channels: z
+      .array(
+        z.object({
+          channelId: z.number(),
+          upstreamModel: z
+            .string()
+            .describe('该渠道的出站模型名(厂商异名;缺省 = 映射规范名 realModel)'),
+        }),
+      )
+      .describe('已绑定渠道(含出站模型名;供「绑定渠道」弹窗回显已选与异名)'),
   })
   .meta({
     id: 'AdminModelRow',
-    description: '管理面模型映射行(GET /v1/models;channelIds 列表用例回显)',
+    description: '管理面模型映射行(GET /v1/models;channels 绑定回显)',
   });
 
 export const modelsEndpoints: readonly OpenApiEndpoint[] = [
@@ -60,7 +69,7 @@ export const modelsEndpoints: readonly OpenApiEndpoint[] = [
     method: 'get',
     path: '/v1/models',
     tag: 'models',
-    summary: '模型映射列表（channelIds 回显；view=deleted = 回收站）',
+    summary: '模型映射列表（channels 绑定回显；view=deleted = 回收站）',
     query: listQuery(z.object({ view: z.enum(['active', 'deleted']).optional() })),
     response: { schema: paginatedOf(adminModelRowSchema) },
     errors: [400, 401],
@@ -107,7 +116,7 @@ export const modelsEndpoints: readonly OpenApiEndpoint[] = [
     method: 'post',
     path: '/v1/models/:id/channels',
     tag: 'models',
-    summary: '绑定渠道全量替换（空数组 = 解绑全部;上限 500）',
+    summary: '绑定渠道全量替换（空数组 = 解绑全部;上限 500;upstreamModel 留空 = 映射规范名）',
     params: [idPathParam('模型映射 id')],
     body: modelsContracts.bind,
     response: { schema: z.object({ ok: z.literal(true), bound: z.number() }) },

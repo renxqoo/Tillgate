@@ -54,8 +54,10 @@ export interface GenerationPollDeps {
   signal: (input: BillingSignal) => Promise<void>;
   /** billing_requests 当前状态（succeeded 自愈路径；null = 行不存在） */
   billingStatus: (requestId: string) => Promise<string | null>;
-  /** 渠道连接信息查找（worker 装配桥接 control-plane findTaskChannel） */
-  findChannel: (channelId: number) => Promise<ChannelCandidate | null>;
+  /** 渠道连接信息查找（worker 装配桥接 control-plane findTaskChannel；出站名取任务快照） */
+  findChannel: (
+    task: Pick<GenerationTaskActiveRow, 'channelId' | 'upstreamModel'>,
+  ) => Promise<ChannelCandidate | null>;
   config: GenerationPollConfig;
   /** 单任务异常只记日志不中断整轮 */
   onError?: (error: unknown, context: string) => void;
@@ -164,7 +166,7 @@ async function pollSingleTask(
   task: GenerationTaskActiveRow,
 ): Promise<'succeeded' | 'failed' | undefined> {
   if (!task.upstreamTaskId) return undefined;
-  const channel = await ctx.deps.findChannel(task.channelId);
+  const channel = await ctx.deps.findChannel(task);
   if (!channel) {
     ctx.noteError(
       new Error('channel missing'),
@@ -252,7 +254,8 @@ async function executeSingleTask(
     outcome = await ctx.deps.upstream.executeTask(channel, task.kind, {
       requestId: task.taskId,
       externalModel: task.receiptTemplate.externalModel,
-      realModel: task.receiptTemplate.realModel,
+      // 出站名用提交时快照（不随绑定改名漂移——与 params 同口径）
+      upstreamModel: task.upstreamModel,
       endpoint: task.kind,
       body: task.params,
       deadlineMs: ctx.deps.config.executeDeadlineMs,
@@ -295,7 +298,7 @@ async function executeTaskFamily(
   });
   for (const task of executeTasks) {
     acc.executed += 1;
-    const channel = await ctx.deps.findChannel(task.channelId);
+    const channel = await ctx.deps.findChannel(task);
     if (!channel) {
       ctx.noteError(
         new Error('channel missing'),

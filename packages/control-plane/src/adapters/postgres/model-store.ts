@@ -187,10 +187,14 @@ export const postgresModelStore: ModelStore = {
     return input.channels.length;
   },
 
-  async listChannelIdsByMappingIds(db, mappingIds) {
+  async listBindingsByMappingIds(db, mappingIds) {
     if (mappingIds.length === 0) return [];
     return db
-      .select({ mappingId: modelChannels.mappingId, channelId: modelChannels.channelId })
+      .select({
+        mappingId: modelChannels.mappingId,
+        channelId: modelChannels.channelId,
+        upstreamModel: modelChannels.upstreamModel,
+      })
       .from(modelChannels)
       .where(inArray(modelChannels.mappingId, [...mappingIds]));
   },
@@ -205,6 +209,7 @@ export const postgresModelStore: ModelStore = {
           baseUrlOverride: channels.baseUrlOverride,
           providerBaseUrl: providers.baseUrl,
           providerProtocol: providers.protocol,
+          upstreamModel: modelChannels.upstreamModel,
         })
         .from(modelChannels)
         .innerJoin(channels, eq(modelChannels.channelId, channels.id))
@@ -220,7 +225,13 @@ export const postgresModelStore: ModelStore = {
     // 目录导入幂等绑定：已绑定时不重复插（复合主键冲突跳过）
     await db
       .insert(modelChannels)
-      .values({ mappingId: input.mappingId, channelId: input.channelId, weight: 1, priority: 0 })
+      .values({
+        mappingId: input.mappingId,
+        channelId: input.channelId,
+        upstreamModel: input.upstreamModel,
+        weight: 1,
+        priority: 0,
+      })
       .onConflictDoNothing({ target: [modelChannels.mappingId, modelChannels.channelId] });
   },
 

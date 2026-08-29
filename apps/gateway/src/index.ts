@@ -100,6 +100,7 @@ async function main(): Promise<void> {
     closeDb: assembly.closeDb,
     inference: assembly.inference,
     settleWake: assembly.settleWake,
+    policyReaderStop: assembly.routingPolicyStop,
     graceMs: config.shutdownGraceMs,
     // 宽限耗尽 → abort 在途请求（server_draining 分类 + 信号结算收尾窗）
     drain: {

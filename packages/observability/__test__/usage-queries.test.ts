@@ -28,6 +28,16 @@ function fakeStore(overrides: Partial<UsageStatsStore> = {}): UsageStatsStore {
   };
 }
 
+/** 趋势补零行字面量(trends 缺量日期望值) */
+const zeroTrendRow = (date: string) => ({
+  date,
+  requests: 0,
+  successCount: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  cost: '0',
+});
+
 describe('beijingDayStart(北京日界)', () => {
   it('UTC 16:00 前 = 昨日 16:00 起点;16:00 起 = 当日起点(切日边界)', () => {
     // UTC 2026-08-22 15:59:59 → 北京 23:59:59,属 08-22 日 → 起点 = UTC 08-21 16:00
@@ -136,7 +146,7 @@ describe('usage queries(概览/分组/趋势/TTFT 口径)', () => {
     ]);
   });
 
-  it('trends:days 透传 + from 窗口下推 + token 列映射', async () => {
+  it('trends:days 透传 + from 窗口下推 + 稀疏行按窗口补零', async () => {
     const daily = vi.fn(async () => [
       {
         date: '2026-08-22',
@@ -148,20 +158,41 @@ describe('usage queries(概览/分组/趋势/TTFT 口径)', () => {
       },
     ]);
     const queries = createUsageQueries({ store: fakeStore({ dailyTrends: daily }) });
-    const now = new Date('2026-08-23T02:00:00.000Z');
+    const now = new Date('2026-08-23T02:00:00.000Z'); // 北京 08-23 10:00 → 窗口 08-10..08-23
     const result = await queries.trends({ days: 14, now });
     expect(daily).toHaveBeenCalledWith(beijingTrendsFrom(14, now));
     expect(result.days).toBe(14);
-    expect(result.rows).toEqual([
-      {
-        date: '2026-08-22',
-        requests: 4,
-        successCount: 3,
-        inputTokens: 100,
-        outputTokens: 200,
-        cost: '0.4',
-      },
-    ]);
+    expect(result.rows).toHaveLength(14);
+    // 缺量日补零行(否则前端 0 值不渲染、横轴跳日)
+    expect(result.rows[0]).toEqual(zeroTrendRow('2026-08-10'));
+    // 有量日保留聚合并做 token number 映射
+    expect(result.rows[12]).toEqual({
+      date: '2026-08-22',
+      requests: 4,
+      successCount: 3,
+      inputTokens: 100,
+      outputTokens: 200,
+      cost: '0.4',
+    });
+    expect(result.rows.at(-1)?.date).toBe('2026-08-23');
+  });
+
+  it('trends:窗口内完全无量 → 全零完整序列(不退化为空 rows)', async () => {
+    const queries = createUsageQueries({
+      store: fakeStore({ dailyTrends: async () => [] }),
+    });
+    const now = new Date('2026-08-23T02:00:00.000Z');
+    const result = await queries.trends({ days: 3, now });
+    expect(result.rows).toEqual(['2026-08-21', '2026-08-22', '2026-08-23'].map(zeroTrendRow));
+  });
+
+  it('trends:days=1 单日窗口 → 仅今日一行', async () => {
+    const queries = createUsageQueries({
+      store: fakeStore({ dailyTrends: async () => [] }),
+    });
+    const now = new Date('2026-08-23T15:59:59.000Z'); // 北京 23:59 仍属 08-23
+    const result = await queries.trends({ days: 1, now });
+    expect(result.rows).toEqual([zeroTrendRow('2026-08-23')]);
   });
 
   it('channelTtft:窗口 = now - hours 小时下推 store', async () => {

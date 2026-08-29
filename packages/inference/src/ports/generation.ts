@@ -29,6 +29,8 @@ export interface GenerationTaskRecord {
   kind: GenerationTaskKind;
   /** 上游任务号（task_execute = null；task_poll 同步完成 = null） */
   upstreamTaskId: string | null;
+  /** 出站模型名快照（提交时绑定行物化；worker 代执行构造请求用） */
+  upstreamModel: string;
   status: 'queued';
   /** 提交参数快照（descriptor.snapshotParams 白名单产物） */
   params: Record<string, unknown>;
@@ -61,6 +63,8 @@ export interface GenerationTaskActiveRow {
   kind: GenerationTaskKind;
   status: 'queued' | 'running';
   upstreamTaskId: string | null;
+  /** 出站模型名快照（提交时绑定行物化；代执行请求构造用） */
+  upstreamModel: string;
   params: Record<string, unknown>;
   receiptTemplate: UsageReceipt;
   unitsSnapshot: number;

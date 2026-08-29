@@ -16,7 +16,7 @@ const flush = () =>
     setTimeout(resolve, 5);
   });
 
-describe('health/channel-health：AiEvent 订阅者（§3.6 零运维状态的 inference 侧）', () => {
+describe('health/channel-health：熔断订阅面 + 死凭据显式记账面（channel 维）', () => {
   it('健康键 = protocol://host（与 ai 事件 channelKey 同算法）；坏 baseUrl 兜底 unknown', () => {
     expect(channelHealthKey({ protocol: 'openai-compatible', baseUrl: 'https://a.com/v1' })).toBe(
       'openai-compatible://a.com',
@@ -26,33 +26,24 @@ describe('health/channel-health：AiEvent 订阅者（§3.6 零运维状态的 i
     );
   });
 
-  it('B11 回归（v2 实施期缺陷）：同渠道键下熔断与死凭据状态互不踩踏', async () => {
-    // 两台状态机若共用同一存储键，BreakerState/DeadCredentialState 两种 JSON 形状
-    // 会相互覆盖——机器级键前缀是结构性修复。
+  it('B11 回归（v2 实施期缺陷）：熔断键与死凭据键互不踩踏（机器级键前缀隔离）', async () => {
     const store = createMemoryHealthStore();
     const health = createChannelHealth({ store, config });
     const { ai, emit } = fakeAi();
     health.attach(ai);
-    // 同一渠道上：一次死凭据失败 + 一次熔断失败 → 两台状态各自独立记账
-    emit({
-      type: 'failed',
-      requestId: 'r1',
-      channelKey: 'kb',
-      error: upstreamError('invalid_api_key'),
-    });
-    emit({ type: 'failed', requestId: 'r2', channelKey: 'kb', error: upstreamError('network') });
+    // 熔断失败走事件面（host 键）；死凭据失败走显式记账（channel 键）
+    emit({ type: 'failed', requestId: 'r1', channelKey: 'kb', error: upstreamError('network') });
+    health.recordDeadCredential(7, true);
     await flush();
     const breaker = await store.getState<BreakerState>('breaker:kb');
-    const credential = await store.getState<DeadCredentialState>('credential:kb');
-    expect(breaker).toMatchObject({ state: 'closed', version: 1 }); // 只有 network 计入
+    const credential = await store.getState<DeadCredentialState>('credential:ch:7');
     expect(breaker?.failures).toHaveLength(1);
     expect(breaker).not.toHaveProperty('consecutiveFailures'); // 未被凭据形状覆盖
-    expect(credential).toMatchObject({ status: 'valid', version: 1 }); // 只有 401 计入
     expect(credential?.consecutiveFailures).toBe(1);
     expect(credential).not.toHaveProperty('failures');
   });
 
-  it('failed 事件：circuitTrip 计熔断、deadCredential 计死凭据（机制位驱动）', async () => {
+  it('事件面 failed 只计熔断：deadCredential 信号不在事件面记账（无渠道粒度）', async () => {
     const store = createMemoryHealthStore();
     const health = createChannelHealth({ store, config });
     const { ai, emit } = fakeAi();
@@ -64,10 +55,10 @@ describe('health/channel-health：AiEvent 订阅者（§3.6 零运维状态的 i
       error: upstreamError('invalid_api_key'),
     });
     await flush();
-    const cred = await store.getState<DeadCredentialState>('credential:k1');
-    expect(cred?.consecutiveFailures).toBe(1); // deadCredential=true 计数
     const breaker = await store.getState<BreakerState>('breaker:k1');
     expect(breaker).toBeNull(); // invalid_api_key circuitTrip=false 不计熔断
+    // 事件面无 channelId——死凭据键无写入（记账归 dispatchFailure 收口面）
+    expect(await store.getState<DeadCredentialState>('credential:ch:1')).toBeNull();
   });
 
   it('failed 事件：网络错误只计熔断（不判死凭据）', async () => {
@@ -78,59 +69,45 @@ describe('health/channel-health：AiEvent 订阅者（§3.6 零运维状态的 i
     emit({ type: 'failed', requestId: 'r', channelKey: 'k1', error: upstreamError('network') });
     await flush();
     expect((await store.getState<BreakerState>('breaker:k1'))?.failures).toHaveLength(1);
-    expect(await store.getState<DeadCredentialState>('credential:k1')).toBeNull();
+    expect(await store.getState<DeadCredentialState>('credential:ch:1')).toBeNull();
   });
 
-  it('计数达阈值后 admit 拒绝（circuit_open / dead_credential 各自语义）', async () => {
+  it('熔断达阈值 → admit 拒 circuit_open（host 键）；死凭据显式记账达阈值 → 拒 dead_credential（channel 键）', async () => {
     const store = createMemoryHealthStore();
     const health = createChannelHealth({ store, config });
     const { ai, emit } = fakeAi();
     health.attach(ai);
     emit({ type: 'failed', requestId: 'r1', channelKey: 'kb', error: upstreamError('network') });
     emit({ type: 'failed', requestId: 'r2', channelKey: 'kb', error: upstreamError('timeout') });
-    emit({
-      type: 'failed',
-      requestId: 'r3',
-      channelKey: 'kc',
-      error: upstreamError('invalid_api_key'),
-    });
-    emit({
-      type: 'failed',
-      requestId: 'r4',
-      channelKey: 'kc',
-      error: upstreamError('invalid_api_key'),
-    });
+    health.recordDeadCredential(3, true);
+    health.recordDeadCredential(3, true);
     await flush();
-    expect(await health.admit('kb')).toEqual({ ok: false, reason: 'circuit_open' });
-    expect(await health.admit('kc')).toEqual({ ok: false, reason: 'dead_credential' });
-    expect(await health.admit('unknown-key')).toEqual({ ok: true });
+    expect(await health.admit('kb', 1)).toEqual({ ok: false, reason: 'circuit_open' });
+    expect(await health.admit('other', 1)).toEqual({ ok: true }); // 熔断是 host 维
+    // 死凭据查询用未熔断 host（admit 先查熔断——open 短路后续检查）
+    expect(await health.admit('kh', 3)).toEqual({ ok: false, reason: 'dead_credential' });
+    expect(await health.admit('kh', 4)).toEqual({ ok: true }); // 死凭据是 channel 维
+    expect(await health.admit('unknown-key', 9)).toEqual({ ok: true });
   });
 
-  it('first_chunk 记成功：经 attempt_start 的 requestId→channelKey 映射取键（首字节即成功，v1 语义）', async () => {
+  it('死凭据成功自愈走显式动词（recordChannelSuccess）；first_chunk 只记熔断', async () => {
     const store = createMemoryHealthStore();
     const health = createChannelHealth({ store, config });
     const { ai, emit } = fakeAi();
     health.attach(ai);
-    // 先 invalid 死凭据
-    emit({
-      type: 'failed',
-      requestId: 'r',
-      channelKey: 'kc',
-      error: upstreamError('invalid_api_key'),
-    });
-    emit({
-      type: 'failed',
-      requestId: 'r2',
-      channelKey: 'kc',
-      error: upstreamError('invalid_api_key'),
-    });
+    health.recordDeadCredential(5, true);
+    health.recordDeadCredential(5, true);
     await flush();
-    expect(await health.admit('kc')).toEqual({ ok: false, reason: 'dead_credential' });
-    // 换 Key 后成功调用自愈：attempt_start（无渠道键的 first_chunk 借它记账）
-    emit({ type: 'attempt_start', requestId: 'r3', channelKey: 'kc', attempt: 1, atMs: 1 });
+    expect(await health.admit('kh', 5)).toEqual({ ok: false, reason: 'dead_credential' });
+    // first_chunk（事件面）不影响死凭据（无渠道粒度）
+    emit({ type: 'attempt_start', requestId: 'r3', channelKey: 'kh', attempt: 1, atMs: 1 });
     emit({ type: 'first_chunk', requestId: 'r3', atMs: 2 });
     await flush();
-    expect(await health.admit('kc')).toEqual({ ok: true });
+    expect(await health.admit('kh', 5)).toEqual({ ok: false, reason: 'dead_credential' });
+    // 结算成功自愈（候选循环 settle 收口调用）
+    health.recordChannelSuccess(5);
+    await flush();
+    expect(await health.admit('kh', 5)).toEqual({ ok: true });
   });
 
   it('终态 success：故障族 terminated 计熔断失败；正常/用户侧/停机记成功', async () => {
@@ -156,10 +133,10 @@ describe('health/channel-health：AiEvent 订阅者（§3.6 零运维状态的 i
       terminated: 'inactivity',
     });
     await flush();
-    expect(await health.admit('ks')).toEqual({ ok: false, reason: 'circuit_open' });
+    expect(await health.admit('ks', 1)).toEqual({ ok: false, reason: 'circuit_open' });
     // 用户取消/停机不进熔断状态机（client_disconnect/server_draining 非渠道问题）
     emit({ type: 'aborted', requestId: 'r4', reason: 'client_disconnect' });
-    expect(await health.admit('other')).toEqual({ ok: true });
+    expect(await health.admit('other', 1)).toEqual({ ok: true });
   });
 
   it('empty_completion / param_adjustment 等不进状态机；failed/success 后清理 requestId 映射', async () => {
@@ -177,84 +154,80 @@ describe('health/channel-health：AiEvent 订阅者（§3.6 零运维状态的 i
 
   it('B12 回归（v2 实施期缺陷）：empty_completion 终态清理 requestId→channelKey 映射（currentChannel 泄漏）', async () => {
     // 泄漏形态：ai 非流式空完成重试耗尽只发 empty_completion（无 failed/success 跟随），
-    // 初版只在这两个终态清 currentChannel——映射随请求量无界增长；且同 requestId 迟到的
-    // first_chunk 会借残留映射把成功记到已终态的渠道上（误自愈）。
+    // 只在这两个终态清 currentChannel 的话映射随请求量无界增长；且同 requestId 迟到的
+    // first_chunk 会借残留映射把成功记到已终态的渠道上（误恢复熔断窗口）。
     const store = createMemoryHealthStore();
     const health = createChannelHealth({ store, config });
     const { ai, emit } = fakeAi();
     health.attach(ai);
-    // 先把 kc 打成死凭据（2 次 invalid）
-    emit({
-      type: 'failed',
-      requestId: 'r0',
-      channelKey: 'kc',
-      error: upstreamError('invalid_api_key'),
-    });
-    emit({
-      type: 'failed',
-      requestId: 'r0b',
-      channelKey: 'kc',
-      error: upstreamError('invalid_api_key'),
-    });
-    await flush();
-    expect(await health.admit('kc')).toEqual({ ok: false, reason: 'dead_credential' });
+    // 熔断计数 1 次（未达阈值 2）
+    emit({ type: 'failed', requestId: 'r0', channelKey: 'kc', error: upstreamError('network') });
     // 空完成终态序列：attempt_start 登记 → empty_completion 终态（映射应被清理）
     emit({ type: 'attempt_start', requestId: 'rx', channelKey: 'kc', attempt: 1, atMs: 1 });
     emit({ type: 'empty_completion', requestId: 'rx', channelKey: 'kc', attempt: 1 });
-    // 同 requestId 迟到的 first_chunk：映射已清 → 不记账（泄漏形态会误自愈死凭据）
+    // 同 requestId 迟到的 first_chunk：映射已清 → 不记账（泄漏形态会误记成功清窗）
     emit({ type: 'first_chunk', requestId: 'rx', atMs: 2 });
     await flush();
-    expect(await health.admit('kc')).toEqual({ ok: false, reason: 'dead_credential' });
+    const breaker = await store.getState<BreakerState>('breaker:kc');
+    expect(breaker?.failures).toHaveLength(1); // 迟到 first_chunk 未清窗
   });
 
-  it('终态事件序列后映射清空：success/failed/empty_completion 各自终态均清理（Map 不残留）', async () => {
+  it('P2 回归网：三类终态（success/failed/empty_completion）都清映射——迟到 first_chunk 不误恢复 half-open 探测', async () => {
+    // half-open 是唯一能观察「误记成功」的状态：closed 态 recordSuccess 为 no-op，
+    // 断言不出映射泄漏。此处把渠道打到 half-open，若终态未清映射，迟到的
+    // first_chunk 会借残留映射 recordSuccess → half-open 恢复 closed（探测窗口被清）。
+    // （channel-health 状态机用真实时钟——冷却 1ms 让 open 即刻可转 half-open）
+    const shortCooldown = {
+      ...config,
+      breaker: { ...config.breaker, cooldownMs: 1 },
+    };
     const store = createMemoryHealthStore();
-    const health = createChannelHealth({ store, config });
+    const health = createChannelHealth({ store, config: shortCooldown });
     const { ai, emit } = fakeAi();
     health.attach(ai);
-    // 三条请求各走一类终态；attempt_start 渠道先记 1 次死凭据失败
-    //（consecutiveFailures=1）。终态后同 requestId 迟到的 first_chunk 若借残留映射
-    // 记成功，会把该渠道计数清零（version 递增）——据此断言映射已被终态清理。
-    // ra：换渠后成功（attempt 渠道 ≠ success 渠道——映射应清成 success 后无键）
+    const toHalfOpen = async (key: string): Promise<void> => {
+      emit({
+        type: 'failed',
+        requestId: `${key}-f1`,
+        channelKey: key,
+        error: upstreamError('network'),
+      });
+      emit({
+        type: 'failed',
+        requestId: `${key}-f2`,
+        channelKey: key,
+        error: upstreamError('timeout'),
+      });
+      await flush(); // 冷却 1ms 已过 → admit 触发 open→half-open
+      expect(await health.admit(key, 1)).toEqual({ ok: true });
+    };
+    // ra：failed 终态（invalid_api_key circuitTrip=false——熔断面无变化，渠道保持 half-open）
+    await toHalfOpen('ka');
+    emit({ type: 'attempt_start', requestId: 'ra', channelKey: 'ka', attempt: 1, atMs: 1 });
     emit({
       type: 'failed',
-      requestId: 'ra-warm',
-      channelKey: 'ka1',
+      requestId: 'ra',
+      channelKey: 'ka',
       error: upstreamError('invalid_api_key'),
     });
-    emit({ type: 'attempt_start', requestId: 'ra', channelKey: 'ka1', attempt: 1, atMs: 1 });
-    emit({ type: 'success', requestId: 'ra', channelKey: 'ka2', durationMs: 5 });
-    // rb：failed 终态
-    emit({
-      type: 'failed',
-      requestId: 'rb-warm',
-      channelKey: 'kb',
-      error: upstreamError('invalid_api_key'),
-    });
+    // rb：success 终态换渠（记账落 kb2 键；kb 本身保持 half-open）
+    await toHalfOpen('kb');
     emit({ type: 'attempt_start', requestId: 'rb', channelKey: 'kb', attempt: 1, atMs: 1 });
-    emit({
-      type: 'failed',
-      requestId: 'rb',
-      channelKey: 'kb',
-      error: upstreamError('network'),
-    });
-    // rc：empty_completion 终态
-    emit({
-      type: 'failed',
-      requestId: 'rc-warm',
-      channelKey: 'kc2',
-      error: upstreamError('invalid_api_key'),
-    });
-    emit({ type: 'attempt_start', requestId: 'rc', channelKey: 'kc2', attempt: 1, atMs: 1 });
-    emit({ type: 'empty_completion', requestId: 'rc', channelKey: 'kc2', attempt: 1 });
-    await flush(); // 落三渠道失败计数（version=1、consecutiveFailures=1）
+    emit({ type: 'success', requestId: 'rb', channelKey: 'kb2', durationMs: 5 });
+    // rc：empty_completion 终态（只清映射不记账）
+    await toHalfOpen('kc');
+    emit({ type: 'attempt_start', requestId: 'rc', channelKey: 'kc', attempt: 1, atMs: 1 });
+    emit({ type: 'empty_completion', requestId: 'rc', channelKey: 'kc', attempt: 1 });
+    await flush();
+    // 同 requestId 迟到的 first_chunk：映射已被终态清理 → 不得记账（残留形态会把 half-open 误翻 closed）
     emit({ type: 'first_chunk', requestId: 'ra', atMs: 9 });
     emit({ type: 'first_chunk', requestId: 'rb', atMs: 9 });
     emit({ type: 'first_chunk', requestId: 'rc', atMs: 9 });
     await flush();
-    for (const key of ['credential:ka1', 'credential:kb', 'credential:kc2']) {
-      const state = await store.getState<DeadCredentialState>(key);
-      expect(state, key).toMatchObject({ status: 'valid', consecutiveFailures: 1, version: 1 });
+    for (const key of ['ka', 'kb', 'kc']) {
+      expect(await store.getState<BreakerState>(`breaker:${key}`)).toMatchObject({
+        state: 'half-open',
+      });
     }
   });
 
@@ -289,6 +262,6 @@ describe('health/channel-health：AiEvent 订阅者（§3.6 零运维状态的 i
     emit({ type: 'failed', requestId: 'r', channelKey: 'k', error: upstreamError('network') });
     await flush();
     expect(faults.length).toBeGreaterThan(0); // 写失败被观察而非吞没成静默
-    expect(await health.admit('k')).toEqual({ ok: true }); // fail-open：健康检查不作可用性单点
+    expect(await health.admit('k', 1)).toEqual({ ok: true }); // fail-open：健康检查不作可用性单点
   });
 });

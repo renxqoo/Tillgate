@@ -38,21 +38,25 @@ export function toBillingEvent(signal: BillingSignal): BillingEvent {
   }
 }
 
-export function toChannelCandidate(row: {
-  channelId: number;
-  channelName: string;
-  providerName: string | null;
-  providerProtocol: string;
-  providerVendor: string | null;
-  baseUrlOverride: string | null;
-  providerBaseUrl: string;
-  apiKeyEnc: string;
-  priority: number;
-  weight: number;
-  rpmLimit: number | null;
-  tpmLimit: number | null;
-  upstreamBudget: string;
-}): ChannelCandidate {
+export function toChannelCandidate(
+  row: {
+    channelId: number;
+    channelName: string;
+    providerName: string | null;
+    providerProtocol: string;
+    providerVendor: string | null;
+    baseUrlOverride: string | null;
+    providerBaseUrl: string;
+    apiKeyEnc: string;
+    priority: number;
+    weight: number;
+    rpmLimit: number | null;
+    tpmLimit: number | null;
+    upstreamBudget: string;
+  },
+  /** 出站模型名（任务路径 = 任务行提交时快照；渠道行不持绑定名） */
+  upstreamModel: string,
+): ChannelCandidate {
   return {
     channelId: row.channelId,
     channelName: row.channelName,
@@ -61,6 +65,7 @@ export function toChannelCandidate(row: {
     vendor: row.providerVendor,
     baseUrl: row.baseUrlOverride ?? row.providerBaseUrl,
     apiKeyEnc: row.apiKeyEnc,
+    upstreamModel,
     priority: row.priority,
     weight: row.weight,
     rpmLimit: row.rpmLimit,

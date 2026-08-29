@@ -1,4 +1,4 @@
-import { beijingDayStart, beijingTrendsFrom } from './day-window';
+import { DAY_MS, beijingDayKey, beijingDayStart, beijingTrendsFrom } from './day-window';
 import type {
   ChannelStatusCount,
   ChannelTtftRow,
@@ -7,6 +7,7 @@ import type {
   UsageGroupRow,
   UsageGroupAxis,
   UsageStatsStore,
+  UsageTrendRow,
 } from './types';
 
 /**
@@ -37,7 +38,7 @@ export interface UsageQueries {
     from?: Date;
     to?: Date;
   }): Promise<{ list: UsageGroupRow[] }>;
-  /** 按日趋势:近 N 天(含今日;北京日界) */
+  /** 按日趋势:近 N 天(含今日;北京日界;无流量日补零行,rows 恒为 N 天完整序列) */
   trends(input: { days: number; now: Date }): Promise<{
     days: number;
     rows: Array<{
@@ -102,14 +103,22 @@ export function createUsageQueries(env: { store: UsageStatsStore }): UsageQuerie
     async trends(input) {
       const from = beijingTrendsFrom(input.days, input.now);
       const rows = await store.dailyTrends(from);
-      return {
-        days: input.days,
-        rows: rows.map((row) => ({
-          ...row,
-          inputTokens: Number(row.inputTokens),
-          outputTokens: Number(row.outputTokens),
-        })),
-      };
+      // store 只回有流量的日(缺行表示零)——按窗口补零行,消费方拿到完整 N 天序列
+      const byDate = new Map(rows.map((row) => [row.date, row]));
+      const filled: UsageTrendRow[] = [];
+      for (let i = 0; i < input.days; i++) {
+        const date = beijingDayKey(new Date(from.getTime() + i * DAY_MS));
+        const row = byDate.get(date);
+        filled.push({
+          date,
+          requests: row?.requests ?? 0,
+          successCount: row?.successCount ?? 0,
+          inputTokens: row ? Number(row.inputTokens) : 0,
+          outputTokens: row ? Number(row.outputTokens) : 0,
+          cost: row?.cost ?? '0',
+        });
+      }
+      return { days: input.days, rows: filled };
     },
 
     async channelTtft(input) {
