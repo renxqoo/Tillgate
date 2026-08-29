@@ -75,3 +75,11 @@ gateway 的依赖闭包覆盖 e2e 所需全部模块；vitest 从 `apps/gateway`
    （bun 1.4 / node 22/24）不 resolve（要等两分支齐 cancel），且挂起时另一分支的
    `pipeTo` 停摆。修复：peekFirstChunk 改为原始 reader 直读 + 回放式 rest 包装
    （契约不变，零 tee）。
+
+## 类型检查入口（`bun run typecheck:e2e`）
+
+`tsconfig.json` 目前只覆盖 `gateway/` 套件与三个 vitest 配置——e2e 不在任何 workspace
+的 typecheck 门禁内，历史积压的存量类型错误（drizzle execute 返回类型收紧、API 契约
+漂移、kit 替身缺字段）需逐套件清理后才能扩围。存量待修（按错误数排序，共 ~95 个）：
+`security/`(27)、`live-fire/`(~45)、`admin/`(9)、`client-journey/`(4)、
+`billing-recovery/`(1)。扩围方式：把目录加进 `tsconfig.json#include` 并清零该目录错误。

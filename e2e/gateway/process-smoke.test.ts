@@ -167,11 +167,12 @@ it.skipIf(!hasEnv)(
         expect(code).toBe(0);
       }
       await keys.settleAll(userId);
-      const bills = await world.db.execute<{ status: string }>(
+      // drizzle execute 泛型不生效：按 smart-routing.test 先例 as 收窄行形状
+      const bills = (await world.db.execute(
         sql`select status from billing_requests where user_id = ${userId}`,
-      );
+      )) as Array<{ status: string }>;
       console.log(`${form} 冒烟账单：`, bills.map((b) => b.status).join(','));
-      expect(bills.every((b: { status: string }) => b.status === 'settled')).toBe(true);
+      expect(bills.every((b) => b.status === 'settled')).toBe(true);
     };
 
     try {

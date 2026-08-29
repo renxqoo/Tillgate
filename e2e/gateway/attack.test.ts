@@ -296,13 +296,10 @@ describe.skipIf(!hasEnv)('E2E', () => {
       const streamFlags = bills.map(receiptStreamFlag);
       expect(streamFlags.filter(Boolean).length).toBe(4);
       // 逐笔一致：收据 token 与 usage_logs 行 token 完全相等（不多算不少算）
-      const logs = await world.db.execute<{
-        request_id: string;
-        input_tokens: string;
-        output_tokens: string;
-      }>(
+      // drizzle execute 泛型不生效：按 smart-routing.test 先例 as 收窄行形状
+      const logs = (await world.db.execute(
         sql`select request_id, input_tokens::text, output_tokens::text from usage_logs where user_id = ${userId}`,
-      );
+      )) as Array<{ request_id: string; input_tokens: string; output_tokens: string }>;
       expect(logs.length).toBe(8);
       for (const bill of bills) {
         const log = findLogByRequestId(logs, bill.request_id);
