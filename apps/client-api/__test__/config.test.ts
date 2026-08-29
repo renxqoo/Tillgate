@@ -87,4 +87,15 @@ describe('client-api config', () => {
   it('端点覆盖非法 JSON fail-loud', () => {
     expect(() => load({ OAUTH_GITHUB_ENDPOINTS_JSON: '{oops' })).toThrowError(/valid JSON/);
   });
+
+  it('OAuth 上游策略键:缺省 undefined(走 identity 装配缺省)/覆盖生效/越界拒绝', () => {
+    const def = load();
+    expect(def.OAUTH_UPSTREAM_TIMEOUT_MS).toBeUndefined();
+    expect(def.OAUTH_UPSTREAM_ATTEMPTS).toBeUndefined();
+    const tuned = load({ OAUTH_UPSTREAM_TIMEOUT_MS: '8000', OAUTH_UPSTREAM_ATTEMPTS: '3' });
+    expect(tuned.OAUTH_UPSTREAM_TIMEOUT_MS).toBe(8_000);
+    expect(tuned.OAUTH_UPSTREAM_ATTEMPTS).toBe(3);
+    rejectLoad({ OAUTH_UPSTREAM_TIMEOUT_MS: '999' }, /OAUTH_UPSTREAM_TIMEOUT_MS/);
+    rejectLoad({ OAUTH_UPSTREAM_ATTEMPTS: '5' }, /OAUTH_UPSTREAM_ATTEMPTS/);
+  });
 });

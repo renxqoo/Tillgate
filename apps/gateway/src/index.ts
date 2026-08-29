@@ -62,6 +62,9 @@ function toAppDeps(
   };
 }
 
+/** server 空闲切断选项:流式长 think 间隔可达分钟级,Bun 缺省 10s 会静默截断——取平台上限 255s(nginx 流式读超时 360s) */
+const GATEWAY_SERVE_OPTIONS = { idleTimeoutSeconds: 255 } as const;
+
 async function main(): Promise<void> {
   const config = loadGatewayConfig();
   const assembly = await assembleGateway(config);
@@ -78,7 +81,7 @@ async function main(): Promise<void> {
     drainSignal: drainController.signal,
   });
 
-  const server = serveApp(app, { port: config.port }, () => {
+  const server = serveApp(app, { port: config.port, ...GATEWAY_SERVE_OPTIONS }, () => {
     logger.info(
       {
         port: config.port,
