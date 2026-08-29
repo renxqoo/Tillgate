@@ -20,7 +20,8 @@ export type UpstreamScript =
   | 'stream-usage' // SSE：增量帧（累计 usage）+ 终帧 + DONE
   | 'stream-usage-hold' // SSE：增量帧后挂住（取消/断连向量）
   | 'stream-no-usage-hold' // SSE：无 usage 增量帧后挂住（估算向量）
-  | 'stream-done-no-usage'; // SSE：完成但无 usage（usage_missing_completed 向量）
+  | 'stream-done-no-usage' // SSE：完成但无 usage（usage_missing_completed 向量）
+  | 'rate-limit'; // 429 + Retry-After——智能路由惩罚箱向量（换渠 + 跨请求冷却）
 
 export interface RecordedRequest {
   headers: Record<string, string | string[] | undefined>;
@@ -38,7 +39,13 @@ export interface MockUpstream {
   delayMs: number;
   /** 流帧间延迟 ms（慢流向量） */
   frameGapMs: number;
+  /** rate-limit 脚本的 Retry-After 秒数（0 = 不发头——冷却时长完全由策略参数决定的观测向量） */
+  rateLimitRetryAfterSec: number;
   recorded: RecordedRequest[];
+  /** 鉴权被拒的 Bearer 明文序列（401 请求不进 recorded——死凭据向量的渠道命中计数） */
+  rejectedAuth: string[];
+  /** 监听就绪屏障（resolve 时 url 已定——调用方在首个请求前 await） */
+  ready: Promise<void>;
   close(): Promise<void>;
 }
 
@@ -162,6 +169,22 @@ function runScript(script: Exclude<UpstreamScript, 'auto'>, ctx: RespondContext)
       );
       return;
     }
+    case 'rate-limit': {
+      // Retry-After（秒）：adapter 解析为 retryAfterMs——惩罚箱冷却的权威下界
+      //（3s：同渠道收紧重试的退避下界与冷却窗口共用——e2e 时序可控）
+      ctx.res.writeHead(429, {
+        'content-type': 'application/json',
+        ...(ctx.state.rateLimitRetryAfterSec > 0
+          ? { 'retry-after': String(ctx.state.rateLimitRetryAfterSec) }
+          : {}),
+      });
+      ctx.res.end(
+        JSON.stringify({
+          error: { message: 'rate limited (scripted)', type: 'rate_limit_error' },
+        }),
+      );
+      return;
+    }
     default: {
       ctx.res.writeHead(200, { 'content-type': 'application/json' });
       ctx.res.end(nonstreamBody('hi', ctx.n, USAGE_SMALL));
@@ -170,17 +193,12 @@ function runScript(script: Exclude<UpstreamScript, 'auto'>, ctx: RespondContext)
 }
 
 export function startMockUpstream(): MockUpstream {
-  const state: MockUpstream = {
-    url: '',
-    script: 'auto',
-    delayMs: 0,
-    frameGapMs: 0,
-    recorded: [],
-    close: async () => {},
-  };
+  // server/listening 先于 state 构造：ready 进对象字面量（接口成员齐备，无事后补挂）。
+  // 回调闭包引用后声明的 state 是安全的——监听与请求回调都异步于同步初始化之后触发。
   const server: Server = createServer((req, res) => {
     const auth = req.headers.authorization ?? '';
     if (auth !== `Bearer ${E2E_UPSTREAM_KEY}`) {
+      state.rejectedAuth.push(auth);
       res.writeHead(401, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: { message: 'bad upstream key' } }));
       return;
@@ -207,13 +225,22 @@ export function startMockUpstream(): MockUpstream {
       resolve();
     });
   });
+  const state: MockUpstream = {
+    url: '',
+    script: 'auto',
+    delayMs: 0,
+    frameGapMs: 0,
+    rateLimitRetryAfterSec: 3,
+    recorded: [],
+    rejectedAuth: [],
+    ready: listening,
+    close: async () => {},
+  };
   state.close = async () => {
     (server as unknown as { closeAllConnections?: () => void }).closeAllConnections?.();
     await new Promise<void>((resolve) => {
       server.close(() => resolve());
     });
   };
-  // 同步返回（url 由首个用例前经 ready() 屏障确保——见 setupE2EWorld）
-  (state as { ready?: Promise<void> }).ready = listening;
   return state;
 }

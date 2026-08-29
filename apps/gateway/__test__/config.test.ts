@@ -113,6 +113,15 @@ describe('fail-closed', () => {
     ).toThrow();
   });
 
+  it('路由策略 TTL：缺省 15s（管理台保存 → 生效的最大延迟）；下限 1s / 上限 5min', () => {
+    expect(loadGatewayConfig(BASE).routingPolicyTtlMs).toBe(15_000);
+    expect(loadGatewayConfig({ ...BASE, ROUTING_POLICY_TTL_MS: '1000' }).routingPolicyTtlMs).toBe(
+      1_000,
+    );
+    expect(() => loadGatewayConfig({ ...BASE, ROUTING_POLICY_TTL_MS: '999' })).toThrow();
+    expect(() => loadGatewayConfig({ ...BASE, ROUTING_POLICY_TTL_MS: '300001' })).toThrow();
+  });
+
   it('生产弱 JWT 密钥拒绝（32 门槛）；开发 16 即可', () => {
     expect(() =>
       loadGatewayConfig({ ...BASE, NODE_ENV: 'production', JWT_SECRET: secret('xY9z', 16) }),

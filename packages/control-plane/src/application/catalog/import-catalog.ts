@@ -199,6 +199,7 @@ export async function importCatalog(
           await deps.stores.model.ensureModelChannelBinding(tx, {
             mappingId: existingMapping.id,
             channelId: refChannelId,
+            upstreamModel: m.realModel,
           });
           skipped += 1;
           continue;
@@ -214,6 +215,7 @@ export async function importCatalog(
         await deps.stores.model.ensureModelChannelBinding(tx, {
           mappingId: inserted.id,
           channelId: refChannelId,
+          upstreamModel: m.realModel,
         });
         created += 1;
         continue;
@@ -243,6 +245,7 @@ export async function importCatalog(
         await deps.stores.model.ensureModelChannelBinding(tx, {
           mappingId: existingMapping.id,
           channelId,
+          upstreamModel: m.realModel,
         });
         updated += 1;
       } else {
@@ -256,6 +259,7 @@ export async function importCatalog(
         await deps.stores.model.ensureModelChannelBinding(tx, {
           mappingId: inserted.id,
           channelId,
+          upstreamModel: m.realModel,
         });
         created += 1;
       }

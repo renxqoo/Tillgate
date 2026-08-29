@@ -112,7 +112,7 @@ describe('逻辑删除（回收站）', () => {
       view: 'deleted',
     });
     expect(recycled.rows.map((r) => r.id)).toEqual([row.id]);
-    expect(defined(recycled.rows[0]).channelIds).toEqual([]); // 绑定回显不炸（绑定本身保留）
+    expect(defined(recycled.rows[0]).channels).toEqual([]); // 绑定回显不炸（绑定本身保留）
     expect(audit.entries.map((e) => e.action)).toContain('model.delete');
   });
 
@@ -237,7 +237,7 @@ describe('重名创建 → model_exists 精确回执', () => {
   });
 });
 
-describe('绑定全量替换 + channelIds 回显', () => {
+describe('绑定全量替换 + 绑定回显', () => {
   it('绑 A → 绑 B = 全量替换（只剩 B）；空数组 = 解绑全部', async () => {
     const { deps, models } = setup();
     const row = await createOk(deps);
@@ -247,12 +247,18 @@ describe('绑定全量替换 + channelIds 回显', () => {
       channels: [{ channelId: 11 }],
     });
     expect(defined(models.rows.get(row.id)).bindings.map((b) => b.channelId)).toEqual([11]);
+    // 缺省出站名物化为映射规范名（落库恒显式）
+    expect(defined(models.rows.get(row.id)).bindings.map((b) => b.upstreamModel)).toEqual([
+      row.realModel,
+    ]);
     await bindModelChannels(deps, {
       ctx: adminCtx(),
       mappingId: row.id,
-      channels: [{ channelId: 22 }],
+      channels: [{ channelId: 22, upstreamModel: 'vendor-x/claude' }],
     });
-    expect(defined(models.rows.get(row.id)).bindings.map((b) => b.channelId)).toEqual([22]);
+    expect(defined(models.rows.get(row.id)).bindings).toEqual([
+      { channelId: 22, upstreamModel: 'vendor-x/claude', weight: 1, priority: 0 },
+    ]);
     const listResult = await listModels(deps, {
       q: row.externalName,
       sortBy: 'createdAt',
@@ -260,7 +266,9 @@ describe('绑定全量替换 + channelIds 回显', () => {
       limit: 10,
       offset: 0,
     });
-    expect(defined(listResult.rows[0]).channelIds).toEqual([22]);
+    expect(defined(listResult.rows[0]).channels).toEqual([
+      { channelId: 22, upstreamModel: 'vendor-x/claude' },
+    ]);
     // 空数组 = 解绑全部
     await bindModelChannels(deps, { ctx: adminCtx(), mappingId: row.id, channels: [] });
     expect(defined(models.rows.get(row.id)).bindings).toHaveLength(0);
@@ -271,7 +279,7 @@ describe('绑定全量替换 + channelIds 回显', () => {
       limit: 10,
       offset: 0,
     });
-    expect(defined(after.rows[0]).channelIds).toEqual([]); // 未绑定 = []（而非 undefined）
+    expect(defined(after.rows[0]).channels).toEqual([]); // 未绑定 = []（而非 undefined）
   });
 
   it('绑定不存在的模型 → model_not_found', async () => {
@@ -307,6 +315,24 @@ describe('模型探针', () => {
     expect(defined(probe.calls[0]).target.apiKey).toBe('enc-for-5'); // 内存替身 cipher 解密路径
     expect(defined(probe.calls[0]).requestId).toBe(`model-test-${row.id}-5`);
     void models;
+  });
+
+  it('绑定异名渠道：探针按绑定出站名探测（不再用映射规范名）', async () => {
+    const { deps, probe } = setup();
+    const row = await createOk(deps, { realModel: 'probe-real' });
+    await bindModelChannels(deps, {
+      ctx: adminCtx(),
+      mappingId: row.id,
+      channels: [
+        { channelId: 5, upstreamModel: 'vendor-a/probe-real' },
+        { channelId: 6, upstreamModel: 'probe-real' },
+      ],
+    });
+    await probeModel(
+      { db: deps.db, stores: { model: deps.stores.model }, cipher: fakeCipher, probe: probe.probe },
+      row.id,
+    );
+    expect(probe.calls.map((c) => defined(c).model)).toEqual(['vendor-a/probe-real', 'probe-real']);
   });
 
   it('上游失败 → ok:false + 错误码透传；模型不存在 → model_not_found', async () => {

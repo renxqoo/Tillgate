@@ -38,10 +38,10 @@ describe('migration journal ↔ SQL files', () => {
     expect(sqlFiles.toSorted()).toEqual(journalTags.toSorted());
   });
 
-  it('条目总数 = 101(0000-0096,历史缺口 0036 在案;0076 = identity 七表;0081 = admins.role;0082 = 动态 RBAC 权限树/角色;0083 = drop admins.role 旧列;0084 = 接口绑定;0085 = 接口绑定独立成页;0086 = 第三方集成动态配置;0087 = 集成写权限拆分;0088 = oauth.base 退回 env;0089 = 凭据旧列退役 drop users/admins.password_hash;0090 = 会话失效线旧列退役 drop users/admins.session_invalid_before;0091 = drop admins.two_factor_secret 预留列;0092 = SMTP 探针端点绑定;0093 = 管理员邀请重发端点绑定;0094 = 结算超收放弃额;0095 = 钱包结算透支地板;0096 = 透支地板管理面;0097 = 预扣策略管理面端点绑定;0098 = 渠道用量证据缺陷计数;0099 = 预扣敞口上限管理面;0100 = 资金中心模块导航/汇率权限;0101 = usage_logs 用量钳制审计列)', () => {
-    expect(journalTags.length).toBe(101);
+  it('条目总数 = 104(0000-0096,历史缺口 0036 在案;0076 = identity 七表;0081 = admins.role;0082 = 动态 RBAC 权限树/角色;0083 = drop admins.role 旧列;0084 = 接口绑定;0085 = 接口绑定独立成页;0086 = 第三方集成动态配置;0087 = 集成写权限拆分;0088 = oauth.base 退回 env;0089 = 凭据旧列退役 drop users/admins.password_hash;0090 = 会话失效线旧列退役 drop users/admins.session_invalid_before;0091 = drop admins.two_factor_secret 预留列;0092 = SMTP 探针端点绑定;0093 = 管理员邀请重发端点绑定;0094 = 结算超收放弃额;0095 = 钱包结算透支地板;0096 = 透支地板管理面;0097 = 预扣策略管理面端点绑定;0098 = 渠道用量证据缺陷计数;0099 = 预扣敞口上限管理面;0100 = 资金中心模块导航/汇率权限;0101 = usage_logs 用量钳制审计列;空号 0102 在案;0103 = routing_policies 热配置表;0104 = 智能路由管理端点/导航页绑定;0105 = billing_requests 渠道维窗口索引;0106 = 绑定级上游模型名+任务出站名快照)', () => {
+    expect(journalTags.length).toBe(105);
     expect(journalTags[0]).toBe('0000_rapid_living_mummy');
-    expect(journalTags.at(-1)).toBe('0101_usage_clamp_audit');
+    expect(journalTags.at(-1)).toBe('0106_model_channels_upstream_model');
   });
 
   it('tag 编号严格递增,无重复', () => {
@@ -69,10 +69,11 @@ describe('migration journal ↔ SQL files', () => {
     }
   });
 
-  it('历史缺口是断言在案的物理事实:tag 缺 0036、idx 跳 37', () => {
-    // 缺口来自早期一次被移除的迁移(生产 journal 即如此);出现新的缺口/回填缺口
-    // 都必须先改本断言再改链——防止静默漂移。
+  it('历史缺口是断言在案的物理事实:tag 缺 0036、0102;idx 跳 37', () => {
+    // 缺口是断言在案的物理事实:0036 来自早期一次被移除的迁移(生产 journal 即如此),
+    // 0102 为空号;出现新的缺口/回填缺口都必须先改本断言再改链——防止静默漂移。
     expect(journalTags.some((t) => tagNumber(t) === 36)).toBe(false);
+    expect(journalTags.some((t) => tagNumber(t) === 102)).toBe(false);
     expect(journal.entries.some((e) => e.idx === 37)).toBe(false);
     expect(journal.entries.map((e) => e.idx)).toEqual(
       expect.arrayContaining([36, 38]), // 0037 占 idx 36,0038 占 idx 38

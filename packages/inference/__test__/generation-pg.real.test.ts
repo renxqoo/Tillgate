@@ -112,6 +112,7 @@ describe.skipIf(url == null)('生成任务 postgres 存储（真实 PG）', () =
     channelId: seed.channelId,
     kind: 'video',
     upstreamTaskId,
+    upstreamModel: 'real-gen',
     status: 'queued',
     params: { prompt: 'it', duration: 6 },
     receiptTemplate: {

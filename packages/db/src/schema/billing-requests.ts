@@ -93,6 +93,7 @@ export const billingRequests = pgTable(
     index('billing_requests_user_status_idx').on(t.userId, t.status),
     index('billing_requests_api_key_status_idx').on(t.apiKeyId, t.status),
     index('billing_requests_status_created_idx').on(t.status, t.createdAt),
+    index('billing_requests_channel_created_idx').on(t.channelId, t.createdAt),
     index('billing_requests_pending_idx').on(t.status, t.nextSettlementAt),
     index('billing_requests_lease_idx').on(t.status, t.leaseExpiresAt),
     index('billing_requests_claim_idx').on(t.status, t.claimUntil),

@@ -168,6 +168,7 @@ const candidateRow = (over: Partial<RouteCandidateRow> = {}): RouteCandidateRow 
   apiKeyEnc: 'e',
   baseUrlOverride: null,
   providerName: 'p',
+  upstreamModel: 'r',
   providerBaseUrl: 'https://p',
   providerProtocol: 'openai-compatible',
   providerVendor: null,
@@ -176,6 +177,7 @@ const candidateRow = (over: Partial<RouteCandidateRow> = {}): RouteCandidateRow 
   rpmLimit: null,
   tpmLimit: null,
   upstreamBudget: '0',
+  upstreamRemaining: '0',
   ...over,
 });
 
@@ -188,7 +190,7 @@ describe('catalog 渠道可选列 / billing 可选字段透传', () => {
       channels: {
         findRouteCandidates: async () => [
           candidateRow(),
-          candidateRow({ rpmLimit: 5, tpmLimit: 6, upstreamBudget: '7' }),
+          candidateRow({ rpmLimit: 5, tpmLimit: 6, upstreamBudget: '7', upstreamRemaining: '3' }),
         ],
       },
       rateCards: { findActiveCardByUser: async () => null },
@@ -197,6 +199,7 @@ describe('catalog 渠道可选列 / billing 可选字段透传', () => {
     const channels = await catalog.resolveChannels('x');
     expect('rpmLimit' in defined(channels[0], 'channels[0]')).toBe(false);
     expect(channels[1]).toMatchObject({ rpmLimit: 5, tpmLimit: 6, upstreamBudget: '7' });
+    expect(channels[1]).toMatchObject({ upstreamRemaining: '3' }); // 水位列透传（软水位信号）
   });
 
   it('billing authorize：cacheWrite/unitPrice 非空候选透传进报价', async () => {

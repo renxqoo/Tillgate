@@ -20,6 +20,8 @@ export interface GatewayShutdownDeps {
   /** 退出函数注入（测试）；生产缺省走 runtime 的 process.exit */
   exit?: (code: number) => never;
   logger?: { info(obj: unknown, msg: string): void; error(obj: unknown, msg: string): void };
+  /** 路由策略 TTL reader 定时器停止面（装配注入；未注入 = 无定时器） */
+  policyReaderStop?: () => void;
 }
 
 export function createGatewayShutdown(deps: GatewayShutdownDeps) {
@@ -37,6 +39,7 @@ export function createGatewayShutdown(deps: GatewayShutdownDeps) {
     closeables: [
       { close: async () => deps.inference.close() },
       { close: () => deps.settleWake.close() },
+      ...(deps.policyReaderStop != null ? [{ close: async () => deps.policyReaderStop?.() }] : []),
     ],
     ...(deps.exit != null ? { exit: deps.exit } : {}),
     ...(logger != null

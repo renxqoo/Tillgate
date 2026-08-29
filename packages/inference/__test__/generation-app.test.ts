@@ -3,6 +3,11 @@ import { isBusinessError } from '@tillgate/errors';
 import { createInference } from '../src/inference';
 import { createMemoryGenerationTaskStore } from '../src/adapters/task-memory';
 import { createMemoryHealthStore } from '../src/adapters/state-memory';
+import { createMemoryStickyStore, staticRoutingPolicy } from '../src/ports/routing';
+import { routingPolicySchema } from '../src/routing/policy';
+import { stickyKeyOf } from '../src/routing/sticky';
+import type { DeadCredentialState } from '../src/health/dead-credential';
+import type { ModelDeadState } from '../src/health/model-dead';
 import {
   baseAuth,
   buildInference,
@@ -206,5 +211,78 @@ describe('application/generation：提交与查询用例', () => {
       code: 'invalid_request',
     });
     s.detach();
+  });
+
+  it('P2 回归：task_execute 登记无上游证据——不自愈死凭据/死记忆，只记 sticky', async () => {
+    // 登记态只过了健康/预算门，未发生上游调用（worker 事后执行）——
+    // 死凭据计数与死记忆计数不得被登记流量清零（旧实现 recordSettleSuccess
+    // 会把两者清 0，延缓坏 Key/死模型检测）
+    const store = createMemoryHealthStore();
+    const upstream = fakeUpstream();
+    const billing = fakeBilling();
+    const catalog = fakeCatalog(
+      {
+        'mus-model': mapping({
+          mappingId: 22,
+          externalModel: 'mus-model',
+          realModel: 'mus-real',
+          pricingUnit: 'request',
+        }),
+      },
+      { 'mus-real': [channel({ channelId: 2, channelName: 'ch-music' })] },
+    );
+    const sticky = createMemoryStickyStore();
+    const policy = staticRoutingPolicy(
+      routingPolicySchema.parse({ scorers: { cacheAffinity: { enabled: true } } }),
+    );
+    const inference = createInference({
+      ai: fakeAi().ai,
+      catalog,
+      billing: billing.port,
+      store,
+      policy,
+      stickyStore: sticky,
+      decrypt: (enc) => enc,
+      upstream: upstream.port,
+      tasks: createMemoryGenerationTaskStore(),
+    });
+    // 预涂：死凭据 2/3（未达 invalid）+ 死记忆计数 2/3（未判死）
+    inference.health.recordDeadCredential(2, true);
+    inference.health.recordDeadCredential(2, true);
+    await new Promise((r) => {
+      setTimeout(r, 5);
+    });
+    await store.compareAndSet(
+      'dead-model:mus-real',
+      0,
+      { dead: false, consecutive: 2, lastFailedAt: Date.now(), version: 1 },
+      60_000,
+    );
+
+    const body = { model: 'mus-model', prompt: 'song', lyrics: '[a]' };
+    const outcome = await inference.generation.submit({
+      requestId: 'gen-reg',
+      auth: baseAuth,
+      kind: 'music',
+      body,
+    });
+    expect(outcome.ok).toBe(true);
+    await new Promise((r) => {
+      setTimeout(r, 5);
+    });
+    // 登记成功不清零（自愈留给 worker 真实执行结算面）
+    await expect(store.getState<DeadCredentialState>('credential:ch:2')).resolves.toMatchObject({
+      consecutiveFailures: 2,
+    });
+    await expect(store.getState<ModelDeadState>('dead-model:mus-real')).resolves.toMatchObject({
+      consecutive: 2,
+    });
+    // cache 亲和粘滞仍记录（偏好面，无证据要求）
+    const key = stickyKeyOf(
+      { auth: baseAuth, body, externalModel: 'mus-model', endpoint: 'music' },
+      policy.latest().scorers.cacheAffinity.prefixChars,
+    );
+    await expect(sticky.get(key)).resolves.toBe(2);
+    inference.close();
   });
 });

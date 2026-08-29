@@ -170,11 +170,13 @@ function toChannelCandidate(row: RouteCandidateRow): ChannelCandidate {
     vendor: row.providerVendor,
     baseUrl: row.baseUrlOverride ?? row.providerBaseUrl,
     apiKeyEnc: row.apiKeyEnc,
+    upstreamModel: row.upstreamModel,
     priority: row.priority,
     weight: row.weight,
     ...(row.rpmLimit != null ? { rpmLimit: row.rpmLimit } : {}),
     ...(row.tpmLimit != null ? { tpmLimit: row.tpmLimit } : {}),
     ...(row.upstreamBudget != null ? { upstreamBudget: row.upstreamBudget } : {}),
+    ...(row.upstreamRemaining != null ? { upstreamRemaining: row.upstreamRemaining } : {}),
   };
 }
 

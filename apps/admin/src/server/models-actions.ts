@@ -154,15 +154,14 @@ export async function undeleteModelAction(id: number): Promise<{ error?: string 
 }
 
 // ── 绑定渠道 ────────────────────────────────────────────────────────────────
+/** 渠道绑定项（upstreamModel 留空 = 服务端物化映射规范名） */
 export async function bindChannelsAction(
   id: number,
-  channelIds: number[],
+  channels: Array<{ channelId: number; upstreamModel?: string }>,
 ): Promise<{ error?: string }> {
   const t = await getTranslations('models');
   try {
-    await adminApi().post(`/v1/models/${id}/channels`, {
-      channels: channelIds.map((channelId) => ({ channelId })),
-    });
+    await adminApi().post(`/v1/models/${id}/channels`, { channels });
     revalidatePath('/dashboard/models');
     return {};
   } catch (error) {

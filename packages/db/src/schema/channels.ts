@@ -30,7 +30,10 @@ export const channels = pgTable(
     /** AES-GCM 加密后的上游 Key（密钥在环境变量） */
     apiKeyEnc: text('api_key_enc').notNull(),
     baseUrlOverride: varchar('base_url_override', { length: 255 }),
-    /** 上游模型名白名单；NULL 或空数组 = 不限；非空时路由取「映射渠道列表 ∩ 白名单」 */
+    /**
+     * 上游模型名白名单；NULL 或空数组 = 不限；非空时路由取「映射渠道列表 ∩ 白名单」
+     * ——交集按绑定行 upstream_model 匹配（findRouteCandidates SQL 单点收口）
+     */
     models: jsonb('models').$type<string[]>(),
     weight: bigint('weight', { mode: 'number' }).notNull().default(1),
     priority: bigint('priority', { mode: 'number' }).notNull().default(0),

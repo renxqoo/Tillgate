@@ -35,6 +35,7 @@ import {
   type Inference,
 } from '@tillgate/inference';
 import { createPostgresGatewayCatalog } from './adapters/catalog-port';
+import { createRedisStickyStore, createRoutingPolicySource } from './adapters/routing-policy';
 import { createGatewayBilling } from './adapters/billing-port';
 import {
   createBillingReservationLimitReader,
@@ -56,6 +57,8 @@ const HEALTH_PREFIX = 'inference:health:';
 const TX_RETRY = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 } as const;
 
 export interface GatewayAssembly {
+  /** 路由策略 TTL reader 停止面（shutdown 挂接） */
+  routingPolicyStop: () => void;
   db: ReturnType<typeof createDb>;
   closeDb: () => Promise<void>;
   pingDb: () => Promise<void>;
@@ -228,8 +231,19 @@ export async function assembleGateway(config: GatewayConfig): Promise<GatewayAss
           },
         },
   );
+  // ---- 智能路由策略热源（routing_policies TTL 拾取——管理台改动 ≤TTL 生效） ----
+  const routingPolicySource = createRoutingPolicySource({
+    db,
+    ttlMs: config.routingPolicyTtlMs,
+    onFault: (error, context) =>
+      logger.error({ err: String(error), context }, 'routing policy refresh'),
+  });
+  const routingPolicyStop = routingPolicySource.start();
+
   const inference = createInference({
     ai,
+    policy: routingPolicySource.reader,
+    stickyStore: createRedisStickyStore(redis),
     catalog: createPostgresGatewayCatalog(db, {
       ttlMs: config.billingTimezoneTtlMs,
       fallback: config.billingTimezoneFallback,
@@ -291,6 +305,7 @@ export async function assembleGateway(config: GatewayConfig): Promise<GatewayAss
 
   return {
     db,
+    routingPolicyStop,
     closeDb: () => closeDb(db),
     pingDb: () => ping(db),
     redis,

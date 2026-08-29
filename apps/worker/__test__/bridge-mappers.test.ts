@@ -39,21 +39,24 @@ describe('toBillingEvent：蛇形信号 → 点分事件（四分支穷举）', 
 
 describe('toChannelCandidate：渠道行 → 候选形状（字段逐一搬运）', () => {
   it('全量字段直传；baseUrl 取 override 优先', () => {
-    const candidate = toChannelCandidate({
-      channelId: 7,
-      channelName: 'openai-main',
-      providerName: 'OpenAI',
-      providerProtocol: 'openai-compatible',
-      providerVendor: 'openai',
-      baseUrlOverride: 'https://override.example.test',
-      providerBaseUrl: 'https://api.openai.com',
-      apiKeyEnc: 'enc:v1:xxx',
-      priority: 1,
-      weight: 100,
-      rpmLimit: 600,
-      tpmLimit: null,
-      upstreamBudget: '1000',
-    });
+    const candidate = toChannelCandidate(
+      {
+        channelId: 7,
+        channelName: 'openai-main',
+        providerName: 'OpenAI',
+        providerProtocol: 'openai-compatible',
+        providerVendor: 'openai',
+        baseUrlOverride: 'https://override.example.test',
+        providerBaseUrl: 'https://api.openai.com',
+        apiKeyEnc: 'enc:v1:xxx',
+        priority: 1,
+        weight: 100,
+        rpmLimit: 600,
+        tpmLimit: null,
+        upstreamBudget: '1000',
+      },
+      'task-snap-model',
+    );
     expect(candidate).toEqual({
       channelId: 7,
       channelName: 'openai-main',
@@ -62,6 +65,7 @@ describe('toChannelCandidate：渠道行 → 候选形状（字段逐一搬运�
       vendor: 'openai',
       baseUrl: 'https://override.example.test',
       apiKeyEnc: 'enc:v1:xxx',
+      upstreamModel: 'task-snap-model',
       priority: 1,
       weight: 100,
       rpmLimit: 600,
@@ -70,22 +74,26 @@ describe('toChannelCandidate：渠道行 → 候选形状（字段逐一搬运�
     });
   });
   it('无 override → baseUrl 回落供应商地址', () => {
-    const candidate = toChannelCandidate({
-      channelId: 8,
-      channelName: 'deepseek',
-      providerName: null,
-      providerProtocol: 'openai-compatible',
-      providerVendor: null,
-      baseUrlOverride: null,
-      providerBaseUrl: 'https://api.deepseek.com',
-      apiKeyEnc: 'enc:v1:yyy',
-      priority: 2,
-      weight: 50,
-      rpmLimit: null,
-      tpmLimit: null,
-      upstreamBudget: '0',
-    });
+    const candidate = toChannelCandidate(
+      {
+        channelId: 8,
+        channelName: 'deepseek',
+        providerName: null,
+        providerProtocol: 'openai-compatible',
+        providerVendor: null,
+        baseUrlOverride: null,
+        providerBaseUrl: 'https://api.deepseek.com',
+        apiKeyEnc: 'enc:v1:yyy',
+        priority: 2,
+        weight: 50,
+        rpmLimit: null,
+        tpmLimit: null,
+        upstreamBudget: '0',
+      },
+      'task-snap-model',
+    );
     expect(candidate.baseUrl).toBe('https://api.deepseek.com');
+    expect(candidate.upstreamModel).toBe('task-snap-model');
     expect(candidate.providerName).toBeNull();
     expect(candidate.vendor).toBeNull();
   });

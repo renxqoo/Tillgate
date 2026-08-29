@@ -2,6 +2,7 @@ import * as z from 'zod';
 
 /**
  * inference 配置（机制/预算缺省值；装配可整体或分组覆写）。
+ * 路由策略不在此——单一真相在 routing/policy.ts（热配置经 RoutingPolicyReader）。
  * 注：zod 4 的 .default() 默认值需为完整输出形状，故显式写出（与 ai 包同形态）。
  * 金额、费率、目录等策略数据一律不经配置——目录快照来自 CatalogPort，资金归 BillingPort。
  */

@@ -1,6 +1,6 @@
 /**
  * 模型映射 presenter：ModelRecord → AdminModelRow（api-client DTO 快照形状）。
- * channelIds 由列表用例回显（无绑定 = 空数组）。
+ * channels 绑定回显（渠道 + 出站模型名；无绑定 = 空数组）。
  */
 import type { BillingConfig } from '@tillgate/control-plane';
 import { normalizeAmount } from '@tillgate/billing';
@@ -29,7 +29,10 @@ export interface ModelRowSource {
   readonly updatedAt: Date;
 }
 
-export function toModelWireRow(row: ModelRowSource, channelIds: readonly number[] = []) {
+export function toModelWireRow(
+  row: ModelRowSource,
+  channels: ReadonlyArray<{ channelId: number; upstreamModel: string }> = [],
+) {
   return {
     id: row.id,
     externalName: row.externalName,
@@ -52,6 +55,6 @@ export function toModelWireRow(row: ModelRowSource, channelIds: readonly number[
     deletedAt: iso(row.deletedAt),
     createdAt: isoRequired(row.createdAt),
     updatedAt: isoRequired(row.updatedAt),
-    channelIds: [...channelIds],
+    channels: channels.map((c) => ({ channelId: c.channelId, upstreamModel: c.upstreamModel })),
   };
 }

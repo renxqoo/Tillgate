@@ -14,15 +14,15 @@ import type {
  * UpstreamPort 生产适配器（封装 @tillgate/ai——渠道快照 + 凭据注入）：
  *   - ChannelDesc 组装：baseUrl（目录已解析 override）/ protocol / vendor，
  *     apiKey = 注入的 decrypt(apiKeyEnc)（明文不落盘、不出调用栈）；
- *   - 模型名替换：CallOptions.model = realModel（对外名 → 真实名在此完成，
- *     并回写 body/form——ai 的机制）；
+ *   - 模型名替换：CallOptions.model = upstreamModel（绑定级出站名——对外名/规范名
+ *     → 渠道真实名在此完成，并回写 body/form——ai 的机制）；
  *   - 结果零包装：ChatResult/UpstreamError 直接透传（单一形态）；
  *   - 流事件映射：ai 事件面 → 端口三类事件（first_chunk/failed/success）。
  */
 /** 调用选项映射（模块级纯函数——不捕获闭包） */
 const callOpts = (req: UpstreamCallRequest) => ({
   requestId: req.requestId,
-  model: req.realModel,
+  model: req.upstreamModel,
   endpoint: req.endpoint,
   deadlineMs: req.deadlineMs,
   ...(req.maxRetries != null ? { maxRetries: req.maxRetries } : {}),

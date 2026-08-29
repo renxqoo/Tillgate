@@ -237,7 +237,10 @@ describe('models + rate-cards + fx + catalog', () => {
     const bind = vi.fn(async () => ({ bound: 1 }));
     const app = controlPlaneApp({
       models: {
-        list: async () => ({ rows: [{ ...modelRow, channelIds: [2] }], total: 1 }),
+        list: async () => ({
+          rows: [{ ...modelRow, channels: [{ channelId: 2, upstreamModel: 'gpt-real' }] }],
+          total: 1,
+        }),
         create,
         update: async () => modelRow,
         delete: async () => ({ ok: true as const }),
@@ -303,7 +306,14 @@ describe('models + rate-cards + fx + catalog', () => {
     expect(overflow.status).toBe(400);
 
     const list = await app.request('/v1/models', { headers: authHeader() });
-    expect(await list.json()).toMatchObject({ rows: [{ channelIds: [2], fallbackModels: null }] });
+    expect(await list.json()).toMatchObject({
+      rows: [
+        {
+          channels: [{ channelId: 2, upstreamModel: 'gpt-real' }],
+          fallbackModels: null,
+        },
+      ],
+    });
 
     const bound = await app.request('/v1/models/3/channels', {
       method: 'POST',

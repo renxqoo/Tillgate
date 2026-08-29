@@ -342,9 +342,10 @@ export async function assembleWorker(
       await billingApi.signal(toBillingEvent(input));
     },
     billingStatus: (requestId) => settlement.currentStatus(requestId),
-    findChannel: async (channelId) => {
-      const row = await postgresChannelStore.findTaskChannel(db, channelId);
-      return row == null ? null : toChannelCandidate(row);
+    findChannel: async (task) => {
+      const row = await postgresChannelStore.findTaskChannel(db, task.channelId);
+      // 出站名用任务行提交时快照（在途任务不随绑定改名漂移）
+      return row == null ? null : toChannelCandidate(row, task.upstreamModel);
     },
     config: {
       batch: config.generation.batchSize,

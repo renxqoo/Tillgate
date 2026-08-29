@@ -21,6 +21,7 @@ const CHANNEL: ChannelCandidate = {
   vendor: null,
   baseUrl: 'https://up.test',
   apiKeyEnc: 'enc',
+  upstreamModel: 'mm-music-v2',
   priority: 1,
   weight: 1,
 };
@@ -67,6 +68,7 @@ function taskOf(input: {
     channelId: 7,
     kind: input.kind,
     upstreamTaskId: input.upstreamTaskId,
+    upstreamModel: 'gpt-x-real',
     status: 'queued',
     params: { model: 'video-model', prompt: 'p' },
     receiptTemplate: receiptTemplate(input.requestId),
@@ -82,6 +84,7 @@ interface Harness {
     taskId: string,
   ) => Promise<{ status: string; failReason: string | null; result: unknown } | null>;
   errors: Array<{ error: unknown; context: string }>;
+  executeCalls: Array<{ upstreamModel: string; externalModel: string }>;
   run: ReturnType<typeof createGenerationPollUseCase>;
   setQuery: (fn: (upstreamTaskId: string) => GenerationTaskProbeResult) => void;
   setExecute: (fn: () => UpstreamTaskExecuteResult) => void;
@@ -109,6 +112,7 @@ function harness(options?: { now?: () => number }): Harness {
   let billingStatusImpl: (requestId: string) => Promise<string | null> = defaultBillingStatus;
   let queryImpl: (upstreamTaskId: string) => GenerationTaskProbeResult = defaultQuery;
   let executeImpl: () => UpstreamTaskExecuteResult = defaultExecute;
+  const executeCalls: Array<{ upstreamModel: string; externalModel: string }> = [];
   const run = createGenerationPollUseCase({
     tasks,
     upstream: {
@@ -124,13 +128,17 @@ function harness(options?: { now?: () => number }): Harness {
       async queryTask(_channel, upstreamTaskId) {
         return await Promise.resolve(queryImpl(upstreamTaskId));
       },
-      async executeTask(_channel, _kind, _request) {
+      async executeTask(_channel, _kind, request) {
+        executeCalls.push({
+          upstreamModel: request.upstreamModel,
+          externalModel: request.externalModel,
+        });
         return await Promise.resolve(executeImpl());
       },
     },
     signal: (input) => signalImpl(input),
     billingStatus: (requestId) => billingStatusImpl(requestId),
-    findChannel: async (channelId) => (channelId === 7 ? CHANNEL : null),
+    findChannel: async (task) => (task.channelId === 7 ? CHANNEL : null),
     config: {
       batch: 10,
       leaseMs: 30_000,
@@ -147,6 +155,7 @@ function harness(options?: { now?: () => number }): Harness {
     signals,
     errors,
     run,
+    executeCalls,
     setQuery: (fn) => {
       queryImpl = fn;
     },
@@ -362,7 +371,7 @@ describe('② task_poll 族（video）', () => {
 });
 
 describe('③ task_execute 族（music，worker 代执行）', () => {
-  it('代执行成功：artifact 结算（先信号后终态）', async () => {
+  it('代执行成功：artifact 结算（先信号后终态）；出站名取任务快照而非渠道实时绑定名', async () => {
     const h = harness();
     await h.tasks.insert(
       taskOf({
@@ -382,6 +391,8 @@ describe('③ task_execute 族（music，worker 代执行）', () => {
       status: 'succeeded',
       result: { audioUrl: 'https://cdn.test/a.mp3' },
     });
+    // 渠道候选绑定名是 mm-music-v2（任务登记后的实时值）；代执行用提交时快照 gpt-x-real
+    expect(h.executeCalls).toEqual([{ upstreamModel: 'gpt-x-real', externalModel: 'video-model' }]);
   });
 
   it('代执行失败：CAS failed + request_failed 释放', async () => {

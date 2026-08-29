@@ -2,12 +2,12 @@ import { InferenceErrors } from '../domain/errors';
 import { buildReceipt } from '../domain/usage/receipt';
 import { usageForNonStream } from '../domain/usage/receipt-usage';
 import {
-  dispatchFailure,
+  recordSettleSuccess,
   type AttemptContext,
   type AttemptOutcome,
   type ExecutionDeps,
-  type PassthroughDelivered,
 } from './failover';
+import { dispatchFailure, type PassthroughDelivered } from './dispatch';
 import { signalSucceededWithRetry } from './signal-retry';
 import type { UpstreamPort } from '../ports/upstream';
 
@@ -39,11 +39,12 @@ async function chatUpstreamWithSpan(
       const r = await deps.upstream.chat(ctx.channel, {
         requestId: ctx.requestId,
         externalModel: ctx.prepared.externalModel,
-        realModel: ctx.candidate.realModel,
+        upstreamModel: ctx.channel.upstreamModel,
         endpoint: ctx.prepared.endpoint,
         body: ctx.prepared.upstreamBody,
         ...(ctx.signal != null ? { signal: ctx.signal } : {}),
         deadlineMs: deps.defaults.upstream.deadlineMs,
+        maxRetries: deps.policy.latest().retry.sameChannelMaxRetries,
       });
       if (r.ok) {
         span.setAttributes({
@@ -105,9 +106,18 @@ async function settleChatDelivered(
     ctx.requestId,
     receipt,
   );
+  // 结算成功 = 渠道真实可用：死凭据自愈 + 候选死记忆清零（fire-and-forget）
+  recordSettleSuccess(deps, ctx);
   if (!finalized) {
     throw InferenceErrors.business('finalize_unavailable', { request_id: ctx.requestId });
   }
+  return deliverChat(result);
+}
+
+/** 交付形态：二进制优先（raw 透传），否则 JSON body */
+function deliverChat(
+  result: Extract<UpstreamChatResult, { ok: true }>,
+): AttemptOutcome<ChatDelivered> {
   if (result.rawBody != null) {
     return {
       kind: 'respond',

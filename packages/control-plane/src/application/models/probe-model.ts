@@ -48,7 +48,8 @@ export async function probeModel(
           apiKey,
           protocol: channel.providerProtocol,
         },
-        existing.realModel,
+        // 探针按绑定出站名探测（与路由热路径同一名字——探通即路由可用）
+        channel.upstreamModel,
         { requestId: `model-test-${mappingId}-${channel.channelId}` },
       );
       results.push(

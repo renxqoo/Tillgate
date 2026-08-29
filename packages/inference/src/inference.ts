@@ -8,6 +8,9 @@ import {
 import { createMemoryGenerationTaskStore } from './adapters/task-memory';
 import { createUpstreamAi } from './adapters/upstream-ai';
 import { createChannelHealth, type ChannelHealth } from './health/channel-health';
+import { createRoutingMemory, type RoutingMemory } from './health/routing-memory';
+import { defaultRoutingPolicy } from './routing/policy';
+import { staticRoutingPolicy, type RoutingPolicyReader, type StickyStore } from './ports/routing';
 import type { CatalogPort } from './ports/catalog';
 import type { BillingPort } from './ports/billing';
 import type {
@@ -32,8 +35,8 @@ import {
   type ChannelAdmission,
   type ModelAdmission,
   type ExecutionDeps,
-  type PassthroughDelivered,
 } from './application/failover';
+import type { PassthroughDelivered } from './application/dispatch';
 import { prepareChatRequest, type PreparedRequest } from './application/quote';
 import { noopTrace, type TracePort } from './ports/trace';
 import type { RequestAuth } from './domain/model/types';
@@ -65,6 +68,10 @@ export interface InferenceEnv {
   billing: BillingPort;
   /** 渠道健康跨请求状态存储（生产 redis 适配器；单副本/开发可用内存适配器） */
   store: HealthStore;
+  /** 路由策略热源（gateway 装配 DB TTL reader；未装配 = 编译期缺省） */
+  policy?: RoutingPolicyReader;
+  /** cache 亲和粘滞键存储（gateway 装配 Redis；未装配 = 进程内实现） */
+  stickyStore?: StickyStore;
   /** 渠道凭据解密（runtime Cipher 装配注入；明文不出适配器调用栈） */
   decrypt: (enc: string) => string;
   /** 上游 port 替身（缺省内置 ai 适配器；测试注入 stub） */
@@ -196,6 +203,7 @@ function buildExecutionDeps(
 ): {
   deps: ExecutionDeps;
   health: ChannelHealth;
+  memory: RoutingMemory;
   detach: () => void;
 } {
   const onError =
@@ -206,6 +214,8 @@ function buildExecutionDeps(
     config: { breaker: defaults.breaker, deadCredential: defaults.deadCredential },
     onFault: onError,
   });
+  const policy: RoutingPolicyReader = env.policy ?? staticRoutingPolicy(defaultRoutingPolicy());
+  const memory = createRoutingMemory({ store: env.store, policy, onFault: onError });
   const detach = health.attach(env.ai);
   const upstream = env.upstream ?? createUpstreamAi({ ai: env.ai, decrypt: env.decrypt });
   const trace = env.trace ?? noopTrace;
@@ -214,13 +224,16 @@ function buildExecutionDeps(
     billing: env.billing,
     upstream,
     health,
+    memory,
+    policy,
+    ...(env.stickyStore != null ? { sticky: env.stickyStore } : {}),
     ...(env.admitChannel != null ? { admitChannel: env.admitChannel } : {}),
     ...(env.admitModel != null ? { admitModel: env.admitModel } : {}),
     trace,
     defaults,
     onError,
   };
-  return { deps, health, detach };
+  return { deps, health, memory, detach };
 }
 
 export function createInference(env: InferenceEnv): Inference {

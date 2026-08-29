@@ -115,6 +115,7 @@ describe('createControlPlane facade', () => {
       'providers',
       'rates',
       'rbac',
+      'routingPolicy',
       'settings',
     ]);
     // 动态 RBAC 面

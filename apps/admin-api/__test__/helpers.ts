@@ -281,6 +281,11 @@ export function fakeDeps(overrides: {
 
 function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
   const base: ControlPlane = {
+    routingPolicy: {
+      get: async () => null,
+      save: async () => ({ version: '1', savedAt: new Date() }),
+      channelsOverview: async () => [],
+    },
     providers: {
       create: notWired,
       update: notWired,

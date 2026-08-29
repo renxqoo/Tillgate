@@ -83,6 +83,8 @@ export interface ChannelCandidate {
   baseUrl: string;
   /** 加密凭据（适配器内经注入的 decrypt 解密，不落盘不明文外泄） */
   apiKeyEnc: string;
+  /** 该渠道的出站模型名（model_channels.upstream_model——出站请求体用它） */
+  upstreamModel: string;
   priority: number;
   weight: number;
   /**
@@ -92,6 +94,8 @@ export interface ChannelCandidate {
   rpmLimit?: number | null;
   tpmLimit?: number | null;
   upstreamBudget?: string;
+  /** 可用余额快照（budget - reserved；软水位降权信号——非准入硬闸，硬闸在 reserveChannel） */
+  upstreamRemaining?: string | null;
 }
 
 /** 请求凭证事实（鉴权结论由 app 中间件产出，inference 只消费） */

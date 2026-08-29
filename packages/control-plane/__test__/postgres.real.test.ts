@@ -19,6 +19,10 @@ import {
   auditLogs,
   channelRecharges,
   admins,
+  billingRequests,
+  usageLogs,
+  users,
+  routingPolicies,
 } from '@tillgate/db';
 import { postgresProviderStore } from '../src/adapters/postgres/provider-store';
 import { postgresChannelStore } from '../src/adapters/postgres/channel-store';
@@ -28,11 +32,14 @@ import { postgresFxStore, CATALOG_FX_CONFIG_KEY } from '../src/adapters/postgres
 import { postgresOperationsStore } from '../src/adapters/postgres/operations-store';
 import { createPostgresAuditSink, postgresAuditStore } from '../src/adapters/postgres/audit';
 import { createPostgresVoucherStorage } from '../src/adapters/postgres/voucher-storage';
+import { routingChannelsOverview } from '../src/adapters/postgres/routing-overview';
+import { postgresRoutingPolicyStore } from '../src/adapters/postgres/routing-policy-store';
 import { postgresAdminStore } from '../src/adapters/postgres/admin-store';
 
 const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/tillgate';
 let db: Db | null = null;
 const uid = () => `cp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+const reqId = () => crypto.randomUUID();
 
 /** 真管理员行（FK：channel_recharges/audit_logs 的 admin_id 引用 admins） */
 async function realAdminId(): Promise<number> {
@@ -203,8 +210,8 @@ describe('model-store（真实 PG：绑定全量替换 + 幂等绑定）', () =>
     const bound = await postgresModelStore.replaceModelChannels(db, {
       mappingId: inserted.id,
       channels: [
-        { channelId: 1, weight: 2, priority: 0 },
-        { channelId: 2, weight: 1, priority: 5 },
+        { channelId: 1, upstreamModel: inserted.realModel, weight: 2, priority: 0 },
+        { channelId: 2, upstreamModel: 'vendor-x/alt', weight: 1, priority: 5 },
       ],
     });
     expect(bound).toBe(2);
@@ -212,15 +219,19 @@ describe('model-store（真实 PG：绑定全量替换 + 幂等绑定）', () =>
     await postgresModelStore.ensureModelChannelBinding(db, {
       mappingId: inserted.id,
       channelId: 1,
+      upstreamModel: inserted.realModel,
     });
-    const ids = await postgresModelStore.listChannelIdsByMappingIds(db, [inserted.id]);
+    const ids = await postgresModelStore.listBindingsByMappingIds(db, [inserted.id]);
     expect(ids).toHaveLength(2);
+    expect(new Set(ids.map((b) => b.upstreamModel))).toEqual(
+      new Set([inserted.realModel, 'vendor-x/alt']),
+    );
     const emptied = await postgresModelStore.replaceModelChannels(db, {
       mappingId: inserted.id,
       channels: [],
     });
     expect(emptied).toBe(0);
-    expect(await postgresModelStore.listChannelIdsByMappingIds(db, [inserted.id])).toEqual([]);
+    expect(await postgresModelStore.listBindingsByMappingIds(db, [inserted.id])).toEqual([]);
     await expect(
       postgresModelStore.insertMapping(db, {
         externalName: inserted.externalName,
@@ -434,5 +445,199 @@ describe('admin-store（真实 PG：RBAC 资料面——role 投影/建行唯一
       await postgresAdminStore.remove(db, created.id);
     }
     expect(await postgresAdminStore.findById(db, created.id)).toBeNull();
+  });
+});
+
+describe('routing-overview（真实 PG：双口径预聚合——无叉积放大）', () => {
+  it('混合窗口（多请求 × 多用量）聚合不互相放大;失败口径 = released 且 failure_code 非空', async () => {
+    if (!db) return;
+    const provider = await postgresProviderStore.insert(db, {
+      name: uid(),
+      protocol: 'openai-compatible',
+      vendor: null,
+      baseUrl: 'https://routing.example.com/v1',
+      status: 0,
+    });
+    const [channelRow] = await defined(db)
+      .insert(channels)
+      .values({ providerId: provider.id, name: uid(), apiKeyEnc: 'enc' })
+      .returning({ id: channels.id });
+    const channel = defined(channelRow, 'channel');
+    const [userRow] = await defined(db)
+      .insert(users)
+      .values({ issuer: 'local', subject: uid(), identityProvider: 'local' })
+      .returning({ id: users.id });
+    const user = defined(userRow, 'user');
+    try {
+      // billing_requests 3 行：authorized（在途）+ released&failure_code（路由失败）
+      // + released 无 failure_code（非路由失败释放——管理员放弃等,不计失败）
+      await defined(db)
+        .insert(billingRequests)
+        .values([
+          {
+            requestId: reqId(),
+            userId: user.id,
+            channelId: channel.id,
+            reservedAmount: '0.01',
+            quote: {},
+            authorizationFingerprint: `af-${uid()}`,
+            status: 'authorized',
+          },
+          {
+            requestId: reqId(),
+            userId: user.id,
+            channelId: channel.id,
+            reservedAmount: '0.01',
+            quote: {},
+            authorizationFingerprint: `af-${uid()}`,
+            status: 'released',
+            failureCode: 'upstream_error',
+          },
+          {
+            requestId: reqId(),
+            userId: user.id,
+            channelId: channel.id,
+            reservedAmount: '0.01',
+            quote: {},
+            authorizationFingerprint: `af-${uid()}`,
+            status: 'released',
+          },
+        ]);
+      // usage_logs 2 行：input 100/200、cached 10/20、duration 1000/2000
+      await defined(db)
+        .insert(usageLogs)
+        .values([
+          {
+            requestId: reqId(),
+            userId: user.id,
+            channelId: channel.id,
+            credentialType: 'key',
+            externalModel: 'gpt-test',
+            realModel: 'gpt-test',
+            inputTokens: 100,
+            cachedInputTokens: 10,
+            durationMs: 1000,
+            clientTtftMs: 300,
+            status: 0,
+            billedBy: 'payg',
+            coefficient: '1.000',
+          },
+          {
+            requestId: reqId(),
+            userId: user.id,
+            channelId: channel.id,
+            credentialType: 'key',
+            externalModel: 'gpt-test',
+            realModel: 'gpt-test',
+            inputTokens: 200,
+            cachedInputTokens: 20,
+            durationMs: 2000,
+            clientTtftMs: 500,
+            status: 0,
+            billedBy: 'payg',
+            coefficient: '1.000',
+          },
+        ]);
+
+      const rows = await routingChannelsOverview(db, 3_600_000);
+      const row = rows.find((r) => r.channelId === channel.id);
+      // 旧实现（同层双一对多 join 叉积）在这里放大为 requests=6 / failures=4 / tokens=900
+      expect(row?.requests).toBe(3);
+      expect(row?.failures).toBe(1);
+      expect(row?.inputTokens).toBe(300);
+      expect(row?.cachedInputTokens).toBe(30);
+      // avg 口径叉积下不变——对照断言（同时锁定 bigint→number 映射）
+      expect(row?.avgDurationMs).toBe(1500);
+      expect(row?.avgClientTtftMs).toBe(400);
+    } finally {
+      await defined(db).delete(billingRequests).where(eq(billingRequests.userId, user.id));
+      await defined(db).delete(usageLogs).where(eq(usageLogs.userId, user.id));
+      await defined(db).delete(users).where(eq(users.id, user.id));
+      await defined(db).delete(channels).where(eq(channels.id, channel.id));
+      await defined(db).delete(providers).where(eq(providers.id, provider.id));
+    }
+  });
+
+  it('无窗口数据的渠道仍返回零值行（left join 不丢渠道）', async () => {
+    if (!db) return;
+    const provider = await postgresProviderStore.insert(db, {
+      name: uid(),
+      protocol: 'openai-compatible',
+      vendor: null,
+      baseUrl: 'https://routing.example.com/v1',
+      status: 0,
+    });
+    const [channelRow] = await defined(db)
+      .insert(channels)
+      .values({ providerId: provider.id, name: uid(), apiKeyEnc: 'enc' })
+      .returning({ id: channels.id, name: channels.name });
+    const channel = defined(channelRow, 'channel');
+    try {
+      const rows = await routingChannelsOverview(db, 3_600_000);
+      const row = rows.find((r) => r.channelId === channel.id);
+      expect(row).toMatchObject({
+        channelName: channel.name,
+        requests: 0,
+        failures: 0,
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        avgDurationMs: null,
+      });
+    } finally {
+      await defined(db).delete(channels).where(eq(channels.id, channel.id));
+      await defined(db).delete(providers).where(eq(providers.id, provider.id));
+    }
+  });
+});
+
+describe('routing-policy-store（真实 PG：scope 单行 upsert + version 自增）', () => {
+  it('首建 version=1;再存自增;note/updatedBy 未传保留旧值;findGlobal 读回', async () => {
+    if (!db) return;
+    // dev 库 global 行可能是真实热配置——先取出,测试后原值恢复（delete + 原值 insert）
+    const prior = await postgresRoutingPolicyStore.findGlobal(db);
+    try {
+      const first = await postgresRoutingPolicyStore.saveGlobal(db, {
+        policy: { scorers: { ttft: 1 } },
+      });
+      expect(first.version).toBe('1');
+      expect(first.note).toBeNull();
+
+      const second = await postgresRoutingPolicyStore.saveGlobal(db, {
+        policy: { scorers: { ttft: 2 } },
+        note: '调权',
+        updatedBy: 'admin:7',
+      });
+      expect(second.version).toBe('2');
+      expect(second.policy).toEqual({ scorers: { ttft: 2 } });
+      expect(second.note).toBe('调权');
+      expect(second.updatedBy).toBe('admin:7');
+
+      // note/updatedBy 未传 = 保留旧值（不是清空）
+      const third = await postgresRoutingPolicyStore.saveGlobal(db, {
+        policy: { scorers: { ttft: 3 } },
+      });
+      expect(third.version).toBe('3');
+      expect(third.note).toBe('调权');
+      expect(third.updatedBy).toBe('admin:7');
+
+      expect(await postgresRoutingPolicyStore.findGlobal(db)).toMatchObject({
+        version: '3',
+        policy: { scorers: { ttft: 3 } },
+      });
+    } finally {
+      await defined(db).delete(routingPolicies).where(eq(routingPolicies.scope, 'global'));
+      if (prior != null) {
+        await defined(db).insert(routingPolicies).values({
+          id: prior.id,
+          scope: prior.scope,
+          version: prior.version,
+          policy: prior.policy,
+          note: prior.note,
+          updatedBy: prior.updatedBy,
+          createdAt: prior.updatedAt,
+          updatedAt: prior.updatedAt,
+        });
+      }
+    }
   });
 });

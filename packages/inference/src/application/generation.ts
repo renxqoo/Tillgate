@@ -9,12 +9,13 @@ import { measurementOf } from '../domain/usage/measurement';
 import { buildReceipt } from '../domain/usage/receipt';
 import type { GenerationTaskStore, GenerationTaskView } from '../ports/generation';
 import {
-  dispatchFailure,
+  recordSettleSuccess,
+  recordStickyAffinity,
   runCandidateLoop,
   type AttemptOutcome,
   type ExecutionDeps,
-  type PassthroughDelivered,
 } from './failover';
+import { dispatchFailure, type PassthroughDelivered } from './dispatch';
 import type { PreparedRequest } from './quote';
 
 /** 生成任务提交输入（kind 词表 = domain/generation 注册表） */
@@ -30,12 +31,14 @@ export type GenerationSubmitOutcome =
   | { ok: true; taskId: string; expiresAt: number }
   | PassthroughDelivered;
 
-/** 命中事实（循环 respond 值）：上游任务号 + 命中候选与渠道（收据模板快照源） */
+/** 命中事实（循环 respond 值）：上游任务号 + 命中候选与渠道（收据模板/出站名快照源） */
 interface GenerationHit {
   upstreamTaskId: string | null;
   candidate: PreparedRequest['candidates'][number];
   channelId: number;
   channelName: string;
+  /** 提交渠道的出站模型名（任务行快照源——worker 代执行用它构造请求） */
+  upstreamModel: string;
 }
 
 /**
@@ -119,6 +122,7 @@ async function authorizeGenerationSubmit(
 }
 
 /** 候选×渠道循环内的生成尝试：task_poll 提交任务号；task_execute 仅登记（worker 代执行） */
+// eslint-disable-next-line max-lines-per-function -- 出站名快照入命中值后位于 51 行（原 50 边界），拆分收益低
 async function generationAttempt(
   deps: ExecutionDeps,
   args: {
@@ -131,7 +135,10 @@ async function generationAttempt(
 ): Promise<AttemptOutcome<GenerationHit | PassthroughDelivered>> {
   const { input, requestId, externalModel, descriptor } = args;
   if (descriptor.execution !== 'task_poll') {
-    // task_execute：网关只登记（渠道已预留），worker 代执行
+    // task_execute：网关只登记（渠道已预留），worker 代执行——无上游调用证据，
+    // 只记 cache 亲和粘滞；死凭据自愈/死记忆清零是「结算成功=渠道真实可用」的
+    // 记账面（recordSettleSuccess 契约），留给 worker 真实执行结算
+    recordStickyAffinity(deps, ctx);
     return {
       kind: 'respond',
       value: {
@@ -139,19 +146,21 @@ async function generationAttempt(
         candidate: ctx.candidate,
         channelId: ctx.channel.channelId,
         channelName: ctx.channel.channelName,
+        upstreamModel: ctx.channel.upstreamModel,
       },
     };
   }
   const result = await deps.upstream.submitTask(ctx.channel, input.kind, {
     requestId,
     externalModel,
-    realModel: ctx.candidate.realModel,
+    upstreamModel: ctx.channel.upstreamModel,
     endpoint: input.kind,
     body: input.body,
     ...(input.signal != null ? { signal: input.signal } : {}),
     deadlineMs: deps.defaults.upstream.deadlineMs,
   });
   if (result.ok) {
+    recordSettleSuccess(deps, ctx);
     return {
       kind: 'respond',
       value: {
@@ -159,6 +168,7 @@ async function generationAttempt(
         candidate: ctx.candidate,
         channelId: ctx.channel.channelId,
         channelName: ctx.channel.channelName,
+        upstreamModel: ctx.channel.upstreamModel,
       },
     };
   }
@@ -230,6 +240,7 @@ async function persistGenerationHit(
       channelId: hit.channelId,
       kind: input.kind,
       upstreamTaskId: hit.upstreamTaskId,
+      upstreamModel: hit.upstreamModel,
       status: 'queued',
       params: descriptor.snapshotParams(input.body),
       receiptTemplate,

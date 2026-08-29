@@ -203,8 +203,8 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
       returning id`);
     vidSeed.channelId = Number(defined(channel[0], 'channel row').id);
     await world.db.execute(sql`
-      insert into model_channels (mapping_id, channel_id, priority, weight)
-      values (${vidSeed.mappingId}, ${vidSeed.channelId}, 1, 1)`);
+      insert into model_channels (mapping_id, channel_id, priority, weight, upstream_model)
+      values (${vidSeed.mappingId}, ${vidSeed.channelId}, 1, 1, 'video-01')`);
 
     const { raw, userId } = await keys.issue(FUND);
     const submit = await fetch(`${gateway.baseUrl}/v1/video/generations`, {

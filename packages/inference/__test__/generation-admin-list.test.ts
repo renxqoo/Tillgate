@@ -23,6 +23,7 @@ function seed(overrides: Partial<GenerationTaskRecord> = {}): GenerationTaskReco
     channelId: 2,
     kind: seq % 2 === 0 ? 'music' : 'video',
     upstreamTaskId: null,
+    upstreamModel: 'gpt-x-real',
     status: 'queued',
     params: { prompt: 'p' },
     receiptTemplate: {

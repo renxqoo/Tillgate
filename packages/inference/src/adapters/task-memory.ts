@@ -31,6 +31,7 @@ function activeOf(row: TaskRow): GenerationTaskActiveRow {
     kind: row.kind,
     status: row.status === 'running' ? 'running' : 'queued',
     upstreamTaskId: row.upstreamTaskId,
+    upstreamModel: row.upstreamModel,
     params: row.params,
     receiptTemplate: row.receiptTemplate,
     unitsSnapshot: row.unitsSnapshot,

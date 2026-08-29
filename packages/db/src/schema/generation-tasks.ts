@@ -52,6 +52,11 @@ export const generationTasks = pgTable(
       .references(() => channels.id),
     /** 上游任务号（MiniMax video_generation task_id；music 同步调用为 NULL） */
     upstreamTaskId: varchar('upstream_task_id', { length: 128 }),
+    /**
+     * 出站上游模型名快照（提交时从绑定行物化；worker 代执行用它构造请求）。
+     * 与 params 同为提交时快照——在途任务不随绑定改名漂移。
+     */
+    upstreamModel: varchar('upstream_model', { length: 128 }).notNull(),
     /** video / music */
     kind: varchar('kind', { length: 16 }).notNull(),
     /** queued / running / succeeded / failed / expired */

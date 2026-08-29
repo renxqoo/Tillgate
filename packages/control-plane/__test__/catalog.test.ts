@@ -207,10 +207,12 @@ describe('comparison：三态 diff + 预填 + fx 快照 + channelReady + gone', 
     await s.models.store.ensureModelChannelBinding(s.db, {
       mappingId: kept.id,
       channelId: chan.id,
+      upstreamModel: 'legacy/old-model',
     });
     await s.models.store.ensureModelChannelBinding(s.db, {
       mappingId: gone.id,
       channelId: chan.id,
+      upstreamModel: 'legacy/old-model',
     });
     const payload = await compareCatalogFromSource(s.compareDeps, 'mock-src');
     expect(payload.channelReady).toBe(true);

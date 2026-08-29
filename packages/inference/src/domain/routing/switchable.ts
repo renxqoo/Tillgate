@@ -42,6 +42,26 @@ export function isChannelSwitchable(code?: string | null): boolean {
 }
 
 /**
+ * 请求维门拒绝码（模型死记忆的豁免来源）：这些拒绝取决于「本请求」的属性
+ * （敞口估算 / 预占估算）或网关侧可配软限，同一渠道对大请求拒绝、对小请求
+ * 放行——不是模型不可用的事实，计入死记忆会让个别用户的请求形态把模型
+ * 判死（误伤所有用户）：
+ *   - channel_budget_exhausted：预算硬闸按「本请求敞口估算 vs 渠道剩余」拒绝；
+ *   - rate_limit_exceeded：app 渠道准入钩子（gateway RPM 滑窗 + TPM 预占，
+ *     TPM 预占按请求估算 token，同属请求维）。
+ * 反映渠道/模型真实健康的失败（上游错误 kind、熔断、死凭据、上游 429/quota
+ * 惩罚）不在词表内，仍计入死记忆。
+ */
+const REQUEST_SCOPED_REJECTIONS: ReadonlySet<string> = new Set([
+  'channel_budget_exhausted',
+  'rate_limit_exceeded',
+]);
+
+export function isRequestScopedRejection(code?: string | null): boolean {
+  return code != null && REQUEST_SCOPED_REJECTIONS.has(code);
+}
+
+/**
  * 上游失败分派（非流式 / 流式首字节前共用）：
  * 可换 → 换渠道；4xx → 透传终局（上游确定未计费，收尾后原码返回）；
  * 其余 → 换候选模型。
@@ -68,6 +88,8 @@ export function isChannelExhausted(code?: string | null): boolean {
     code === 'rate_limit_exceeded' ||
     code === 'rate_limited' ||
     code === 'circuit_open' ||
-    code === 'dead_credential'
+    code === 'dead_credential' ||
+    // 全候选被死记忆跳过（模型维不可用）也归渠道面竭尽——503 而非误报上游故障 502
+    code === 'no_available_channel'
   );
 }

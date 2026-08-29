@@ -1,6 +1,6 @@
 /**
  * 模型映射路由（含逻辑删除回收站）：
- * 列表（channelIds 回显 / view=deleted 回收站）/创建/更新（含上下架 status）/
+ * 列表（channels 绑定回显 / view=deleted 回收站）/创建/更新（含上下架 status）/
  * 逻辑删除/恢复记录/绑定全量替换/逐渠道探针。价格仅精确十进制字符串。
  */
 import { Hono } from 'hono';
@@ -32,9 +32,7 @@ export function modelsRoutes(deps: ModelsRoutesDeps) {
       offset: query.offset,
       ...(view !== undefined ? { view } : {}),
     });
-    const rows = result.rows.map((row) =>
-      toModelWireRow(row, (row as { channelIds?: number[] }).channelIds ?? []),
-    );
+    const rows = result.rows.map((row) => toModelWireRow(row, row.channels));
     return c.json(listEnvelope(rows, result.total, query));
   });
 
