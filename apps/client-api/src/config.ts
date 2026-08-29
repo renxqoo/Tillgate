@@ -89,6 +89,13 @@ function createSchema(production: boolean) {
     OAUTH_GOOGLE_ENDPOINTS_JSON: z.string().optional(),
     /** OAuth state 单次存储 TTL（秒）——cookie 与 redis 同步寿命 */
     OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(600),
+    /**
+     * OAuth 上游调用策略（单次尝试超时 ms / 总尝试次数）：
+     * 境内服务器直连 GitHub/Google 间歇丢包时可调大；缺省走 identity 装配缺省
+     * （timeoutMs=5000 / attempts=2，重试间隔不对外暴露）。
+     */
+    OAUTH_UPSTREAM_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).optional(),
+    OAUTH_UPSTREAM_ATTEMPTS: z.coerce.number().int().min(1).max(4).optional(),
     /** 生产 Cookie 加 Secure（OAuth state cookie） */
     SECURE_COOKIE: strictBooleanSchema(production),
     /** 优雅停机：停收新请求后等待在途完成的上界（ms） */

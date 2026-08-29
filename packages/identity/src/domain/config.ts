@@ -36,6 +36,29 @@ export interface OAuthProviderCredentials {
   readonly endpoints?: OAuthEndpointsOverride;
 }
 
+/**
+ * OAuth 上游调用策略（单次尝试超时 + 有限重试）。
+ * 背景：境内服务器直连 GitHub/Google 端点会间歇性丢包/握手中断——裸 fetch
+ * 对黑洞地址要 ~75s 才报错，期间响应 socket 已被服务层空闲切断（Bun.serve
+ * 默认 10s），反代侧表现为 502。策略把每次尝试钉在 timeoutMs 内，并对
+ * 网络层错误与 5xx/429 重试至上限。
+ */
+export interface OAuthUpstreamPolicy {
+  /** 单次尝试总超时（ms，含连接/握手） */
+  readonly timeoutMs: number;
+  /** 总尝试次数（含首次） */
+  readonly attempts: number;
+  /** 尝试间隔（ms） */
+  readonly retryDelayMs: number;
+}
+
+/** 装配缺省（消费方可经 IdentityConfigInput.oauthUpstream 覆盖；client-api env 同口径） */
+export const OAUTH_UPSTREAM_DEFAULTS: OAuthUpstreamPolicy = {
+  timeoutMs: 5_000,
+  attempts: 2,
+  retryDelayMs: 250,
+};
+
 export interface IdentityConfigInput {
   /** 标识词表(内置 {email,phone,username} 的非空子集) */
   readonly identifiers: readonly string[];
@@ -54,6 +77,8 @@ export interface IdentityConfigInput {
    * 每次 OAuth 动词解析时调用,键 ⊆ providers 词表与凭据非空在解析期校验)。
    */
   readonly oauth: () => Readonly<Record<string, OAuthProviderCredentials>>;
+  /** OAuth 上游调用策略（缺省 OAUTH_UPSTREAM_DEFAULTS；提供时逐项界内校验） */
+  readonly oauthUpstream?: OAuthUpstreamPolicy;
   /** OAuth state 存活秒 */
   readonly oauthStateTtlSec: number;
   /**
@@ -70,6 +95,7 @@ export interface ResolvedIdentityConfig {
   readonly totp: TotpConfig;
   readonly sessions: Readonly<Record<string, SessionRealmConfig>>;
   readonly oauth: () => Readonly<Record<string, OAuthProviderCredentials>>;
+  readonly oauthUpstream?: OAuthUpstreamPolicy;
   readonly oauthStateTtlSec: number;
   readonly oauthRedirectAllowlist: readonly string[];
 }
@@ -194,6 +220,21 @@ function validateRedirectAllowlist(uris: readonly string[]): void {
   }
 }
 
+/** OAuth 上游策略校验（提供时逐项界内；缺省走装配缺省，不在此处展开） */
+function validateOauthUpstream(policy: OAuthUpstreamPolicy): OAuthUpstreamPolicy {
+  intIn(policy.timeoutMs, 'oauthUpstream.timeoutMs', [1_000, 60_000]);
+  intIn(policy.attempts, 'oauthUpstream.attempts', [1, 4]);
+  intIn(policy.retryDelayMs, 'oauthUpstream.retryDelayMs', [0, 5_000]);
+  return policy;
+}
+
+/** oauth 快照 getter 形状校验(动态配置源装配契约) */
+function assertOauthGetter(oauth: IdentityConfigInput['oauth']): void {
+  if (typeof oauth !== 'function') {
+    badConfig('oauth', 'must be a snapshot getter () => Record<string, OAuthProviderCredentials>');
+  }
+}
+
 /**
  * OAuth 凭据形状校验（解析期按被请求的键调用）。词表拦截在上游 guardProvider
  * （词表外 provider 抛 unknown_provider）——本函数只回答「凭据本身可用吗」，
@@ -234,9 +275,7 @@ export function resolveConfig(input: IdentityConfigInput): ResolvedConfig {
   validateSessions(input.sessions, realms);
   intIn(input.oauthStateTtlSec, 'oauthStateTtlSec', [60, 3600]);
   validateRedirectAllowlist(input.oauthRedirectAllowlist);
-  if (typeof input.oauth !== 'function') {
-    badConfig('oauth', 'must be a snapshot getter () => Record<string, OAuthProviderCredentials>');
-  }
+  assertOauthGetter(input.oauth);
 
   return {
     config: {
@@ -246,6 +285,9 @@ export function resolveConfig(input: IdentityConfigInput): ResolvedConfig {
       totp: input.totp,
       sessions: input.sessions,
       oauth: input.oauth,
+      ...(input.oauthUpstream != null
+        ? { oauthUpstream: validateOauthUpstream(input.oauthUpstream) }
+        : {}),
       oauthStateTtlSec: input.oauthStateTtlSec,
       oauthRedirectAllowlist: input.oauthRedirectAllowlist,
     },

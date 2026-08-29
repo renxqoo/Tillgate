@@ -36,6 +36,8 @@ export {
   type TotpConfig,
   type OAuthProviderCredentials,
   type OAuthEndpointsOverride,
+  type OAuthUpstreamPolicy,
+  OAUTH_UPSTREAM_DEFAULTS,
 } from './domain/config.js';
 export {
   type SessionPayload,

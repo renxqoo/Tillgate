@@ -435,6 +435,7 @@ describe('review 移植：oauth getter 契约回归锁定', () => {
         github: createGithubProvider({
           clientId: 'x',
           clientSecret: 'y',
+          upstream: { timeoutMs: 1_000, attempts: 1, retryDelayMs: 0 },
           logger: { warn: () => {} },
         }),
       },

@@ -11,6 +11,7 @@ import { createCipher, type Logger } from '@tillgate/runtime';
 import type { Redis } from 'ioredis';
 import {
   createIdentity,
+  OAUTH_UPSTREAM_DEFAULTS,
   type Captcha,
   type Identity,
   type Mailer,
@@ -140,6 +141,13 @@ export function createIdentityStack(args: {
         },
       },
       oauth: oauthProviders,
+      // 上游超时/重试(env 可调;缺省与 identity 装配缺省同源——境内直连
+      // GitHub 丢包时曾拖满 socket 空闲窗,反代 502)
+      oauthUpstream: {
+        timeoutMs: config.OAUTH_UPSTREAM_TIMEOUT_MS ?? OAUTH_UPSTREAM_DEFAULTS.timeoutMs,
+        attempts: config.OAUTH_UPSTREAM_ATTEMPTS ?? OAUTH_UPSTREAM_DEFAULTS.attempts,
+        retryDelayMs: OAUTH_UPSTREAM_DEFAULTS.retryDelayMs,
+      },
       oauthStateTtlSec: config.OAUTH_STATE_TTL_SECONDS,
       // 回调地址精确白名单（identity assertRedirectAllowed 消费；两 provider 常驻）
       oauthRedirectAllowlist: OAUTH_PROVIDER_NAMES.map(

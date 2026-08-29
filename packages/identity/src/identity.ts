@@ -5,7 +5,12 @@
  * cipher/logger/clock 经 port 注入——本包不编译依赖 runtime。
  */
 import type { Db, TxRetryPolicy } from '@tillgate/db';
-import { resolveConfig, validateOauthCreds, type IdentityConfigInput } from './domain/config.js';
+import {
+  resolveConfig,
+  validateOauthCreds,
+  OAUTH_UPSTREAM_DEFAULTS,
+  type IdentityConfigInput,
+} from './domain/config.js';
 import { postgresIdentityStore } from './adapters/postgres/identity-store';
 import { createJoseSessionTokens } from './adapters/jwt/jose-tokens';
 import { createGithubProvider } from './adapters/oauth/github';
@@ -171,6 +176,8 @@ export function buildIdentityContext(params: CreateIdentityParams): IdentityUseC
       clientId: creds.clientId,
       clientSecret: creds.clientSecret,
       ...(creds.endpoints != null ? { endpoints: creds.endpoints } : {}),
+      // 上游策略:配置显式优先,缺省走装配缺省(策略必填,适配器不自带默认)
+      upstream: config.oauthUpstream ?? OAUTH_UPSTREAM_DEFAULTS,
       logger: params.logger,
     };
     if (name === 'github') return createGithubProvider(adapterParams);

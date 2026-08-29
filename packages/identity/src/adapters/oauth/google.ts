@@ -1,9 +1,11 @@
 /**
  * Google OAuth 上游适配器(Authorization Code 流)。
+ * 上游调用经 oauthUpstreamFetch(单次超时+瞬态重试——与 github 适配器同口径)。
  * 邮箱策略:userinfo 仅取 email_verified=true 的邮箱;displayName 缺省取邮箱本地部分。
  */
 import type { OAuthProvider, OAuthProfile } from '../../ports/oauth-provider.js';
 import type { ProviderAdapterOptions } from './github.js';
+import { oauthUpstreamFetch } from './upstream-fetch.js';
 
 /** 可注入 fetch(bun 类型加宽了全局 fetch——注入面收窄为可调用视图) */
 type FetchLike = (...args: Parameters<typeof fetch>) => Promise<Response>;
@@ -13,6 +15,41 @@ const GOOGLE_ENDPOINTS = {
   tokenUrl: 'https://oauth2.googleapis.com/token',
   profileUrl: 'https://www.googleapis.com/oauth2/v3/userinfo',
 } as const;
+
+// 模块级:授权码换 access_token(Authorization Code 流标准半程)
+async function exchangeGoogleToken(
+  deps: {
+    doFetch: FetchLike;
+    endpoints: { tokenUrl: string };
+    opts: ProviderAdapterOptions;
+  },
+  input: { code: string; redirectUri: string },
+): Promise<string> {
+  const { doFetch, endpoints, opts } = deps;
+  const tokenRes = await oauthUpstreamFetch({
+    doFetch,
+    url: endpoints.tokenUrl,
+    init: {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        accept: 'application/json',
+      },
+      body: new URLSearchParams({
+        client_id: opts.clientId,
+        client_secret: opts.clientSecret,
+        code: input.code,
+        redirect_uri: input.redirectUri,
+        grant_type: 'authorization_code',
+      }),
+    },
+    policy: opts.upstream,
+  });
+  if (!tokenRes.ok) throw new Error(`token exchange failed: ${tokenRes.status}`);
+  const tokenJson = (await tokenRes.json()) as { access_token?: string };
+  if (!tokenJson.access_token) throw new Error('no access_token');
+  return tokenJson.access_token;
+}
 
 // 模块级:token 交换 + userinfo 拉取与邮箱策略,依赖经参数注入保持工厂单一装配职责
 async function googleExchangeAndProfile(
@@ -24,26 +61,13 @@ async function googleExchangeAndProfile(
   input: { code: string; redirectUri: string },
 ): Promise<OAuthProfile> {
   const { doFetch, endpoints, opts } = deps;
-  const tokenRes = await doFetch(endpoints.tokenUrl, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      accept: 'application/json',
-    },
-    body: new URLSearchParams({
-      client_id: opts.clientId,
-      client_secret: opts.clientSecret,
-      code: input.code,
-      redirect_uri: input.redirectUri,
-      grant_type: 'authorization_code',
-    }),
-  });
-  if (!tokenRes.ok) throw new Error(`token exchange failed: ${tokenRes.status}`);
-  const tokenJson = (await tokenRes.json()) as { access_token?: string };
-  if (!tokenJson.access_token) throw new Error('no access_token');
+  const accessToken = await exchangeGoogleToken(deps, input);
 
-  const res = await doFetch(endpoints.profileUrl, {
-    headers: { authorization: `Bearer ${tokenJson.access_token}` },
+  const res = await oauthUpstreamFetch({
+    doFetch,
+    url: endpoints.profileUrl,
+    init: { headers: { authorization: `Bearer ${accessToken}` } },
+    policy: opts.upstream,
   });
   if (!res.ok) throw new Error(`google profile failed: ${res.status}`);
   const profile = (await res.json()) as {
