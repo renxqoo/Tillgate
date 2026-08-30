@@ -71,8 +71,9 @@ async function adminDbReachable(url: string): Promise<boolean> {
   }
 }
 
-/** admin app 装配接线（options 平铺——纯装配数据搬运，从 setup 工厂拆出控函数行数） */
-function buildAdminAppOptions(
+/** admin app 装配接线（options 平铺——纯装配数据搬运，从 setup 工厂拆出控函数行数；
+ *  导出供 fund-chain 等需要「隔离世界内挂 admin-api」的旅程复用） */
+export function buildAdminAppOptions(
   assembly: AdminApiAssembly,
   config: ReturnType<typeof loadAdminApiConfig>,
 ): Parameters<typeof createAdminApp>[0] {

@@ -17,6 +17,7 @@ import {
   E2E_MODEL,
   e2ePost,
   resetChannelHealth,
+  setFixedReservationPolicy,
   setupE2EWorld,
   sleep,
   startE2EGateway,
@@ -59,10 +60,8 @@ describe.skipIf(!hasEnv)('E2E', () => {
   beforeAll(async () => {
     world = await setupE2EWorld();
     fullGateway = await startE2EGateway(world);
-    fixedGateway = await startE2EGateway(world, {
-      BILLING_RESERVATION_MODE: 'fixed',
-      BILLING_FIXED_RESERVATION_AMOUNT: '0.1',
-    });
+    // fixed 网关惰性建（⑭ beforeEach）：预扣模式已迁 system_configs KV——
+    // env 键已废弃；⑬ full 断言先行，KV 行写入后再装配 fixed 网关
     keys = new E2EKeys(world, fullGateway.assembly.billingFacade);
 
     const external = `e2e-floor-${randomUUID().slice(0, 8)}`;
@@ -152,8 +151,13 @@ describe.skipIf(!hasEnv)('E2E', () => {
   });
 
   describe('⑭ fixed=0.1 并发击穿验证', () => {
-    // 上游重试失败会打开渠道熔断（共享 Redis 状态）——每例前复位保证起点干净
+    // 上游重试失败会打开渠道熔断（共享 Redis 状态）——每例前复位保证起点干净；
+    // 首例前写 KV 策略行并装配 fixed 网关（system_configs 热路径，网关首读即见）
     beforeEach(async () => {
+      if (fixedGateway == null) {
+        await setFixedReservationPolicy(world, '0.1');
+        fixedGateway = await startE2EGateway(world);
+      }
       await resetChannelHealth(fixedGateway);
     });
 
@@ -177,7 +181,9 @@ describe.skipIf(!hasEnv)('E2E', () => {
       const ok = statuses.filter(isOk200).length;
       const rejected = statuses.filter(is402).length;
       console.log(`⑭ 并发 8 路 → 放行 ${ok} / 402 ${rejected}（fixed 0.1，余额 ${FUND}）`);
-      expect(ok).toBeLessThanOrEqual(1); // 串行授权 + 固定冻结：首路后可用 0.05，余路拒绝
+      // 串行授权 + 固定冻结 0.1：首路冻结后可用 0.05 < 0.1，余 7 路必拒——
+      // 确定性 1（断言 ≤1 无法检测 fixed 失效：full 模式 ok=0 也通过）
+      expect(ok).toBe(1);
       expect(ok + rejected).toBe(8);
 
       await keys.settleAll(userId);

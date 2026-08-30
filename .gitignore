@@ -30,6 +30,8 @@ next-env.d.ts
 e2e/live-fire/logs/
 # live-fire SMTP 捕获文件（smtp-sink 每次运行再生，含验证码邮件内容）
 e2e/live-fire/.smtp-captures.ndjson
+# fund-chain 旅程运行事实工件（每次运行再生，审计留证不入库）
+e2e/admin/.artifacts/
 
 # docker
 docker/data/

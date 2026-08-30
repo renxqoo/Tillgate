@@ -21,7 +21,12 @@ export type UpstreamScript =
   | 'stream-usage-hold' // SSE：增量帧后挂住（取消/断连向量）
   | 'stream-no-usage-hold' // SSE：无 usage 增量帧后挂住（估算向量）
   | 'stream-done-no-usage' // SSE：完成但无 usage（usage_missing_completed 向量）
-  | 'rate-limit'; // 429 + Retry-After——智能路由惩罚箱向量（换渠 + 跨请求冷却）
+  | 'rate-limit' // 429 + Retry-After——智能路由惩罚箱向量（换渠 + 跨请求冷却）
+  | 'nonstream-cached-usage' // JSON 200 + usage{10,5} 且 prompt_tokens_details.cached_tokens=4——缓存命中计价向量
+  | 'nonstream-toolcall' // JSON 200 + message.tool_calls（get_weather）——responses 面工具还原向量
+  | 'stream-toolcall' // SSE：delta.tool_calls 分片（arguments 两段拼接）——responses 面流式工具向量
+  | 'nonstream-huge-usage-honest' // usage{1000,100000} + ~15 万字正文（字节数 ≥ 输出 token——过证据验收门的诚实巨量发票）
+  | 'stream-reasoning'; // SSE：reasoning_content 增量 + 正文 + 终帧 usage——responses 面推理事件向量
 
 export interface RecordedRequest {
   headers: Record<string, string | string[] | undefined>;
@@ -79,6 +84,90 @@ const usageFinishFrame = (): string =>
 const USAGE_SMALL = { promptTokens: 10, completionTokens: 5 };
 const USAGE_HUGE = { promptTokens: 1_000, completionTokens: 100_000 };
 
+/** 非流式 tool_calls 应答体（responses 面工具还原向量——finish_reason tool_calls） */
+function nonstreamToolcallBody(): string {
+  return JSON.stringify({
+    id: 'chatcmpl-e2e-tool',
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_e2e_1',
+              type: 'function',
+              function: { name: 'get_weather', arguments: '{"city":"北京"}' },
+            },
+          ],
+        },
+        finish_reason: 'tool_calls',
+      },
+    ],
+    usage: {
+      prompt_tokens: USAGE_SMALL.promptTokens,
+      completion_tokens: USAGE_SMALL.completionTokens,
+      total_tokens: USAGE_SMALL.promptTokens + USAGE_SMALL.completionTokens,
+    },
+  });
+}
+
+/** 非流式缓存命中应答体（prompt_tokens_details.cached_tokens——缓存计价向量） */
+function nonstreamCachedBody(): string {
+  return JSON.stringify({
+    id: 'chatcmpl-e2e-cached',
+    choices: [
+      {
+        index: 0,
+        message: { role: 'assistant', content: 'cached' },
+        finish_reason: 'stop',
+      },
+    ],
+    usage: {
+      prompt_tokens: USAGE_SMALL.promptTokens,
+      completion_tokens: USAGE_SMALL.completionTokens,
+      total_tokens: USAGE_SMALL.promptTokens + USAGE_SMALL.completionTokens,
+      prompt_tokens_details: { cached_tokens: 4 },
+    },
+  });
+}
+
+/** 流式 tool_calls 分片帧（arguments 两段拼接 + 终帧 usage——responses 流式工具向量） */
+function streamToolcallFrames(): string[] {
+  const frame = (
+    delta: Record<string, unknown>,
+    extra?: { finishReason?: string; usage?: Record<string, unknown> },
+  ): string =>
+    `data: ${JSON.stringify({
+      choices: [
+        {
+          delta,
+          ...(extra?.finishReason !== undefined ? { finish_reason: extra.finishReason } : {}),
+        },
+      ],
+      ...(extra?.usage !== undefined ? { usage: extra.usage } : {}),
+    })}\n\n`;
+  return [
+    frame({
+      tool_calls: [
+        {
+          index: 0,
+          id: 'call_e2e_1',
+          type: 'function',
+          function: { name: 'get_weather', arguments: '' },
+        },
+      ],
+    }),
+    frame({ tool_calls: [{ index: 0, function: { arguments: '{"city":' } }] }),
+    frame(
+      { tool_calls: [{ index: 0, function: { arguments: '"北京"}' } }] },
+      { usage: { prompt_tokens: 50, completion_tokens: 8, total_tokens: 58 } },
+    ),
+    frame({}, { finishReason: 'tool_calls' }),
+  ];
+}
+
 /** 非流式 JSON 应答体（id 固定 chatcmpl-e2e；n>1 回 n choices） */
 function nonstreamBody(
   content: string,
@@ -132,6 +221,33 @@ interface RespondContext {
   state: MockUpstream;
 }
 
+/** Retry-After（秒）：adapter 解析为 retryAfterMs——惩罚箱冷却的权威下界
+ *（3s：同渠道收紧重试的退避下界与冷却窗口共用——e2e 时序可控） */
+function respondRateLimit(res: ServerResponse, state: MockUpstream): void {
+  res.writeHead(429, {
+    'content-type': 'application/json',
+    ...(state.rateLimitRetryAfterSec > 0
+      ? { 'retry-after': String(state.rateLimitRetryAfterSec) }
+      : {}),
+  });
+  res.end(
+    JSON.stringify({ error: { message: 'rate limited (scripted)', type: 'rate_limit_error' } }),
+  );
+}
+
+/** 流式 reasoning 帧：delta.reasoning_content 增量 + 正文 + 终帧 usage */
+function reasoningFrames(): string[] {
+  return [
+    `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: '先想' } }] })}\n\n`,
+    `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: '清楚' } }] })}\n\n`,
+    `data: ${JSON.stringify({ choices: [{ delta: { content: '答案是 42' } }] })}\n\n`,
+    `data: ${JSON.stringify({
+      choices: [{ delta: {}, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 8, completion_tokens: 6, total_tokens: 14 },
+    })}\n\n`,
+  ];
+}
+
 /** 按具名脚本应答（auto 已在请求处理点归一为具体脚本） */
 function runScript(script: Exclude<UpstreamScript, 'auto'>, ctx: RespondContext): void {
   switch (script) {
@@ -170,19 +286,33 @@ function runScript(script: Exclude<UpstreamScript, 'auto'>, ctx: RespondContext)
       return;
     }
     case 'rate-limit': {
-      // Retry-After（秒）：adapter 解析为 retryAfterMs——惩罚箱冷却的权威下界
-      //（3s：同渠道收紧重试的退避下界与冷却窗口共用——e2e 时序可控）
-      ctx.res.writeHead(429, {
-        'content-type': 'application/json',
-        ...(ctx.state.rateLimitRetryAfterSec > 0
-          ? { 'retry-after': String(ctx.state.rateLimitRetryAfterSec) }
-          : {}),
-      });
-      ctx.res.end(
-        JSON.stringify({
-          error: { message: 'rate limited (scripted)', type: 'rate_limit_error' },
-        }),
-      );
+      respondRateLimit(ctx.res, ctx.state);
+      return;
+    }
+    case 'stream-toolcall': {
+      writeSse(ctx.res, { frames: [...streamToolcallFrames()], hold: false }, ctx.state);
+      return;
+    }
+    case 'stream-reasoning': {
+      writeSse(ctx.res, { frames: reasoningFrames(), hold: false }, ctx.state);
+      return;
+    }
+    case 'nonstream-huge-usage-honest': {
+      // 巨量 usage 配巨量正文（证据定理：输出字节数 ≥ 输出 token 数）——
+      // 与 nonstream-huge-usage（1 字符正文谎报 100k 输出）构成诚实/谎报对照向量。
+      // 4 万 CJK 字 ≈ 120KB：≥ 10 万字节证据下界，且低于 readBody 缺省 256KB 上限。
+      ctx.res.writeHead(200, { 'content-type': 'application/json' });
+      ctx.res.end(nonstreamBody('数'.repeat(40_000), 1, USAGE_HUGE));
+      return;
+    }
+    case 'nonstream-cached-usage': {
+      ctx.res.writeHead(200, { 'content-type': 'application/json' });
+      ctx.res.end(nonstreamCachedBody());
+      return;
+    }
+    case 'nonstream-toolcall': {
+      ctx.res.writeHead(200, { 'content-type': 'application/json' });
+      ctx.res.end(nonstreamToolcallBody());
       return;
     }
     default: {

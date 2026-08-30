@@ -270,7 +270,8 @@ describe('B. CRUD 全量扫（e2e-crud-sweep）', () => {
     expect(
       defined((modelsListed.body.rows as Array<Record<string, unknown>>)[0], 'model row'),
     ).toMatchObject({
-      channelIds: [channelId],
+      // wire 契约为 channels 数组（presenter toModelWireRow；admin 前端同口径消费）
+      channels: [{ channelId }],
     });
 
     await call(w(), `/v1/models/${mappingId}`, { method: 'DELETE' });

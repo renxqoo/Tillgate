@@ -6,8 +6,12 @@
  * 产物可按 request.id 清理（dev 库只多 9 行诊断 span）。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createDb, closeDb } from '@tillgate/db';
+import { serve, type ServerType } from '@hono/node-server';
+import { createDb, closeDb, ping } from '@tillgate/db';
 import { createObservability } from '@tillgate/observability';
+import { loadTraceReceiverConfig } from '../../apps/trace-receiver/src/config';
+import { assembleReceiver, type ReceiverAssembly } from '../../apps/trace-receiver/src/assembly';
+import { createReceiverApp } from '../../apps/trace-receiver/src/app';
 import {
   defined,
   E2E_MODEL,
@@ -21,7 +25,7 @@ import {
   type E2EWorld,
 } from './kit';
 
-const RECEIVER = process.env.TRACE_RECEIVER_URL ?? 'http://localhost:8793';
+let RECEIVER = process.env.TRACE_RECEIVER_URL ?? 'http://localhost:8793';
 
 /** trace 列表行形状（recent/byRequest 断言用） */
 interface TraceListRow {
@@ -55,10 +59,39 @@ function byCodeUnit(a: string, b: string): number {
   return 0;
 }
 
-// 本机/CI 没有在跑 receiver 时整组 skip（诊断探针不硬性依赖部署形态）
-const receiverUp = await fetch(`${RECEIVER}/readyz`, { signal: AbortSignal.timeout(2_000) })
+// 外部 receiver 不在跑时进程内自托管（全真装配：真批量入队 + 真 PG 写共享 dev 库
+// trace_spans——每次运行若干行诊断 span，可按 request.id 清理）。自举失败（无
+// DATABASE_URL 等）才整组 skip。
+const externalUp = await fetch(`${RECEIVER}/readyz`, { signal: AbortSignal.timeout(2_000) })
   .then((r) => r.ok)
   .catch(() => false);
+
+let selfHosted: { server: ServerType; assembly: ReceiverAssembly } | undefined;
+if (!externalUp && process.env.DATABASE_URL != null) {
+  const config = loadTraceReceiverConfig({
+    DATABASE_URL: process.env.DATABASE_URL,
+    TRACE_RECEIVER_OPEN: 'true',
+    LOG_LEVEL: 'error',
+    OTEL_TRACES_MODE: 'off',
+    TRACE_FLUSH_INTERVAL_MS: '500',
+  });
+  const receiverAssembly = await assembleReceiver(config);
+  const receiverApp = createReceiverApp({
+    pingDb: () => ping(receiverAssembly.db),
+    store: receiverAssembly.store,
+    batcher: receiverAssembly.batcher,
+  });
+  receiverAssembly.batcher.start();
+  const server = serve({ fetch: receiverApp.fetch, port: 0, hostname: '127.0.0.1' });
+  await new Promise<void>((resolve) => {
+    server.once('listening', resolve);
+  });
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  RECEIVER = `http://127.0.0.1:${port}`;
+  selfHosted = { server, assembly: receiverAssembly };
+}
+const receiverUp = externalUp || selfHosted !== undefined;
 
 let world: E2EWorld;
 let gw: E2EGateway;
@@ -87,6 +120,14 @@ afterAll(async () => {
   await gw.stop();
   await world.teardown();
   await closeDb(devDb);
+  if (selfHosted != null) {
+    await new Promise<void>((resolve) => {
+      selfHosted?.server.close(() => resolve());
+    });
+    await selfHosted.assembly.batcher.close();
+    await selfHosted.assembly.otel.shutdown().catch(() => {});
+    await closeDb(selfHosted.assembly.db);
+  }
 });
 
 describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 receiver + dev 库）', () => {
@@ -176,7 +217,7 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
     }
   });
 
-  it('失败路径③ 用户取消：列表呈现断链缺陷（主链 8 span + 孤儿 settle）', async () => {
+  it('失败路径③ 用户取消：单条 9-span 完整记录（settle 归根，无孤儿 trace）', async () => {
     world.upstream.frameGapMs = 30;
     const { raw } = await keys.issue('100');
     const controller = new AbortController();
@@ -194,10 +235,9 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
     world.upstream.frameGapMs = 0;
     console.log(`③ 已取消 x-request-id=${requestId}`);
     const rows = await waitForListRow(createObservability({ db: devDb }).traces, requestId);
-    console.log(
-      '③ 列表记录（缺陷现场：应为两条——8-span 主链 + 1-span 孤儿 settle）:',
-      JSON.stringify(rows),
-    );
-    expect(rows.length).toBeGreaterThanOrEqual(1);
+    console.log('③ 列表记录（根治后：单条完整记录，settle 与主链同 trace）:', JSON.stringify(rows));
+    // 一条请求一棵树：取消路径结算 span 归根——不再断成「主链 + 孤儿 settle」两条
+    expect(rows).toHaveLength(1);
+    expect(defined(rows[0], 'rows[0]').spanCount).toBeGreaterThanOrEqual(9);
   });
 });
