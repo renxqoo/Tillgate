@@ -243,6 +243,12 @@ export const channelHealthRowSchema = z
     avgDurationMs: z.number(),
     lastAt: z.number().nullable(),
     lastError: z.string().nullable(),
+    reservations: z
+      .number()
+      .describe('窗口内预算预留尝试数(billing.reserve_channel span 数,含被拒——换渠占比分母)'),
+    switchedReservations: z
+      .number()
+      .describe('换渠切入数(预留携带 billing.switched=true——本渠道作为换渠目标)'),
   })
   .meta({ id: 'ChannelHealthRow', description: '渠道健康聚合(topology 行)。' });
 

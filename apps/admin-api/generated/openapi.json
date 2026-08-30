@@ -3960,6 +3960,14 @@
                 "type": "null"
               }
             ]
+          },
+          "reservations": {
+            "type": "number",
+            "description": "窗口内预算预留尝试数(billing.reserve_channel span 数,含被拒——换渠占比分母)"
+          },
+          "switchedReservations": {
+            "type": "number",
+            "description": "换渠切入数(预留携带 billing.switched=true——本渠道作为换渠目标)"
           }
         },
         "required": [
@@ -3968,7 +3976,9 @@
           "errors",
           "avgDurationMs",
           "lastAt",
-          "lastError"
+          "lastError",
+          "reservations",
+          "switchedReservations"
         ],
         "description": "渠道健康聚合(topology 行)。"
       },

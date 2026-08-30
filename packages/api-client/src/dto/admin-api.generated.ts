@@ -764,6 +764,10 @@ export interface ChannelHealthRow {
   avgDurationMs: number;
   lastAt: number | null;
   lastError: string | null;
+  /** 窗口内预算预留尝试数(billing.reserve_channel span 数,含被拒——换渠占比分母) */
+  reservations: number;
+  /** 换渠切入数(预留携带 billing.switched=true——本渠道作为换渠目标) */
+  switchedReservations: number;
 }
 
 /** GET /v1/tracing/topology 响应(hours=回看窗口)。 */

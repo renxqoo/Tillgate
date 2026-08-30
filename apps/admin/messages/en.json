@@ -1027,6 +1027,7 @@
     "fallbackEdge": "fallback channel switch",
     "nodeLabel": "{count} attempts · {rate}% success",
     "avgDelay": "avg latency {ms}ms",
+    "switchedIn": "{count} switched in · {rate}%",
     "lastError": "Last error: {error}",
     "edgeAttempts": "{count} calls",
     "noTopologyData": "No channel call data in this window (services must be wired to trace-receiver with real traffic).",

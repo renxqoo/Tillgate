@@ -27,6 +27,10 @@ export interface ChannelHealth {
   avgDurationMs: number;
   lastAt: number | null;
   lastError: string | null;
+  /** 窗口内预算预留尝试数（billing.reserve_channel span 数，含被拒——换渠占比分母） */
+  reservations: number;
+  /** 换渠切入数（预留携带 billing.switched=true——本渠道作为换渠目标） */
+  switchedReservations: number;
 }
 
 const GATEWAY_W = 180;
@@ -102,8 +106,13 @@ export function ChannelTopology({ channels }: { channels: ChannelHealth[] }) {
           position: { x: 0, y: 0 },
           data: {
             label: `${ch.channel}\n${t('nodeLabel', { count: ch.attempts, rate: (successRate * 100).toFixed(1) })}\n${t('avgDelay', { ms: ch.avgDurationMs })}${
-              ch.lastError ? `\n${t('lastError', { error: ch.lastError })}` : ''
-            }`,
+              ch.reservations > 0
+                ? `\n${t('switchedIn', {
+                    count: ch.switchedReservations,
+                    rate: Math.round((ch.switchedReservations / ch.reservations) * 100),
+                  })}`
+                : ''
+            }${ch.lastError ? `\n${t('lastError', { error: ch.lastError })}` : ''}`,
           },
           style: {
             width: CHANNEL_W,

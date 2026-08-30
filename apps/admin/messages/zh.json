@@ -1027,6 +1027,7 @@
     "fallbackEdge": "fallback 换渠道",
     "nodeLabel": "{count} 次 · 成功率 {rate}%",
     "avgDelay": "均延迟 {ms}ms",
+    "switchedIn": "换入 {count} 次 · {rate}%",
     "lastError": "最近错误: {error}",
     "edgeAttempts": "{count} 次",
     "noTopologyData": "窗口内无渠道调用数据（需要各服务已接 trace-receiver 且有真实流量）。",
