@@ -22,6 +22,7 @@ import {
   defined,
   E2EKeys,
   e2ePost,
+  setFixedReservationPolicy,
   setupE2EWorld,
   sleep,
   startE2EGateway,
@@ -56,10 +57,8 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
   beforeAll(async () => {
     world = await setupE2EWorld();
     fullGateway = await startE2EGateway(world);
-    fixedGateway = await startE2EGateway(world, {
-      BILLING_RESERVATION_MODE: 'fixed',
-      BILLING_FIXED_RESERVATION_AMOUNT: '0.1',
-    });
+    // fixed 网关惰性建：首个 fixed 断言前写 KV 策略行再装配（预扣模式已迁
+    // system_configs KV——env 键已废弃，full 断言必须先行不受染）
     keys = new E2EKeys(world, fullGateway.assembly.billingFacade);
 
     const external = `e2e-drain-${randomUUID().slice(0, 8)}`;
@@ -183,10 +182,19 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
       expect(world.upstream.recorded.length).toBe(0); // 上游一次都没被调——平台零损失
     }, 30_000);
 
-    it('⑥ fixed=0.1 低门槛放行 + 实际用量远超余额 → 受控透支补扣（地板内扣负、地板外放弃）', async () => {
-      world.upstream.script = 'nonstream-huge-usage'; // 实际 100k 输出 token × ¥600/M = ¥60 >> 预留 0.5
+    it('⑥ fixed=0.1 低门槛放行 + 诚实巨量发票 → 发票钳到声明预算，受控透支（地板内、在途清零）', async () => {
+      // 诚实巨量：4 万字正文 + usage{1000,100000}——过证据验收门（字节数 ≥ 输出 token）。
+      // 现行结算口径：发票输出钳到声明预算 max_tokens=4096（① 的「预估敞口 ≥ 实际输出
+      // 上界」定理），输入取预检估算——巨量发票不得照单全收放大扣费。
+      world.upstream.script = 'nonstream-huge-usage-honest';
+      // fixed 策略经 system_configs KV 生效（admin 面同款热路径）——惰性装配且
+      // 幂等（⑥b 与重跑不重复起网关；⑥ 失败时 ⑥b 不因未赋值而 TypeError）
+      if (fixedGateway == null) {
+        await setFixedReservationPolicy(world, '0.1');
+        fixedGateway = await startE2EGateway(world);
+      }
       const { raw, userId } = await keys.issue('0.5');
-      // 结算透支地板 5：受控负余额上界（新口径：超收钳到 可用+地板，差额 waived）
+      // 结算透支地板 5：受控负余额上界（超收钳到 可用+地板，差额 waived）
       await world.db.execute(
         sql`update wallet_accounts set debit_floor = 5 where user_id = ${userId}`,
       );
@@ -202,19 +210,84 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
 
       const bill = await latestReceipt(userId);
       expect(bill.status).toBe('settled'); // 不是 dead / 不是 settlement_pending 滞留
-      // 实收 = 可用 0.4（0.5 − 预留在途 0.1）+ 地板 5 = 5.4，加预留内 0.1 → 5.5；
-      // 应收 60.06（1000 输入 ×¥60/M + 100k 输出 ×¥600/M）与实收的差额 54.56 落 waived_amount。
-      const usage = await world.db.execute<{ amount: string }>(
-        sql`select amount::text from usage_logs where user_id = ${userId}`,
+      const usage = await world.db.execute<{
+        amount: string;
+        calculated_amount: string;
+        input_tokens: string | number;
+        output_tokens: string | number;
+      }>(
+        sql`select amount::text, calculated_amount::text, input_tokens, output_tokens from usage_logs where user_id = ${userId}`,
       );
-      expect(new Decimal(defined(usage[0], 'usage row').amount).eq('5.5')).toBe(true);
+      const row = defined(usage[0], 'usage row');
+      // 发票输出钳到声明预算 4096（不得按谎报 100k 计费）；金额与行内 token 严格符合公式
+      expect(Number(row.output_tokens)).toBe(4_096);
+      const recomputed = new Decimal(Number(row.input_tokens))
+        .mul('60')
+        .plus(new Decimal(Number(row.output_tokens)).mul('600'))
+        .div('1000000');
+      expect(new Decimal(row.amount).eq(recomputed)).toBe(true);
+      expect(new Decimal(row.calculated_amount).eq(recomputed)).toBe(true);
+      // 2.46258（≈4096×¥600/M）> 余额 0.5 → 透支发生但受地板封底
+      expect(new Decimal(row.amount).gt('0.5')).toBe(true);
+      const w = await keys.walletOf(userId);
+      expect(new Decimal(w.balance).eq(new Decimal('0.5').minus(row.amount))).toBe(true);
+      expect(new Decimal(w.balance).gte('-5')).toBe(true); // 地板内——受控透支不穿透
+      expect(w.inFlight).toBe('0'); // 在途清零——无资金搁浅
       const waived = await world.db.execute<{ waived_amount: string }>(
         sql`select waived_amount::text from billing_requests where user_id = ${userId}`,
       );
-      expect(new Decimal(defined(waived[0], 'bill row').waived_amount).eq('54.56')).toBe(true);
+      // 实收 == 应收（地板未触顶，无放弃分量）
+      expect(new Decimal(defined(waived[0], 'bill row').waived_amount).eq('0')).toBe(true);
+    }, 60_000);
+
+    it('⑥b 上游谎报巨量 usage（1 字符正文报 100k 输出）→ 发票被证据验收废弃：按估算计费、零透支、缺陷计数', async () => {
+      world.upstream.script = 'nonstream-huge-usage'; // 正文 'x' 与 100k 输出发票相悖
+      const defectsBefore = await world.db.execute<{ n: string }>(
+        sql`select usage_evidence_defects::text as n from channels where id = ${world.seed.channelId}`,
+      );
+      const { raw, userId } = await keys.issue('0.5');
+      await world.db.execute(
+        sql`update wallet_accounts set debit_floor = 5 where user_id = ${userId}`,
+      );
+
+      const res = await e2ePost(fixedGateway.baseUrl, raw, {
+        model: drainModel,
+        max_tokens: 4_096,
+        messages: [{ role: 'user', content: 'hi' }],
+      });
+      expect(res.status).toBe(200); // 准入照常（发票验收在结算侧）
+      await res.text();
+      await keys.settleAll(userId);
+
+      const bill = await latestReceipt(userId);
+      expect(bill.status).toBe('settled');
+      const usage = await world.db.execute<{
+        amount: string;
+        input_tokens: string | number;
+        output_tokens: string | number;
+      }>(
+        sql`select amount::text, input_tokens, output_tokens from usage_logs where user_id = ${userId}`,
+      );
+      const row = defined(usage[0], 'usage row');
+      // 估算计费：金额与行内 token 数严格符合三价公式（60/600/1）
+      const recomputed = new Decimal(Number(row.input_tokens))
+        .mul('60')
+        .plus(new Decimal(Number(row.output_tokens)).mul('600'))
+        .div('1000000');
+      expect(new Decimal(row.amount).eq(recomputed)).toBe(true);
+      // 谎报发票绝不放大扣费：远小于诚实口径 60.06，且不形成透支（余额仍为正）
+      expect(new Decimal(row.amount).lt('1')).toBe(true);
       const w = await keys.walletOf(userId);
-      expect(new Decimal(w.balance).eq('-5')).toBe(true); // 恰触地板——受控透支不穿透
-      expect(w.inFlight).toBe('0'); // 在途清零——无资金搁浅
+      expect(new Decimal(w.balance).eq(new Decimal('0.5').minus(row.amount))).toBe(true);
+      expect(w.inFlight).toBe('0');
+      const defectsAfter = await world.db.execute<{ n: string }>(
+        sql`select usage_evidence_defects::text as n from channels where id = ${world.seed.channelId}`,
+      );
+      // 发票谎报被记账（渠道证据缺陷计数 +1——累证熔断的输入）
+      expect(
+        Number(defined(defectsAfter[0], 'defects after').n) -
+          Number(defined(defectsBefore[0], 'defects before').n),
+      ).toBeGreaterThanOrEqual(1);
     }, 60_000);
   });
 

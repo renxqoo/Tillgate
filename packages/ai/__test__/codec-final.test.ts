@@ -5,11 +5,8 @@ import {
   geminiResponseToChat,
   geminiUsageToUsage,
 } from '../src/protocol/gemini-chat.js';
-import {
-  responsesRequestToChat,
-  chatResponseToResponses,
-  canonicalStreamToResponsesStream,
-} from '../src/protocol/responses-chat.js';
+import { responsesRequestToChat, chatResponseToResponses } from '../src/protocol/responses-chat.js';
+import { canonicalStreamToResponsesStream } from '../src/protocol/responses-stream.js';
 import { AnthropicAdapter } from '../src/adapters/anthropic.js';
 import { GeminiAdapter } from '../src/adapters/gemini.js';
 import { MiniMaxAdapter } from '../src/adapters/minimax.js';

@@ -16,12 +16,23 @@ export interface SpanHandle {
   setStatus(input: { code: 'ok' | 'error'; message?: string }): void;
 }
 
+/**
+ * 请求根 trace 句柄：后台终态收尾（流式结算）专用——
+ * runInBackground 内创建的 span 直挂请求根 span，且任务计入根 span 生命周期
+ * （根 span 等它完成才闭合：一条请求一棵树、时窗不逃逸）。
+ */
+export interface TraceRoot {
+  runInBackground<T>(fn: () => Promise<T>): Promise<T>;
+}
+
 export interface TracePort {
   withSpan<T>(
     name: string,
     attributes: TraceAttributes,
     fn: (span: SpanHandle) => Promise<T>,
   ): Promise<T>;
+  /** 捕获当前请求根（调用点须在请求作用域内；无作用域实现返回直跑句柄） */
+  captureRoot(): TraceRoot;
 }
 
 /** 未注入装配时的 no-op（异常语义与真实实现一致：观察不吞错，原样上抛） */
@@ -31,4 +42,7 @@ export const noopTrace: TracePort = {
       setAttributes: () => {},
       setStatus: () => {},
     }),
+  captureRoot: () => ({
+    runInBackground: (fn) => fn(),
+  }),
 };

@@ -75,11 +75,8 @@ export {
   chatResponseToCompletions,
   canonicalStreamToCompletionsStream,
 } from './protocol/completions-chat';
-export {
-  responsesRequestToChat,
-  chatResponseToResponses,
-  canonicalStreamToResponsesStream,
-} from './protocol/responses-chat';
+export { responsesRequestToChat, chatResponseToResponses } from './protocol/responses-chat';
+export { canonicalStreamToResponsesStream } from './protocol/responses-stream';
 export {
   DEFAULT_CLAUDE_MAX_TOKENS,
   claudeRequestToChat,

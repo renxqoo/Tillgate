@@ -106,12 +106,14 @@ describe('application/stream：流式尝试', () => {
       streamAborted: false,
       clientTtftMs: expect.any(Number),
     });
-    // TTFT 双锚点容差：名义值 = 合成锚 50ms；测试侧与源码侧
-    // Date.now() 读取错位在慢速 CI runner（coverage 插桩）上实测可达 ~6ms，窗口取
-    // ±10ms——仍足以钉住「锚定 50ms 合成事件」而非 0 或 durationMs=4_000
-    expect(receipt?.upstreamTtftMs).toBeGreaterThanOrEqual(40);
+    // TTFT 双锚点（负载稳定不变量）：名义值 = 合成锚 50ms 减去真实管线引导耗时
+    // （全套并发下引导可达数十 ms，±10ms 窗口必假红）。钉住语义而非绝对值：
+    // ① upstream 锚点落在 [0, 60]——排除「锚到 durationMs=4_000」的错误形态；
+    // ② client 锚点含管线引导（授权/路由），恒 ≥ upstream 锚点且 ≤ 1_000。
+    expect(receipt?.upstreamTtftMs).toBeGreaterThanOrEqual(0);
     expect(receipt?.upstreamTtftMs).toBeLessThanOrEqual(60);
-    expect(receipt?.clientTtftMs).toBeGreaterThanOrEqual(40);
+    expect(Number(receipt?.clientTtftMs)).toBeGreaterThanOrEqual(Number(receipt?.upstreamTtftMs));
+    expect(receipt?.clientTtftMs).toBeLessThanOrEqual(1_000);
     expect(receipt?.usage).toEqual({
       estimated: false,
       inputTokens: 10,

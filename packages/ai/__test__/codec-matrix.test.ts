@@ -45,7 +45,7 @@ const sseOf = (frames: string[]): ReadableStream<Uint8Array> =>
 // ─────────────────── claude-chat：内容块与守卫 ───────────────────
 
 describe('claude 内容块映射（chatContentToClaude / claudeContentToChat）', () => {
-  it('入站 data URL 图 → base64 source；远程 URL → url source；垃圾 url → 空 url source', () => {
+  it('入站 data URL 图 → base64 source；http(s) 远程 → url source；垃圾 url → 空文本占位（scheme 白名单）', () => {
     const cl = chatRequestToClaude({
       model: 'm',
       messages: [
@@ -68,7 +68,8 @@ describe('claude 内容块映射（chatContentToClaude / claudeContentToChat）'
       type: 'image',
       source: { type: 'url', url: 'https://cdn.example.com/x.png' },
     });
-    expect(blocks[2]).toEqual({ type: 'image', source: { type: 'url', url: '' } });
+    // 非 data/http(s) scheme（含数字等垃圾）不中继给上游——退空文本占位
+    expect(blocks[2]).toEqual({ type: 'text', text: '' });
   });
   it('空字符串 content → 空块数组；非对象 part 与未知 type → 占位 text 块（不丢消息结构）', () => {
     const empty = chatRequestToClaude({
@@ -86,16 +87,34 @@ describe('claude 内容块映射（chatContentToClaude / claudeContentToChat）'
       { type: 'text', text: '' },
     ]);
   });
-  it('claude → chat：未知块类型置 textOnly=false 返回空块数组；非 JSON 块跳过；复杂块原样透传', () => {
+  it('claude → chat：未知/残块不产出；image/audio 块归一为规范形（跨协议路由）', () => {
     const chat = claudeRequestToChat({
       model: 'c',
       messages: [
-        { role: 'user', content: [{ type: 'mystery' }, 7, { type: 'image', source: {} }] },
+        {
+          role: 'user',
+          content: [
+            { type: 'mystery' },
+            7,
+            { type: 'image', source: {} },
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: 'image/png', data: 'aW1n' },
+            },
+            {
+              type: 'audio',
+              source: { type: 'base64', media_type: 'audio/wav', data: 'aGVsbG8=' },
+            },
+          ],
+        },
       ],
     });
     const content = msgs(chat)[0]?.content;
-    expect(Array.isArray(content)).toBe(true);
-    expect(content).toEqual([{ type: 'image', source: {} }]); // 未知块不产出、非 JSON 跳过
+    // 未知块/非 JSON/残缺源不入列；媒体块归一（image → image_url data URL，audio → input_audio）
+    expect(content).toEqual([
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,aW1n' } },
+      { type: 'input_audio', input_audio: { data: 'aGVsbG8=', format: 'wav' } },
+    ]);
   });
 });
 
@@ -428,7 +447,7 @@ describe('gemini 入站请求深支（geminiRequestToChat）', () => {
 });
 
 describe('gemini 出站请求深支（chatRequestToGemini）', () => {
-  it('chatContentToParts：未知/非对象 part → 空 text part；远程图 URL → 空 text（不造 fileData）；空字符串 → 空数组', () => {
+  it('chatContentToParts：未知/非对象 part → 空 text part；远程图 URL → fileData；空字符串 → 空数组', () => {
     const g = chatRequestToGemini({
       model: 'm',
       messages: [
@@ -445,7 +464,11 @@ describe('gemini 出站请求深支（chatRequestToGemini）', () => {
     });
     const contents = g.contents as Rec[];
     expect((defined(contents[0], 'contents[0]').parts as Rec[]).length).toBe(0);
-    expect(contents[1]?.parts).toEqual([{ text: '' }, { text: '' }, { text: '' }]);
+    expect(contents[1]?.parts).toEqual([
+      { text: '' },
+      { text: '' },
+      { fileData: { fileUri: 'https://cdn/x.png' } },
+    ]);
   });
   it('system/developer 非字符串 content 序列化合并；tool 消息非法 JSON content 兜底 {}', () => {
     const g = chatRequestToGemini({

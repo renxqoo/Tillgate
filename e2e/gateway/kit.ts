@@ -15,9 +15,9 @@ import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
 import { serve, type ServerType } from '@hono/node-server';
 import { sql } from 'drizzle-orm';
-import { closeDb, createDb, type Db } from '@tillgate/db';
+import { closeDb, createDb, systemConfigs, type Db } from '@tillgate/db';
 import { createCipher } from '@tillgate/runtime';
-import { Decimal } from '@tillgate/billing';
+import { BILLING_RESERVATION_POLICY_KEY, Decimal } from '@tillgate/billing';
 import { loadGatewayConfig } from '../../apps/gateway/src/config';
 import { assembleGateway, type GatewayAssembly } from '../../apps/gateway/src/assembly';
 import { createGatewayApp } from '../../apps/gateway/src/app';
@@ -262,6 +262,20 @@ function buildGatewayAppOptions(
   };
 }
 
+/** Redis 握手竞速根治：listening 早于 ioredis ready——直接等 ready 事件（有界），
+ * 不再靠「打请求直到非 5xx」轮询（旧防线会把预期内的 fail-closed 503 打成 ERROR 噪声） */
+async function awaitRedisReady(redis: GatewayAssembly['redis']): Promise<void> {
+  if (redis.status === 'ready') return;
+  await Promise.race([
+    new Promise<void>((resolve) => {
+      redis.once('ready', resolve);
+    }),
+    new Promise((resolve) => {
+      setTimeout(resolve, 5_000);
+    }),
+  ]);
+}
+
 /** 在世界上再挂一个网关实例（同一 schema 可挂多份——cost-drain 双预扣策略形态） */
 export async function startE2EGateway(
   world: E2EWorld,
@@ -289,28 +303,27 @@ export async function startE2EGateway(
   });
   const address = server.address();
   const baseUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
-  // Redis 握手竞速防线：listening 早于 ioredis ready——首批 /v1 请求会被
-  // 限流闸 fail-closed 503。以「无凭证 /v1/models 返回 401（非 5xx）」为
-  // 鉴权链就绪条件，短轮询放行（超时不阻断——仅收敛竞速窗口）。
-  for (let i = 0; i < 50; i += 1) {
-    const probe = await fetch(`${baseUrl}/v1/models`).catch(() => null);
-    if (probe != null && probe.status < 500) break;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  await awaitRedisReady(assembly.redis);
   return {
     baseUrl,
     assembly,
     server,
-    async stop() {
-      (server as unknown as { closeAllConnections?: () => void }).closeAllConnections?.();
-      await new Promise<void>((resolve) => {
-        server.close(() => resolve());
-      });
-      assembly.inference.close();
-      await assembly.redis.quit();
-      await assembly.closeDb();
-    },
+    /** 停机顺序对齐 app createGatewayShutdown：先停接线，再 quit Redis，最后收 DB */
+    stop: () => stopE2EGateway(server, assembly),
   };
+}
+
+async function stopE2EGateway(server: ServerType, assembly: GatewayAssembly): Promise<void> {
+  (server as unknown as { closeAllConnections?: () => void }).closeAllConnections?.();
+  await new Promise<void>((resolve) => {
+    server.close(() => resolve());
+  });
+  // 乱序会在 quit 后触发在途写入（"Stream isn't writeable" 噪声）
+  assembly.inference.close();
+  await assembly.settleWake.close();
+  assembly.routingPolicyStop();
+  await assembly.redis.quit();
+  await assembly.closeDb();
 }
 
 // ---------------------------------------------------------------------------
@@ -416,6 +429,23 @@ export class E2EKeys {
     expectDecimalEq(walletState.inFlight, '0');
     return { balance: walletState.balance, charged };
   }
+}
+
+/**
+ * 写入预扣策略 KV（system_configs 'billing_reservation_policy' → fixed 模式）。
+ * 预扣模式已从 env 迁至运行时 KV（admin 面写入、网关 TTL 15s 热读）——
+ * fixed 装置必须走本助手；在首个 fixed 断言前写入，保证 full 断言先行不受染。
+ * 值必须以 jsonb 对象落库（raw sql 绑参会双重编码成 jsonb 字符串——解析回落 full）。
+ */
+export async function setFixedReservationPolicy(world: E2EWorld, amount: string): Promise<void> {
+  const value = { mode: 'fixed', amount };
+  await world.db
+    .insert(systemConfigs)
+    .values({ key: BILLING_RESERVATION_POLICY_KEY, value })
+    .onConflictDoUpdate({
+      target: systemConfigs.key,
+      set: { value, updatedAt: new Date() },
+    });
 }
 
 function expectDecimalEq(actual: string, expected: string): void {

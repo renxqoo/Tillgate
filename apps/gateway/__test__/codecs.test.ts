@@ -105,3 +105,37 @@ describe('端点表', () => {
     ]);
   });
 });
+
+describe('responses schema 显式 400 面（无法兑现的语义不静默丢弃）', () => {
+  const responsesEndpoint = defined(
+    inferenceEndpoints.find((e) => e.path === '/v1/responses'),
+    'responses endpoint',
+  );
+  const rejects = (body: Record<string, unknown>): boolean =>
+    !responsesEndpoint.schema.safeParse({ model: 'm', input: 'hi', ...body }).success;
+
+  it('previous_response_id（含 null）与 background:true → 400', () => {
+    expect(rejects({ previous_response_id: 'resp_x' })).toBe(true);
+    expect(rejects({ previous_response_id: null })).toBe(true);
+    expect(rejects({ background: true })).toBe(true);
+    // 合法形态不误伤：background 缺省/false、store 任意、具名 function tool_choice
+    expect(rejects({ background: false })).toBe(false);
+    expect(rejects({ store: true })).toBe(false);
+  });
+  it('非 function 工具与空名 function 工具 → 400', () => {
+    expect(rejects({ tools: [{ type: 'web_search_preview' }] })).toBe(true);
+    expect(rejects({ tools: [{ type: 'function', parameters: {} }] })).toBe(true);
+    expect(rejects({ tools: [{ type: 'function', name: 'f' }] })).toBe(false);
+  });
+  it('tool_choice 未知形态与 text.format 未知类型 → 400', () => {
+    expect(rejects({ tool_choice: { type: 'allowed_tools' } })).toBe(true);
+    expect(rejects({ tool_choice: { type: 'function' } })).toBe(true);
+    expect(rejects({ tool_choice: 'required' })).toBe(false);
+    expect(rejects({ tool_choice: { type: 'function', name: 'f' } })).toBe(false);
+    expect(rejects({ text: { format: { type: 'grammar' } } })).toBe(true);
+    expect(rejects({ text: { format: { type: 'json_object' } } })).toBe(false);
+    expect(rejects({ text: { format: { type: 'json_schema', name: 'o', schema: {} } } })).toBe(
+      false,
+    );
+  });
+});

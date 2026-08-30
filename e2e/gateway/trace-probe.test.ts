@@ -217,12 +217,12 @@ describe('诊断探针：全真装配完整请求的 span 树', () => {
     expect(bad).toEqual([]);
   });
 
-  // 已知缺陷（2026-08-24 探针发现，it.fails 锁存）：流式请求
-  // ① billing.settle_signal 挂在 upstream.attempt 之下且父 span 在 first_chunk 已结束
-  //   （stream.ts 决定性事件交还管道后后台结算沿用 attempt 的异步上下文）；
-  // ② HTTP 根 span 在响应头交出（await next() 返回）即结束，不覆盖 SSE 体续传，
-  //   结算 span 时窗逃逸根 span——真实长流下根 span 时长 ≈ TTFT，trace 时长 ≠ 根时长。
-  it.fails('流式 chat：完整请求 → 倒出 span 树并核对', async () => {
+  // 2026-08-24 探针发现的流式缺陷已根治（request-trace 协调器 + 根上下文捕获）：
+  // ① billing.settle_signal 经 TracePort.captureRoot() 直挂根 span（不再沿用已结束
+  //   的 upstream.attempt 异步上下文）；
+  // ② HTTP 根 span 覆盖 SSE 体续传（接力流收口），并在闭合前等后台结算完成——
+  //   真实长流下根 span 时长 ≈ 全程，全部子 span 时窗落内。
+  it('流式 chat：完整请求 → 倒出 span 树并核对', async () => {
     const { raw } = await keys.issue('100');
     memory.clear();
     const res = await e2ePost(gw.baseUrl, raw, {

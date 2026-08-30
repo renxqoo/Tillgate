@@ -14,7 +14,10 @@
 
 export const DEFAULT_CLAUDE_MAX_TOKENS = 4096;
 
-type Json = Record<string, unknown>;
+// 内容块映射族（codec 家族内容件——part/block 转换单一实现见 claude-content.ts）
+import { chatContentToClaude, claudeContentToChat } from './claude-content';
+
+export type Json = Record<string, unknown>;
 
 // 守卫三件套（claude codec 家族内部共享：claude-chat 与 claude-stream 单一实现）
 export function asJson(v: unknown): Json | null {
@@ -28,51 +31,6 @@ export function str(v: unknown): string | undefined {
 }
 
 // ─────────────────────────── 内容块映射 ───────────────────────────
-
-/** chat message.content → claude content blocks */
-function chatContentToClaude(content: unknown): unknown[] {
-  if (typeof content === 'string') return content ? [{ type: 'text', text: content }] : [];
-  return asArray(content).map((part) => {
-    const p = asJson(part);
-    if (!p) return { type: 'text', text: '' };
-    if (p.type === 'text' && typeof p.text === 'string') return { type: 'text', text: p.text };
-    if (p.type === 'image_url') {
-      const url = str(asJson(p.image_url)?.url) ?? '';
-      // data URL → base64 source；远程 URL 不转换（claude 支持 url source）
-      const m = /^data:([^;,]+);base64,(.*)$/s.exec(url);
-      if (m) return { type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } };
-      return { type: 'image', source: { type: 'url', url } };
-    }
-    return { type: 'text', text: '' };
-  });
-}
-
-/** claude content blocks → chat content（文本 join 为 string；含工具/图像时用块数组） */
-function claudeContentToChat(blocks: unknown): string | Array<Record<string, unknown>> {
-  const arr = asArray(blocks);
-  const out: Array<Record<string, unknown>> = [];
-  let textOnly = true;
-  for (const b of arr) {
-    const block = asJson(b);
-    if (!block) continue;
-    if (block.type === 'text' && typeof block.text === 'string') {
-      out.push({ type: 'text', text: block.text });
-    } else if (
-      block.type === 'image' ||
-      block.type === 'tool_use' ||
-      block.type === 'tool_result' ||
-      block.type === 'thinking'
-    ) {
-      textOnly = false;
-      // 复杂块保留原样（规范形 passthrough——OpenAI 形态无法表达的部分不强行降级）
-      out.push(block as Record<string, unknown>);
-    } else {
-      textOnly = false;
-    }
-  }
-  if (textOnly) return out.map((b) => (b as { text: string }).text).join('');
-  return out;
-}
 
 // ─────────────────────────── ① 入站请求 → 规范形 ───────────────────────────
 
@@ -295,17 +253,22 @@ export function claudeUsageToUsage(u: unknown): {
   };
 }
 
-/** 响应内容块收集：text 块拼正文、tool_use 块转 tool_calls（含形状兜底） */
+/** 响应内容块收集：text 块拼正文、thinking 块归一 reasoning_content、tool_use 块转 tool_calls（含形状兜底） */
 function collectClaudeBlocks(blocks: unknown[]): {
   textParts: string[];
+  thinkingParts: string[];
   toolCalls: Array<Record<string, unknown>>;
 } {
   const textParts: string[] = [];
+  const thinkingParts: string[] = [];
   const toolCalls: Array<Record<string, unknown>> = [];
   for (const b of blocks) {
     const block = asJson(b);
     if (!block) continue;
     if (block.type === 'text' && typeof block.text === 'string') textParts.push(block.text);
+    if (block.type === 'thinking' && typeof block.thinking === 'string') {
+      thinkingParts.push(block.thinking);
+    }
     if (block.type === 'tool_use') {
       toolCalls.push({
         id: str(block.id) ?? 'call_x',
@@ -314,13 +277,15 @@ function collectClaudeBlocks(blocks: unknown[]): {
       });
     }
   }
-  return { textParts, toolCalls };
+  return { textParts, thinkingParts, toolCalls };
 }
 
 export function claudeResponseToChat(res: unknown): Json {
   const r = asJson(res) ?? {};
-  const { textParts, toolCalls } = collectClaudeBlocks(asArray(r.content));
+  const { textParts, thinkingParts, toolCalls } = collectClaudeBlocks(asArray(r.content));
   const message: Json = { role: 'assistant', content: textParts.join('') };
+  // thinking 归一为规范形 reasoning_content（跨协议路由/客户端面可还原）
+  if (thinkingParts.length > 0) message.reasoning_content = thinkingParts.join('');
   if (toolCalls.length > 0) message.tool_calls = toolCalls;
   const stopReason = str(r.stop_reason) ?? '';
   const usage = claudeUsageToUsage(r.usage);
@@ -373,6 +338,10 @@ export function chatResponseToClaude(res: unknown): Json {
   const choice = asJson(asArray(r.choices)[0]) ?? {};
   const message = asJson(choice.message) ?? {};
   const blocks: unknown[] = [];
+  // 规范形 reasoning_content → thinking 块（/v1/messages 客户端面还原；signature
+  // 为网关合成占位——Anthropic 协议要求字段存在，历史回放本就不验签）
+  const reasoning = str(message.reasoning_content);
+  if (reasoning) blocks.push({ type: 'thinking', thinking: reasoning, signature: 'gateway' });
   const content = typeof message.content === 'string' ? message.content : '';
   if (content) blocks.push({ type: 'text', text: content });
   for (const tc of asArray(message.tool_calls)) {

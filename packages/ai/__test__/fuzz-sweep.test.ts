@@ -24,11 +24,8 @@ import {
   chatResponseToCompletions,
   canonicalStreamToCompletionsStream,
 } from '../src/protocol/completions-chat.js';
-import {
-  responsesRequestToChat,
-  chatResponseToResponses,
-  canonicalStreamToResponsesStream,
-} from '../src/protocol/responses-chat.js';
+import { responsesRequestToChat, chatResponseToResponses } from '../src/protocol/responses-chat.js';
+import { canonicalStreamToResponsesStream } from '../src/protocol/responses-stream.js';
 import { OpenAICompatibleAdapter } from '../src/adapters/openai-compatible.js';
 import { AnthropicAdapter } from '../src/adapters/anthropic.js';
 import { GeminiAdapter } from '../src/adapters/gemini.js';

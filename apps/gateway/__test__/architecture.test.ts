@@ -50,6 +50,7 @@ describe('src 文件集合快照', () => {
       'http/middleware/otel.ts',
       'http/middleware/rate-limit.ts',
       'http/middleware/request-log.ts',
+      'http/middleware/request-trace.ts',
       'http/openai-envelope.ts',
       'http/openai-error-face.ts',
       'http/routes/generation.ts',

@@ -786,4 +786,51 @@ describe('billing-reservation 读取器（TTL 缓存 + 单飞行 + full 回落�
     expect(b).toEqual({ mode: 'fixed', amount: '0.01' });
     expect(queries).toBe(1);
   });
+
+  it('limit 读取器：KV 取值/垃圾回落缺省 1000/TTL 内不重复查/过期刷新/读失败抛错', async () => {
+    const { createBillingReservationLimitReader } =
+      await import('../src/adapters/reservation-policy.js');
+    const { DEFAULT_RESERVATION_LIMIT } = await import('@tillgate/billing');
+    const db = fakeBillingTimezoneDb([{ value: { limit: '5000' } }]);
+    const read = createBillingReservationLimitReader({ db: db as never, ttlMs: 60_000 });
+    expect(await read()).toBe('5000');
+    expect(await read()).toBe('5000'); // TTL 内走缓存
+    expect(db.reads()).toBe(1);
+
+    // 缺失/零金额/垃圾 → 缺省 1000（保守拒大，fail-closed）
+    for (const raw of [null, { value: { limit: '0' } }, { value: { limit: 'x' } }, { value: {} }]) {
+      const fallbackDb = fakeBillingTimezoneDb([raw]);
+      const readFallback = createBillingReservationLimitReader({
+        db: fallbackDb as never,
+        ttlMs: 60_000,
+      });
+      expect(await readFallback()).toBe(DEFAULT_RESERVATION_LIMIT);
+    }
+
+    // TTL 过期（ttlMs=1）→ 下一请求重查
+    const refreshDb = fakeBillingTimezoneDb([{ value: { limit: '2000' } }]);
+    const readRefresh = createBillingReservationLimitReader({
+      db: refreshDb as never,
+      ttlMs: 1,
+    });
+    expect(await readRefresh()).toBe('2000');
+    await new Promise((r) => {
+      setTimeout(r, 3);
+    });
+    expect(await readRefresh()).toBe('2000');
+    expect(refreshDb.reads()).toBe(2);
+
+    // KV 读失败抛错（fail-loud——与 policy 读取器同款）
+    const downDb = {
+      query: {
+        systemConfigs: {
+          findFirst: async () => {
+            throw new Error('db down');
+          },
+        },
+      },
+    };
+    const readDown = createBillingReservationLimitReader({ db: downDb as never, ttlMs: 60_000 });
+    await expect(readDown()).rejects.toThrow('db down');
+  });
 });

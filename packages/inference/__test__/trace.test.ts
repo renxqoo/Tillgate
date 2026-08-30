@@ -33,6 +33,7 @@ function fakeTrace() {
   const stack: string[] = [];
   const spans: RecordedSpan[] = [];
   const port: TracePort = {
+    captureRoot: () => ({ runInBackground: (fn) => fn() }),
     withSpan: async (name, attributes, fn) => {
       const rec: RecordedSpan = {
         name,

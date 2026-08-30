@@ -3,10 +3,8 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createAi, allowAllUrls } from '../src/index.js';
 import { estimateInputTokens } from '../src/usage/token-estimate.js';
-import {
-  responsesRequestToChat,
-  canonicalStreamToResponsesStream,
-} from '../src/protocol/responses-chat.js';
+import { responsesRequestToChat } from '../src/protocol/responses-chat.js';
+import { canonicalStreamToResponsesStream } from '../src/protocol/responses-stream.js';
 import { signAwsRequest, parseAwsCredentials } from '../src/adapters/aws-bedrock.js';
 import { VertexAiAdapter } from '../src/adapters/vertex-ai.js';
 import { defineAdapter } from '../src/registry/define-adapter.js';
