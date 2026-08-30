@@ -11,7 +11,45 @@ import { asArray, asJson, str, FINISH_MAP, type Json } from './gemini-shared';
  * thoughtsTokenCount 计入 output——思考 token 由输出侧承担）。
  */
 
-/** gemini parts → chat content（纯文本 join；函数调用/媒体保留块形） */
+/**
+ * 单个 gemini part → 规范形 part：文本原样；inlineData 媒体归一（image_url data
+ * URL / input_audio）；fileData 的 http(s) URI → 远程 image_url，非 http(s)（gs://
+ * 等 gemini 私有 URI）与远程音频无规范形对应——原样透传（出站透传兜底同协议往返）；
+ * functionCall/未知 part 原样保留（消息层提取/透传）。返回 null = 残块不入列。
+ */
+function geminiPartToChatPart(part: Json): Record<string, unknown> | null {
+  if (typeof part.text === 'string') return { type: 'text', text: part.text };
+  const inline = asJson(part.inlineData);
+  if (inline != null) {
+    const mimeType = str(inline.mimeType) ?? '';
+    const data = str(inline.data) ?? '';
+    if (!data) return null;
+    if (mimeType.startsWith('audio/')) {
+      return {
+        type: 'input_audio',
+        input_audio: { data, format: mimeType.replace(/^audio\//, '') || 'wav' },
+      };
+    }
+    return {
+      type: 'image_url',
+      image_url: { url: `data:${mimeType || 'application/octet-stream'};base64,${data}` },
+    };
+  }
+  const file = asJson(part.fileData);
+  if (file != null) {
+    const uri = str(file.fileUri) ?? '';
+    const mimeType = str(file.mimeType) ?? '';
+    if (!uri) return null;
+    // http(s) 且非音频 → 远程 image_url；其余（gs:// / 远程音频）透传原生形
+    if (/^https?:\/\//i.test(uri) && !mimeType.startsWith('audio/')) {
+      return { type: 'image_url', image_url: { url: uri } };
+    }
+    return part as Record<string, unknown>;
+  }
+  return part as Record<string, unknown>;
+}
+
+/** gemini parts → chat content（纯文本 join；媒体归一为规范形，其余保块形） */
 function partsToContent(parts: unknown): string | Array<Record<string, unknown>> {
   const arr = asArray(parts);
   const out: Array<Record<string, unknown>> = [];
@@ -19,11 +57,13 @@ function partsToContent(parts: unknown): string | Array<Record<string, unknown>>
   for (const p of arr) {
     const part = asJson(p);
     if (!part) continue;
-    if (typeof part.text === 'string') out.push({ type: 'text', text: part.text });
-    else {
+    const converted = geminiPartToChatPart(part);
+    if (converted == null) {
       textOnly = false;
-      out.push(part as Record<string, unknown>);
+      continue;
     }
+    if (converted.type !== 'text') textOnly = false;
+    out.push(converted);
   }
   if (textOnly) return out.map((b) => (b as { text: string }).text).join('');
   return out;
@@ -126,19 +166,45 @@ export function geminiRequestToChat(req: unknown, model: string): Json {
 
 // ─────────────────────────── ② 规范形 → Gemini（上游适配器） ───────────────────────────
 
+/** chat image_url part → gemini part（data URL → inlineData；http(s) 远程 → fileData——
+ *  白名单防 file:/内网 scheme 经网关中继；其余退空文本占位） */
+function imageUrlToGeminiPart(p: Json): unknown {
+  const url = str(asJson(p.image_url)?.url) ?? '';
+  const m = /^data:([^;,]+);base64,(.*)$/s.exec(url);
+  if (m) return { inlineData: { mimeType: m[1], data: m[2] } };
+  if (/^https?:\/\//i.test(url)) {
+    return { fileData: { fileUri: url } };
+  }
+  return { text: '' };
+}
+
+/** chat input_audio part → gemini inlineData（mimeType 补全 audio/ 前缀；缺 data 退空文本） */
+function inputAudioToGeminiPart(p: Json): unknown {
+  const audio = asJson(p.input_audio);
+  const data = str(audio?.data) ?? '';
+  const format = str(audio?.format) ?? '';
+  if (!data) return { text: '' };
+  return {
+    inlineData: { mimeType: format.startsWith('audio/') ? format : `audio/${format}`, data },
+  };
+}
+
+/** 单个 chat content part → gemini part（text/image_url/input_audio/原生透传，未知→空文本占位） */
+function chatPartToGeminiPart(p: Json): unknown {
+  if (typeof p.text === 'string') return { text: p.text };
+  if (p.type === 'image_url') return imageUrlToGeminiPart(p);
+  if (p.type === 'input_audio') return inputAudioToGeminiPart(p);
+  // 原生 gemini 形态透传（gemini 原生入站归一后不会再出现原始形——透传兜底
+  // 防御外部直构的规范形体）
+  if (p.inlineData !== undefined || p.fileData !== undefined) return p;
+  return { text: '' };
+}
+
 function chatContentToParts(content: unknown): unknown[] {
   if (typeof content === 'string') return content ? [{ text: content }] : [];
   return asArray(content).map((part) => {
     const p = asJson(part);
-    if (!p) return { text: '' };
-    if (typeof p.text === 'string') return { text: p.text };
-    if (p.type === 'image_url') {
-      const url = str(asJson(p.image_url)?.url) ?? '';
-      const m = /^data:([^;,]+);base64,(.*)$/s.exec(url);
-      if (m) return { inlineData: { mimeType: m[1], data: m[2] } };
-      return { text: '' };
-    }
-    return { text: '' };
+    return p == null ? { text: '' } : chatPartToGeminiPart(p);
   });
 }
 

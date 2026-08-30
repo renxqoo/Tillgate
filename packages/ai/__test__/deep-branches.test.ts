@@ -120,8 +120,8 @@ describe('codec 深支', () => {
       ],
     });
     const parts = (g.contents as Array<{ parts: Array<Record<string, unknown>> }>)[0]?.parts ?? [];
-    // 现状语义：远程 URL 不转 fileData（返回空 text part）——锁定行为防静默变更
-    expect(parts.every((p) => p.fileData === undefined)).toBe(true);
+    // 远程媒体 URL → fileData（与入站归一互逆——往返无损）
+    expect(parts).toEqual([{ fileData: { fileUri: 'https://cdn.example.com/x.png' } }]);
   });
   it('gemini 非流式：候选缺失/垃圾容错', () => {
     expect(Array.isArray((geminiResponseToChat({}, 'm') as { choices: unknown }).choices)).toBe(
