@@ -12,7 +12,8 @@ export function formOf(policy: Record<string, unknown> | undefined): PolicyForm 
   const penalty = seg(policy, 'penalty');
   const wait = seg(policy, 'wait');
   return {
-    cacheAffinityEnabled: affinity.enabled === true,
+    enabled: policy?.enabled === true,
+    cacheAffinityEnabled: affinity.enabled !== false, // 缺省开启（镜像 routingPolicySchema）
     cacheBoost: String(affinity.boost ?? 3),
     budgetWatermarkEnabled: watermark.enabled !== false,
     softRatio: String(watermark.softRatio ?? 0.2),
@@ -73,6 +74,8 @@ export function validateForm(form: PolicyForm): FormValidationError | null {
 /** 表单 → 策略体（routingPolicySchema 形状；version 由服务端行级自增——不进 JSONB） */
 export function buildPolicy(form: PolicyForm): Record<string, unknown> {
   return {
+    // enabled 是 schema 顶层开关；false 时其余参数保留原值提交但不参与路由决策
+    enabled: form.enabled,
     scorers: {
       cacheAffinity: {
         enabled: form.cacheAffinityEnabled,

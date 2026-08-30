@@ -18,7 +18,11 @@ import {
   usage,
 } from './harness';
 import type { TraceAttributes, TracePort } from '../src/ports/trace';
+import { staticRoutingPolicy } from '../src/ports/routing';
+import { routingPolicySchema } from '../src/routing/policy';
 import { defined } from './defined';
+
+/** 本文件场景假设智能路由开启（换渠路径生效）——单渠道直连规格见 single-track.test */
 
 interface RecordedSpan {
   name: string;
@@ -84,6 +88,7 @@ function setup() {
     catalog,
     billing: billing.port,
     upstream: upstream.port,
+    policy: staticRoutingPolicy(routingPolicySchema.parse({ enabled: true })),
     trace: trace.port,
   });
   return { inference, upstream, billing, trace };

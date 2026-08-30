@@ -155,8 +155,6 @@ export interface ModelStore {
       channels: Array<{
         channelId: number;
         upstreamModel: string;
-        weight: number;
-        priority: number;
       }>;
     },
   ): Promise<number>;

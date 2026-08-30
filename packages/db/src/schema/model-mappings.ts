@@ -154,8 +154,7 @@ export const modelChannels = pgTable(
       .references(() => channels.id),
     /** 出站上游模型名（厂商各异名；绑定 API 缺省物化为映射 realModel，落库恒显式） */
     upstreamModel: varchar('upstream_model', { length: 128 }).notNull(),
-    weight: bigint('weight', { mode: 'number' }).notNull().default(1),
-    priority: bigint('priority', { mode: 'number' }).notNull().default(0),
+    // 路由排序的 weight/priority 单轨住在 channels 层（用户裁决 D4；迁移 0107 清退本表旧列）
   },
   (t) => [
     { name: 'model_channels_pk', columns: [t.mappingId, t.channelId], primaryKey: true },

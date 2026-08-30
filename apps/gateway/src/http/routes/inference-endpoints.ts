@@ -122,6 +122,7 @@ export function inferenceRoutes(
         body: canonical,
         endpoint: endpoint.kind,
         signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
+        onAttempts: (n) => c.set('inferenceAttempts', n),
       });
       const result =
         canonical.stream === true
@@ -175,6 +176,7 @@ export function enginesAliasRoutes(
           body: canonical,
           endpoint: endpoint.kind,
           signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
+          onAttempts: (n) => c.set('inferenceAttempts', n),
         }),
       );
       return await encodeDelivered(

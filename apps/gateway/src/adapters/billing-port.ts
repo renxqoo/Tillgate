@@ -258,7 +258,13 @@ export function createGatewayBilling(
         channelId: input.channelId,
         amount,
       });
-      return { allowed: result.allowed } as { allowed: true } | { allowed: false };
+      // switched/remaining 透传（routing gates 消费进 trace——换渠转移的可观测事实）
+      if (!result.allowed) return { allowed: false } as const;
+      return {
+        allowed: true,
+        ...(result.switched === true ? { switched: true } : {}),
+        ...(result.remaining != null ? { remaining: result.remaining } : {}),
+      };
     },
   };
 }

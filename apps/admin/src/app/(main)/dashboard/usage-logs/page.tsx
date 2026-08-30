@@ -122,6 +122,16 @@ function buildUsageColumns(
       ),
     },
     {
+      key: 'channel',
+      header: t('channel'),
+      // 渠道名缺失时回退 #id（软删渠道名仍可查；channel_id 为 NULL = 无渠道归属/渠道已硬删 → '—'）
+      render: (r) => (
+        <span className="text-xs text-muted-foreground">
+          {r.channelName ?? (r.channelId != null ? `#${r.channelId}` : '—')}
+        </span>
+      ),
+    },
+    {
       key: 'inputTokens',
       header: t('input'),
       sortable: true,

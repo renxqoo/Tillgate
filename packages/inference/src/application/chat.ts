@@ -19,12 +19,22 @@ export type ChatDelivered =
 /** 上游非流式调用结果类型（端口 chat 面） */
 type UpstreamChatResult = Awaited<ReturnType<UpstreamPort['chat']>>;
 
+/**
+ * 亚毫秒计时器（下界 1ms）：真实上游调用（HTTP 往返）不可能 0ms，Date.now 毫秒
+ * 分辨率在本地 mock/keep-alive 下会量出假 0——按物理下界归一，
+ * 避免 usage_logs.duration_ms 出现 0（usage 审计断言 >0）。
+ */
+function upstreamTimer(): { elapsedMs(): number } {
+  const startedAt = performance.now();
+  return { elapsedMs: () => Math.max(1, Math.round(performance.now() - startedAt)) };
+}
+
 /** 上游调用段（包 upstream.attempt span；ok/时长/usage 事后补属性） */
 async function chatUpstreamWithSpan(
   deps: ExecutionDeps,
   ctx: AttemptContext,
 ): Promise<{ result: UpstreamChatResult; durationMs: number }> {
-  const startedAt = Date.now();
+  const { elapsedMs } = upstreamTimer();
   const result = await deps.trace.withSpan(
     'upstream.attempt',
     {
@@ -49,7 +59,7 @@ async function chatUpstreamWithSpan(
       if (r.ok) {
         span.setAttributes({
           'upstream.ok': true,
-          'upstream.duration_ms': Date.now() - startedAt,
+          'upstream.duration_ms': elapsedMs(),
           ...(r.usage != null
             ? {
                 'tokens.input': r.usage.inputTokens,
@@ -68,7 +78,7 @@ async function chatUpstreamWithSpan(
       return r;
     },
   );
-  return { result, durationMs: Date.now() - startedAt };
+  return { result, durationMs: elapsedMs() };
 }
 
 /** 成功半程：收据装配 → **先结算后交付**（未交付不结算——结算耗尽抛 finalize_unavailable，宁可让用户重试也不白送；预留滞留至租约到期由 recover 兜底） */

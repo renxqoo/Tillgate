@@ -34,7 +34,7 @@ export interface BillingPort {
     candidate: QuoteCandidate;
     estimatedInputTokens: number;
     maxOutputTokens: number;
-  }): Promise<{ allowed: true } | { allowed: false }>;
+  }): Promise<{ allowed: true; switched?: boolean; remaining?: string } | { allowed: false }>;
 
   /** 请求生命周期信号（lease 语义归 billing 状态机） */
   signal(input: BillingSignal): Promise<void>;

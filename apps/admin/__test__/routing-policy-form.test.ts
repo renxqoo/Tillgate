@@ -4,6 +4,7 @@ import { ROUTING_FORM_BOUNDS } from '../src/features/routing/routing-bounds';
 import type { PolicyForm } from '../src/features/routing/routing-content-types';
 
 const valid: PolicyForm = {
+  enabled: true,
   cacheAffinityEnabled: true,
   cacheBoost: '3',
   budgetWatermarkEnabled: true,
@@ -92,6 +93,9 @@ describe('routing-policy-form 纯函数', () => {
 
   it('formOf：空策略回落编译期缺省形态（各字段显式断言——不依赖恒真比较）', () => {
     const empty = formOf({});
+    // enabled 缺省 false：无配置 = 单渠道直连
+    expect(empty.enabled).toBe(false);
+    expect(formOf({ enabled: true }).enabled).toBe(true);
     expect(empty.cacheBoost).toBe('3');
     expect(empty.softRatio).toBe('0.2');
     expect(empty.sameChannelMaxRetries).toBe('3');

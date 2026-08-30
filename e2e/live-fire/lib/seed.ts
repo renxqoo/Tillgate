@@ -138,8 +138,8 @@ export async function seedCatalog(): Promise<Seeded> {
     for (const link of m.ch) {
       const [vendor, prio] = link.split(':');
       await db.execute(sql`
-        insert into model_channels (mapping_id, channel_id, priority, weight, upstream_model)
-        values (${modelIds[m.ext]}, ${channelIds[vendor]}, ${Number(prio)}, 1, ${m.real})`);
+        insert into model_channels (mapping_id, channel_id, upstream_model)
+        values (${modelIds[m.ext]}, ${channelIds[vendor]}, ${m.real})`);
     }
   }
   return { db, providerIds, channelIds, modelIds };

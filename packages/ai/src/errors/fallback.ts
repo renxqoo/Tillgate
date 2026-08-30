@@ -46,12 +46,15 @@ function asRecord(v: unknown): Record<string, unknown> | null {
     : null;
 }
 
-/** status → kind 兜底矩阵（529 overloaded 单列；429 限流；401/403 凭据族；4xx 请求错误） */
+/** status → kind 兜底矩阵（529 overloaded 单列；429 限流；402 欠费；401/403 凭据族；4xx 请求错误） */
 export function statusKind(status?: number): ErrorKind {
   if (status === undefined) return 'network';
   if (status === 529) return 'overloaded';
   if (status >= 500) return 'upstream_error';
   if (status === 429) return 'rate_limited';
+  // 402 Payment Required：上游余额/额度不足（openrouter 等）——渠道面问题，
+  // 归 quota_exhausted（可换渠道 + 惩罚箱），误归 invalid_request 会透传不换渠道
+  if (status === 402) return 'quota_exhausted';
   if (status === 401) return 'invalid_api_key';
   if (status === 403) return 'insufficient_permissions';
   return 'invalid_request';

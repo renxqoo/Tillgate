@@ -87,14 +87,23 @@ export async function gateChannel(input: {
   const reservation = await env.trace.withSpan(
     'billing.reserve_channel',
     { 'request.id': requestId, 'channel.key': channel.channelName },
-    () =>
-      env.billing.reserveChannel({
+    async (span) => {
+      const r = await env.billing.reserveChannel({
         requestId,
         channelId: channel.channelId,
         candidate,
         estimatedInputTokens: prepared.inputUpperBound,
         maxOutputTokens: prepared.outputCap,
-      }),
+      });
+      // 换渠转移/剩余额度进观测面（billing 返回的事实不得在桥接层丢弃）
+      if (r.allowed) {
+        span.setAttributes({
+          ...(r.switched === true ? { 'billing.switched': true } : {}),
+          ...(r.remaining != null ? { 'billing.remaining': r.remaining } : {}),
+        });
+      }
+      return r;
+    },
   );
   if (!reservation.allowed) {
     await skipChannel(env, { requestId, channel, channelAttempt, reason: 'budget_exhausted' });

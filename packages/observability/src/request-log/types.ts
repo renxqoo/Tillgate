@@ -15,6 +15,8 @@ export interface RequestLogWriteInput {
   durationMs: number;
   /** 截断后的请求摘要(model/stream/max_tokens——不含敏感内容);嗅探逻辑在 gateway 中间件 */
   requestSummary: Record<string, unknown> | null;
+  /** 真实上游尝试次数(换渠/同渠道重试均计;缺省 1——非推理路由) */
+  attempts?: number;
   /** 来源 IP(鉴权前记录——401/429 也入日志;「记录一切 /v1 请求」语义) */
   sourceIp: string | null;
 }

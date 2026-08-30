@@ -86,11 +86,14 @@ describe('PgUsageStore(真 PG)', () => {
     // 主序相同时按 id desc 稳定决序(bigserial 单调)
     const idsDesc = base.rows.map((r) => r.id);
     expect(idsDesc).toEqual(idsDesc.toSorted((a, b) => b - a));
-    // 左联投影:金额字符串(numeric scale 18 全精度)、真实名精确列
+    // 左联投影:金额字符串(numeric scale 18 全精度)、真实名精确列;
+    // 种子未挂渠道 → channels 左联无命中,渠道两列为 null(无渠道归属/硬删 SET NULL 同路径)
     expect(base.rows[0]).toMatchObject({
       externalModel: SEED_MODEL,
       realModel: SEED_MODEL,
       inputTokens: 100,
+      channelId: null,
+      channelName: null,
     });
     expect(Number(defined(base.rows[0], 'base.rows[0]').amount)).toBe(1.5);
 

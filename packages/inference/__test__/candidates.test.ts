@@ -50,6 +50,32 @@ describe('domain/model/candidates：主模型 + fallback 一级展开', () => {
   });
 });
 
+describe('脏形状防御（Bug#3 回归）：非数组 fallback_models 按无 fallback 处理', () => {
+  it('jsonb 字符串标量不逐字符迭代（裸 SQL 写入形态）——链 = [主映射] 且零解析调用', async () => {
+    // 旧实现 for...of 字符串会按字符逐名解析全部 miss（静默退化）；
+    // 修复后非数组直接按无 fallback 收敛（单行脏数据不熔断路由）
+    let resolveCalls = 0;
+    const chain = await buildCandidateChain(
+      mapping({ mappingId: 1, fallbackModels: 'fb-1,fb-2' as unknown as string[] }),
+      async () => {
+        resolveCalls += 1;
+        return mapping({ mappingId: 2 });
+      },
+    );
+    expect(chain.map((c) => c.mappingId)).toEqual([1]);
+    expect(resolveCalls).toBe(0);
+  });
+
+  it('数组内非字符串项跳过（混合脏形状防御）', async () => {
+    const chain = await buildCandidateChain(
+      mapping({ mappingId: 1, fallbackModels: [42, 'ok'] as unknown as string[] }),
+      async (external) =>
+        external === 'ok' ? mapping({ mappingId: 7, externalModel: 'ok' }) : null,
+    );
+    expect(chain.map((c) => c.mappingId)).toEqual([1, 7]);
+  });
+});
+
 describe('限流限额透传（S4 列贯通——admitModel 消费的字段）', () => {
   it('主/fallback 候选各带自己的 rpm/tpm 限额；null 形态不带字段', async () => {
     const chain = await buildCandidateChain(

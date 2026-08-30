@@ -52,8 +52,8 @@ async function addChannel(input: {
     returning id`);
   const id = Number((r[0] as { id: string | number }).id);
   await world.db.execute(sql`
-    insert into model_channels (mapping_id, channel_id, upstream_model, weight, priority)
-    values (${world.seed.mappingId}, ${id}, ${input.upstreamModel ?? E2E_REAL_MODEL}, 1, ${input.priority})`);
+    insert into model_channels (mapping_id, channel_id, upstream_model)
+    values (${world.seed.mappingId}, ${id}, ${input.upstreamModel ?? E2E_REAL_MODEL})`);
   return id;
 }
 
@@ -350,6 +350,7 @@ describe.skipIf(!hasEnv)('E2E 路由策略热配置', () => {
 
         // 写入合法热策略：base=max=1000（满足 schema min 与交叉校验）
         const policy = {
+          enabled: true,
           scorers: {
             cacheAffinity: { enabled: false, boost: 3, ttlMs: 300_000, prefixChars: 4_096 },
             budgetWatermark: { enabled: true, softRatio: 0.2 },
@@ -402,6 +403,7 @@ describe.skipIf(!hasEnv)('E2E cache 亲和（sticky）', () => {
   it('启用 cacheAffinity：结算后粘滞键落 Redis（值=服务渠道、按指纹分键）；粘滞渠道 429 后同指纹请求换渠成功', async () => {
     // 策略先行落库：gw 装配的首次 refresh 即取到（免 TTL 等待）
     const policy = {
+      enabled: true,
       scorers: {
         cacheAffinity: { enabled: true, boost: 5, ttlMs: 300_000, prefixChars: 4_096 },
         budgetWatermark: { enabled: true, softRatio: 0.2 },

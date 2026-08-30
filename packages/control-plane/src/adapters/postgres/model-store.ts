@@ -229,8 +229,6 @@ export const postgresModelStore: ModelStore = {
         mappingId: input.mappingId,
         channelId: input.channelId,
         upstreamModel: input.upstreamModel,
-        weight: 1,
-        priority: 0,
       })
       .onConflictDoNothing({ target: [modelChannels.mappingId, modelChannels.channelId] });
   },

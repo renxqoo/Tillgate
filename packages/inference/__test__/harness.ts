@@ -267,6 +267,7 @@ export function buildInference(env: {
   admitChannel?: Parameters<typeof createInference>[0]['admitChannel'];
   admitModel?: Parameters<typeof createInference>[0]['admitModel'];
   trace?: Parameters<typeof createInference>[0]['trace'];
+  policy?: Parameters<typeof createInference>[0]['policy'];
 }): Inference {
   return createInference({
     ai: env.ai,
@@ -279,5 +280,6 @@ export function buildInference(env: {
     ...(env.admitChannel != null ? { admitChannel: env.admitChannel } : {}),
     ...(env.admitModel != null ? { admitModel: env.admitModel } : {}),
     ...(env.trace != null ? { trace: env.trace } : {}),
+    ...(env.policy != null ? { policy: env.policy } : {}),
   });
 }

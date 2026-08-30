@@ -118,6 +118,28 @@ describe('validateReceipt（验收）', () => {
     const garbage = receiptFor(candidate(), 1, { inputPrice: 'abc' });
     expectCode(() => validateReceipt(1, quote([candidate()]), garbage), 'billing.poison_receipt');
   });
+
+  it('fallback 命中：收据 externalModel=请求名（主候选名）× 计价快照=实际候选 → 通过', () => {
+    // 场景：请求 X（主候选）fallback 到 Y 服务——收据名字语义是「用户请求的对外名」，
+    // 计价/realModel/mappingId 全按 Y。原实现拿请求名与命中候选严格比对必 not_authorized，
+    // 导致 fallback 命中 100% 无法结算（上游已耗 token、三路资金滞留）
+    const main = candidate({ mappingId: 1, externalModel: 'gpt-x', realModel: 'gpt-x-real' });
+    const fb = candidate({
+      mappingId: 2,
+      externalModel: 'gpt-y',
+      realModel: 'gpt-y-real',
+      inputPrice: '4',
+    });
+    const receipt = receiptFor(fb, 1, { externalModel: 'gpt-x' });
+    expect(() => validateReceipt(1, quote([main, fb]), receipt)).not.toThrow();
+  });
+
+  it('名字防御：externalModel 不属于授权链任何候选 → 毒收据（防乱写名字）', () => {
+    const main = candidate({ mappingId: 1, externalModel: 'gpt-x', realModel: 'gpt-x-real' });
+    const fb = candidate({ mappingId: 2, externalModel: 'gpt-y', realModel: 'gpt-y-real' });
+    const receipt = receiptFor(fb, 1, { externalModel: 'gpt-forged' });
+    expectCode(() => validateReceipt(1, quote([main, fb]), receipt), 'billing.poison_receipt');
+  });
 });
 
 describe('估算归属词表（封闭性）', () => {

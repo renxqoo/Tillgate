@@ -210,8 +210,8 @@ describe('model-store（真实 PG：绑定全量替换 + 幂等绑定）', () =>
     const bound = await postgresModelStore.replaceModelChannels(db, {
       mappingId: inserted.id,
       channels: [
-        { channelId: 1, upstreamModel: inserted.realModel, weight: 2, priority: 0 },
-        { channelId: 2, upstreamModel: 'vendor-x/alt', weight: 1, priority: 5 },
+        { channelId: 1, upstreamModel: inserted.realModel },
+        { channelId: 2, upstreamModel: 'vendor-x/alt' },
       ],
     });
     expect(bound).toBe(2);

@@ -257,7 +257,7 @@ describe('绑定全量替换 + 绑定回显', () => {
       channels: [{ channelId: 22, upstreamModel: 'vendor-x/claude' }],
     });
     expect(defined(models.rows.get(row.id)).bindings).toEqual([
-      { channelId: 22, upstreamModel: 'vendor-x/claude', weight: 1, priority: 0 },
+      { channelId: 22, upstreamModel: 'vendor-x/claude' },
     ]);
     const listResult = await listModels(deps, {
       q: row.externalName,

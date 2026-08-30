@@ -111,6 +111,16 @@ export const adminUsageRowSchema = z
     credentialType: z.string(),
     externalModel: z.string(),
     realModel: z.string(),
+    channelId: z
+      .number()
+      .nullable()
+      .describe(
+        '本次调用实际使用的渠道 id(usage_logs.channel_id;null = 无渠道归属/渠道硬删后 SET NULL)',
+      ),
+    channelName: z
+      .string()
+      .nullable()
+      .describe('渠道名(channels 按 id 左联;软删渠道不滤仍可追溯;渠道行不存在 = null)'),
     inputTokens: z.number(),
     cachedInputTokens: z.number(),
     outputTokens: z.number(),

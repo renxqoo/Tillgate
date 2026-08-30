@@ -13,6 +13,11 @@ import {
   usage,
 } from './harness';
 import type { BillingSignal } from '../src/ports/billing';
+import { staticRoutingPolicy } from '../src/ports/routing';
+import { routingPolicySchema } from '../src/routing/policy';
+
+/** 本文件场景假设智能路由开启（换渠/换候选生效）——单渠道直连规格见 single-track.test */
+const smartPolicy = () => staticRoutingPolicy(routingPolicySchema.parse({ enabled: true }));
 
 function setup(defaults?: Parameters<typeof buildInference>[0]['defaults']) {
   const ai = fakeAi();
@@ -33,6 +38,7 @@ function setup(defaults?: Parameters<typeof buildInference>[0]['defaults']) {
     catalog,
     billing: billing.port,
     upstream: upstream.port,
+    policy: smartPolicy(),
     ...(defaults != null ? { defaults } : {}),
   });
   return { inference, upstream, billing, catalog, emit: ai.emit, detach: () => inference.close() };
@@ -60,6 +66,7 @@ function setupWithAdmitModel(
     catalog,
     billing: billing.port,
     upstream: upstream.port,
+    policy: smartPolicy(),
     admitModel,
   });
   return { inference, upstream, billing, catalog, emit: ai.emit, detach: () => inference.close() };
@@ -153,6 +160,7 @@ describe('application/chat：非流式尝试（先结算后交付）', () => {
       catalog,
       billing: billing.port,
       upstream: upstream.port,
+      policy: staticRoutingPolicy(routingPolicySchema.parse({ enabled: true })),
     });
     upstream.onChat(async (ch) =>
       ch.channelId === 1

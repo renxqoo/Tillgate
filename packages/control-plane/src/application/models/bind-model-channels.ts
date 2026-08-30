@@ -20,8 +20,6 @@ export interface BindModelChannelsInput {
   readonly channels: Array<{
     channelId: number;
     upstreamModel?: string;
-    weight?: number;
-    priority?: number;
   }>;
 }
 
@@ -40,8 +38,6 @@ export async function bindModelChannels(
       channels: input.channels.map((ch) => ({
         channelId: ch.channelId,
         upstreamModel: ch.upstreamModel ?? existing.realModel,
-        weight: ch.weight ?? 1,
-        priority: ch.priority ?? 0,
       })),
     }),
   );

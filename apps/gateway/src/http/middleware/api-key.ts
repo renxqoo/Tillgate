@@ -42,6 +42,8 @@ export interface AuthEnv {
     requestId: string;
     /** 路由解析 body 后放入的请求摘要（request-log 消费——日志面不读 body） */
     requestLogSummary?: RequestSummary;
+    /** 推理实际尝试次数（inference onAttempts 回调写入；request-log 落 attempts 列） */
+    inferenceAttempts?: number;
   };
 }
 

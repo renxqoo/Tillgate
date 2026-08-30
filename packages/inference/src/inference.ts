@@ -59,6 +59,11 @@ export interface ChatInput {
    * 上游照跑、计费照走——路由层契约测试锁定各入口必传。
    */
   signal?: AbortSignal;
+  /**
+   * 上游尝试计数观察者（每次真实 attempt 后回调当前累计值——换渠/同渠道重试均计）。
+   * 观测面专用（request_logs.attempts）：HTTP 入口注入以写入请求日志，缺省零开销。
+   */
+  onAttempts?: (total: number) => void;
 }
 
 export interface InferenceEnv {
@@ -193,6 +198,7 @@ async function runInference<T>(
     args.requestStartedAt,
     args.input.signal,
     args.attempt,
+    args.input.onAttempts,
   );
 }
 

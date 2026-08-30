@@ -64,10 +64,12 @@ describe('errors/kinds：词表封闭 + 派生表单一真相', () => {
 });
 
 describe('errors/fallback：status 兜底与厂商表（§3.2）', () => {
-  it('statusKind 矩阵：529/5xx/429/401/403/4xx/undefined', () => {
+  it('statusKind 矩阵：529/5xx/429/402/401/403/4xx/undefined', () => {
     expect(statusKind(529)).toBe('overloaded');
     expect(statusKind(502)).toBe('upstream_error');
     expect(statusKind(429)).toBe('rate_limited');
+    // 402 欠费归 quota_exhausted（渠道面，可换渠）而非 invalid_request（透传终局）
+    expect(statusKind(402)).toBe('quota_exhausted');
     expect(statusKind(401)).toBe('invalid_api_key');
     expect(statusKind(403)).toBe('insufficient_permissions');
     expect(statusKind(400)).toBe('invalid_request');

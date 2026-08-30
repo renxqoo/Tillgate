@@ -27,7 +27,7 @@ function usageGroupColumn(group: UsageGroupAxis) {
   return usageLogs.externalModel;
 }
 
-/** 管理列表 select 列(用户名/计价单位走 join;金额列原样透传) */
+/** 管理列表 select 列(用户名/渠道名/计价单位走 join;金额列原样透传) */
 const adminListSelection = {
   id: usageLogs.id,
   requestId: usageLogs.requestId,
@@ -36,6 +36,8 @@ const adminListSelection = {
   credentialType: usageLogs.credentialType,
   externalModel: usageLogs.externalModel,
   realModel: usageLogs.realModel,
+  channelId: usageLogs.channelId,
+  channelName: channels.name,
   inputTokens: usageLogs.inputTokens,
   cachedInputTokens: usageLogs.cachedInputTokens,
   outputTokens: usageLogs.outputTokens,
@@ -97,6 +99,9 @@ async function adminList(db: Db, input: UsageAdminListInput) {
       .select(adminListSelection)
       .from(usageLogs)
       .leftJoin(users, eq(usageLogs.userId, users.id))
+      // 渠道按 id 主键 1:1 左联带出名称；不滤 deleted_at——软删渠道 FK 引用保留可追溯
+      // （与 channelTtft 同口径），渠道硬删时 FK 已 SET NULL → channelId/channelName 均为 null。
+      .leftJoin(channels, eq(usageLogs.channelId, channels.id))
       // 仅在册行：外部名对在册记录唯一（部分唯一索引），排除已删除行避免同名 join 用量翻倍
       .leftJoin(
         modelMappings,

@@ -1,3 +1,4 @@
+import { RetryDeadlineAbort } from '../errors/retry-deadline.js';
 import type { UpstreamError } from '../types';
 
 /**
@@ -97,7 +98,9 @@ export async function withRetry<T>(
   const startedAt = Date.now();
   const controller = new AbortController();
   const deadlineTimer = setTimeout(
-    () => controller.abort(new Error('retry deadline exceeded')),
+    // reason 携带专用标记：传输层区分「预算耗尽（timeout，可换渠）」与「客户端取消
+    // （canceled，不换渠）」——两者共用本 signal，分类只认 reason 标记
+    () => controller.abort(new RetryDeadlineAbort()),
     opts.deadlineMs,
   );
   const signal = opts.signal

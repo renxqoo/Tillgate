@@ -1,9 +1,11 @@
 import { tableOrFallback } from '../errors/fallback';
 import type { ErrorKind } from '../errors/kinds';
 
-/** OpenAI 官方错误 code → kind（结构精确匹配，共享层零正则） */
+/** OpenAI 兼容生态错误 code → kind（结构精确匹配，共享层零正则） */
 const OPENAI_CODE_KINDS: Record<string, ErrorKind> = {
   insufficient_quota: 'quota_exhausted',
+  // openrouter 余额不足（402 信封的字符串 code 形态；数字 code 形态由 statusKind 402 兜底）
+  insufficient_credits: 'quota_exhausted',
   invalid_api_key: 'invalid_api_key',
   model_not_found: 'model_not_found',
   context_length_exceeded: 'context_overflow',

@@ -3032,6 +3032,28 @@
           "realModel": {
             "type": "string"
           },
+          "channelId": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本次调用实际使用的渠道 id(usage_logs.channel_id;null = 无渠道归属/渠道硬删后 SET NULL)"
+          },
+          "channelName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "渠道名(channels 按 id 左联;软删渠道不滤仍可追溯;渠道行不存在 = null)"
+          },
           "inputTokens": {
             "type": "number"
           },
@@ -3182,6 +3204,8 @@
           "credentialType",
           "externalModel",
           "realModel",
+          "channelId",
+          "channelName",
           "inputTokens",
           "cachedInputTokens",
           "outputTokens",
@@ -4025,10 +4049,14 @@
                 "minimum": 1,
                 "maximum": 9007199254740991
               },
+              "enabled": {
+                "default": false,
+                "type": "boolean"
+              },
               "scorers": {
                 "default": {
                   "cacheAffinity": {
-                    "enabled": false,
+                    "enabled": true,
                     "boost": 3,
                     "ttlMs": 300000,
                     "prefixChars": 4096
@@ -4042,7 +4070,7 @@
                 "properties": {
                   "cacheAffinity": {
                     "default": {
-                      "enabled": false,
+                      "enabled": true,
                       "boost": 3,
                       "ttlMs": 300000,
                       "prefixChars": 4096
@@ -4050,7 +4078,7 @@
                     "type": "object",
                     "properties": {
                       "enabled": {
-                        "default": false,
+                        "default": true,
                         "type": "boolean"
                       },
                       "boost": {
@@ -4223,6 +4251,7 @@
             },
             "required": [
               "version",
+              "enabled",
               "scorers",
               "retry",
               "penalty",
@@ -4284,10 +4313,14 @@
                 "minimum": 1,
                 "maximum": 9007199254740991
               },
+              "enabled": {
+                "default": false,
+                "type": "boolean"
+              },
               "scorers": {
                 "default": {
                   "cacheAffinity": {
-                    "enabled": false,
+                    "enabled": true,
                     "boost": 3,
                     "ttlMs": 300000,
                     "prefixChars": 4096
@@ -4301,7 +4334,7 @@
                 "properties": {
                   "cacheAffinity": {
                     "default": {
-                      "enabled": false,
+                      "enabled": true,
                       "boost": 3,
                       "ttlMs": 300000,
                       "prefixChars": 4096
@@ -4309,7 +4342,7 @@
                     "type": "object",
                     "properties": {
                       "enabled": {
-                        "default": false,
+                        "default": true,
                         "type": "boolean"
                       },
                       "boost": {
@@ -4482,6 +4515,7 @@
             },
             "required": [
               "version",
+              "enabled",
               "scorers",
               "retry",
               "penalty",
@@ -4510,10 +4544,14 @@
                 "minimum": 1,
                 "maximum": 9007199254740991
               },
+              "enabled": {
+                "default": false,
+                "type": "boolean"
+              },
               "scorers": {
                 "default": {
                   "cacheAffinity": {
-                    "enabled": false,
+                    "enabled": true,
                     "boost": 3,
                     "ttlMs": 300000,
                     "prefixChars": 4096
@@ -4527,7 +4565,7 @@
                 "properties": {
                   "cacheAffinity": {
                     "default": {
-                      "enabled": false,
+                      "enabled": true,
                       "boost": 3,
                       "ttlMs": 300000,
                       "prefixChars": 4096
@@ -4535,7 +4573,7 @@
                     "type": "object",
                     "properties": {
                       "enabled": {
-                        "default": false,
+                        "default": true,
                         "type": "boolean"
                       },
                       "boost": {
@@ -4731,6 +4769,10 @@
               }
             ]
           },
+          "weight": {
+            "type": "number",
+            "description": "渠道层路由权重（D4 单轨——priority 层内加权分布）"
+          },
           "upstreamBudget": {
             "type": "string",
             "description": "进货总额（元，numeric 字符串）"
@@ -4783,6 +4825,7 @@
           "channelName",
           "status",
           "priority",
+          "weight",
           "upstreamBudget",
           "upstreamRemaining",
           "requests",
@@ -18084,12 +18127,6 @@
                         "upstreamModel": {
                           "type": "string",
                           "maxLength": 128
-                        },
-                        "weight": {
-                          "type": "number"
-                        },
-                        "priority": {
-                          "type": "number"
                         }
                       },
                       "required": [

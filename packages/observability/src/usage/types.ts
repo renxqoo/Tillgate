@@ -57,6 +57,10 @@ export interface UsageAdminRow {
   readonly credentialType: string;
   readonly externalModel: string;
   readonly realModel: string;
+  /** 本次调用实际使用的渠道（usage_logs.channel_id；null = 无渠道归属或渠道硬删后被 FK SET NULL） */
+  readonly channelId: number | null;
+  /** 渠道名（channels 按 id 左联；软删渠道不滤——FK 引用保留可追溯；渠道行不存在 = null） */
+  readonly channelName: string | null;
   readonly inputTokens: number;
   readonly cachedInputTokens: number;
   readonly outputTokens: number;

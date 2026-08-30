@@ -66,6 +66,19 @@ export function effectiveWeightOf(
   return Math.max(0.1, Math.max(1, channel.weight) * factor);
 }
 
+/**
+ * 单渠道直连模式的首选渠道（policy.enabled=false 时使用——用户裁决 D1）：
+ * priority 降序 → weight 降序 → channelId 升序，确定性取第一名，不随机、
+ * 不挂 scorer。空候选集返回 undefined（调用方落 no_available_channel 终局）。
+ */
+export function pickPrimaryChannel(
+  channels: readonly ChannelCandidate[],
+): ChannelCandidate | undefined {
+  return [...channels].toSorted(
+    (a, b) => b.priority - a.priority || b.weight - a.weight || a.channelId - b.channelId,
+  )[0];
+}
+
 /** 排序主入口：分层 + 层内加权随机（rng 可注入，确定性单测） */
 export function rankChannels(input: {
   channels: readonly ChannelCandidate[];

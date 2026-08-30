@@ -17,8 +17,10 @@ export interface RoutingMemory {
   penalized(channelId: number): Promise<boolean>;
   /** 惩罚剩余毫秒（0 = 无惩罚/已过期）——终局有界等待的最早恢复依据 */
   penaltyRemainingMs(channelId: number): Promise<number>;
-  /** 记一次渠道惩罚（fire-and-forget 面：调用方不 await） */
-  recordPenalty(channelId: number, kind: PenaltyKind, retryAfterMs?: number): void;
+  /** 记一次渠道惩罚。返回 Promise：惩罚是路由决策输入（有界等待/条件门消费），
+   * 调用方 await 落地后再继续——fire-and-forget 会让同请求内的等待判定
+   * 恒读到「无惩罚」（Redis CAS 两跳间的读写竞态） */
+  recordPenalty(channelId: number, kind: PenaltyKind, retryAfterMs?: number): Promise<void>;
   /** 候选判死窗口内 → true（候选门跳过） */
   deadModel(realModel: string): Promise<boolean>;
   /** 候选全渠道耗尽记一次（fire-and-forget） */
@@ -64,11 +66,13 @@ function penaltyFace(
         return 0; // fail-open：读不到 = 无等待依据
       }
     },
-    recordPenalty(channelId, kind, retryAfterMs) {
-      env.fire(
-        trackerOf(channelId).record(kind, retryAfterMs),
-        `recordPenalty channel=${channelId} kind=${kind}`,
-      );
+    async recordPenalty(channelId, kind, retryAfterMs) {
+      try {
+        await trackerOf(channelId).record(kind, retryAfterMs);
+      } catch (error) {
+        // 记账失败不反噬请求路径（惩罚是优化信号不是不变量）——观察面保留
+        env.fire(Promise.reject(error), `recordPenalty channel=${channelId} kind=${kind}`);
+      }
     },
   };
 }

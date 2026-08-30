@@ -7,7 +7,13 @@ import {
 import { createChannelHealth } from '../src/health/channel-health';
 import { createRoutingMemory } from '../src/health/routing-memory';
 import { createMemoryStickyStore, staticRoutingPolicy } from '../src/ports/routing';
-import { defaultRoutingPolicy, routingPolicySchema } from '../src/routing/policy';
+import type * as z from 'zod';
+import { routingPolicySchema } from '../src/routing/policy';
+
+/** 智能路由开启态的策略（本文件场景均假设 failover 生效——单渠道直连见 single-track.test） */
+const smartPolicy = (overrides: z.input<typeof routingPolicySchema> = {}) =>
+  routingPolicySchema.parse({ enabled: true, ...overrides });
+
 import { createMemoryHealthStore } from '../src/adapters/state-memory';
 import { noopTrace } from '../src/ports/trace';
 import {
@@ -75,7 +81,7 @@ interface BehaviorSetup {
 }
 
 /** 单渠道世界（B1/B3 场景）+ 可覆写 policy */
-function setupSingle(policy = defaultRoutingPolicy()): BehaviorSetup {
+function setupSingle(policy = smartPolicy()): BehaviorSetup {
   const ch = channel({ channelId: 1, channelName: 'ch-only', priority: 10 });
   const store = createMemoryHealthStore();
   const upstream = fakeUpstream();
@@ -114,7 +120,7 @@ describe('B1 条件惩罚门：全渠道冷却时放行（不再假性 503）', 
   });
 
   it('conditionalBypass=false 时保持旧语义（冷却即拒 → 503 渠道面竭尽）', async () => {
-    const policy = routingPolicySchema.parse({ penalty: { conditionalBypass: false } });
+    const policy = smartPolicy({ penalty: { conditionalBypass: false } });
     const { deps } = setupSingle(policy);
     deps.memory.recordPenalty(1, 'rate_limited', 60_000);
     await flush();
@@ -133,7 +139,7 @@ describe('B1 条件惩罚门：全渠道冷却时放行（不再假性 503）', 
 
 describe('B3 终局有界等待：全败限流 + 最早恢复在窗口内 → 等待重试一轮', () => {
   it('上游先 429（短 Retry-After）后恢复 → 网关内等待后第二轮成功', async () => {
-    const policy = routingPolicySchema.parse({
+    const policy = smartPolicy({
       penalty: { rateLimitBaseMs: 100, rateLimitMaxMs: 1_000 },
       wait: { enabled: true, maxWaitMs: 5_000 },
     });
@@ -178,7 +184,7 @@ describe('B3 终局有界等待：全败限流 + 最早恢复在窗口内 → �
   }, 15_000);
 
   it('客户端已断开（signal 预 abort）：不占用等待窗直接以失败收尾', async () => {
-    const policy = routingPolicySchema.parse({
+    const policy = smartPolicy({
       penalty: { rateLimitBaseMs: 100, rateLimitMaxMs: 1_000 },
       wait: { enabled: true, maxWaitMs: 5_000 },
     });
@@ -209,7 +215,7 @@ describe('B3 终局有界等待：全败限流 + 最早恢复在窗口内 → �
 
 describe('cache 亲和（sticky scorer）', () => {
   it('结算成功粘滞 → 后续同指纹请求优先落在同渠道（boost 压过层内随机）', async () => {
-    const policy = routingPolicySchema.parse({
+    const policy = smartPolicy({
       scorers: { cacheAffinity: { enabled: true, boost: 5 } },
     });
     const chA = channel({ channelId: 1, channelName: 'ch-a', priority: 10, weight: 1 });

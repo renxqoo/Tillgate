@@ -185,11 +185,19 @@ describe('cache 亲和 boost（sticky scorer 确定性）', () => {
         cacheAffinity: { enabled: true, boost: 5, ttlMs: 300_000, prefixChars: 4_096 },
       },
     };
-    // rng=0.5：无 boost 时 w1:w1 → 落 a；有 boost 时 1:5 → 0.5 落在 b 段
+    // rng=0.5：关闭亲和时 w1:w1 → 落 a；开启 boost 时 1:5 → 0.5 落在 b 段
+    // （cacheAffinity 缺省已开启——关闭臂必须显式关，不能靠旧缺省）
+    const noAffinityPolicy = {
+      ...defaultRoutingPolicy(),
+      scorers: {
+        ...defaultRoutingPolicy().scorers,
+        cacheAffinity: { enabled: false, boost: 3, ttlMs: 300_000, prefixChars: 4_096 },
+      },
+    };
     expect(
       rankChannels({
         channels: [chA, chB],
-        policy: defaultRoutingPolicy(),
+        policy: noAffinityPolicy,
         ctx: { stickyChannelId: 2 },
         rng: () => 0.5,
       })[0]?.channelId,

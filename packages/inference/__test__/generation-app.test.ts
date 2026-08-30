@@ -50,6 +50,7 @@ function setup() {
     catalog,
     billing: billing.port,
     upstream: upstream.port,
+    policy: staticRoutingPolicy(routingPolicySchema.parse({ enabled: true })),
   });
   return { inference, upstream, billing, tasks, detach: () => inference.close() };
 }
@@ -233,7 +234,7 @@ describe('application/generation：提交与查询用例', () => {
     );
     const sticky = createMemoryStickyStore();
     const policy = staticRoutingPolicy(
-      routingPolicySchema.parse({ scorers: { cacheAffinity: { enabled: true } } }),
+      routingPolicySchema.parse({ enabled: true, scorers: { cacheAffinity: { enabled: true } } }),
     );
     const inference = createInference({
       ai: fakeAi().ai,

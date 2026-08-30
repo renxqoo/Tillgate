@@ -47,7 +47,7 @@ describe('GET /v1/routing-policy', () => {
     expect(body.unconfigured).toBe(true);
     // 缺省锚点（值真相 = inference schema default；此处锁 wire 面形状不漂移）
     expect(body.policy).toMatchObject({
-      scorers: { cacheAffinity: { enabled: false, boost: 3 }, budgetWatermark: { softRatio: 0.2 } },
+      scorers: { cacheAffinity: { enabled: true, boost: 3 }, budgetWatermark: { softRatio: 0.2 } },
       retry: { sameChannelMaxRetries: 3 },
     });
   });

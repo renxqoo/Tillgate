@@ -477,7 +477,7 @@ export function createMemoryChannelStore(
 // ── models ───────────────────────────────────────────────────────────────────
 
 export interface MemoryModelRow extends ModelRecord {
-  bindings: Array<{ channelId: number; upstreamModel: string; weight: number; priority: number }>;
+  bindings: Array<{ channelId: number; upstreamModel: string }>;
   /** 热路径读列（ModelRecord 管理面未含；postgres 行天然存在，内存行可选） */
   fallbackModels?: string[] | null;
   pricingGroup?: string | null;
@@ -605,8 +605,6 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
         row.bindings.push({
           channelId: input.channelId,
           upstreamModel: input.upstreamModel,
-          weight: 1,
-          priority: 0,
         });
       }
     },

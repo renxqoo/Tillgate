@@ -80,6 +80,8 @@ describe('domain/routing/switchable：ErrorKind 全矩阵（词表封闭性表�
     // 是网关侧保护动作（未发出上游请求），全败时不得误归上游故障 502
     expect(isChannelExhausted('circuit_open')).toBe(true);
     expect(isChannelExhausted('dead_credential')).toBe(true);
+    // 上游欠费（402→quota_exhausted）：渠道面竭尽——503「该充值/换渠道」而非 502 上游故障
+    expect(isChannelExhausted('quota_exhausted')).toBe(true);
   });
 
   it('健康词表与 ai 机制位派生表不漂移（closed vocabulary 契约）', () => {

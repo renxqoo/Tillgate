@@ -170,8 +170,6 @@ const modelBindSchema = z.object({
           .max(128)
           .optional()
           .transform((v) => (v === '' ? undefined : v)),
-        weight: z.number().optional(),
-        priority: z.number().optional(),
       }),
     )
     .max(500),

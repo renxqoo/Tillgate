@@ -332,8 +332,9 @@ export const postgresChannelStore: ChannelStore = {
         providerProtocol: providers.protocol,
         providerVendor: providers.vendor,
         upstreamModel: modelChannels.upstreamModel,
-        priority: modelChannels.priority,
-        weight: modelChannels.weight,
+        // 路由排序单轨：渠道层 weight/priority（用户裁决 D4——绑定级旧列已迁移清退）
+        priority: channels.priority,
+        weight: channels.weight,
         rpmLimit: channels.rpmLimit,
         tpmLimit: channels.tpmLimit,
         upstreamBudget: channels.upstreamBudget,
@@ -360,7 +361,7 @@ export const postgresChannelStore: ChannelStore = {
           ),
         ),
       )
-      .orderBy(desc(modelChannels.priority), desc(modelChannels.weight));
+      .orderBy(desc(channels.priority), desc(channels.weight));
     return rows as RouteCandidateRow[];
   },
 

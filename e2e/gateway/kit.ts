@@ -159,8 +159,12 @@ async function seedWorld(
     insert into model_mappings (external_name, real_model, input_price, output_price, cache_input_price)
     values (${E2E_MODEL}, ${E2E_REAL_MODEL}, ${E2E_INPUT_PRICE}, ${E2E_OUTPUT_PRICE}, ${E2E_CACHE_INPUT_PRICE}) returning id`);
   await db.execute(
-    sql`insert into model_channels (mapping_id, channel_id, upstream_model, weight, priority) values (${mapping.id}, ${channel.id}, ${E2E_REAL_MODEL}, 3, 2)`,
+    sql`insert into model_channels (mapping_id, channel_id, upstream_model) values (${mapping.id}, ${channel.id}, ${E2E_REAL_MODEL})`,
   );
+  // 世界基线：智能路由开启（enabled 总开关——单渠道直连场景由测试自行覆写/删行）
+  await db.execute(sql`
+    insert into routing_policies (scope, version, policy)
+    values ('global', '1', ${JSON.stringify({ enabled: true })}::jsonb)`);
   return {
     mappingId: Number(mapping.id),
     channelId: Number(channel.id),

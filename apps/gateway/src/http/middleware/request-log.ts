@@ -67,6 +67,7 @@ export function requestLogMiddleware(deps: RequestLogDeps): MiddlewareHandler<Au
         statusCode: c.res?.status ?? 0,
         errorCode,
         durationMs: Date.now() - startedAt,
+        attempts: c.get('inferenceAttempts') ?? 1,
         requestSummary: (summary ?? null) as unknown as Record<string, unknown> | null,
         sourceIp: trustedClientIp({
           headers: c.req.raw.headers,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { asRetryDeadlineAbort } from '../src/errors/retry-deadline.js';
 import { withRetry, backoffDelayMs } from '../src/retry/with-retry.js';
 import { UpstreamError } from '../src/errors/kinds.js';
 import { assertSafeUrlSync, allowAllUrls, fetchUpstream } from '../src/transport/http-client.js';
@@ -13,6 +14,20 @@ const opts = {
 };
 const err = (kind: 'rate_limited' | 'invalid_request' | 'upstream_error') =>
   new UpstreamError({ kind });
+
+/** 挂起直到 abort（模拟飞行中的上游请求；同时记录 abort reason） */
+function hangUntilAbort(signal: AbortSignal, reasons: unknown[]): Promise<void> {
+  return new Promise((resolve) => {
+    signal.addEventListener(
+      'abort',
+      () => {
+        reasons.push(signal.reason);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+}
 
 describe('retry/with-retry：重试语义与边界', () => {
   it('可重试错误重试到 maxAttempts；onRetry 回调收到延迟', async () => {
@@ -65,6 +80,25 @@ describe('retry/with-retry：重试语义与边界', () => {
     );
     expect(attempts).toBeLessThan(opts.maxAttempts);
   });
+  it('deadline 中止的 reason 携带 RetryDeadlineAbort 标记（分类层据此区分客户端取消）', async () => {
+    // 桩必须「挂起至 abort」——同步返回的桩会被「剩余预算不足立即放弃」短路，
+    // abort 只在打断飞行中的上游请求时发生（与真实 fetch 形态一致）
+    const reasons: unknown[] = [];
+    const { attempts } = await withRetry(
+      async (_attempt, signal) => {
+        await hangUntilAbort(signal, reasons);
+        return { ok: false as const, error: err('rate_limited') };
+      },
+      { ...opts, deadlineMs: 80 },
+    );
+    expect(attempts).toBe(1);
+    expect(reasons.length).toBe(1);
+    expect(asRetryDeadlineAbort(reasons[0])).not.toBeNull();
+    // 客户端取消（无标记 reason）不得误判为 deadline
+    expect(asRetryDeadlineAbort(new Error('The user aborted a request'))).toBeNull();
+    expect(asRetryDeadlineAbort(new DOMException('Aborted', 'AbortError'))).toBeNull();
+  });
+
   it('rate_limited 的 retryAfterMs 是退避下界（低于指数退避时抬高到 Retry-After）', async () => {
     let n = 0;
     const delays: number[] = [];
