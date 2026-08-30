@@ -300,7 +300,7 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
       });
       if (outcome.kind !== 'respond') {
         lastCode = outcome.code;
-        healthEvidence = true; // attempt 已真实调用上游——失败即健康证据
+        healthEvidence = accumulateHealthEvidence(healthEvidence, outcome);
       }
       if (outcome.kind === 'switch_channel') continue;
       if (outcome.kind === 'next_candidate') break;
@@ -309,6 +309,16 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
     if (healthEvidence) deps.memory.recordModelFailure(candidate.realModel);
   }
   return { lastCode, channels: allChannels };
+}
+
+/** 失败尝试的健康证据累积：invalid_config（能力门/配置缺字段）零上游调用——
+ * 不是上游健康证据，记死模型会连坐该模型的正常 chat 流量 */
+function accumulateHealthEvidence(
+  current: boolean,
+  outcome: { kind: string; code?: string },
+): boolean {
+  if (outcome.kind === 'respond') return current;
+  return outcome.code !== 'invalid_config' ? true : current;
 }
 
 /** 现场复核：除当前渠道外是否全部处于惩罚冷却（单渠道 = 无其它选择 → true） */
