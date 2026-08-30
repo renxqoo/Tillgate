@@ -139,6 +139,9 @@ async function awaitDecisiveEvent(
   sc: StreamSettleCtx,
   onEvent: (cb: (event: UpstreamStreamEvent) => void) => void,
 ): Promise<UpstreamStreamEvent> {
+  // 终态收尾的根句柄在订阅建立时（请求作用域内）捕获一次并闭包持有——终态事件
+  // 可能由全局 sweep 定时器（他人的异步上下文）触发，靠 ALS 现取会挂错请求的根
+  const rootTrace = sc.deps.trace.captureRoot();
   return await new Promise<UpstreamStreamEvent>((resolve) => {
     let settled = false;
     onEvent((event) => {
@@ -156,9 +159,12 @@ async function awaitDecisiveEvent(
           settled = true;
           resolve(event);
         }
-        // 后台结算不得反噬数据面：意外异常经 onError 观察 + 停租（回调
-        // fire-and-forget 不外溢；正常路径 settle 内部自停租）
-        void settleStream(sc, event).catch((error) => crashStreamSettle(sc, error));
+        // 后台结算不得反噬数据面：挂请求根 span 并计入根生命周期（captureRoot
+        // 在请求作用域内捕获——fire-and-forget 不再逃逸成孤儿 trace/时窗）；
+        // 意外异常经 onError 观察 + 停租（回调不外溢；正常路径 settle 内部自停租）
+        void rootTrace
+          .runInBackground(() => settleStream(sc, event))
+          .catch((error) => crashStreamSettle(sc, error));
         return;
       }
       if (event.type === 'failed' && !settled) {

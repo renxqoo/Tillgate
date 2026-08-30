@@ -26,7 +26,13 @@ export type { InferenceDefaults, InferenceDefaultsInput } from './config';
 // ---- 端口契约（装配注入实现）----
 export type { CatalogPort, CatalogPricingContext } from './ports/catalog';
 export type { BillingPort, BillingSignal } from './ports/billing';
-export type { TracePort, SpanHandle, TraceAttributes, TraceAttributeValue } from './ports/trace';
+export type {
+  TracePort,
+  TraceRoot,
+  SpanHandle,
+  TraceAttributes,
+  TraceAttributeValue,
+} from './ports/trace';
 export type {
   UpstreamPort,
   UpstreamCallRequest,

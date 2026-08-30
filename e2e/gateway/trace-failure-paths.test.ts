@@ -140,12 +140,10 @@ describe('失败路径 span 树（全真装配 + mock 上游）', () => {
     expect(trace.spans.map((s) => s.name)).toContain('billing.passthrough_4xx');
   });
 
-  // 已知缺陷（2026-08-24 探针发现，it.fails 锁存）：流式中途取消时终态结算回调
-  // （stream.ts `void settle(event)` fire-and-forget）运行在丢失请求 span 上下文的
-  // 异步链里——billing.settle_signal 拿到全新 traceId、无父无根，一条请求断成两条
-  // trace（主链 8 span + 孤儿 settle）。正常完成路径 settle 同 traceId（挂已结束的
-  // upstream.attempt 下、时窗逃逸根 span——见 trace-probe.test.ts 流式用例）。
-  it.fails('③ 流式 + 用户取消：mid-stream abort → 仍有终态结算 span，树完整落缓冲', async () => {
+  // 2026-08-24 探针发现的取消孤儿缺陷已根治：终态结算经 TracePort.captureRoot()
+  // 挂请求根上下文并计入根生命周期——取消路径的 billing.settle_signal 与主链同
+  // traceId、挂根 span，一条请求一棵树（不再断成主链 + 孤儿 settle 两条 trace）。
+  it('③ 流式 + 用户取消：mid-stream abort → 仍有终态结算 span，树完整落缓冲', async () => {
     world.upstream.script = 'auto';
     world.upstream.frameGapMs = 30; // 帧间留空隙，确保能在流中途 abort
     const { raw } = await keys.issue('100');
