@@ -76,6 +76,30 @@ function buildLogColumns(
       ),
     },
     {
+      key: 'channels',
+      header: t('channels'),
+      render: (l) => {
+        if (l.channels == null || l.channels.length === 0) {
+          return <span className="text-xs text-muted-foreground">—</span>;
+        }
+        // 末位 = 最终服务/最后评估的渠道；其余为换渠轨迹（含被门拒绝的渠道）
+        const [last, ...rest] = l.channels.toReversed();
+        return (
+          <span className="flex flex-wrap items-center gap-1">
+            {rest.map((name) => (
+              <code
+                key={name}
+                className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+              >
+                {name}
+              </code>
+            ))}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium">{last}</code>
+          </span>
+        );
+      },
+    },
+    {
       key: 'statusCode',
       header: t('statusCode'),
       sortable: true,

@@ -60,10 +60,11 @@ export interface ChatInput {
    */
   signal?: AbortSignal;
   /**
-   * 上游尝试计数观察者（每次真实 attempt 后回调当前累计值——换渠/同渠道重试均计）。
-   * 观测面专用（request_logs.attempts）：HTTP 入口注入以写入请求日志，缺省零开销。
+   * 上游尝试计数观察者（每次真实 attempt 后回调当前累计值——换渠/同渠道重试均计；
+   * 全渠道被门拒绝时以 0 次收尾回调）。末参为评估序渠道轨迹（含被门拒绝的渠道）。
+   * 观测面专用（request_logs.attempts/channels）：HTTP 入口注入以写入请求日志，缺省零开销。
    */
-  onAttempts?: (total: number) => void;
+  onAttempts?: (total: number, channels: string[]) => void;
 }
 
 export interface InferenceEnv {

@@ -3,7 +3,7 @@
  * schema 校验 → 限流准入（TPM 保守上界预占）→（codec 端点先 decode）→
  * inference.chat/stream → 信封三态出站。鉴权由 app 按路径挂载。
  */
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { Inference } from '@tillgate/inference';
 import {
   admissionTokenUpperBound,
@@ -93,6 +93,14 @@ function encodeOptionsOf(endpoint: InferenceEndpoint, model: string, requestId: 
   };
 }
 
+/** onAttempts → hono context 写入器（request-log 中间件消费 attempts/channels 两列） */
+function contextAttemptsWriter(c: Context<AuthEnv>) {
+  return (total: number, channelTrace: string[]) => {
+    c.set('inferenceAttempts', total);
+    c.set('inferenceChannels', channelTrace);
+  };
+}
+
 /** 限流准入 + 推理调用（chat/stream 分派）；失败释放 TPM 预占（零上游执行） */
 export function inferenceRoutes(
   deps: InferenceRouteDeps,
@@ -122,7 +130,7 @@ export function inferenceRoutes(
         body: canonical,
         endpoint: endpoint.kind,
         signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
-        onAttempts: (n) => c.set('inferenceAttempts', n),
+        onAttempts: contextAttemptsWriter(c),
       });
       const result =
         canonical.stream === true
@@ -176,7 +184,7 @@ export function enginesAliasRoutes(
           body: canonical,
           endpoint: endpoint.kind,
           signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
-          onAttempts: (n) => c.set('inferenceAttempts', n),
+          onAttempts: contextAttemptsWriter(c),
         }),
       );
       return await encodeDelivered(

@@ -111,6 +111,8 @@ describe('GET /v1/audit-logs 与 /v1/logs', () => {
                   sourceIp: '10.0.0.1',
                   durationMs: 120,
                   requestSummary: { model: 'gpt-x', stream: false },
+                  attempts: 2,
+                  channels: ['openrouter', '腾讯云'],
                   createdAt: new Date('2026-08-01T00:00:00Z'),
                 },
               ],
@@ -122,7 +124,15 @@ describe('GET /v1/audit-logs 与 /v1/logs', () => {
     );
     const res = await app.request('/v1/logs?statusCode=5xx', { headers: authHeader() });
     expect(await res.json()).toMatchObject({
-      rows: [{ id: 1, apiKeyId: null, requestSummary: { model: 'gpt-x' } }],
+      rows: [
+        {
+          id: 1,
+          apiKeyId: null,
+          requestSummary: { model: 'gpt-x' },
+          attempts: 2,
+          channels: ['openrouter', '腾讯云'],
+        },
+      ],
       total: 1,
     });
   });

@@ -952,6 +952,7 @@
     "statusCode": "Status",
     "duration": "Duration",
     "retries": "Retries",
+    "channels": "Channels",
     "errorCode": "Error code",
     "retryTimes": "{count}×",
     "noLogs": "No logs",

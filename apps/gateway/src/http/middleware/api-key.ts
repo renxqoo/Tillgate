@@ -44,6 +44,8 @@ export interface AuthEnv {
     requestLogSummary?: RequestSummary;
     /** 推理实际尝试次数（inference onAttempts 回调写入；request-log 落 attempts 列） */
     inferenceAttempts?: number;
+    /** 尝试渠道轨迹（评估序渠道名，含被门拒绝的渠道；request-log 落 channels 列） */
+    inferenceChannels?: string[];
   };
 }
 

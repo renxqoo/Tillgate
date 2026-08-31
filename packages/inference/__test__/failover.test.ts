@@ -523,9 +523,10 @@ describe('跨请求路由记忆（惩罚箱 / 模型死记忆 / 死凭据 channe
     expect(attempted).toEqual(['real-2']);
   });
 
-  it('onAttempts 观察者：换渠场景上报真实尝试次数（request_logs.attempts 数据源）', async () => {
+  it('onAttempts 观察者：换渠场景上报真实尝试次数与评估序渠道轨迹（request_logs 数据源）', async () => {
     const s = setup();
     const seen: number[] = [];
+    const traces: string[][] = [];
     const attempts: string[] = [];
     await runCandidateLoop(
       s.deps,
@@ -539,10 +540,34 @@ describe('跨请求路由记忆（惩罚箱 / 模型死记忆 / 死凭据 channe
           ? { kind: 'switch_channel', code: 'upstream_error' }
           : { kind: 'respond', value: 'OK' };
       },
-      (total) => seen.push(total),
+      (total, channels) => {
+        seen.push(total);
+        traces.push(channels);
+      },
     );
     expect(attempts).toEqual(['ch-a', 'ch-b']); // 两渠道各一次真实尝试
     expect(seen).toEqual([1, 2]); // 每次尝试后上报累计值
+    expect(traces).toEqual([['ch-a'], ['ch-a', 'ch-b']]); // 轨迹按评估序增长
+  });
+
+  it('onAttempts 观察者：全渠道被门拒绝（预算竭尽）以 0 次收尾上报完整轨迹', async () => {
+    const s = setup();
+    // 预算闸门全拒（生产 2026-08-30/31 事故形态：上游零调用）
+    s.billing.onReserve(async () => false);
+    const reports: Array<{ total: number; channels: string[] }> = [];
+    await expect(
+      runCandidateLoop(
+        s.deps,
+        preparedOf([candidateOf(1, 'real-1')]),
+        'req-att-gate',
+        0,
+        undefined,
+        async (): Promise<AttemptOutcome<string>> => ({ kind: 'respond', value: 'OK' }),
+        (total, channels) => reports.push({ total, channels }),
+      ),
+    ).rejects.toMatchObject({ code: 'inference.no_available_channel' });
+    // 零上游尝试也要带出被评估渠道的事实（排障：碰了哪些渠道、全被门拒）
+    expect(reports).toEqual([{ total: 0, channels: ['ch-a', 'ch-b'] }]);
   });
 
   it('回归（Bug#4 豁免）：客户端取消/网关停机中止不记死记忆——渠道无责不连坐', async () => {

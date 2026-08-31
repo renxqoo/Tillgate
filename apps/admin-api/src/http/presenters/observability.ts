@@ -1,7 +1,7 @@
 /**
  * 观测域 presenter：audit/requestLog 行 → wire 行。
  * adminSubject 无 join 来源恒 null;
- * 日志行无 apiKeyId/attempts 列来源（apiKeyId 补 null,attempts 不输出）。
+ * 日志行无 apiKeyId 列来源（apiKeyId 补 null）。
  */
 import { isoRequired } from '../contracts/common';
 
@@ -42,6 +42,8 @@ export interface RequestLogRowSource {
   readonly sourceIp: string | null;
   readonly durationMs: number;
   readonly requestSummary: Record<string, unknown> | null;
+  readonly attempts: number;
+  readonly channels: string[] | null;
   readonly createdAt: Date;
 }
 
@@ -58,6 +60,8 @@ export function toRequestLogWireRow(row: RequestLogRowSource) {
     errorCode: row.errorCode,
     durationMs: row.durationMs,
     requestSummary: row.requestSummary,
+    attempts: row.attempts,
+    channels: row.channels,
     sourceIp: row.sourceIp,
     createdAt: isoRequired(row.createdAt),
   };

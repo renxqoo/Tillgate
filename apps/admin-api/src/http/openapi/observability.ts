@@ -68,7 +68,7 @@ export const statsTrendsSchema = z
     description: '按日趋势响应(GET /v1/stats/trends;无流量日补零行,rows 恒为 days 天完整序列)',
   });
 
-/** 请求日志行（presenter 不输出 attempts、apiKeyId 恒 null） */
+/** 请求日志行（apiKeyId 恒 null） */
 export const logRowSchema = z
   .object({
     id: z.number(),
@@ -92,7 +92,13 @@ export const logRowSchema = z
         messageCount: z.number(),
       })
       .nullable(),
-    attempts: z.number().describe('重试次数(快照口径;presenter 暂不输出——展示兜底为 1 次)'),
+    attempts: z
+      .number()
+      .describe('真实上游尝试次数(换渠/同渠道重试均计;0=全渠道被门拒绝,列缺省 1=非推理路由)'),
+    channels: z
+      .array(z.string())
+      .nullable()
+      .describe('尝试渠道轨迹(评估序渠道名,含被门拒绝的渠道;null=非推理路由/历史行)'),
     sourceIp: z
       .string()
       .nullable()
