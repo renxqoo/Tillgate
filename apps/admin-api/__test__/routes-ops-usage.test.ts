@@ -19,6 +19,8 @@ const usageRow = {
   credentialType: 'key',
   externalModel: 'gpt-4o',
   realModel: 'gpt-4o-real',
+  channelId: 3,
+  channelName: 'openai-main',
   inputTokens: 100,
   cachedInputTokens: 10,
   outputTokens: 50,
@@ -43,7 +45,9 @@ const usageRow = {
 
 describe('usage-logs（P4）', () => {
   it('列表信封 + 过滤透传 + Date→ISO（estimated=false 显式传）', async () => {
-    const adminList = vi.fn(async () => ({ rows: [usageRow], total: 1 }));
+    // 无渠道行：channel_id NULL（无渠道归属/渠道硬删 SET NULL）→ 渠道两字段透传 null
+    const noChannelRow = { ...usageRow, id: 6, channelId: null, channelName: null };
+    const adminList = vi.fn(async () => ({ rows: [usageRow, noChannelRow], total: 2 }));
     const app = createAdminApp(
       fakeDeps({
         observability: { usage: { adminList } },
@@ -55,11 +59,15 @@ describe('usage-logs（P4）', () => {
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body).toMatchObject({ total: 1, page: 2, pageSize: 10 });
-    expect((body.rows as Array<Record<string, unknown>>)[0]).toMatchObject({
+    expect(body).toMatchObject({ total: 2, page: 2, pageSize: 10 });
+    const rows = body.rows as Array<Record<string, unknown>>;
+    expect(rows[0]).toMatchObject({
       createdAt: '2026-08-23T01:02:03.000Z',
       amount: '1.5',
+      channelId: 3,
+      channelName: 'openai-main',
     });
+    expect(rows[1]).toMatchObject({ channelId: null, channelName: null });
     expect(adminList).toHaveBeenCalledWith({
       q: 'gpt',
       from: new Date('2026-08-01T00:00:00.000Z'),

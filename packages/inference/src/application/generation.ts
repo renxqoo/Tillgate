@@ -4,7 +4,7 @@ import { generationKindDescriptor } from '../domain/generation';
 import type { GenerationKindDescriptor, GenerationTaskKind } from '../domain/generation';
 import { InferenceErrors } from '../domain/errors';
 import { buildCandidateChain } from '../domain/model/candidates';
-import type { RequestAuth } from '../domain/model/types';
+import type { ChannelCandidate, RequestAuth } from '../domain/model/types';
 import { measurementOf } from '../domain/usage/measurement';
 import { buildReceipt } from '../domain/usage/receipt';
 import type { GenerationTaskStore, GenerationTaskView } from '../ports/generation';
@@ -39,6 +39,8 @@ interface GenerationHit {
   channelName: string;
   /** 提交渠道的出站模型名（任务行快照源——worker 代执行用它构造请求） */
   upstreamModel: string;
+  /** 提交渠道的成本五轴（收据模板成本源；渠道候选缺省未携带时省略——回落候选价） */
+  costPrices?: ChannelCandidate['costPrices'];
 }
 
 /**
@@ -147,6 +149,7 @@ async function generationAttempt(
         channelId: ctx.channel.channelId,
         channelName: ctx.channel.channelName,
         upstreamModel: ctx.channel.upstreamModel,
+        ...(ctx.channel.costPrices != null ? { costPrices: ctx.channel.costPrices } : {}),
       },
     };
   }
@@ -169,6 +172,7 @@ async function generationAttempt(
         channelId: ctx.channel.channelId,
         channelName: ctx.channel.channelName,
         upstreamModel: ctx.channel.upstreamModel,
+        ...(ctx.channel.costPrices != null ? { costPrices: ctx.channel.costPrices } : {}),
       },
     };
   }
@@ -225,6 +229,7 @@ async function persistGenerationHit(
     externalModel,
     channelId: hit.channelId,
     channelKey: hit.channelName,
+    ...(hit.costPrices != null ? { channel: { costPrices: hit.costPrices } } : {}),
     durationMs: 0,
     body: input.body,
     usage: { estimated: true, inputTokens: 0, outputTokens: 0 },

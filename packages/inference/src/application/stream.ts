@@ -76,7 +76,9 @@ function streamReceiptOf(
       externalModel: ctx.prepared.externalModel,
       channelId: ctx.channel.channelId,
       channelKey: ctx.channel.channelName,
-      durationMs: Date.now() - startedAt,
+      channel: ctx.channel,
+      // 计时下界 1ms：Date.now 毫秒分辨率在本地 mock 下可量出假 0（与 chat.ts 同约束）
+      durationMs: Math.max(1, Date.now() - startedAt),
       body: ctx.prepared.body,
       usage: finality.usage,
     }),

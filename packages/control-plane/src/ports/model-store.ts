@@ -155,16 +155,41 @@ export interface ModelStore {
       channels: Array<{
         channelId: number;
         upstreamModel: string;
-        weight: number;
-        priority: number;
+        /**
+         * 渠道成本覆盖（双轨定价）：undefined/null = 继承映射官方价（列落 NULL）；
+         * 值为空串时归一 NULL（表单「清空 = 回继承」）。costConfig 缺省 '{}'（无策略）。
+         */
+        costInputPrice?: string | null;
+        costOutputPrice?: string | null;
+        costCacheInputPrice?: string | null;
+        costCacheWritePrice?: string | null;
+        costUnitPrice?: string | null;
+        costConfig?: Record<string, unknown>;
+        /** 成本免费显式标记（价格保持继承默认；true = 成本物化全 0） */
+        costIsFree?: boolean;
       }>;
     },
   ): Promise<number>;
-  /** 页内映射的绑定行（列表回显渠道+出站名；未绑定 = 缺席，application 补 []） */
+  /** 页内映射的绑定行（列表回显渠道+出站名+成本覆盖；未绑定 = 缺席，application 补 []） */
   listBindingsByMappingIds(
     db: DbLike,
     mappingIds: readonly number[],
-  ): Promise<Array<{ mappingId: number; channelId: number; upstreamModel: string }>>;
+  ): Promise<
+    Array<{
+      mappingId: number;
+      channelId: number;
+      upstreamModel: string;
+      /** 成本覆盖回显（null = 继承映射官方价；costConfig '{}' = 无策略） */
+      costInputPrice: string | null;
+      costOutputPrice: string | null;
+      costCacheInputPrice: string | null;
+      costCacheWritePrice: string | null;
+      costUnitPrice: string | null;
+      costConfig: Record<string, unknown>;
+      /** 成本免费标记回显 */
+      costIsFree: boolean;
+    }>
+  >;
   /** 单映射的绑定渠道连接信息（模型探针用；含密文——仅 application 解密） */
   listBoundChannelsForProbe(
     db: DbLike,

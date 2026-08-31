@@ -1,5 +1,5 @@
 import type { PolicyForm } from './routing-content-types';
-import { ROUTING_FORM_BOUNDS } from './routing-bounds';
+import { COST_FLOOR_BOUND, ROUTING_FORM_BOUNDS } from './routing-bounds';
 
 /** 策略段取值（unknown 收窄） */
 function seg(policy: Record<string, unknown> | undefined, key: string): Record<string, unknown> {
@@ -9,13 +9,18 @@ function seg(policy: Record<string, unknown> | undefined, key: string): Record<s
 export function formOf(policy: Record<string, unknown> | undefined): PolicyForm {
   const affinity = seg(seg(policy, 'scorers'), 'cacheAffinity');
   const watermark = seg(seg(policy, 'scorers'), 'budgetWatermark');
+  const cost = seg(seg(policy, 'scorers'), 'costAffinity');
   const penalty = seg(policy, 'penalty');
   const wait = seg(policy, 'wait');
   return {
-    cacheAffinityEnabled: affinity.enabled === true,
+    enabled: policy?.enabled === true,
+    cacheAffinityEnabled: affinity.enabled !== false, // 缺省开启（镜像 routingPolicySchema）
     cacheBoost: String(affinity.boost ?? 3),
     budgetWatermarkEnabled: watermark.enabled !== false,
     softRatio: String(watermark.softRatio ?? 0.2),
+    // 缺省关闭（裁决 C4：不隐式改变存量路由分布），floor 缺省 0.5——镜像 costAffinitySchema
+    costEnabled: cost.enabled === true,
+    costFloor: String(cost.floor ?? 0.5),
     sameChannelMaxRetries: String(seg(policy, 'retry').sameChannelMaxRetries ?? 3),
     rateLimitBaseMs: String(penalty.rateLimitBaseMs ?? 2000),
     rateLimitMaxMs: String(penalty.rateLimitMaxMs ?? 60_000),
@@ -64,6 +69,16 @@ export function validateForm(form: PolicyForm): FormValidationError | null {
       return { key: 'notInteger', field: label };
     }
   }
+  // costFloor 不在 ROUTING_FORM_BOUNDS（见 COST_FLOOR_BOUND 注释），同规则单独校验
+  const floor = Number(form.costFloor);
+  if (!Number.isFinite(floor) || floor < COST_FLOOR_BOUND.min || floor > COST_FLOOR_BOUND.max) {
+    return {
+      key: 'invalidNumber',
+      field: 'costFloor',
+      min: COST_FLOOR_BOUND.min,
+      max: COST_FLOOR_BOUND.max,
+    };
+  }
   if (Number(form.rateLimitBaseMs) > Number(form.rateLimitMaxMs)) {
     return { key: 'baseExceedsMax' };
   }
@@ -73,6 +88,8 @@ export function validateForm(form: PolicyForm): FormValidationError | null {
 /** 表单 → 策略体（routingPolicySchema 形状；version 由服务端行级自增——不进 JSONB） */
 export function buildPolicy(form: PolicyForm): Record<string, unknown> {
   return {
+    // enabled 是 schema 顶层开关；false 时其余参数保留原值提交但不参与路由决策
+    enabled: form.enabled,
     scorers: {
       cacheAffinity: {
         enabled: form.cacheAffinityEnabled,
@@ -83,6 +100,10 @@ export function buildPolicy(form: PolicyForm): Record<string, unknown> {
       budgetWatermark: {
         enabled: form.budgetWatermarkEnabled,
         softRatio: Number(form.softRatio),
+      },
+      costAffinity: {
+        enabled: form.costEnabled,
+        floor: Number(form.costFloor),
       },
     },
     retry: { sameChannelMaxRetries: Number(form.sameChannelMaxRetries) },

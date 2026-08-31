@@ -4,6 +4,7 @@
  * 重试仅限首字节前，流开始后交给 relay（relay-stream 保证）。
  */
 import type { ChannelDesc, UpstreamError } from '../types';
+import { asRetryDeadlineAbort } from '../errors/retry-deadline.js';
 import type { AiDefaults, AiDeps } from '../config';
 import type { ProtocolAdapter } from '../adapters/protocol-adapter';
 import type { AiEvent } from '../events';
@@ -85,6 +86,11 @@ function classifyStreamAttemptFailure(
 ): UpstreamError {
   if (asServerDrainAbort(signal.reason)) {
     return new UE({ kind: 'server_draining' });
+  }
+  // 预算耗尽（withRetry deadline）≠ 客户端取消：慢上游归类 timeout（可换渠+熔断），
+  // canceled 会跳过同候选其余渠道并把等待中的客户端判成「调用方取消」
+  if (asRetryDeadlineAbort(signal.reason)) {
+    return new UE({ kind: 'timeout', message: 'upstream attempt budget exhausted' });
   }
   if (signal.aborted) {
     return canceledError();

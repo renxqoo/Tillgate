@@ -154,10 +154,33 @@ export async function undeleteModelAction(id: number): Promise<{ error?: string 
 }
 
 // ── 绑定渠道 ────────────────────────────────────────────────────────────────
-/** 渠道绑定项（upstreamModel 留空 = 服务端物化映射规范名） */
+/** 绑定行成本覆盖价（numeric 字符串；'' = 继承映射官方价，契约层空串归一 null） */
+export interface BindChannelItem {
+  channelId: number;
+  /** 留空 = 服务端物化映射规范名 */
+  upstreamModel?: string;
+  costInputPrice?: string;
+  costOutputPrice?: string;
+  costCacheInputPrice?: string;
+  costCacheWritePrice?: string;
+  costUnitPrice?: string;
+  /** 成本侧计费配置（schedule 峰谷成本 / variant 差价成本；缺省 '{}' = 无策略） */
+  costConfig?: {
+    strategy?: string;
+    params?: {
+      selector?: string;
+      prices?: Record<string, string>;
+      windows?: Array<Record<string, string>>;
+    };
+  };
+  /** 成本免费显式标记（价格列保持继承默认；true = 成本恒 0——业务判定源） */
+  costIsFree?: boolean;
+}
+
+/** 渠道绑定（全量覆盖原绑定；upstreamModel 留空 = 服务端物化映射规范名） */
 export async function bindChannelsAction(
   id: number,
-  channels: Array<{ channelId: number; upstreamModel?: string }>,
+  channels: BindChannelItem[],
 ): Promise<{ error?: string }> {
   const t = await getTranslations('models');
   try {

@@ -10,6 +10,7 @@ import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { fireEvent } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 
 import en from '../messages/en.json';
@@ -127,5 +128,80 @@ describe('BindChannelsDialog：受控打开的绑定回显', () => {
     rerender(shell(true));
     expect(screen.getByDisplayValue('up-a')).toBeInTheDocument();
     expect(screen.queryByDisplayValue('unsaved-draft')).not.toBeInTheDocument();
+  });
+
+  it('成本覆盖编辑区单位感知：image 模型只显单位成本轴，继承占位回显官方单价', () => {
+    // 回归锚点（双轨定价）：成本轴经 PricingEditor 与官方轴同构——
+    // image 模型不再渲染 token 四价轴，空输入占位显示将被继承的官方平价
+    const imageModel = {
+      ...modelOf([{ channelId: 1, upstreamModel: 'up-a' }]),
+      pricingUnit: 'image',
+      unitPrice: '0.02',
+    } as AdminModelRow;
+    renderDialog(imageModel, true);
+    fireEvent.click(screen.getByRole('button', { name: /Cost price override/ }));
+
+    expect(screen.getByText('Cost unit price')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Inherit 0.0200')).toBeInTheDocument();
+    // token 四价轴不出现（单位计价模型的成本轴分派）
+    expect(screen.queryByText('Cost input price')).not.toBeInTheDocument();
+    // 分时段编辑与官方轴同构可用
+    expect(screen.getByText('Time-of-day pricing')).toBeInTheDocument();
+  });
+
+  it('成本覆盖编辑区：token 模型显四价成本轴（单位成本轴不出现）', () => {
+    renderDialog(modelOf([{ channelId: 1, upstreamModel: 'up-a' }]), true);
+    fireEvent.click(screen.getByRole('button', { name: /Cost price override/ }));
+
+    expect(screen.getByText('Cost input price')).toBeInTheDocument();
+    expect(screen.getByText('Cost output price')).toBeInTheDocument();
+    expect(screen.getByText('Cost cache-hit price')).toBeInTheDocument();
+    expect(screen.getByText('Cost cache-write price')).toBeInTheDocument();
+    expect(screen.queryByText('Cost unit price')).not.toBeInTheDocument();
+  });
+
+  it('免费渠道开关回显：costIsFree 标记亮灯（价格列保持继承默认），轴灰化策略隐藏', () => {
+    const freeBound = modelOf([
+      {
+        channelId: 1,
+        upstreamModel: 'up-a',
+        costInputPrice: null,
+        costOutputPrice: null,
+        costCacheInputPrice: null,
+        costCacheWritePrice: null,
+        costUnitPrice: null,
+        costConfig: {},
+        costIsFree: true,
+      },
+    ] as never) as AdminModelRow;
+    renderDialog(freeBound, true);
+    fireEvent.click(screen.getByRole('button', { name: /Cost price override/ }));
+
+    expect(screen.getByRole('checkbox', { name: /Free channel/ })).toBeChecked();
+    // 免费态：价格保持继承（空）仅灰化，策略编辑隐藏（免费与窗口/档位价矛盾）
+    expect(screen.getByLabelText('Cost input price')).toBeDisabled();
+    expect(screen.getByLabelText('Cost input price')).toHaveValue(null);
+    expect(screen.queryByText('Time-of-day pricing')).not.toBeInTheDocument();
+  });
+
+  it('免费渠道开关交互：勾选不清价格（保持继承空值）仅灰化，取消即恢复可编辑', async () => {
+    const user = userEvent.setup();
+    renderDialog(modelOf([{ channelId: 1, upstreamModel: 'up-a' }]), true);
+    fireEvent.click(screen.getByRole('button', { name: /Cost price override/ }));
+
+    const input = screen.getByLabelText('Cost input price');
+    expect(screen.getByText('Time-of-day pricing')).toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: /Free channel/ }));
+
+    expect(screen.getByRole('checkbox', { name: /Free channel/ })).toBeChecked();
+    expect(input).toBeDisabled();
+    // 用户裁决：勾选免费不把价格清为 0——保持继承空值（业务判定走标记）
+    expect(input).toHaveValue(null);
+    expect(screen.queryByText('Time-of-day pricing')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('checkbox', { name: /Free channel/ }));
+    expect(screen.getByRole('checkbox', { name: /Free channel/ })).not.toBeChecked();
+    expect(input).not.toBeDisabled();
+    expect(screen.getByText('Time-of-day pricing')).toBeInTheDocument();
   });
 });

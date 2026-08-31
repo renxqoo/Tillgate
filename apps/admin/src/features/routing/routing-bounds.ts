@@ -37,3 +37,11 @@ export const ROUTING_FORM_BOUNDS: Readonly<
   modelDeadThreshold: { min: 2, max: 10, integer: true },
   maxWaitMs: { min: 100, max: 5_000, integer: true },
 };
+
+/**
+ * costAffinity.floor 边界（scorers.costAffinity 的前端镜像，与 ROUTING_FORM_BOUNDS
+ * 同一单一真相 @tillgate/inference routingPolicySchema）。暂不并入上表——该表逐字段
+ * 锁定 generated/openapi.json 的 RoutingPolicySaveBody，而当前 wire 交付物尚未展开
+ * scorers.costAffinity 段（生成链滞后）；待交付物收录后并入上表并补 wire path 对照。
+ */
+export const COST_FLOOR_BOUND: RoutingFormFieldBound = { min: 0.1, max: 1, integer: false };

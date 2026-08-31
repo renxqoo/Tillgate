@@ -14,6 +14,29 @@ function decimalEq(left: string, right: string): boolean {
   return a !== null && b !== null && a.eq(b);
 }
 
+/**
+ * 收据授权判定（双重）：
+ * 1. 计价快照命中授权链中「实际服务候选」——mappingId 锁定映射（名字/价格皆由
+ *    映射唯一决定，externalModel 对该候选是冗余维）；
+ * 2. 收据 externalModel（语义 = 用户请求的对外名，fallback 命中时 ≠ 实际候选自身名）
+ *    必须属于授权链某候选——fallback 请求名（=主候选名）通过，乱写的名字仍拒。
+ */
+function receiptAuthorizedByQuote(quote: BillingQuote, receipt: UsageReceipt): boolean {
+  const priceAuthorized = quote.candidates.some(
+    (item) =>
+      item.mappingId === receipt.mappingId &&
+      item.realModel === receipt.realModel &&
+      decimalEq(item.inputPrice, receipt.inputPrice) &&
+      decimalEq(item.outputPrice, receipt.outputPrice) &&
+      decimalEq(item.cacheInputPrice, receipt.cacheInputPrice) &&
+      decimalEq(item.unitPrice ?? '0', receipt.unitPrice ?? '0') &&
+      decimalEq(item.coefficient, receipt.coefficient) &&
+      item.billingPolicyFingerprint === receipt.billingPolicyFingerprint,
+  );
+  const nameInChain = quote.candidates.some((item) => item.externalModel === receipt.externalModel);
+  return priceAuthorized && nameInChain;
+}
+
 export function validateReceipt(userId: number, quote: BillingQuote, receipt: UsageReceipt): void {
   if (receipt.userId !== userId) {
     throw BillingErrors.business('receipt_user_mismatch', {
@@ -43,19 +66,7 @@ export function validateReceipt(userId: number, quote: BillingQuote, receipt: Us
   ) {
     throw BillingErrors.business('poison_receipt', { stage: 'invalid_usage' });
   }
-  const authorized = quote.candidates.some(
-    (item) =>
-      item.mappingId === receipt.mappingId &&
-      item.externalModel === receipt.externalModel &&
-      item.realModel === receipt.realModel &&
-      decimalEq(item.inputPrice, receipt.inputPrice) &&
-      decimalEq(item.outputPrice, receipt.outputPrice) &&
-      decimalEq(item.cacheInputPrice, receipt.cacheInputPrice) &&
-      decimalEq(item.unitPrice ?? '0', receipt.unitPrice ?? '0') &&
-      decimalEq(item.coefficient, receipt.coefficient) &&
-      item.billingPolicyFingerprint === receipt.billingPolicyFingerprint,
-  );
-  if (!authorized) {
+  if (!receiptAuthorizedByQuote(quote, receipt)) {
     throw BillingErrors.business('poison_receipt', { stage: 'not_authorized' });
   }
   // 收据校验不用「字节数上界 vs 真实 token 数」判死：厂商会报隐藏 system/cached

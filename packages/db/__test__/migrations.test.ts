@@ -38,10 +38,10 @@ describe('migration journal ↔ SQL files', () => {
     expect(sqlFiles.toSorted()).toEqual(journalTags.toSorted());
   });
 
-  it('条目总数 = 104(0000-0096,历史缺口 0036 在案;0076 = identity 七表;0081 = admins.role;0082 = 动态 RBAC 权限树/角色;0083 = drop admins.role 旧列;0084 = 接口绑定;0085 = 接口绑定独立成页;0086 = 第三方集成动态配置;0087 = 集成写权限拆分;0088 = oauth.base 退回 env;0089 = 凭据旧列退役 drop users/admins.password_hash;0090 = 会话失效线旧列退役 drop users/admins.session_invalid_before;0091 = drop admins.two_factor_secret 预留列;0092 = SMTP 探针端点绑定;0093 = 管理员邀请重发端点绑定;0094 = 结算超收放弃额;0095 = 钱包结算透支地板;0096 = 透支地板管理面;0097 = 预扣策略管理面端点绑定;0098 = 渠道用量证据缺陷计数;0099 = 预扣敞口上限管理面;0100 = 资金中心模块导航/汇率权限;0101 = usage_logs 用量钳制审计列;空号 0102 在案;0103 = routing_policies 热配置表;0104 = 智能路由管理端点/导航页绑定;0105 = billing_requests 渠道维窗口索引;0106 = 绑定级上游模型名+任务出站名快照)', () => {
-    expect(journalTags.length).toBe(105);
+  it('条目总数 = 106(0000-0096,历史缺口 0036 在案;0076 = identity 七表;0081 = admins.role;0082 = 动态 RBAC 权限树/角色;0083 = drop admins.role 旧列;0084 = 接口绑定;0085 = 接口绑定独立成页;0086 = 第三方集成动态配置;0087 = 集成写权限拆分;0088 = oauth.base 退回 env;0089 = 凭据旧列退役 drop users/admins.password_hash;0090 = 会话失效线旧列退役 drop users/admins.session_invalid_before;0091 = drop admins.two_factor_secret 预留列;0092 = SMTP 探针端点绑定;0093 = 管理员邀请重发端点绑定;0094 = 结算超收放弃额;0095 = 钱包结算透支地板;0096 = 透支地板管理面;0097 = 预扣策略管理面端点绑定;0098 = 渠道用量证据缺陷计数;0099 = 预扣敞口上限管理面;0100 = 资金中心模块导航/汇率权限;0101 = usage_logs 用量钳制审计列;空号 0102 在案;0103 = routing_policies 热配置表;0104 = 智能路由管理端点/导航页绑定;0105 = billing_requests 渠道维窗口索引;0106 = 绑定级上游模型名+任务出站名快照;0107 = 路由排序 weight/priority 收口渠道层——drop model_channels 两列;0108 = model_channels 绑定级成本价（双轨定价）;0109 = 成本免费显式标记)', () => {
+    expect(journalTags.length).toBe(108);
     expect(journalTags[0]).toBe('0000_rapid_living_mummy');
-    expect(journalTags.at(-1)).toBe('0106_model_channels_upstream_model');
+    expect(journalTags.at(-1)).toBe('0109_model_channels_cost_is_free');
   });
 
   it('tag 编号严格递增,无重复', () => {

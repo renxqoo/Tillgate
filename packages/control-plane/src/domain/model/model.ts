@@ -75,7 +75,9 @@ function assertPrice(field: string, raw: string): void {
 
 /** 变体计费配置形状：variant 必须带 selector 与非空 prices 表；schedule 必须带合法窗口表 */
 // eslint-disable-next-line complexity -- 变体计费形状校验矩阵,分支平铺
-function assertBillingConfig(config: BillingConfig | null | undefined): void {
+/** 计费配置校验（公开：绑定级 costConfig 复用同款深校验——形状/重叠/价格域单一真相） */
+// eslint-disable-next-line complexity -- 内聚校验器：strategy 三分支×参数域平铺守卫，拆散会把同一不变量碎成多文件
+export function assertBillingConfig(config: BillingConfig | null | undefined): void {
   if (config == null) return;
   if (
     config.strategy !== 'flat' &&

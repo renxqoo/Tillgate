@@ -5,6 +5,7 @@ import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { ModelStore } from '../../ports/model-store';
 import { controlPlaneErrors } from '../../errors';
+import { assertBillingConfig, type BillingConfig } from '../../domain/model/model';
 import { adminIdOf, type ControlContext } from '../context';
 import { emitAudit } from '../audit';
 
@@ -20,9 +21,31 @@ export interface BindModelChannelsInput {
   readonly channels: Array<{
     channelId: number;
     upstreamModel?: string;
-    weight?: number;
-    priority?: number;
+    /** 渠道成本覆盖（双轨定价）：缺省继承映射官方价；空串归一 NULL */
+    costInputPrice?: string | null;
+    costOutputPrice?: string | null;
+    costCacheInputPrice?: string | null;
+    costCacheWritePrice?: string | null;
+    costUnitPrice?: string | null;
+    costConfig?: Record<string, unknown>;
+    /** 成本免费显式标记：true = 成本恒 0（价格列保持继承默认不清写） */
+    costIsFree?: boolean;
   }>;
+}
+
+/** 成本覆盖列归一：空串/undefined → null（继承）；numeric 字符串原样透传 */
+function costColumnOf(v: string | null | undefined): string | null {
+  const trimmed = typeof v === 'string' ? v.trim() : v;
+  return trimmed == null || trimmed === '' ? null : trimmed;
+}
+
+/**
+ * 成本配置深校验：与映射 billingConfig 同构同校验（形状/窗口重叠/价格域——
+ * 单一真相 assertBillingConfig）。空对象/缺省 = 无策略直通。
+ */
+function assertCostConfig(config: Record<string, unknown> | undefined): void {
+  if (config == null || Object.keys(config).length === 0) return;
+  assertBillingConfig(config as BillingConfig);
 }
 
 export async function bindModelChannels(
@@ -33,6 +56,8 @@ export async function bindModelChannels(
   if (!existing) {
     throw controlPlaneErrors.business('model_not_found', { mappingId: input.mappingId });
   }
+  // 成本配置深校验先于事务（写前拒绝；与创建/更新路径同款域校验）
+  for (const ch of input.channels) assertCostConfig(ch.costConfig);
   const bound = await deps.db.transaction((tx) =>
     deps.stores.model.replaceModelChannels(tx, {
       mappingId: input.mappingId,
@@ -40,8 +65,13 @@ export async function bindModelChannels(
       channels: input.channels.map((ch) => ({
         channelId: ch.channelId,
         upstreamModel: ch.upstreamModel ?? existing.realModel,
-        weight: ch.weight ?? 1,
-        priority: ch.priority ?? 0,
+        costInputPrice: costColumnOf(ch.costInputPrice),
+        costOutputPrice: costColumnOf(ch.costOutputPrice),
+        costCacheInputPrice: costColumnOf(ch.costCacheInputPrice),
+        costCacheWritePrice: costColumnOf(ch.costCacheWritePrice),
+        costUnitPrice: costColumnOf(ch.costUnitPrice),
+        costConfig: ch.costConfig ?? {},
+        costIsFree: ch.costIsFree === true,
       })),
     }),
   );

@@ -16,6 +16,8 @@ import {
   streamResultOf,
   upstreamError,
 } from './harness';
+import { staticRoutingPolicy } from '../src/ports/routing';
+import { routingPolicySchema } from '../src/routing/policy';
 
 /**
  * 流式尝试（决定性事件 / 续租 / 终态后台结算）。
@@ -34,6 +36,7 @@ function setup(defaults?: Parameters<typeof buildInference>[0]['defaults']) {
     catalog,
     billing: billing.port,
     upstream: upstream.port,
+    policy: staticRoutingPolicy(routingPolicySchema.parse({ enabled: true })),
     ...(defaults != null ? { defaults } : {}),
   });
   return { inference, upstream, billing, detach: () => inference.close() };

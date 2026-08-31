@@ -81,7 +81,7 @@ async function cleanup(): Promise<void> {
   await conn.execute(sql`delete from trace_spans where service = 'trt-test-svc'`);
   // 拓扑用例的行 service='gateway',按测试渠道白名单清(不碰真实渠道数据)
   await conn.execute(
-    sql`delete from trace_spans where service = 'gateway' and channel in ('ch-a', 'ch-b')`,
+    sql`delete from trace_spans where service = 'gateway' and channel in ('ch-a', 'ch-b', 'ch-c')`,
   );
   await conn.execute(sql`delete from audit_logs where action like 'trt.%'`);
   await conn.execute(sql`delete from request_logs where path like '/trt%'`);
@@ -181,6 +181,36 @@ describe('PgTraceStore(真 PG)', () => {
         startTime: new Date(base + 3000),
         endTime: new Date(base + 3500),
       }),
+      // 换渠事实面(billing.reserve_channel):ch-a 两次预留其中一次换入;ch-b 一次预留
+      // 非换入;ch-c 只有预留无 upstream 尝试(拓扑行集由尝试定义,不得出现)
+      spanRow({
+        name: 'billing.reserve_channel',
+        service: 'gateway',
+        channel: 'ch-a',
+        attributes: { 'billing.switched': true },
+        startTime: new Date(base + 400),
+      }),
+      spanRow({
+        name: 'billing.reserve_channel',
+        service: 'gateway',
+        channel: 'ch-a',
+        attributes: { 'billing.remaining': '1.5' },
+        startTime: new Date(base + 500),
+      }),
+      spanRow({
+        name: 'billing.reserve_channel',
+        service: 'gateway',
+        channel: 'ch-b',
+        attributes: { 'billing.remaining': '2.5' },
+        startTime: new Date(base + 600),
+      }),
+      spanRow({
+        name: 'billing.reserve_channel',
+        service: 'gateway',
+        channel: 'ch-c',
+        attributes: { 'billing.switched': true },
+        startTime: new Date(base + 700),
+      }),
       // 窗口外不计入
       spanRow({
         name: 'upstream p1',
@@ -201,6 +231,13 @@ describe('PgTraceStore(真 PG)', () => {
     expect(chA.lastError).toBe('upstream_timeout'); // 时间最晚的错误(base+2000)
     expect(chB.attempts).toBe(1);
     expect(chB.errors).toBe(0);
+    // 换渠事实合并:ch-a 2 次预留 1 次换入;ch-b 1 次预留 0 换入;
+    // ch-c 只有预留无尝试——拓扑行集由 upstream 尝试定义,不得出现
+    expect(chA.reservations).toBe(2);
+    expect(chA.switchedReservations).toBe(1);
+    expect(chB.reservations).toBe(1);
+    expect(chB.switchedReservations).toBe(0);
+    expect(topo.some((t) => t.channel === 'ch-c')).toBe(false);
     await cleanup();
   });
 

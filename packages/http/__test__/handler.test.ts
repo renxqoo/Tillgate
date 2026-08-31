@@ -279,4 +279,36 @@ describe('errorHandler：未知错误 → 500 errors.unhandled + 记日志', () 
     expect(res.status).toBe(404);
     expect(logged.length).toBe(0);
   });
+
+  it('5xx business 记日志且 context 不丢（终局原因排障必需）', async () => {
+    // 形态对齐生产 no_available_channel：unavailable 503 + upstream_code 上下文
+    const Drained = defineErrorCatalog('handler_test', {
+      no_available: {
+        category: 'unavailable',
+        message: 'No channel available for this model, please retry later',
+        zh: '该模型暂无可用渠道，请稍后重试',
+      },
+    });
+    const logged: Array<Record<string, unknown>> = [];
+    const a = new Hono();
+    a.onError(
+      errorHandler({
+        catalog: Drained,
+        logger: { error: (obj) => logged.push(obj) },
+      }),
+    );
+    a.get('/drained', () => {
+      throw Drained.business('no_available', {
+        model: 'minimax-m3',
+        upstream_code: 'channel_budget_exhausted',
+      });
+    });
+    const res = await a.request('/drained');
+    expect(res.status).toBe(503);
+    expect(logged.length).toBe(1);
+    expect(logged[0]?.context).toEqual({
+      model: 'minimax-m3',
+      upstream_code: 'channel_budget_exhausted',
+    });
+  });
 });

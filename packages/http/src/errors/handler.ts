@@ -66,8 +66,15 @@ export function errorHandler(deps: ErrorHandlerDeps = {}) {
     // 渲染分派：business 按目录+override / infrastructure 503 / defect 与未知 500（细节只进日志）
     const rendered = renderError(err, { locale, catalog: deps.catalog, overrides: deps.overrides });
     if (rendered.status >= 500) {
+      // context 进日志（如 no_available_channel 的 upstream_code=channel_budget_exhausted）：
+      // 5xx 终局原因运营排障必需——出站信封有 context，日志面不得丢失同一事实
       deps.logger?.error(
-        { code: rendered.code, err: err.message, stack: err.stack },
+        {
+          code: rendered.code,
+          ...(rendered.context !== undefined ? { context: rendered.context } : {}),
+          err: err.message,
+          stack: err.stack,
+        },
         'unhandled error',
       );
     }

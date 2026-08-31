@@ -52,7 +52,7 @@ export interface RecentFilter {
   offset?: number;
 }
 
-/** 渠道健康聚合(24h 窗口,来自 gateway upstream spans) */
+/** 渠道健康聚合(24h 窗口,来自 gateway upstream spans + billing.reserve_channel 换渠事实) */
 export interface ChannelHealth {
   channel: string;
   attempts: number;
@@ -60,6 +60,10 @@ export interface ChannelHealth {
   avgDurationMs: number;
   lastAt: number | null;
   lastError: string | null;
+  /** 窗口内预算预留尝试数（billing.reserve_channel span 数，含被拒——换渠占比分母） */
+  reservations: number;
+  /** 换渠切入数（预留携带 billing.switched=true——本渠道作为换渠目标；failover 行为观测） */
+  switchedReservations: number;
 }
 
 export interface TraceStoreStats {

@@ -137,6 +137,13 @@ describe.skipIf(url == null)('生成任务 postgres 存储（真实 PG）', () =
       streamAborted: false,
       mappingId: seed.mappingId,
       billingPolicyFingerprint: null,
+      costPrices: {
+        inputPrice: '1',
+        cacheInputPrice: '1',
+        cacheWritePrice: '0',
+        outputPrice: '2',
+        unitPrice: '0',
+      },
     },
     unitsSnapshot: 6,
     expiresAt: Date.now() + 3_600_000,

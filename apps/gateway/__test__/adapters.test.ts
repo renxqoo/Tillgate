@@ -225,6 +225,13 @@ describe('catalog-port：系数解析（C-G2）', () => {
             tpmLimit: 1000,
             upstreamBudget: '99',
             upstreamRemaining: '99',
+            costInputPrice: '1',
+            costOutputPrice: '2',
+            costCacheInputPrice: '1',
+            costCacheWritePrice: '0',
+            costUnitPrice: '0',
+            costConfig: {},
+            costIsFree: false,
           },
         ],
       }),
@@ -596,7 +603,8 @@ describe('billing-port（C-G3）', () => {
       estimatedInputTokens: 1_000_000,
       maxOutputTokens: 1_000_000,
     });
-    expect(result).toEqual({ allowed: true });
+    // switched/remaining 透传（修复：换渠转移与剩余额度是 gates 观测面事实，桥接层不得丢弃）
+    expect(result).toEqual({ allowed: true, remaining: '0' });
     const input = calls.reserves[0] as { channelId: number; amount: string };
     expect(input.channelId).toBe(7);
     // 贵价口径：max(3.5,1,7)=7 输入 + 2 输出 = 9 元（官方价，系数不参与）

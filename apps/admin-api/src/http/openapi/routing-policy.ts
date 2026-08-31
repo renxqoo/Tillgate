@@ -53,6 +53,7 @@ export const routingOverviewRowSchema = z
     channelName: z.string(),
     status: z.number().describe('0 启用/1 禁用/2 维护/3 熔断/4 凭据无效'),
     priority: z.number().nullable(),
+    weight: z.number().describe('渠道层路由权重（D4 单轨——priority 层内加权分布）'),
     upstreamBudget: z.string().describe('进货总额（元，numeric 字符串）'),
     upstreamRemaining: z.string().describe('剩余 = 进货 - 已占用（元，numeric 字符串）'),
     requests: z.number().describe('近窗请求数（billing_requests 生命周期口径）'),

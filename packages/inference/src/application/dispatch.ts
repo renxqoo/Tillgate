@@ -37,17 +37,21 @@ function outboundMessageOf(
 /**
  * 上游失败分派（非流式 / 流式首字节前共用）：
  * 可换 → 换渠道；4xx → 透传终局（收尾后原码返回）；其余 → 换候选。
- * 跨请求记忆记账（fire-and-forget）：429/quota 进惩罚箱、死凭据按 channel 维计数。
+ * 跨请求记忆记账：429/quota 进惩罚箱、死凭据按 channel 维计数（保护面）。
+ * 惩罚箱是路由信号，单渠道直连（policy.enabled=false）不写（用户裁决 D3）；
+ * 记账 await：同请求的有界等待判定/下一渠道的条件门消费该状态，
+ * fire-and-forget 会因 CAS 读写竞态恒读到未落地（有界等待对当轮 429 失效）
  */
 export async function dispatchFailure(
   deps: ExecutionDeps,
   ctx: AttemptContext,
   error: UpstreamError,
 ): Promise<AttemptOutcome<PassthroughDelivered>> {
-  if (error.kind === 'rate_limited') {
-    deps.memory.recordPenalty(ctx.channel.channelId, 'rate_limited', error.retryAfterMs);
-  } else if (error.kind === 'quota_exhausted') {
-    deps.memory.recordPenalty(ctx.channel.channelId, 'quota_exhausted');
+  const smartRouting = deps.policy.latest().enabled;
+  if (smartRouting && error.kind === 'rate_limited') {
+    await deps.memory.recordPenalty(ctx.channel.channelId, 'rate_limited', error.retryAfterMs);
+  } else if (smartRouting && error.kind === 'quota_exhausted') {
+    await deps.memory.recordPenalty(ctx.channel.channelId, 'quota_exhausted');
   }
   if (error.deadCredential) {
     deps.health.recordDeadCredential(ctx.channel.channelId, true);

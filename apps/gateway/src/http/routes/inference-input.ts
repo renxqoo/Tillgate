@@ -30,8 +30,10 @@ export function toInferenceInput(input: {
   endpoint: Endpoint;
   /** 客户端断连取消信号（c.req.raw.signal；贯通到上游 fetch 与终止分类） */
   signal?: AbortSignal;
+  /** 上游尝试计数观察者（request_logs.attempts 观测面——路由把 hono context 写入器传入） */
+  onAttempts?: (total: number) => void;
 }): ChatInput {
-  const { requestId, auth, body, endpoint, signal } = input;
+  const { requestId, auth, body, endpoint, signal, onAttempts } = input;
   return {
     requestId,
     auth: {
@@ -43,5 +45,6 @@ export function toInferenceInput(input: {
     body,
     endpoint,
     ...(signal != null ? { signal } : {}),
+    ...(onAttempts != null ? { onAttempts } : {}),
   };
 }

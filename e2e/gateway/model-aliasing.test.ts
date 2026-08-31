@@ -51,8 +51,8 @@ async function addAliasedChannel(input: {
     returning id`);
   const id = Number((r[0] as { id: string | number }).id);
   await world.db.execute(sql`
-    insert into model_channels (mapping_id, channel_id, upstream_model, weight, priority)
-    values (${world.seed.mappingId}, ${id}, ${input.upstreamModel}, 1, ${input.priority})`);
+    insert into model_channels (mapping_id, channel_id, upstream_model)
+    values (${world.seed.mappingId}, ${id}, ${input.upstreamModel})`);
   return id;
 }
 

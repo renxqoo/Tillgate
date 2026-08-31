@@ -111,6 +111,16 @@ export const adminUsageRowSchema = z
     credentialType: z.string(),
     externalModel: z.string(),
     realModel: z.string(),
+    channelId: z
+      .number()
+      .nullable()
+      .describe(
+        '本次调用实际使用的渠道 id(usage_logs.channel_id;null = 无渠道归属/渠道硬删后 SET NULL)',
+      ),
+    channelName: z
+      .string()
+      .nullable()
+      .describe('渠道名(channels 按 id 左联;软删渠道不滤仍可追溯;渠道行不存在 = null)'),
     inputTokens: z.number(),
     cachedInputTokens: z.number(),
     outputTokens: z.number(),
@@ -233,6 +243,12 @@ export const channelHealthRowSchema = z
     avgDurationMs: z.number(),
     lastAt: z.number().nullable(),
     lastError: z.string().nullable(),
+    reservations: z
+      .number()
+      .describe('窗口内预算预留尝试数(billing.reserve_channel span 数,含被拒——换渠占比分母)'),
+    switchedReservations: z
+      .number()
+      .describe('换渠切入数(预留携带 billing.switched=true——本渠道作为换渠目标)'),
   })
   .meta({ id: 'ChannelHealthRow', description: '渠道健康聚合(topology 行)。' });
 

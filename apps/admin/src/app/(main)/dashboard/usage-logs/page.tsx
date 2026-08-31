@@ -12,6 +12,7 @@ import { fmtDateTime } from '@/lib/formatters';
 import { msToHuman } from '@/lib/formatters';
 import { adminApi } from '@/server/admin-api';
 import { ListPage } from '@/components/list-page';
+import { cn } from '@/lib/utils';
 import { firstParam, parseListSearchParams } from '@/lib/list-query';
 
 import { UsageLogsFilter } from '@/features/tracing/usage-logs-filter';
@@ -93,6 +94,47 @@ function clampBadge(
   );
 }
 
+/** 成本/毛利列（渠道成本价双轨口径）：upstreamCost null = 无成本证据 → '—'；毛利 = 扣费 − 成本 */
+function costMarginColumns(
+  t: Awaited<ReturnType<typeof getTranslations<'usageLogs'>>>,
+): DataTableColumn<AdminUsageRow>[] {
+  return [
+    {
+      key: 'cost',
+      header: t('cost'),
+      align: 'right',
+      render: (r) => (
+        <span className="text-right text-xs text-muted-foreground tabular-nums">
+          {r.upstreamCost != null ? `¥${Number(r.upstreamCost).toFixed(6)}` : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'margin',
+      header: t('margin'),
+      align: 'right',
+      // 两者任一缺成本证据 → '—'（正负着色，0 保持朴素）
+      render: (r) => {
+        if (r.upstreamCost == null) {
+          return <span className="text-right text-xs text-muted-foreground tabular-nums">—</span>;
+        }
+        const margin = Number(r.amount) - Number(r.upstreamCost);
+        return (
+          <span
+            className={cn(
+              'text-right text-xs tabular-nums',
+              margin > 0 && 'text-success',
+              margin < 0 && 'text-destructive',
+            )}
+          >
+            {margin < 0 ? '-' : ''}¥{Math.abs(margin).toFixed(6)}
+          </span>
+        );
+      },
+    },
+  ];
+}
+
 /** 用量表列定义（cell 渲染器随列声明平铺；t/tc/locale 经参数传入） */
 function buildUsageColumns(
   t: Awaited<ReturnType<typeof getTranslations<'usageLogs'>>>,
@@ -119,6 +161,16 @@ function buildUsageColumns(
       header: t('model'),
       render: (r) => (
         <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{r.externalModel}</code>
+      ),
+    },
+    {
+      key: 'channel',
+      header: t('channel'),
+      // 渠道名缺失时回退 #id（软删渠道名仍可查；channel_id 为 NULL = 无渠道归属/渠道已硬删 → '—'）
+      render: (r) => (
+        <span className="text-xs text-muted-foreground">
+          {r.channelName ?? (r.channelId != null ? `#${r.channelId}` : '—')}
+        </span>
       ),
     },
     {
@@ -182,6 +234,7 @@ function buildUsageColumns(
         </span>
       ),
     },
+    ...costMarginColumns(t),
     {
       key: 'billedBy',
       header: t('source'),

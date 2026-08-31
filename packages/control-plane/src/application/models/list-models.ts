@@ -15,10 +15,17 @@ export interface ListModelsDeps {
   readonly stores: { readonly model: ModelStore };
 }
 
-/** 绑定回显行（渠道 + 该渠道出站模型名） */
+/** 绑定回显行（渠道 + 出站名 + 成本覆盖；null 成本 = 继承映射官方价） */
 export interface ModelChannelBinding {
   readonly channelId: number;
   readonly upstreamModel: string;
+  readonly costInputPrice: string | null;
+  readonly costOutputPrice: string | null;
+  readonly costCacheInputPrice: string | null;
+  readonly costCacheWritePrice: string | null;
+  readonly costUnitPrice: string | null;
+  readonly costConfig: Record<string, unknown>;
+  readonly costIsFree: boolean;
 }
 
 export interface ModelListItem extends ModelRecord {
@@ -52,7 +59,17 @@ export async function listModels(
   const byMapping = new Map<number, ModelChannelBinding[]>();
   for (const binding of bindings) {
     const list = byMapping.get(binding.mappingId) ?? [];
-    list.push({ channelId: binding.channelId, upstreamModel: binding.upstreamModel });
+    list.push({
+      channelId: binding.channelId,
+      upstreamModel: binding.upstreamModel,
+      costInputPrice: binding.costInputPrice,
+      costOutputPrice: binding.costOutputPrice,
+      costCacheInputPrice: binding.costCacheInputPrice,
+      costCacheWritePrice: binding.costCacheWritePrice,
+      costUnitPrice: binding.costUnitPrice,
+      costConfig: binding.costConfig,
+      costIsFree: binding.costIsFree,
+    });
     byMapping.set(binding.mappingId, list);
   }
   return {

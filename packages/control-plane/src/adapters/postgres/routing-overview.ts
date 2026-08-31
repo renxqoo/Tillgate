@@ -15,6 +15,8 @@ export interface RoutingOverviewRow {
   channelName: string;
   status: number;
   priority: number | null;
+  /** 渠道层路由权重（D4 单轨后与 priority 同为排序事实源——观测面与渠道页对齐） */
+  weight: number;
   upstreamBudget: string;
   upstreamRemaining: string;
   /** 近窗请求数（billing_requests 口径——含失败请求） */
@@ -27,13 +29,18 @@ export interface RoutingOverviewRow {
   inputTokens: number;
 }
 
-/** 生命周期面预聚合：窗口内按渠道计数（失败 = released 且 failure_code 非空） */
+/** 生命周期面预聚合：窗口内按渠道计数（失败 = released 且 failure_code 非空）。
+ *  raw sql 字段必须声明 alias——缺 alias 的字段在外层引用时被 drizzle
+ *  selection proxy 拒绝（管理台渠道总览因此 500 过，回归见 postgres.real） */
 function lifecycleAggOf(db: DbLike, since: Date) {
   return db
     .select({
       channelId: billingRequests.channelId,
-      requests: sql<number>`count(*)::int`,
-      failures: sql<number>`count(*) filter (where ${billingRequests.status} = 'released' and ${billingRequests.failureCode} is not null)::int`,
+      requests: sql<number>`count(*)::int`.as('requests'),
+      failures:
+        sql<number>`count(*) filter (where ${billingRequests.status} = 'released' and ${billingRequests.failureCode} is not null)::int`.as(
+          'failures',
+        ),
     })
     .from(billingRequests)
     .where(gte(billingRequests.createdAt, since))
@@ -41,15 +48,21 @@ function lifecycleAggOf(db: DbLike, since: Date) {
     .as('lifecycle');
 }
 
-/** 结算面预聚合：窗口内按渠道的延迟与 token 汇总 */
+/** 结算面预聚合：窗口内按渠道的延迟与 token 汇总（同上：raw sql 字段需 alias） */
 function usageAggOf(db: DbLike, since: Date) {
   return db
     .select({
       channelId: usageLogs.channelId,
-      avgDurationMs: sql<number | null>`avg(${usageLogs.durationMs})::bigint`,
-      avgClientTtftMs: sql<number | null>`avg(${usageLogs.clientTtftMs})::bigint`,
-      cachedInputTokens: sql<number>`coalesce(sum(${usageLogs.cachedInputTokens}), 0)::bigint`,
-      inputTokens: sql<number>`coalesce(sum(${usageLogs.inputTokens}), 0)::bigint`,
+      avgDurationMs: sql<number | null>`avg(${usageLogs.durationMs})::bigint`.as('avgDurationMs'),
+      avgClientTtftMs: sql<number | null>`avg(${usageLogs.clientTtftMs})::bigint`.as(
+        'avgClientTtftMs',
+      ),
+      cachedInputTokens: sql<number>`coalesce(sum(${usageLogs.cachedInputTokens}), 0)::bigint`.as(
+        'cachedInputTokens',
+      ),
+      inputTokens: sql<number>`coalesce(sum(${usageLogs.inputTokens}), 0)::bigint`.as(
+        'inputTokens',
+      ),
     })
     .from(usageLogs)
     .where(gte(usageLogs.createdAt, since))
@@ -70,6 +83,7 @@ export async function routingChannelsOverview(
       channelName: channels.name,
       status: channels.status,
       priority: channels.priority,
+      weight: channels.weight,
       upstreamBudget: sql<string>`${channels.upstreamBudget}::text`,
       upstreamRemaining: sql<string>`(${channels.upstreamBudget} - ${channels.upstreamReserved})::text`,
       requests: sql<number>`coalesce(${lifecycleAgg.requests}, 0)::int`,
@@ -83,7 +97,8 @@ export async function routingChannelsOverview(
     .leftJoin(lifecycleAgg, eq(lifecycleAgg.channelId, channels.id))
     .leftJoin(usageAgg, eq(usageAgg.channelId, channels.id))
     .where(isNull(channels.deletedAt))
-    .groupBy(channels.id)
+    // 不加外层 groupBy：两个子查询各自按 channel_id 预聚合（与 channels 恒 1:1，
+    // 参见文件头叉积不变量）——外层分组会让子查询列落进「须 GROUP BY」判定而报错
     .orderBy(desc(channels.id));
   return rows.map((r) => ({
     ...r,

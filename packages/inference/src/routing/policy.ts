@@ -4,16 +4,18 @@ import * as z from 'zod';
  * 路由策略单一真相（组件化的配置面——全部路由可变值集中本文件，别处零散配置即违规）：
  *   - 运行时事实源：RoutingPolicyReader（装配注入；gateway 形态 = routing_policies 表
  *     TTL 热加载，管理台改动 ≤15s 生效，不重启）；
- *   - 编译期缺省：DEFAULT_ROUTING_POLICY（zod 内建 default——reader 无配置/坏值回落）；
+ *   - 编译期缺省：DEFAULT_ROUTING_POLICY（zod 内建 default——reader 无配置/坏值回落，
+ *     enabled=false 即单渠道直连基线，无任何隐式启用的路由机制）；
  *   - 安全边界：保护机制（熔断/死凭据/预算硬闸）不在此可配——只允许调惩罚/评分参数。
  *
  * 策略对象分五段：scorers（排序信号）/ retry（同渠道预算）/ penalty（惩罚箱）/
  * modelDead（候选死记忆）/ wait（终局有界等待）。管理台按段编辑整版保存（版本化）。
  */
 
-/** cache 亲和评分器：同 (凭证, prompt 前缀) 粘住上次成功渠道（KV cache 经济性） */
+/** cache 亲和评分器：同 (凭证, prompt 前缀) 粘住上次成功渠道（KV cache 经济性——
+ * 缓存物理存在于上次成功渠道，换渠道即全价。缺省开启：缓存即收入，关掉需显式） */
 const cacheAffinitySchema = z.object({
-  enabled: z.boolean().default(false),
+  enabled: z.boolean().default(true),
   /** sticky 渠道的权重放大倍数（上限 5——过高会垄断流量分布，压过健康信号） */
   boost: z.number().min(1).max(5).default(3),
   /** sticky 键 TTL（对齐上游 cache 档：Anthropic 5m 档缺省） */
@@ -28,12 +30,25 @@ const budgetWatermarkSchema = z.object({
   softRatio: z.number().min(0.01).max(1).default(0.2),
 });
 
-const CACHE_AFFINITY_DEFAULT = { enabled: false, boost: 3, ttlMs: 300_000, prefixChars: 4_096 };
+/**
+ * 成本亲和评分器：同 priority 层内偏爱更便宜的渠道（双轨定价——docs/channel-cost-pricing.md）。
+ * 缺省关闭（裁决 C4：不隐式改变存量路由分布）；factor = cheapest/own（名义成本 =
+ * 绑定成本五轴的输入+输出轴），floor 为降权下限（防垄断对偶——过强会把流量全部压向
+ * 最便宜渠道，压过健康信号，与 cacheAffinity boost 上限同哲学）。
+ */
+const costAffinitySchema = z.object({
+  enabled: z.boolean().default(false),
+  floor: z.number().min(0.1).max(1).default(0.5),
+});
+const COST_AFFINITY_DEFAULT = { enabled: false, floor: 0.5 };
+
+const CACHE_AFFINITY_DEFAULT = { enabled: true, boost: 3, ttlMs: 300_000, prefixChars: 4_096 };
 const BUDGET_WATERMARK_DEFAULT = { enabled: true, softRatio: 0.2 };
 
 const scorersSchema = z.object({
   cacheAffinity: cacheAffinitySchema.default(CACHE_AFFINITY_DEFAULT),
   budgetWatermark: budgetWatermarkSchema.default(BUDGET_WATERMARK_DEFAULT),
+  costAffinity: costAffinitySchema.default(COST_AFFINITY_DEFAULT),
 });
 
 /** 同渠道重试预算（瞬态类扛短暂限流——退避下界已实现取 Retry-After） */
@@ -80,9 +95,17 @@ export const routingPolicySchema = z
   .object({
     /** 策略版本（每次保存自增——观测/回滚锚点） */
     version: z.number().int().min(1).default(1),
+    /**
+     * 智能路由总开关（用户裁决 D2）：false/无配置 = 单渠道直连（确定性取
+     * priority/weight 首名，失败即终局，不换渠道不换候选模型；惩罚箱/水位/
+     * sticky/死记忆全部停用）。存量策略行缺此字段 parse 为 false——隐式默认
+     * 由此根除，恢复智能路由需在管理台显式开启。
+     */
+    enabled: z.boolean().default(false),
     scorers: scorersSchema.default({
       cacheAffinity: CACHE_AFFINITY_DEFAULT,
       budgetWatermark: BUDGET_WATERMARK_DEFAULT,
+      costAffinity: COST_AFFINITY_DEFAULT,
     }),
     retry: retrySchema.default({ sameChannelMaxRetries: 3 }),
     penalty: penaltySchema.default({

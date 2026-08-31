@@ -9,8 +9,9 @@ import type { CatalogPort } from '../ports/catalog';
 import type { RoutingPolicyReader, StickyStore } from '../ports/routing';
 import type { TracePort } from '../ports/trace';
 import type { UpstreamPort } from '../ports/upstream';
+import type { RoutingPolicy } from '../routing/policy';
 import { gateChannel } from '../routing/gates';
-import { rankChannels } from '../routing/ranker';
+import { pickPrimaryChannel, rankChannels } from '../routing/ranker';
 import { recordSticky, resolveStickyContext } from '../routing/sticky';
 import type { PreparedRequest } from './quote';
 
@@ -85,6 +86,9 @@ interface PassOutcome<T> {
   value?: T;
   lastCode: string | undefined;
   channels: ChannelCandidate[];
+  /** 本轮「有健康证据的耗尽候选」（realModel）——死记忆由请求级收口记账，
+   * 每候选每请求恰一次（等待重试轮不重复记：契约见 model-dead.ts） */
+  failedRealModels: ReadonlySet<string>;
 }
 
 /** 一轮循环的入参打包（attempt 动词与请求五要素 + 策略快照各有其位） */
@@ -97,6 +101,8 @@ interface PassArgs<T> {
   attempt: (ctx: AttemptContext) => Promise<AttemptOutcome<T>>;
   /** 入口快照的策略贯穿整轮（等待重试轮重取——热更新边界即轮边界） */
   policy: ReturnType<RoutingPolicyReader['latest']>;
+  /** 上游尝试计数观察者（观测面：request_logs.attempts） */
+  onAttempts?: (total: number) => void;
 }
 
 const sleep = (ms: number): Promise<void> =>
@@ -157,6 +163,7 @@ export async function runCandidateLoop<T>(
   requestStartedAt: number,
   signal: AbortSignal | undefined,
   attempt: (ctx: AttemptContext) => Promise<AttemptOutcome<T>>,
+  onAttempts?: (total: number) => void,
 ): Promise<T> {
   const args: PassArgs<T> = {
     deps,
@@ -166,14 +173,29 @@ export async function runCandidateLoop<T>(
     signal,
     attempt,
     policy: deps.policy.latest(),
+    onAttempts,
   };
   const first = await runPass(args);
+  if (args.policy.enabled) recordDeadModelFailures(deps, first.failedRealModels);
   if (first.value !== undefined) return first.value;
   // 有界等待（B3 修复）：全败且原因是限流冷却 → 最早恢复在窗口内则等待重试一轮
   const waited = await maybeWaitAndRetry(args, first);
+  // 死记忆请求级收口（差集）：等待轮与首轮撞同一耗尽候选只记一次——
+  // 轮内重复计数会把「一个请求 + 一次重试」放大成 2 次失败，两轮全 429 即判死
+  if (args.policy.enabled) {
+    recordDeadModelFailures(
+      deps,
+      new Set([...waited.failedRealModels].filter((m) => !first.failedRealModels.has(m))),
+    );
+  }
   if (waited.value !== undefined) return waited.value;
   // 终局事实取等待轮的 lastCode（重试后失败原因可能已变——503/502 归因不失真）
   return releaseAndFail(deps, { prepared, requestId, lastCode: waited.lastCode });
+}
+
+/** 候选死记忆批量记账（fire-and-forget——尽力记忆，失败不阻断响应路径） */
+function recordDeadModelFailures(deps: ExecutionDeps, realModels: ReadonlySet<string>): void {
+  for (const realModel of realModels) deps.memory.recordModelFailure(realModel);
 }
 
 /**
@@ -195,7 +217,9 @@ async function planCandidatePass(
   | { skip: { reason: 'dead_model' | 'rate_limited'; code: string } }
   | { channels: ChannelCandidate[]; penaltyEnforced: boolean }
 > {
-  if (await deps.memory.deadModel(args.candidate.realModel)) {
+  // 单渠道直连：死记忆是路由信号（换渠事实的聚合），直连模式不换渠故不咨询——
+  // 唯一候选的死记忆跳过只会把「渠道可用」误报成 503（用户裁决 D1/D3）
+  if (args.policy.enabled && (await deps.memory.deadModel(args.candidate.realModel))) {
     return { skip: { reason: 'dead_model', code: 'no_available_channel' } };
   }
   if (
@@ -210,9 +234,19 @@ async function planCandidatePass(
     policy: args.policy,
     stickyChannelId: args.stickyChannelId,
   });
+  // 单渠道直连不启用惩罚门（路由信号停用——用户裁决 D3）
+  if (!args.policy.enabled) return { channels, penaltyEnforced: false };
   const penalized = await Promise.all(channels.map((ch) => deps.memory.penalized(ch.channelId)));
   const penaltyEnforced = args.policy.penalty.conditionalBypass ? penalized.some((p) => !p) : true;
   return { channels, penaltyEnforced };
+}
+
+/** 单渠道直连：候选链截断为主模型（不换候选模型——用户裁决 D1） */
+function candidatesOf(
+  candidates: readonly QuoteCandidate[],
+  policy: RoutingPolicy,
+): readonly QuoteCandidate[] {
+  return policy.enabled ? candidates : candidates.slice(0, 1);
 }
 
 /** 一轮候选×渠道循环（全败返回事实供有界等待决策） */
@@ -233,8 +267,10 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
     policy.scorers.cacheAffinity.prefixChars,
   );
   const allChannels: ChannelCandidate[] = [];
+  const failedRealModels = new Set<string>();
+  let attemptTotal = 0;
 
-  for (const candidate of prepared.candidates) {
+  for (const candidate of candidatesOf(prepared.candidates, policy)) {
     const plan = await planCandidatePass(deps, {
       requestId,
       candidate,
@@ -298,27 +334,37 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
         channelAttempt,
         stickyKey,
       });
+      attemptTotal += 1;
+      args.onAttempts?.(attemptTotal);
       if (outcome.kind !== 'respond') {
         lastCode = outcome.code;
         healthEvidence = accumulateHealthEvidence(healthEvidence, outcome);
+        if (outcome.kind === 'switch_channel') continue;
+        break; // next_candidate：候选耗尽（含 canceled 等非 respond 终态的兜底臂）
       }
-      if (outcome.kind === 'switch_channel') continue;
-      if (outcome.kind === 'next_candidate') break;
-      return { value: outcome.value, lastCode, channels: allChannels };
+      return { value: outcome.value, lastCode, channels: allChannels, failedRealModels };
     }
-    if (healthEvidence) deps.memory.recordModelFailure(candidate.realModel);
+    // 记账上移请求级（runCandidateLoop 差集收口）——等待重试轮重跑本函数时
+    // 不再重复计数（契约「一次请求最多记一次」，model-dead.ts）
+    if (healthEvidence) failedRealModels.add(candidate.realModel);
   }
-  return { lastCode, channels: allChannels };
+  return { lastCode, channels: allChannels, failedRealModels };
 }
 
-/** 失败尝试的健康证据累积：invalid_config（能力门/配置缺字段）零上游调用——
- * 不是上游健康证据，记死模型会连坐该模型的正常 chat 流量 */
+/** 失败尝试的健康证据累积：invalid_config（能力门/配置缺字段）零上游调用、
+ * canceled（客户端断连）/server_draining（网关停机中止）不是渠道的错——
+ * 都不得记死模型（会连坐该模型的正常 chat 流量与同候选其余渠道） */
+const NON_HEALTH_EVIDENCE_CODES: ReadonlySet<string> = new Set([
+  'invalid_config',
+  'canceled',
+  'server_draining',
+]);
 function accumulateHealthEvidence(
   current: boolean,
   outcome: { kind: string; code?: string },
 ): boolean {
   if (outcome.kind === 'respond') return current;
-  return outcome.code !== 'invalid_config' ? true : current;
+  return outcome.code != null && !NON_HEALTH_EVIDENCE_CODES.has(outcome.code);
 }
 
 /** 现场复核：除当前渠道外是否全部处于惩罚冷却（单渠道 = 无其它选择 → true） */
@@ -362,11 +408,19 @@ async function resolveChannelOrder(
     'routing.resolve',
     { 'request.id': args.requestId, 'ai.model': args.candidate.realModel },
     async (span) => {
-      const list = rankChannels({
-        channels: await deps.catalog.resolveChannels(args.candidate.realModel),
-        policy: args.policy,
-        ctx: { stickyChannelId: args.stickyChannelId },
-      });
+      const resolved = await deps.catalog.resolveChannels(args.candidate.realModel);
+      // 单渠道直连：确定性首选（policy.enabled=false——用户裁决 D1），不随机不评分
+      let list: ChannelCandidate[];
+      if (args.policy.enabled) {
+        list = rankChannels({
+          channels: resolved,
+          policy: args.policy,
+          ctx: { stickyChannelId: args.stickyChannelId },
+        });
+      } else {
+        const primary = pickPrimaryChannel(resolved);
+        list = primary != null ? [primary] : [];
+      }
       span.setAttributes({ 'routing.channels': list.length });
       return list;
     },
@@ -389,6 +443,7 @@ async function maybeWaitAndRetry<T>(
   const { deps, signal } = args;
   const policy = deps.policy.latest();
   const waitable =
+    policy.enabled &&
     policy.wait.enabled &&
     (failed.lastCode === 'rate_limited' || failed.lastCode === 'rate_limit_exceeded');
   if (!waitable || failed.channels.length === 0) return failed; // 未等待：原事实直通终局
@@ -415,10 +470,10 @@ async function releaseAndFail(
 ): Promise<never> {
   const { prepared, requestId, lastCode } = args;
   const exhausted = isChannelExhausted(lastCode);
-  const reason = (exhausted ? 'no_available_channel' : (lastCode ?? 'no_available_channel')).slice(
-    0,
-    64,
-  );
+  // 出站信封按竭尽/故障二分（503/502），但 request_failed 信号 reason 保留真实
+  // 终因（如 quota_exhausted/rate_limited）——billing failure_code 是排障粒度，
+  // 归一成 no_available_channel 会丢失「为什么没有渠道」的可观测事实
+  const reason = (lastCode ?? 'no_available_channel').slice(0, 64);
   const error = InferenceErrors.business(exhausted ? 'no_available_channel' : 'upstream_failed', {
     model: prepared.externalModel,
     ...(lastCode != null ? { upstream_code: lastCode } : {}),

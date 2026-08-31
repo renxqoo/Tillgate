@@ -4,6 +4,7 @@
  * 换渠道候选循环是 inference 的职责。
  */
 import type { ChannelDesc, UpstreamError, Usage } from '../types';
+import { asRetryDeadlineAbort } from '../errors/retry-deadline.js';
 import type { AiDefaults, AiDeps } from '../config';
 import type { ProtocolAdapter } from '../adapters/protocol-adapter';
 import type { AiEvent } from '../events';
@@ -93,9 +94,12 @@ function jsonAttemptValue(adapter: ProtocolAdapter, body: unknown): ChatAttemptV
   return { usage: adapter.extractUsage(body) ?? undefined, body };
 }
 
-/** 非流式 catch 分类：传输错误透传；abort → canceled；其余网络 */
-function classifyChatFailure(error: unknown): UpstreamError {
+/** 非流式 catch 分类：预算耗尽 → timeout（可换渠）；客户端 abort → canceled；其余网络 */
+function classifyChatFailure(error: unknown, signal: AbortSignal): UpstreamError {
   if (error instanceof UE) return error;
+  if (asRetryDeadlineAbort(signal.reason)) {
+    return new UE({ kind: 'timeout', message: 'upstream attempt budget exhausted' });
+  }
   return error instanceof Error && error.message === 'aborted'
     ? new UE({ kind: 'canceled' })
     : new UE({ kind: 'network', message: String(error) });
@@ -138,6 +142,6 @@ export async function chatAttempt(
     const rawBody = await readRawBody(res, { signal: totalSignal });
     return { ok: true as const, value: { rawBody, rawContentType: ct } };
   } catch (error) {
-    return { ok: false as const, error: classifyChatFailure(error) };
+    return { ok: false as const, error: classifyChatFailure(error, signal) };
   }
 }

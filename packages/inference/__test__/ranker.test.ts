@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultRoutingPolicy } from '../src/routing/policy';
-import { budgetWatermarkFactor, rankChannels } from '../src/routing/ranker';
+import { budgetWatermarkFactor, costAffinityFactor, rankChannels } from '../src/routing/ranker';
 import type { ChannelCandidate } from '../src/domain/model/types';
 
 const policy = defaultRoutingPolicy();
@@ -87,6 +87,61 @@ describe('routing/ranker：priority 层 + weight 无放回加权随机', () => {
     ];
     rank(rows, () => 0);
     expect(rows.map((r) => r.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('成本亲和降权（costAffinityFactor——双轨定价）', () => {
+  it('无成本面 = 不参与（factor 1）；名义成本越高于层内最便宜降权越深', () => {
+    expect(costAffinityFactor({}, 1, 0.5)).toBe(1); // 测试替身未携带成本面
+    const cheap = {
+      costPrices: {
+        inputPrice: '1',
+        cacheInputPrice: '1',
+        cacheWritePrice: '0',
+        outputPrice: '1',
+        unitPrice: '0',
+      },
+    };
+    const dear = {
+      costPrices: {
+        inputPrice: '4',
+        cacheInputPrice: '4',
+        cacheWritePrice: '0',
+        outputPrice: '4',
+        unitPrice: '0',
+      },
+    };
+    expect(costAffinityFactor(cheap, 2, 0.5)).toBe(1); // 自身即最便宜
+    expect(costAffinityFactor(dear, 2, 0.5)).toBe(0.5); // 2/8 → floor 钳制
+    expect(costAffinityFactor(dear, 2, 0.1)).toBeCloseTo(0.25); // 2/8，floor 0.1 不干预
+  });
+
+  it('零/非数名义成本不参与（免费渠道不因 0 分母归零他人）', () => {
+    const free = {
+      costPrices: {
+        inputPrice: '0',
+        cacheInputPrice: '0',
+        cacheWritePrice: '0',
+        outputPrice: '0',
+        unitPrice: '0',
+      },
+    };
+    const dearPartialZero = {
+      costPrices: {
+        inputPrice: '2',
+        cacheInputPrice: '0',
+        cacheWritePrice: '0',
+        outputPrice: '0',
+        unitPrice: '0',
+      },
+    };
+    expect(costAffinityFactor(free, 1, 0.5)).toBe(1);
+    expect(costAffinityFactor(dearPartialZero, 0, 0.5)).toBe(1); // cheapest 0 → 不参与
+  });
+
+  it('策略缺省关闭：scorers.costAffinity.enabled=false（裁决 C4——不隐式改变存量分布）', () => {
+    expect(policy.scorers.costAffinity.enabled).toBe(false);
+    expect(policy.scorers.costAffinity.floor).toBe(0.5);
   });
 });
 
@@ -185,11 +240,19 @@ describe('cache 亲和 boost（sticky scorer 确定性）', () => {
         cacheAffinity: { enabled: true, boost: 5, ttlMs: 300_000, prefixChars: 4_096 },
       },
     };
-    // rng=0.5：无 boost 时 w1:w1 → 落 a；有 boost 时 1:5 → 0.5 落在 b 段
+    // rng=0.5：关闭亲和时 w1:w1 → 落 a；开启 boost 时 1:5 → 0.5 落在 b 段
+    // （cacheAffinity 缺省已开启——关闭臂必须显式关，不能靠旧缺省）
+    const noAffinityPolicy = {
+      ...defaultRoutingPolicy(),
+      scorers: {
+        ...defaultRoutingPolicy().scorers,
+        cacheAffinity: { enabled: false, boost: 3, ttlMs: 300_000, prefixChars: 4_096 },
+      },
+    };
     expect(
       rankChannels({
         channels: [chA, chB],
-        policy: defaultRoutingPolicy(),
+        policy: noAffinityPolicy,
         ctx: { stickyChannelId: 2 },
         rng: () => 0.5,
       })[0]?.channelId,

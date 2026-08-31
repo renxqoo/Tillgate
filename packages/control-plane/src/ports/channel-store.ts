@@ -58,10 +58,34 @@ export interface RouteCandidateRow {
   readonly upstreamBudget: string;
   /** 可用余额（upstream_budget - upstream_reserved；软水位降权信号，非准入硬闸） */
   readonly upstreamRemaining: string;
+  /**
+   * 渠道成本五轴（SQL 已 COALESCE：绑定覆盖价 ?? 映射官方价——双轨定价 C2 单轨收口，
+   * docs/channel-cost-pricing.md）。预留估算/收据/成本评分直接消费，无需再判继承。
+   */
+  readonly costInputPrice: string;
+  readonly costOutputPrice: string;
+  readonly costCacheInputPrice: string;
+  readonly costCacheWritePrice: string;
+  readonly costUnitPrice: string;
+  /** 绑定级成本配置（schedule 峰谷窗口等；'{}' = 无策略）——命中后字段级覆盖成本轴 */
+  readonly costConfig: Record<string, unknown>;
+  /** 成本免费显式标记：true = 成本轴恒物化全 0（价格列保持继承默认） */
+  readonly costIsFree: boolean;
 }
 
 /** worker 任务渠道行：路由候选去掉出站名（任务族的出站名在任务行快照，不在渠道） */
-export type TaskChannelRow = Omit<RouteCandidateRow, 'upstreamModel'>;
+/** 任务渠道行：路由候选去掉出站名（任务出站名在任务行快照）与成本轴（任务路径不消费成本价） */
+export type TaskChannelRow = Omit<
+  RouteCandidateRow,
+  | 'upstreamModel'
+  | 'costInputPrice'
+  | 'costOutputPrice'
+  | 'costCacheInputPrice'
+  | 'costCacheWritePrice'
+  | 'costUnitPrice'
+  | 'costConfig'
+  | 'costIsFree'
+>;
 
 /** 探针专用读（含密文——仅 application 解密用，返回面不回传） */
 export interface ChannelProbeRow {

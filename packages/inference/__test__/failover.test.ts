@@ -9,6 +9,7 @@ import { dispatchFailure } from '../src/application/dispatch';
 import { createChannelHealth } from '../src/health/channel-health';
 import { createRoutingMemory } from '../src/health/routing-memory';
 import { staticRoutingPolicy } from '../src/ports/routing';
+import { routingPolicySchema } from '../src/routing/policy';
 import { createMemoryHealthStore } from '../src/adapters/state-memory';
 import { defaultInferenceDefaults } from '../src/config';
 import { noopTrace } from '../src/ports/trace';
@@ -82,7 +83,8 @@ function setup(
   const upstream = fakeUpstream();
   const health = createChannelHealth({ store: createMemoryHealthStore(), config: healthConfig });
   const memoryStore = opts.memoryStore ?? createMemoryHealthStore();
-  const policy = staticRoutingPolicy();
+  // 本文件场景均假设智能路由开启（failover 生效——单渠道直连见 single-track.test）
+  const policy = staticRoutingPolicy(routingPolicySchema.parse({ enabled: true }));
   const memory = createRoutingMemory({ store: memoryStore, policy });
   const deps: ExecutionDeps = {
     catalog,
@@ -191,9 +193,10 @@ describe('application/failover：候选 × 渠道双层循环', () => {
     ).rejects.toSatisfy(
       (e: unknown) => isBusinessError(e) && e.code === 'inference.no_available_channel',
     );
+    // 信号 reason 保留真实终因（出站信封才做竭尽归一）——排障粒度不丢失
     expect(s3.billing.signals.at(-1)).toMatchObject({
       type: 'request_failed',
-      reason: 'no_available_channel',
+      reason: 'channel_budget_exhausted',
     });
   });
 
@@ -374,6 +377,10 @@ describe('模型维准入钩子（admitModel）与渠道钩子作用域', () => 
   });
 });
 
+/** 全渠道 429 的 attempt 桩（等待轮回归件共用——外提避免循环内重建闭包） */
+const allRateLimited = async (): Promise<AttemptOutcome<string>> =>
+  ({ kind: 'switch_channel', code: 'rate_limited' }) as const;
+
 /** fire-and-forget 记账面的 flush（微任务 + 宏任务各一拍） */
 const flush = async () => {
   await Promise.resolve();
@@ -514,6 +521,104 @@ describe('跨请求路由记忆（惩罚箱 / 模型死记忆 / 死凭据 channe
       },
     );
     expect(attempted).toEqual(['real-2']);
+  });
+
+  it('onAttempts 观察者：换渠场景上报真实尝试次数（request_logs.attempts 数据源）', async () => {
+    const s = setup();
+    const seen: number[] = [];
+    const attempts: string[] = [];
+    await runCandidateLoop(
+      s.deps,
+      preparedOf([candidateOf(1, 'real-1')]),
+      'req-att',
+      0,
+      undefined,
+      async (ctx): Promise<AttemptOutcome<string>> => {
+        attempts.push(ctx.channel.channelName ?? '');
+        return ctx.channel.channelName === 'ch-a'
+          ? { kind: 'switch_channel', code: 'upstream_error' }
+          : { kind: 'respond', value: 'OK' };
+      },
+      (total) => seen.push(total),
+    );
+    expect(attempts).toEqual(['ch-a', 'ch-b']); // 两渠道各一次真实尝试
+    expect(seen).toEqual([1, 2]); // 每次尝试后上报累计值
+  });
+
+  it('回归（Bug#4 豁免）：客户端取消/网关停机中止不记死记忆——渠道无责不连坐', async () => {
+    // canceled（客户端断连）/server_draining（网关停机）不是渠道健康证据：
+    // 多次取消不得把模型判死（旧实现无条件计入 healthEvidence）
+    const s = setup();
+    for (let i = 0; i < 5; i++) {
+      await expect(
+        runCandidateLoop(
+          s.deps,
+          preparedOf([candidateOf(1, 'real-1')]),
+          `req-cx${i}`,
+          0,
+          undefined,
+          async (): Promise<AttemptOutcome<string>> =>
+            ({ kind: 'next_candidate', code: 'canceled' }) as const,
+        ),
+      ).rejects.toThrow();
+    }
+    await flush();
+    expect(await s.memory.deadModel('real-1')).toBe(false);
+    // 对照：真实上游失败仍正常计数（豁免不弱化健康证据）
+    await expect(
+      runCandidateLoop(
+        s.deps,
+        preparedOf([candidateOf(1, 'real-1')]),
+        'req-cx-ctl',
+        0,
+        undefined,
+        async (): Promise<AttemptOutcome<string>> =>
+          ({ kind: 'next_candidate', code: 'upstream_error' }) as const,
+      ),
+    ).rejects.toThrow();
+    await flush();
+    expect(await s.memory.deadModel('real-1')).toBe(false); // 1 次真实失败 < 阈值 3
+  });
+
+  it('回归：等待重试轮不重复计死记忆——每请求每候选恰一次（两轮全 429 不判死）', async () => {
+    // 旧缺陷：runPass 每轮末各记一次 recordModelFailure → 触发 maybeWaitAndRetry 的
+    // 请求记 2 次，两个全 429 请求即达阈值 3，把模型对所有用户判死 60s
+    // （model-dead.ts 契约「一次请求最多记一次」被违反）
+    const s = setup();
+    // 渠道在惩罚箱（~1s 恢复 ≤ maxWaitMs=2s）→ 全败 429 后触发等待重试轮
+    s.memory.recordPenalty(
+      (s.channelsByReal['real-1'] ?? [])[0]?.channelId ?? 1,
+      'rate_limited',
+      1_000,
+    );
+    for (let i = 0; i < 2; i++) {
+      await expect(
+        runCandidateLoop(
+          s.deps,
+          preparedOf([candidateOf(1, 'real-1')]),
+          `req-w${i}`,
+          0,
+          undefined,
+          allRateLimited,
+        ),
+      ).rejects.toThrow();
+    }
+    await flush();
+    // 修复后：2 请求 × 1 次 = 2 < 阈值 3 → 不判死（旧实现 2×2=4 ≥ 3 → 判死）
+    expect(await s.memory.deadModel('real-1')).toBe(false);
+    // 记账未被弱化：第 3 个请求（3 次）仍达阈值判死
+    await expect(
+      runCandidateLoop(
+        s.deps,
+        preparedOf([candidateOf(1, 'real-1')]),
+        'req-w3',
+        0,
+        undefined,
+        allRateLimited,
+      ),
+    ).rejects.toThrow();
+    await flush();
+    expect(await s.memory.deadModel('real-1')).toBe(true);
   });
 
   it('候选成功结算清零死记忆（自愈快路径）', async () => {

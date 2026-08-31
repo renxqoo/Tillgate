@@ -356,6 +356,51 @@ describe('computeAmounts（结算双口径）', () => {
     expect(amounts.upstreamCost).toBe('2');
   });
 
+  it('costPrices 覆盖：upstreamCost 换成本轴，calculated 仍按用户价（双轨定价）', () => {
+    const c = candidate({ inputPrice: '2', outputPrice: '4', coefficient: '1' });
+    const amounts = computeAmounts({
+      ...require0(c),
+      usage: {
+        inputTokens: 1_000_000,
+        cachedInputTokens: 0,
+        outputTokens: 1_000_000,
+        estimated: false,
+      },
+      costPrices: {
+        inputPrice: '0.5',
+        cacheInputPrice: '0.5',
+        cacheWritePrice: '0',
+        outputPrice: '1',
+        unitPrice: '0',
+      },
+    });
+    // 用户轴：2×1M + 4×1M（百万价）= 6；成本轴：0.5 + 1 = 1.5（免费/折扣渠道敞口按实价）
+    expect(amounts.calculatedAmount).toBe('6');
+    expect(amounts.upstreamCost).toBe('1.5');
+  });
+
+  it('costPrices 全零 = 免费渠道：成本恒 0，用户侧照常计价', () => {
+    const c = candidate({ inputPrice: '2', outputPrice: '2' });
+    const amounts = computeAmounts({
+      ...require0(c),
+      usage: {
+        inputTokens: 1_000_000,
+        cachedInputTokens: 0,
+        outputTokens: 1_000_000,
+        estimated: false,
+      },
+      costPrices: {
+        inputPrice: '0',
+        cacheInputPrice: '0',
+        cacheWritePrice: '0',
+        outputPrice: '0',
+        unitPrice: '0',
+      },
+    });
+    expect(amounts.calculatedAmount).toBe('4');
+    expect(amounts.upstreamCost).toBe('0');
+  });
+
   it('负成本钳 0（防御口径共用）', () => {
     const c = candidate({ inputPrice: '-5', outputPrice: '0', cacheInputPrice: '0' });
     const amounts = computeAmounts({

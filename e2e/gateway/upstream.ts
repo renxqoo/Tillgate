@@ -22,6 +22,9 @@ export type UpstreamScript =
   | 'stream-no-usage-hold' // SSE：无 usage 增量帧后挂住（估算向量）
   | 'stream-done-no-usage' // SSE：完成但无 usage（usage_missing_completed 向量）
   | 'rate-limit' // 429 + Retry-After——智能路由惩罚箱向量（换渠 + 跨请求冷却）
+  | 'insufficient-credits' // 402 + code=insufficient_credits——openrouter 欠费向量（quota 分类 + 换渠 + 30min 惩罚）
+  | 'server-error' // 503——上游服务故障向量（upstream_error 换渠 + host 熔断计数）
+  | 'stream-mid-abort' // SSE：头+2 帧后连接直接断——流式中段上游断流向量（不再换渠）
   | 'nonstream-cached-usage' // JSON 200 + usage{10,5} 且 prompt_tokens_details.cached_tokens=4——缓存命中计价向量
   | 'nonstream-toolcall' // JSON 200 + message.tool_calls（get_weather）——responses 面工具还原向量
   | 'stream-toolcall' // SSE：delta.tool_calls 分片（arguments 两段拼接）——responses 面流式工具向量
@@ -287,6 +290,36 @@ function runScript(script: Exclude<UpstreamScript, 'auto'>, ctx: RespondContext)
     }
     case 'rate-limit': {
       respondRateLimit(ctx.res, ctx.state);
+      return;
+    }
+    case 'insufficient-credits': {
+      // openrouter 余额不足信封（402 + 字符串 code）——statusKind/码表双路径分类向量
+      ctx.res.writeHead(402, { 'content-type': 'application/json' });
+      ctx.res.end(
+        JSON.stringify({
+          error: {
+            code: 'insufficient_credits',
+            message: "Payment required: You don't have enough credits to route this request.",
+          },
+        }),
+      );
+      return;
+    }
+    case 'server-error': {
+      ctx.res.writeHead(503, { 'content-type': 'application/json' });
+      ctx.res.end(
+        JSON.stringify({ error: { message: 'upstream unavailable', type: 'server_error' } }),
+      );
+      return;
+    }
+    case 'stream-mid-abort': {
+      // 首字节已过（2 帧已发）后断开连接——模拟上游中段断流：
+      // 首字节后管道已交还客户端，不得换渠；usage 按已传帧估算结算。
+      // 延迟 destroy 让帧先 flush 到对端（立即 destroy 会 RST 丢弃未确认数据）
+      ctx.res.writeHead(200, { 'content-type': 'text/event-stream' });
+      ctx.res.write(contentFrame('第一帧'));
+      ctx.res.write(contentFrame('第二帧'));
+      setTimeout(() => ctx.res.destroy(), 60);
       return;
     }
     case 'stream-toolcall': {

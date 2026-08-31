@@ -1,4 +1,4 @@
-import type { QuoteCandidate } from '../domain/model/types';
+import type { ChannelCandidate, QuoteCandidate } from '../domain/model/types';
 import type { UsageReceipt } from '../domain/usage/receipt';
 
 /**
@@ -32,9 +32,11 @@ export interface BillingPort {
     requestId: string;
     channelId: number;
     candidate: QuoteCandidate;
+    /** 渠道成本五轴（绑定覆盖/映射官方 COALESCE——敞口预估的成本口径；缺省回落候选价） */
+    costPrices?: ChannelCandidate['costPrices'];
     estimatedInputTokens: number;
     maxOutputTokens: number;
-  }): Promise<{ allowed: true } | { allowed: false }>;
+  }): Promise<{ allowed: true; switched?: boolean; remaining?: string } | { allowed: false }>;
 
   /** 请求生命周期信号（lease 语义归 billing 状态机） */
   signal(input: BillingSignal): Promise<void>;

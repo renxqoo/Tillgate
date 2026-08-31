@@ -11,7 +11,11 @@ export async function buildCandidateChain(
 ): Promise<QuoteCandidate[]> {
   const chain: QuoteCandidate[] = [toCandidate(main)];
   const seen = new Set<number>([main.mappingId]);
+  // 防御脏形状（裸 SQL 写入 jsonb 字符串标量时 for...of 会按字符迭代全 miss）：
+  // 非数组按无 fallback 处理——单行脏数据不熔断路由（与渠道白名单防御同哲学）
+  if (!Array.isArray(main.fallbackModels)) return chain;
   for (const external of main.fallbackModels) {
+    if (typeof external !== 'string') continue;
     const mapping = await resolveFallback(external);
     if (mapping == null || seen.has(mapping.mappingId)) continue;
     seen.add(mapping.mappingId);

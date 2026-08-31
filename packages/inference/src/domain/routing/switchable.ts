@@ -87,6 +87,9 @@ export function isChannelExhausted(code?: string | null): boolean {
     code === 'channel_budget_exhausted' ||
     code === 'rate_limit_exceeded' ||
     code === 'rate_limited' ||
+    // 上游欠费（402/quota）：渠道进货额度外的渠道面竭尽——单渠道欠费全败时
+    // 503「无可用渠道」语义准确（运营该充值/换供应商），502 会误导向上游故障排障
+    code === 'quota_exhausted' ||
     code === 'circuit_open' ||
     code === 'dead_credential' ||
     // 全候选被死记忆跳过（模型维不可用）也归渠道面竭尽——503 而非误报上游故障 502
