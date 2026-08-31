@@ -29,6 +29,8 @@ export const requestLogs = pgTable(
     requestSummary: jsonb('request_summary'),
     /** 尝试渠道次数（排障/观测用） */
     attempts: bigint('attempts', { mode: 'number' }).notNull().default(1),
+    /** 尝试渠道轨迹（渠道名按评估序，含被门拒绝的渠道；失败请求的换渠排障事实） */
+    channels: jsonb('channels').$type<string[]>(),
     /** 来源 IP（X-Forwarded-For 首段 / X-Real-IP / socket，鉴权前记录，401 也有） */
     sourceIp: varchar('source_ip', { length: 64 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

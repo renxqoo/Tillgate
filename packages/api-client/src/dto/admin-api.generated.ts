@@ -543,8 +543,10 @@ export interface LogRow {
   errorCode: string | null;
   durationMs: number;
   requestSummary: { model: string; stream: boolean; max_tokens: number; messageCount: number } | null;
-  /** 重试次数(快照口径;presenter 暂不输出——展示兜底为 1 次) */
+  /** 真实上游尝试次数(换渠/同渠道重试均计;0=全渠道被门拒绝,列缺省 1=非推理路由) */
   attempts: number;
+  /** 尝试渠道轨迹(评估序渠道名,含被门拒绝的渠道;null=非推理路由/历史行) */
+  channels: string[] | null;
   /** 来源 IP(X-Forwarded-For 首段 / X-Real-IP / socket,鉴权前记录) */
   sourceIp: string | null;
   createdAt: string;

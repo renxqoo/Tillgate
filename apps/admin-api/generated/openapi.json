@@ -3075,7 +3075,21 @@
           },
           "attempts": {
             "type": "number",
-            "description": "重试次数(快照口径;presenter 暂不输出——展示兜底为 1 次)"
+            "description": "真实上游尝试次数(换渠/同渠道重试均计;0=全渠道被门拒绝,列缺省 1=非推理路由)"
+          },
+          "channels": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "尝试渠道轨迹(评估序渠道名,含被门拒绝的渠道;null=非推理路由/历史行)"
           },
           "sourceIp": {
             "anyOf": [
@@ -3105,6 +3119,7 @@
           "durationMs",
           "requestSummary",
           "attempts",
+          "channels",
           "sourceIp",
           "createdAt"
         ],

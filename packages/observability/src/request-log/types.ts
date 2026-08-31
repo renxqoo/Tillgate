@@ -17,6 +17,8 @@ export interface RequestLogWriteInput {
   requestSummary: Record<string, unknown> | null;
   /** 真实上游尝试次数(换渠/同渠道重试均计;缺省 1——非推理路由) */
   attempts?: number;
+  /** 尝试渠道轨迹(渠道名按评估序,含被门拒绝的渠道;null = 非推理路由) */
+  channels?: string[] | null;
   /** 来源 IP(鉴权前记录——401/429 也入日志;「记录一切 /v1 请求」语义) */
   sourceIp: string | null;
 }
@@ -48,6 +50,10 @@ export interface RequestLogRow {
   readonly sourceIp: string | null;
   readonly durationMs: number;
   readonly requestSummary: Record<string, unknown> | null;
+  /** 真实上游尝试次数(列缺省 1——非推理路由) */
+  readonly attempts: number;
+  /** 尝试渠道轨迹(渠道名按评估序;null = 非推理路由/历史行) */
+  readonly channels: string[] | null;
   readonly createdAt: Date;
 }
 

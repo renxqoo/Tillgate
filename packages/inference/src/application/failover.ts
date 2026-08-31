@@ -101,8 +101,8 @@ interface PassArgs<T> {
   attempt: (ctx: AttemptContext) => Promise<AttemptOutcome<T>>;
   /** 入口快照的策略贯穿整轮（等待重试轮重取——热更新边界即轮边界） */
   policy: ReturnType<RoutingPolicyReader['latest']>;
-  /** 上游尝试计数观察者（观测面：request_logs.attempts） */
-  onAttempts?: (total: number) => void;
+  /** 上游尝试计数观察者（观测面：request_logs.attempts/channels——末参为评估序渠道轨迹） */
+  onAttempts?: (total: number, channels: string[]) => void;
 }
 
 const sleep = (ms: number): Promise<void> =>
@@ -163,7 +163,7 @@ export async function runCandidateLoop<T>(
   requestStartedAt: number,
   signal: AbortSignal | undefined,
   attempt: (ctx: AttemptContext) => Promise<AttemptOutcome<T>>,
-  onAttempts?: (total: number) => void,
+  onAttempts?: (total: number, channels: string[]) => void,
 ): Promise<T> {
   const args: PassArgs<T> = {
     deps,
@@ -249,8 +249,17 @@ function candidatesOf(
   return policy.enabled ? candidates : candidates.slice(0, 1);
 }
 
+/** 尝试轨迹上报（attempt 后与全 gate 拒收尾共用——快照数组防调用方突变） */
+function reportAttemptTrace(
+  onAttempts: PassArgs<unknown>['onAttempts'],
+  total: number,
+  trace: readonly string[],
+): void {
+  onAttempts?.(total, [...trace]);
+}
+
 /** 一轮候选×渠道循环（全败返回事实供有界等待决策） */
-// eslint-disable-next-line max-lines-per-function -- 候选×渠道双层编排平铺（准入/排序已拆 planCandidatePass），再拆需传递可变循环状态
+// eslint-disable-next-line max-lines-per-function, max-statements -- 候选×渠道双层编排平铺（准入/排序已拆 planCandidatePass），再拆需传递可变循环状态
 async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
   const { deps, prepared, requestId, requestStartedAt, signal, attempt, policy } = args;
   let lastCode: string | undefined;
@@ -269,6 +278,8 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
   const allChannels: ChannelCandidate[] = [];
   const failedRealModels = new Set<string>();
   let attemptTotal = 0;
+  // 评估序渠道轨迹（含被门拒绝的渠道——失败请求的换渠排障事实，随 attempts 上报）
+  const channelTrace: string[] = [];
 
   for (const candidate of candidatesOf(prepared.candidates, policy)) {
     const plan = await planCandidatePass(deps, {
@@ -298,6 +309,7 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
     let healthEvidence = false;
     for (const channel of channels) {
       channelAttempt += 1;
+      channelTrace.push(channel.channelName);
       const gateCode = await gateChannel({
         env: deps,
         args: {
@@ -335,7 +347,7 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
         stickyKey,
       });
       attemptTotal += 1;
-      args.onAttempts?.(attemptTotal);
+      reportAttemptTrace(args.onAttempts, attemptTotal, channelTrace);
       if (outcome.kind !== 'respond') {
         lastCode = outcome.code;
         healthEvidence = accumulateHealthEvidence(healthEvidence, outcome);
@@ -348,6 +360,8 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
     // 不再重复计数（契约「一次请求最多记一次」，model-dead.ts）
     if (healthEvidence) failedRealModels.add(candidate.realModel);
   }
+  // 全渠道被门拒绝（零上游尝试）也要带出轨迹——预算闸门竭尽场景的排障事实
+  reportAttemptTrace(args.onAttempts, attemptTotal, channelTrace);
   return { lastCode, channels: allChannels, failedRealModels };
 }
 

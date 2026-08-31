@@ -28,6 +28,9 @@ const listSelection = {
   durationMs: requestLogs.durationMs,
   // 请求摘要(model/stream/max_tokens 截断快照)——列表「模型」列的数据源
   requestSummary: requestLogs.requestSummary,
+  attempts: requestLogs.attempts,
+  // 尝试渠道轨迹(评估序渠道名)——列表「渠道」列的数据源
+  channels: requestLogs.channels,
   createdAt: requestLogs.createdAt,
 } as const;
 
