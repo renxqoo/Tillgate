@@ -56,13 +56,26 @@ const RECHARGE_SORTS = {
   createdAt: channelRecharges.createdAt,
 } as const;
 
-/** 路由候选成本五轴 + 成本配置（COALESCE 绑定覆盖/映射官方——读取处单轨收口，docs/channel-cost-pricing.md C2） */
+/**
+ * 软水位基数子查询：累计正向充值（adjust 纠偏不入基数——它是配置修正不是进货；
+ * 0 = 无充值记录，水位评分器回退 budget 列口径）
+ */
+const UPSTREAM_FUNDED = sql`(select coalesce(sum(${channelRecharges.amount}), 0) from ${channelRecharges}
+       where ${channelRecharges.channelId} = ${channels.id}
+         and ${channelRecharges.type} = 'recharge' and ${channelRecharges.amount} > 0)::numeric`;
+
+/**
+ * 路由候选成本五轴 + 成本配置（绑定值原样透传——NULL = 未配置该轴，不再 COALESCE
+ * 继承映射卖价。2026-08-30/31 生产事故：未配置成本的渠道按卖价估敞口/扣预算，
+ * 免费渠道被卖价口径虚扣虚拒。未配置语义由消费方单一定义：全 NULL = 成本面缺失
+ * → 闸门/结算按 0（与「配了才有管控」的预算语义一致））
+ */
 const ROUTE_COST_COLUMNS = {
-  costInputPrice: sql<string>`coalesce(${modelChannels.costInputPrice}, ${modelMappings.inputPrice})::text`,
-  costOutputPrice: sql<string>`coalesce(${modelChannels.costOutputPrice}, ${modelMappings.outputPrice})::text`,
-  costCacheInputPrice: sql<string>`coalesce(${modelChannels.costCacheInputPrice}, ${modelMappings.cacheInputPrice})::text`,
-  costCacheWritePrice: sql<string>`coalesce(${modelChannels.costCacheWritePrice}, ${modelMappings.cacheWritePrice})::text`,
-  costUnitPrice: sql<string>`coalesce(${modelChannels.costUnitPrice}, ${modelMappings.unitPrice})::text`,
+  costInputPrice: sql<string | null>`${modelChannels.costInputPrice}::text`,
+  costOutputPrice: sql<string | null>`${modelChannels.costOutputPrice}::text`,
+  costCacheInputPrice: sql<string | null>`${modelChannels.costCacheInputPrice}::text`,
+  costCacheWritePrice: sql<string | null>`${modelChannels.costCacheWritePrice}::text`,
+  costUnitPrice: sql<string | null>`${modelChannels.costUnitPrice}::text`,
   costConfig: modelChannels.costConfig,
   costIsFree: modelChannels.costIsFree,
 } as const;
@@ -350,6 +363,7 @@ export const postgresChannelStore: ChannelStore = {
         tpmLimit: channels.tpmLimit,
         upstreamBudget: channels.upstreamBudget,
         upstreamRemaining: sql<string>`(${channels.upstreamBudget} - ${channels.upstreamReserved})::numeric`,
+        upstreamFunded: UPSTREAM_FUNDED,
         ...ROUTE_COST_COLUMNS,
       })
       .from(modelChannels)

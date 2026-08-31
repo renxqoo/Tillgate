@@ -708,10 +708,13 @@ describe('跨请求路由记忆（惩罚箱 / 模型死记忆 / 死凭据 channe
     expect(await s2.memory.deadModel('real-1')).toBe(false);
   });
 
-  it('P2 回归（防过滤过宽）：候选内存在真实上游失败仍计数（伴请求维拒绝不变）', async () => {
+  it('P2（语义更新 2026-08-31）：混合证据（真实失败 + 请求维拒绝）不判死——临时状态不是死亡证据', async () => {
     const s = setup();
     // ch-a 上游真实失败（upstream_error）+ ch-b 渠道准入钩子拒（请求维）——
-    // 候选耗尽必须计数：过滤只豁免「全部渠道都只有请求维拒绝」的候选
+    // 不计数：ch-b 从未被证明死亡，判死会连坐其恢复后的流量（生产实况：
+    // openrouter 402 + 腾讯云预算拒 → 判死 → 腾讯云充值恢复后 60s 内全 503）。
+    // ch-a 的重复上游失败由熔断器（circuitTrip）兜底，不依赖死记忆；
+    // 「全渠道以健康证据耗尽才判死」的对照面见 red-model-dead-cross-channel.test.ts。
     s.deps.admitChannel = async (ch) => ch.channelName !== 'ch-b';
     for (let i = 0; i < 3; i++) {
       await expect(
@@ -732,7 +735,7 @@ describe('跨请求路由记忆（惩罚箱 / 模型死记忆 / 死凭据 channe
       );
     }
     await flush();
-    expect(await s.memory.deadModel('real-1')).toBe(true);
+    expect(await s.memory.deadModel('real-1')).toBe(false);
   });
 });
 

@@ -81,7 +81,9 @@ export interface UsageReceipt {
   clientTtftMs?: number;
   /**
    * 渠道成本五轴快照（结算双口径的成本轴——upstreamCost = 本轴 × 系数 1）：
-   * buildReceipt 恒物化（channel.costPrices ?? 候选映射官方价），继承口径不靠缺省隐式。
+   * buildReceipt 恒物化——有渠道未配置成本（costPrices undefined = 绑定全 NULL
+   * 未标 free）物化**全 0**（与闸门预留口径同源：未配置 = 零成本，配了才有管控）；
+   * 无渠道面（channel 整体缺省）回落候选映射官方价（观测保守口径）。
    */
   costPrices: {
     inputPrice: string;
@@ -140,6 +142,35 @@ function usageSnapshotOf(usage: ReceiptUsage, units: number): ReceiptUsageSnapsh
       };
 }
 
+/**
+ * 成本轴物化（双轨定价 C3）：有渠道归属（channelId）未配置成本（costPrices
+ * undefined）= 全 0（闸门/结算同源——未配置即零成本）；无渠道面回落候选映射
+ * 官方价（无上游成本事实，观测保守口径）。
+ */
+function receiptCostPrices(
+  params: Pick<ReceiptParams, 'channelId' | 'channel'>,
+  candidate: ReceiptParams['candidate'],
+): UsageReceipt['costPrices'] {
+  if (params.channelId == null) {
+    return {
+      inputPrice: candidate.inputPrice,
+      cacheInputPrice: candidate.cacheInputPrice,
+      cacheWritePrice: candidate.cacheWritePrice ?? '0',
+      outputPrice: candidate.outputPrice,
+      unitPrice: candidate.unitPrice ?? '0',
+    };
+  }
+  return (
+    params.channel?.costPrices ?? {
+      inputPrice: '0',
+      cacheInputPrice: '0',
+      cacheWritePrice: '0',
+      outputPrice: '0',
+      unitPrice: '0',
+    }
+  );
+}
+
 export function buildReceipt(params: ReceiptParams): UsageReceipt {
   const { candidate } = params;
   const units = measurementOf(candidate.pricingUnit ?? 'token').unitsOf(
@@ -175,13 +206,7 @@ export function buildReceipt(params: ReceiptParams): UsageReceipt {
     ...(usage.estimated ? { estimatedFor: 'usage_missing_nonstream' } : {}),
     ...(usage.estimated ? { bytesRelayed: 0 } : {}),
     ...(outputEvidenceBytes !== undefined ? { outputEvidenceBytes } : {}),
-    // 成本轴物化（双轨定价 C3）：渠道绑定成本 ?? 候选映射官方价——upstreamCost 单一来源
-    costPrices: (params.channel?.costPrices ?? {
-      inputPrice: candidate.inputPrice,
-      cacheInputPrice: candidate.cacheInputPrice,
-      cacheWritePrice: candidate.cacheWritePrice ?? '0',
-      outputPrice: candidate.outputPrice,
-      unitPrice: candidate.unitPrice ?? '0',
-    }) as UsageReceipt['costPrices'],
+    // 成本轴物化（双轨定价 C3）：口径裁决见 receiptCostPrices
+    costPrices: receiptCostPrices(params, candidate),
   };
 }

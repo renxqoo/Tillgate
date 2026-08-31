@@ -23,16 +23,25 @@ export interface ChannelScorer {
   factor(channel: ChannelCandidate): number;
 }
 
-/** 预算软水位：remaining/budget 低于 softRatio 起线性降权（硬闸在 reserveChannel 兜底） */
+/**
+ * 预算软水位：remaining / funded 低于 softRatio 起线性降权（硬闸在 reserveChannel 兜底）。
+ * funded = 累计正向充值（upstreamFunded；无充值记录回退 budget 列口径）——budget 列
+ * 本身是滚动余额（充值/adjust/消耗直接改写），拿它当分母 ratio 恒 ≈1，水位从不生效
+ * （2026-08-31 生产实况：充值 $1 只剩 6.65% 仍满权重）。
+ */
 export function budgetWatermarkFactor(
-  channel: Pick<ChannelCandidate, 'upstreamBudget' | 'upstreamRemaining'>,
+  channel: Pick<ChannelCandidate, 'upstreamBudget' | 'upstreamRemaining' | 'upstreamFunded'>,
   softRatio: number,
 ): number {
   if (channel.upstreamBudget == null || channel.upstreamRemaining == null) return 1;
-  const budget = Number(channel.upstreamBudget);
   const remaining = Number(channel.upstreamRemaining);
-  if (!Number.isFinite(budget) || !Number.isFinite(remaining) || budget <= 0) return 1;
-  const ratio = remaining / budget;
+  if (!Number.isFinite(remaining)) return 1;
+  // 充值基数：funded ≤ 0 或缺失（无充值记录——预算直设渠道）回退 budget 列口径
+  const fundedRaw = Number(channel.upstreamFunded);
+  const funded =
+    Number.isFinite(fundedRaw) && fundedRaw > 0 ? fundedRaw : Number(channel.upstreamBudget);
+  if (!Number.isFinite(funded) || funded <= 0) return 1;
+  const ratio = remaining / funded;
   if (ratio >= softRatio) return 1;
   return Math.max(0.1, ratio / softRatio);
 }

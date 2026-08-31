@@ -251,11 +251,11 @@ function candidatesOf(
 
 /** 尝试轨迹上报（attempt 后与全 gate 拒收尾共用——快照数组防调用方突变） */
 function reportAttemptTrace(
-  onAttempts: PassArgs<unknown>['onAttempts'],
+  on: PassArgs<unknown>['onAttempts'],
   total: number,
   trace: readonly string[],
 ): void {
-  onAttempts?.(total, [...trace]);
+  on?.(total, [...trace]);
 }
 
 /** 一轮候选×渠道循环（全败返回事实供有界等待决策） */
@@ -307,6 +307,8 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
     // 预占按本请求估算）不判死模型，只有健康证据（上游失败/熔断/死凭据/惩罚）
     // 才计入死记忆（isRequestScopedRejection 词表单一真相）
     let healthEvidence = false;
+    // 请求维门拒绝存在时判死（临时状态会连坐其恢复后的流量——2026-08-31 修复）
+    let requestScopedRejection = false;
     for (const channel of channels) {
       channelAttempt += 1;
       channelTrace.push(channel.channelName);
@@ -328,7 +330,8 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
       });
       if (gateCode != null) {
         lastCode = gateCode;
-        if (!isRequestScopedRejection(gateCode)) healthEvidence = true;
+        if (isRequestScopedRejection(gateCode)) requestScopedRejection = true;
+        else healthEvidence = true;
         continue;
       }
       if (!leaseStarted) {
@@ -357,8 +360,10 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
       return { value: outcome.value, lastCode, channels: allChannels, failedRealModels };
     }
     // 记账上移请求级（runCandidateLoop 差集收口）——等待重试轮重跑本函数时
-    // 不再重复计数（契约「一次请求最多记一次」，model-dead.ts）
-    if (healthEvidence) failedRealModels.add(candidate.realModel);
+    // 不再重复计数（契约「一次请求最多记一次」，model-dead.ts）。
+    // 判死 = 全部渠道以健康证据耗尽：请求维门拒绝（预算/软限流）是临时状态，
+    // 混入证据会把「从未真死」的渠道连坐进死窗口
+    if (healthEvidence && !requestScopedRejection) failedRealModels.add(candidate.realModel);
   }
   // 全渠道被门拒绝（零上游尝试）也要带出轨迹——预算闸门竭尽场景的排障事实
   reportAttemptTrace(args.onAttempts, attemptTotal, channelTrace);

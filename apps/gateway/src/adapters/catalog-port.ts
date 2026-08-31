@@ -161,33 +161,33 @@ async function toSnapshotRow(input: {
   };
 }
 
-/**
- * 渠道成本五轴解析：COALESCE 合并价（绑定覆盖 ?? 映射官方）经 cost_config schedule
- * 窗口字段级覆盖（解析时刻 = hold==settle，与变体定价同哲学——预留与结算共用同一快照，
- * settle 不变式 cost ≤ reserved 由同源快照保证）。无策略/未命中 → 合并平价原样。
- */
-function costPricesOf(
+/** 绑定五轴值列表（配置检测与物化共用——NULL = 未配置该轴） */
+const COST_AXES_OF = (row: RouteCandidateRow) =>
+  [
+    row.costInputPrice,
+    row.costCacheInputPrice,
+    row.costCacheWritePrice,
+    row.costOutputPrice,
+    row.costUnitPrice,
+  ] as const;
+
+/** 平价物化（无 cost_config 策略的快照形态；缺轴按 0——NULL 轴 = 该轴无成本） */
+function flatCostOf(row: RouteCandidateRow): NonNullable<ChannelCandidate['costPrices']> {
+  return {
+    inputPrice: row.costInputPrice ?? '0',
+    cacheInputPrice: row.costCacheInputPrice ?? '0',
+    cacheWritePrice: row.costCacheWritePrice ?? '0',
+    outputPrice: row.costOutputPrice ?? '0',
+    unitPrice: row.costUnitPrice ?? '0',
+  };
+}
+
+/** cost_config schedule 窗口字段级覆盖（未覆盖轴回落平价；解析时刻 = hold==settle） */
+function scheduleCostOf(
   row: RouteCandidateRow,
+  flat: NonNullable<ChannelCandidate['costPrices']>,
   clock: { now: Date; timezone: string },
 ): NonNullable<ChannelCandidate['costPrices']> {
-  // 免费标记是业务判定源（用户裁决 2026-08-31）：价格列保持继承默认不清写，
-  // 此处物化全 0 成本轴——预留/结算/评分下游全部零改动
-  if (row.costIsFree) {
-    return {
-      inputPrice: '0',
-      cacheInputPrice: '0',
-      cacheWritePrice: '0',
-      outputPrice: '0',
-      unitPrice: '0',
-    };
-  }
-  const flat = {
-    inputPrice: row.costInputPrice,
-    cacheInputPrice: row.costCacheInputPrice,
-    cacheWritePrice: row.costCacheWritePrice,
-    outputPrice: row.costOutputPrice,
-    unitPrice: row.costUnitPrice,
-  };
   const config = row.costConfig as Parameters<typeof strategyOf>[0];
   if (config == null || config.strategy == null) return flat;
   const overrides = strategyOf(config).resolvePriceOverrides({
@@ -204,6 +204,34 @@ function costPricesOf(
     cacheWritePrice: overrides?.cacheWritePrice ?? flat.cacheWritePrice,
     outputPrice: overrides?.outputPrice ?? flat.outputPrice,
     unitPrice: overrides?.unitPrice ?? flat.unitPrice,
+  };
+}
+
+/**
+ * 渠道成本五轴解析：free 标记物化全 0；绑定五轴任一配置（非 NULL）即物化（缺轴按 0
+ * ——NULL 轴 = 该轴无成本）；**全 NULL 且未标 free → undefined（成本面缺失）**——
+ * 预留/结算/评分消费方按零成本处理（配了成本价才有预算管控；静默继承用户卖价会把
+ * 免费/低价渠道按卖价虚扣虚拒——2026-08-30/31 生产事故）。
+ */
+function costPricesOf(
+  row: RouteCandidateRow,
+  clock: { now: Date; timezone: string },
+): ChannelCandidate['costPrices'] {
+  // 免费标记是业务判定源（用户裁决 2026-08-31）：价格列保持继承默认不清写，
+  // 此处物化全 0 成本轴——预留/结算/评分下游全部零改动
+  if (row.costIsFree) return zeroCostOf();
+  if (!COST_AXES_OF(row).some((price) => price != null)) return undefined;
+  return scheduleCostOf(row, flatCostOf(row), clock);
+}
+
+/** 全 0 成本轴（free 物化与缺省语义共用形状） */
+function zeroCostOf(): NonNullable<ChannelCandidate['costPrices']> {
+  return {
+    inputPrice: '0',
+    cacheInputPrice: '0',
+    cacheWritePrice: '0',
+    outputPrice: '0',
+    unitPrice: '0',
   };
 }
 
@@ -226,6 +254,7 @@ function toChannelCandidate(
     ...(row.tpmLimit != null ? { tpmLimit: row.tpmLimit } : {}),
     ...(row.upstreamBudget != null ? { upstreamBudget: row.upstreamBudget } : {}),
     ...(row.upstreamRemaining != null ? { upstreamRemaining: row.upstreamRemaining } : {}),
+    ...(row.upstreamFunded != null ? { upstreamFunded: row.upstreamFunded } : {}),
     costPrices: costPricesOf(row, clock),
   };
 }

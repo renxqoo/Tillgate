@@ -225,6 +225,7 @@ describe('catalog-port：系数解析（C-G2）', () => {
             tpmLimit: 1000,
             upstreamBudget: '99',
             upstreamRemaining: '99',
+            upstreamFunded: '99',
             costInputPrice: '1',
             costOutputPrice: '2',
             costCacheInputPrice: '1',
@@ -585,13 +586,16 @@ describe('billing-port（C-G3）', () => {
     expect(released).toEqual(['r-x']); // TPM 释放不丢
   });
 
-  it('reserveChannel：官方价口径（coefficient=1）amount 自算 + allowed 收窄', async () => {
+  it('reserveChannel：成本口径（coefficient=1）amount 自算 + allowed 收窄', async () => {
     const { api, calls } = spyApi();
     const port = createGatewayBilling(api as never, {
       resolveReservationLimit: async () => '1',
       resolveReservationPolicy: async () => ({ mode: 'full' }),
     });
-    const result = await port.reserveChannel({
+    // 成本面缺失（绑定全 NULL 未标 free → costPrices undefined）→ amount 0
+    // （2026-08-31 修复：未配置 = 零成本，与结算口径同源；旧口径静默回落用户卖价
+    //  → 1MB 请求按卖价虚估 $2.13 全拒可用渠道）
+    const missing = await port.reserveChannel({
       requestId: 'r',
       channelId: 7,
       candidate: candidate({
@@ -603,11 +607,33 @@ describe('billing-port（C-G3）', () => {
       estimatedInputTokens: 1_000_000,
       maxOutputTokens: 1_000_000,
     });
+    expect(missing).toEqual({ allowed: true, remaining: '0' });
+    expect(Number((calls.reserves[0] as { amount: string }).amount)).toBe(0);
+
+    // 已配置成本五轴：贵价口径 max(3.5,1,7)=7 输入 + 2 输出 = 9（系数不参与）
+    const result = await port.reserveChannel({
+      requestId: 'r2',
+      channelId: 7,
+      candidate: candidate({
+        inputPrice: '3.5',
+        cacheInputPrice: '1',
+        cacheWritePrice: '7',
+        outputPrice: '2',
+      }),
+      costPrices: {
+        inputPrice: '3.5',
+        cacheInputPrice: '1',
+        cacheWritePrice: '7',
+        outputPrice: '2',
+        unitPrice: '0',
+      },
+      estimatedInputTokens: 1_000_000,
+      maxOutputTokens: 1_000_000,
+    });
     // switched/remaining 透传（修复：换渠转移与剩余额度是 gates 观测面事实，桥接层不得丢弃）
     expect(result).toEqual({ allowed: true, remaining: '0' });
-    const input = calls.reserves[0] as { channelId: number; amount: string };
+    const input = calls.reserves[1] as { channelId: number; amount: string };
     expect(input.channelId).toBe(7);
-    // 贵价口径：max(3.5,1,7)=7 输入 + 2 输出 = 9 元（官方价，系数不参与）
     expect(Number(input.amount)).toBeCloseTo(9, 6);
   });
 });
