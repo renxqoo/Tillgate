@@ -5,6 +5,7 @@ import { DataTable } from '@/components/data-table';
 import { adminApi } from '@/server/admin-api';
 import { ScrollTextIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
+import type { ReactNode } from 'react';
 
 import { ApiError } from '@tillgate/api-client';
 import type { LogRow, Paginated } from '@tillgate/api-client';
@@ -27,6 +28,43 @@ function statusCodeTone(code: number): string {
   if (code >= 400 && code < 500) return 'bg-amber-500/15 text-amber-700 dark:text-amber-300';
   if (code >= 500) return 'bg-destructive/15 text-destructive';
   return 'bg-muted text-muted-foreground';
+}
+
+/** 评估链中未服务本次请求的渠道 chip（换渠轨迹/被门拒绝），muted 弱化 */
+const TRAIL_CHANNEL_CHIP = 'rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground';
+/** 命中渠道 chip：与 statusCodeTone 成功态同 emerald 色系，加 ✓ 前缀强化区分 */
+const HIT_CHANNEL_CHIP =
+  'rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300';
+
+/**
+ * 渠道列渲染。契约：channels 是路由评估链（含被跳过、被预算闸/惩罚箱拒绝的渠道，
+ * 评估序）。只有成功请求（statusCode < 400）的末位渠道代表最终命中，高亮并加 ✓；
+ * 失败请求没有任何渠道服务成功，全链 muted 且链尾追加「未命中」标识。
+ */
+function renderChannelChain(
+  channels: string[] | null,
+  statusCode: number,
+  noHitLabel: string,
+): ReactNode {
+  if (channels == null || channels.length === 0) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  const hit = statusCode < 400;
+  // 末位 = 最后评估的渠道；同名渠道重试会重复出现，key 需带索引防撞
+  const [last, ...rest] = channels.toReversed();
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {rest.map((name, index) => (
+        <code key={`${name}-${index}`} className={TRAIL_CHANNEL_CHIP}>
+          {name}
+        </code>
+      ))}
+      <code className={hit ? HIT_CHANNEL_CHIP : TRAIL_CHANNEL_CHIP}>
+        {hit ? `✓ ${last}` : last}
+      </code>
+      {!hit && <code className={TRAIL_CHANNEL_CHIP}>✗ {noHitLabel}</code>}
+    </span>
+  );
 }
 
 /** 日志表列定义（cell 渲染器随列声明平铺；t/tc 经参数传入） */
@@ -78,26 +116,7 @@ function buildLogColumns(
     {
       key: 'channels',
       header: t('channels'),
-      render: (l) => {
-        if (l.channels == null || l.channels.length === 0) {
-          return <span className="text-xs text-muted-foreground">—</span>;
-        }
-        // 末位 = 最终服务/最后评估的渠道；其余为换渠轨迹（含被门拒绝的渠道）
-        const [last, ...rest] = l.channels.toReversed();
-        return (
-          <span className="flex flex-wrap items-center gap-1">
-            {rest.map((name) => (
-              <code
-                key={name}
-                className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
-              >
-                {name}
-              </code>
-            ))}
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium">{last}</code>
-          </span>
-        );
-      },
+      render: (l) => renderChannelChain(l.channels, l.statusCode, t('noHit')),
     },
     {
       key: 'statusCode',
