@@ -52,6 +52,22 @@ async function skipChannel(
 }
 
 /**
+ * 现场复核：除当前渠道外是否全部处于惩罚冷却（单渠道 = 无其它选择 → true）。
+ * 拒绝惩罚渠道前的放行判定（conditionalBypass 语义）——收窄快照竞态窗口：
+ * 循环前快照与门内单读之间的并发惩罚记入由此兜住。
+ */
+export async function othersAllCoolingFor(
+  memory: RoutingMemory,
+  channels: readonly ChannelCandidate[],
+  currentId: number,
+): Promise<boolean> {
+  const rest = channels.filter((ch) => ch.channelId !== currentId);
+  if (rest.length === 0) return true;
+  const states = await Promise.all(rest.map((ch) => memory.penalized(ch.channelId)));
+  return states.every((p) => p);
+}
+
+/**
  * 单渠道门：任一拒绝返回跳过码（lastCode 候选），全部通过返回 null。
  * penaltyEnforced = 候选存在未惩罚渠道（由调用方批量预解析）。
  */

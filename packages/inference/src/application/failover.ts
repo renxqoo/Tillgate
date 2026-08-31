@@ -10,7 +10,7 @@ import type { RoutingPolicyReader, StickyStore } from '../ports/routing';
 import type { TracePort } from '../ports/trace';
 import type { UpstreamPort } from '../ports/upstream';
 import type { RoutingPolicy } from '../routing/policy';
-import { gateChannel } from '../routing/gates';
+import { gateChannel, othersAllCoolingFor } from '../routing/gates';
 import { pickPrimaryChannel, rankChannels } from '../routing/ranker';
 import { recordSticky, resolveStickyContext } from '../routing/sticky';
 import type { PreparedRequest } from './quote';
@@ -325,7 +325,10 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
         penaltyEnforced,
         // 现场复核仅 bypass 语义下生效——conditionalBypass=false 是保守硬拒（冷却即拒）
         ...(policy.penalty.conditionalBypass
-          ? { penaltyFallback: (currentId: number) => othersAllCooling(deps, channels, currentId) }
+          ? {
+              penaltyFallback: (currentId: number) =>
+                othersAllCoolingFor(deps.memory, channels, currentId),
+            }
           : {}),
       });
       if (gateCode != null) {
@@ -384,18 +387,6 @@ function accumulateHealthEvidence(
 ): boolean {
   if (outcome.kind === 'respond') return current;
   return outcome.code != null && !NON_HEALTH_EVIDENCE_CODES.has(outcome.code);
-}
-
-/** 现场复核：除当前渠道外是否全部处于惩罚冷却（单渠道 = 无其它选择 → true） */
-async function othersAllCooling(
-  deps: ExecutionDeps,
-  channels: readonly ChannelCandidate[],
-  currentId: number,
-): Promise<boolean> {
-  const rest = channels.filter((ch) => ch.channelId !== currentId);
-  if (rest.length === 0) return true;
-  const states = await Promise.all(rest.map((ch) => deps.memory.penalized(ch.channelId)));
-  return states.every((p) => p);
 }
 
 /** 候选跳过事实进 trace 不进响应 */
