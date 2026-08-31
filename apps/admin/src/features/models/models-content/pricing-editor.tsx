@@ -118,10 +118,7 @@ function costFreeToggleNode(props: {
   return (
     <div className="space-y-1">
       <label className="flex items-center gap-2 text-sm">
-        <Checkbox
-          checked={costFree}
-          onCheckedChange={(v) => props.onFreeChange?.(v === true)}
-        />
+        <Checkbox checked={costFree} onCheckedChange={(v) => props.onFreeChange?.(v === true)} />
         {t('costFreeLabel')}
       </label>
       <p className="text-xs text-muted-foreground">{t('costFreeHint')}</p>
@@ -210,7 +207,6 @@ export function PricingEditor({
           disabled={disabled || costFree}
           allowEmpty={allowEmpty}
           value={value}
-          referenceValue={referenceValue}
           fieldErrors={fieldErrors}
           onChange={(patch: Partial<PriceAxes>) => onChange({ ...value, ...patch })}
           t={t}

@@ -33,10 +33,10 @@ function modelOf(channels: Array<{ channelId: number; upstreamModel: string }>):
     id: 9,
     externalName: 'e2e-down',
     realModel: 'mock-mini',
-    inputPrice: '0',
-    outputPrice: '0',
-    cacheInputPrice: '0',
-    cacheWritePrice: '0',
+    inputPrice: '2',
+    outputPrice: '8',
+    cacheInputPrice: '0.4',
+    cacheWritePrice: '1',
     pricingUnit: 'token',
     unitPrice: '0',
     billingConfig: null,
@@ -129,10 +129,12 @@ describe('BindChannelsDialog：受控打开的绑定回显', () => {
     expect(screen.getByDisplayValue('up-a')).toBeInTheDocument();
     expect(screen.queryByDisplayValue('unsaved-draft')).not.toBeInTheDocument();
   });
+});
 
-  it('成本覆盖编辑区单位感知：image 模型只显单位成本轴，继承占位回显官方单价', () => {
-    // 回归锚点（双轨定价）：成本轴经 PricingEditor 与官方轴同构——
-    // image 模型不再渲染 token 四价轴，空输入占位显示将被继承的官方平价
+describe('BindChannelsDialog：成本覆盖编辑区（预填模型卖价 + 免费快捷）', () => {
+  it('成本覆盖编辑区单位感知：image 模型只显单位成本轴，预填模型单位卖价', () => {
+    // 回归锚点（双轨定价 + 预填裁决）：成本轴经 PricingEditor 与官方轴同构——
+    // image 模型不再渲染 token 四价轴，空成本绑定预填模型卖价（真实值可改）
     const imageModel = {
       ...modelOf([{ channelId: 1, upstreamModel: 'up-a' }]),
       pricingUnit: 'image',
@@ -142,7 +144,7 @@ describe('BindChannelsDialog：受控打开的绑定回显', () => {
     fireEvent.click(screen.getByRole('button', { name: /Cost price override/ }));
 
     expect(screen.getByText('Cost unit price')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Inherit 0.0200')).toBeInTheDocument();
+    expect(screen.getByLabelText('Cost unit price')).toHaveValue(0.02);
     // token 四价轴不出现（单位计价模型的成本轴分派）
     expect(screen.queryByText('Cost input price')).not.toBeInTheDocument();
     // 分时段编辑与官方轴同构可用
@@ -200,6 +202,39 @@ describe('BindChannelsDialog：受控打开的绑定回显', () => {
     await user.click(screen.getByRole('checkbox', { name: /Free channel/ }));
     expect(screen.getByRole('checkbox', { name: /Free channel/ })).not.toBeChecked();
     expect(input).not.toBeDisabled();
+    // 取消免费恢复预填模型卖价（价格即事实，无平行标记）
+    expect(input).toHaveValue(2);
     expect(screen.getByText('Time-of-day pricing')).toBeInTheDocument();
+  });
+
+  it('成本预填（用户裁决）：空成本绑定打开即显示模型卖价，保存前可改', () => {
+    renderDialog(modelOf([{ channelId: 1, upstreamModel: 'up-a' }]), true);
+    fireEvent.click(screen.getByRole('button', { name: /Cost price override/ }));
+
+    expect(screen.getByLabelText('Cost input price')).toHaveValue(2);
+    expect(screen.getByLabelText('Cost output price')).toHaveValue(8);
+    expect(screen.getByLabelText('Cost cache-hit price')).toHaveValue(0.4);
+    expect(screen.getByLabelText('Cost cache-write price')).toHaveValue(1);
+    expect(screen.getByRole('checkbox', { name: /Free channel/ })).not.toBeChecked();
+  });
+
+  it('成本预填不覆盖已配置值：存量成本原样回显', () => {
+    const configured = modelOf([
+      {
+        channelId: 1,
+        upstreamModel: 'up-a',
+        costInputPrice: '1.5',
+        costOutputPrice: '6',
+        costCacheInputPrice: '0.3',
+        costCacheWritePrice: '0.8',
+        costUnitPrice: '0',
+        costConfig: {},
+      },
+    ] as never) as AdminModelRow;
+    renderDialog(configured, true);
+    fireEvent.click(screen.getByRole('button', { name: /Cost price override/ }));
+
+    expect(screen.getByLabelText('Cost input price')).toHaveValue(1.5);
+    expect(screen.getByLabelText('Cost output price')).toHaveValue(6);
   });
 });

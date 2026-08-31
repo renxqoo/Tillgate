@@ -2,13 +2,13 @@
 
 // 价格轴字段组（PricingEditor 分派件）：token → 四价一行四列（sm:grid-cols-4，移动端两列）；
 // 单位计价 → 单位单价。官方轴必填（字段错误内联渲染，免费语义由 disabled 表达）；
-// 成本轴空 = 继承官方平价——空输入占位回显继承值（referenceValue 对应轴），用户不改即用默认且默认可见。
+// 成本轴由弹窗预填模型卖价（初值可见可改），用户清空 = 该渠道不记账（按 0 成本）。
 
 import { Fragment, useId } from 'react';
 import { FieldError, FieldLabel, FormItem, Input } from '@tillgate/ui';
 import type { useTranslations } from 'next-intl';
 
-import { formatMoney, unitWord } from '@/lib/formatters';
+import { unitWord } from '@/lib/formatters';
 import type { PriceAxes, PricingFieldErrors, PricingValue } from './billing-config-payload';
 
 /** token 四价轴渲染顺序（cacheWrite 可空，官方轴文案自带「可空」提示） */
@@ -22,12 +22,11 @@ export function PriceAxesFields({
   disabled,
   allowEmpty,
   value,
-  referenceValue,
   fieldErrors,
   onChange,
   t,
 }: {
-  /** 价格轴语义：official=模型官方卖价 / cost=渠道成本覆盖（空 = 继承） */
+  /** 价格轴语义：official=模型官方卖价 / cost=渠道成本覆盖（清空 = 不记账） */
   axes: 'official' | 'cost';
   unitMode: boolean;
   pricingUnit: string;
@@ -35,8 +34,6 @@ export function PriceAxesFields({
   disabled?: boolean;
   allowEmpty: boolean;
   value: PricingValue;
-  /** 成本轴继承参照（官方平价）；official 轴不传 */
-  referenceValue?: PricingValue;
   fieldErrors?: PricingFieldErrors;
   onChange: (patch: Partial<PriceAxes>) => void;
   t: ReturnType<typeof useTranslations<'models'>>;
@@ -61,13 +58,8 @@ export function PriceAxesFields({
           unitPrice: t('unitPriceLabel', { unit: unitWord(pricingUnit, locale) }),
         };
 
-  /** 成本轴继承占位：显示官方平价对应轴的实际生效值（formatMoney 4 位截断）；官方轴无占位（必填语义） */
-  function placeholderOf(axis: keyof PriceAxes): string | undefined {
-    if (!allowEmpty) return undefined;
-    const raw = referenceValue?.[axis];
-    if (raw == null || raw.trim() === '') return t('costInherit');
-    return t('inheritPricePlaceholder', { value: formatMoney(raw) });
-  }
+  /** 成本轴清空占位（官方轴无占位——必填语义）：清空 = 不记账，按 0 成本 */
+  const emptyPlaceholder = allowEmpty ? t('costEmptyPlaceholder') : undefined;
 
   function field(axis: keyof PriceAxes) {
     const id = `${uid}-${axis}`;
@@ -80,7 +72,7 @@ export function PriceAxesFields({
           inputMode="decimal"
           step="0.0001"
           min={0}
-          placeholder={placeholderOf(axis)}
+          placeholder={emptyPlaceholder}
           value={value[axis]}
           disabled={disabled}
           onChange={(e) => onChange({ [axis]: e.target.value })}
