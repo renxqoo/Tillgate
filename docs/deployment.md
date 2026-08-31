@@ -153,7 +153,7 @@ docker stop tillgate && docker rm tillgate
 # 重新执行「1. 启动」的命令
 ```
 
-- **回滚**：`latest` 是移动标签，回退必须用不可变标签——发布时每次推送除 `latest` 外同时推一个日期/版本标签（如 `renxqoo/tillgate:2026-08-29`）。回滚 = `docker pull` 该标签并重跑启动命令；镜像内载荷哈希与 `/data` 缓存不一致时自动重装对应版本的依赖。注意数据库迁移是前向的，跨 schema 迁移后回滚镜像不回滚表结构
+- **回滚**：发布只推 `latest` 单一标签（每次发布覆盖，无版本/日期后缀标签），升级前先给本机在用镜像打个本地标记留存：`docker tag renxqoo/tillgate:latest renxqoo/tillgate:backup-$(date +%F)`。回滚 = 用该本机标记重跑启动命令；镜像内载荷哈希与 `/data` 缓存不一致时自动重装对应版本的依赖。注意数据库迁移是前向的，跨 schema 迁移后回滚镜像不回滚表结构
 - **密钥语义**：全部密钥持久化于 `/data`；重新启动时若环境变量传入的密钥与存储值不一致，容器告警并拒绝启动（防止意外换 key 导致渠道密文不可解）。换 key 走专门轮换流程（见 [deployment-checklist.md](deployment-checklist.md) §3）
 - **数据**：`./data` 内含 PostgreSQL 数据、Redis AOF、密钥、证书；`rm -rf data` 等于清库
 

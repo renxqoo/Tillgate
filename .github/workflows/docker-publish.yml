@@ -1,6 +1,6 @@
 # AIO 镜像发布（Docker Hub renxqoo/tillgate）：
-#   push main → latest + sha-<短哈希>（移动标签 + 不可变锚点）
-#   push v* 标签 → <版本号> + latest（正式发版；版本标签发布后不得重推）
+#   push main / push v* 标签 / 手动触发 → 统一推 renxqoo/tillgate:latest
+#   （单一标签，每次发布覆盖；不做版本/sha/日期后缀标签）
 #   PR 阶段不执行（无 pull_request 触发）——合并进 main 的 push 才构建发布
 # Secrets（repo Settings → Secrets → Actions）：DOCKERHUB_USERNAME / DOCKERHUB_TOKEN
 #（Docker Hub Access Token；缺失时 main 推送会响亮失败——发布不允许静默跳过）
@@ -37,15 +37,13 @@ jobs:
 
       - name: Compute image tags
         id: tags
+        # 发布统一单标签 renxqoo/tillgate:latest（tag/主线/手动触发同口径）
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            echo "tags=renxqoo/tillgate:${GITHUB_REF#refs/tags/v},renxqoo/tillgate:latest" >> "$GITHUB_OUTPUT"
-            echo "push=true" >> "$GITHUB_OUTPUT"
-          elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
-            echo "tags=renxqoo/tillgate:latest,renxqoo/tillgate:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/v* || "$GITHUB_REF" == refs/heads/main ]]; then
+            echo "tags=renxqoo/tillgate:latest" >> "$GITHUB_OUTPUT"
             echo "push=true" >> "$GITHUB_OUTPUT"
           else
-            # PR / 非主线分支：只构建验证（占位 tag 不推送）
+            # 非主线分支手动触发：只构建验证（占位 tag 不推送）
             echo "tags=tillgate/aio:pr-check" >> "$GITHUB_OUTPUT"
             echo "push=false" >> "$GITHUB_OUTPUT"
           fi
