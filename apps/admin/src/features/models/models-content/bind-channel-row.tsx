@@ -1,9 +1,10 @@
 'use client';
 
 // 绑定渠道弹窗的单个绑定行卡：渠道勾选 + 出站名输入 + 成本价覆盖编辑区。
-// 成本轴经 PricingEditor 与官方轴完全同构（单位感知分派 + 分时段/差价 + 继承回显，
-// 双轨定价 docs/channel-cost-pricing.md）：五轴 string 草稿沿用（'' = 继承映射官方价，
-// 契约层空串归一 null），策略行模型草稿（PricingStrategyDraft）由弹窗保存以跨折叠存活，
+// 成本轴经 PricingEditor 与官方轴完全同构（单位感知分派 + 分时段/差价，
+// 双轨定价 docs/channel-cost-pricing.md）：五轴 string 草稿沿用（空轴由弹窗
+// 预填模型卖价；用户清空 = 不记账，契约层空串归一 null），策略行模型草稿
+// （PricingStrategyDraft）由弹窗保存以跨折叠存活，
 // 提交时经 buildPricingBillingConfig 收口为 costConfig。独立成文件因 oxlint
 // no-multi-component / max-lines-per-function 门禁：弹窗与行卡各一组件。
 
@@ -21,7 +22,7 @@ import {
 } from './billing-config-payload';
 import { PricingEditor } from './pricing-editor';
 
-/** 绑定行成本覆盖五轴（表单态 string，'' = 继承；与 messages.models cost* label 键一致） */
+/** 绑定行成本覆盖五轴（表单态 string，空串提交后归一 null = 不记账；与 messages.models cost* label 键一致） */
 export const COST_PRICE_KEYS = [
   'costInputPrice',
   'costOutputPrice',
@@ -35,28 +36,28 @@ export type CostPriceKey = (typeof COST_PRICE_KEYS)[number];
 /** 成本覆盖行展开态：弹窗行紧凑，编辑区默认折叠（PricingEditor 展开后全宽渲染） */
 export type CostEditorOpen = Record<number, boolean>;
 
-/** 绑定行本地态：出站名 + 成本五轴 + 策略草稿 + 免费标记（勾选免费不清价格——业务判定走标记） */
+/** 绑定行本地态：出站名 + 成本五轴 + 策略草稿（免费 = 五轴全 0，价格即事实） */
 export interface DraftBinding {
   channelId: number;
   upstreamModel: string;
   cost: Record<CostPriceKey, string>;
-  /** 成本策略草稿（schedule/variant 行模型，编辑无损态）；undefined = 未配置（继承官方定价策略） */
+  /** 成本策略草稿（schedule/variant 行模型，编辑无损态）；undefined = 未配置 */
   strategy?: PricingStrategyDraft;
-  /** 成本免费显式标记：true = 进货成本恒 0（价格列保持继承默认） */
 }
 
-/** 空白成本五轴（新勾选行起点：全部继承官方价） */
-export function emptyCost(): Record<CostPriceKey, string> {
+/** 成本五轴预填（用户裁决：绑定默认继承模型卖价——UI 真实展示、可改，
+ * 不改则按预填值落库；运行时不存在继承回落，存什么算什么） */
+export function inheritedCostOf(model: AdminModelRow): Record<CostPriceKey, string> {
   return {
-    costInputPrice: '',
-    costOutputPrice: '',
-    costCacheInputPrice: '',
-    costCacheWritePrice: '',
-    costUnitPrice: '',
+    costInputPrice: model.inputPrice ?? '',
+    costOutputPrice: model.outputPrice ?? '',
+    costCacheInputPrice: model.cacheInputPrice ?? '',
+    costCacheWritePrice: model.cacheWritePrice ?? '',
+    costUnitPrice: model.unitPrice ?? '',
   };
 }
 
-/** 绑定行官方平价参照（成本轴继承占位 = 官方价对应轴的实际生效值） */
+/** 绑定行官方平价参照（成本轴对照展示；预填初值见 inheritedCostOf） */
 export function officialReferenceOf(model: AdminModelRow): PricingValue {
   return {
     pricingUnit: model.pricingUnit ?? 'token',
@@ -81,13 +82,13 @@ function costValueOf(model: AdminModelRow, draft: DraftBinding): PricingValue {
   };
 }
 
-/** 全五轴空且无策略 = 该渠道无价格覆盖（折叠摘要「继承官方价」；免费标记独立判定） */
 /** 免费渠道 = 成本五轴显式全 0（价格推导，无平行标记——docs/free-by-price.md） */
 function costAllZero(draft: DraftBinding): boolean {
   return COST_PRICE_KEYS.every((key) => draft.cost[key] === '0');
 }
 
-function allInherit(draft: DraftBinding): boolean {
+/** 全五轴空且无策略 = 用户显式清空（该渠道不记账，按 0 成本） */
+function allUnset(draft: DraftBinding): boolean {
   return (
     COST_PRICE_KEYS.every((key) => draft.cost[key] === '') && !strategyHasOverride(draft.strategy)
   );
@@ -162,8 +163,8 @@ export function ChannelBindingRow({
             {t('costOverride')}
             {costAllZero(draft) ? (
               <span className="text-muted-foreground">· {t('costFreeLabel')}</span>
-            ) : allInherit(draft) ? (
-              <span className="text-muted-foreground">· {t('costInherit')}</span>
+            ) : allUnset(draft) ? (
+              <span className="text-muted-foreground">· {t('costUnset')}</span>
             ) : null}
           </button>
           {costOpen ? (

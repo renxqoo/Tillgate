@@ -36,41 +36,43 @@ import {
 import type { BindChannelItem } from '@/server/models-actions';
 import {
   ChannelBindingRow,
-  emptyCost,
+  inheritedCostOf,
   COST_PRICE_KEYS,
   type CostEditorOpen,
   type DraftBinding,
 } from './bind-channel-row';
 
-/** model.channels → 弹窗草稿行（每次打开回显当前绑定、已有成本覆盖与 costConfig 策略草稿，null → ''） */
+/** model.channels → 弹窗草稿行（回显当前绑定与 costConfig 策略草稿；成本轴空 →
+ * 预填模型卖价对应轴——UI 真实展示可改，不改则按预填值落库，用户裁决） */
 function draftsOf(model: AdminModelRow): DraftBinding[] {
   const pricingUnit = model.pricingUnit ?? 'token';
+  const prefill = inheritedCostOf(model);
   return (model.channels ?? []).map((c) => ({
     channelId: c.channelId,
     upstreamModel: c.upstreamModel,
     cost: {
-      costInputPrice: c.costInputPrice ?? '',
-      costOutputPrice: c.costOutputPrice ?? '',
-      costCacheInputPrice: c.costCacheInputPrice ?? '',
-      costCacheWritePrice: c.costCacheWritePrice ?? '',
-      costUnitPrice: c.costUnitPrice ?? '',
+      costInputPrice: c.costInputPrice ?? prefill.costInputPrice,
+      costOutputPrice: c.costOutputPrice ?? prefill.costOutputPrice,
+      costCacheInputPrice: c.costCacheInputPrice ?? prefill.costCacheInputPrice,
+      costCacheWritePrice: c.costCacheWritePrice ?? prefill.costCacheWritePrice,
+      costUnitPrice: c.costUnitPrice ?? prefill.costUnitPrice,
     },
     strategy: strategyDraftFromConfig(pricingUnit, costConfigShape(c.costConfig)),
   }));
 }
 
-/** 免费开关 = 成本清零快捷（勾选五轴写 '0'、取消回继承 ''——价格即事实，无平行标记） */
-function withFreeCost(draft: DraftBinding, free: boolean): DraftBinding {
+/** 免费开关 = 成本清零快捷（勾选五轴写 '0'、取消回预填模型价——价格即事实，无平行标记） */
+function withFreeCost(draft: DraftBinding, model: AdminModelRow, free: boolean): DraftBinding {
   return {
     ...draft,
     cost: free
       ? (Object.fromEntries(COST_PRICE_KEYS.map((key) => [key, '0'])) as DraftBinding['cost'])
-      : emptyCost(),
+      : inheritedCostOf(model),
   };
 }
 
-/** 绑定提交体：留空不传出站名（服务端物化规范名）；成本覆盖恒显式提交（'' = 继承，全量覆盖语义下不残留旧值）；
- * 成本策略经 buildPricingBillingConfig 收口（空策略不传 = 服务端落 {}，清除旧策略） */
+/** 绑定提交体：留空不传出站名（服务端物化规范名）；成本覆盖恒显式提交（'' = 清空不记账，
+ * 全量覆盖语义下不残留旧值）；成本策略经 buildPricingBillingConfig 收口（空策略不传 = 服务端落 {}，清除旧策略） */
 function bindPayloadOf(selected: DraftBinding[], pricingUnit: string): BindChannelItem[] {
   return selected.map((s) => {
     const built = buildPricingBillingConfig(
@@ -166,7 +168,7 @@ export function BindChannelsDialog({
     setSelected((prev) =>
       prev.some((s) => s.channelId === id)
         ? prev.filter((s) => s.channelId !== id)
-        : [...prev, { channelId: id, upstreamModel: '', cost: emptyCost() }],
+        : [...prev, { channelId: id, upstreamModel: '', cost: inheritedCostOf(model) }],
     );
   }
 
@@ -185,7 +187,7 @@ export function BindChannelsDialog({
 
   /** 免费开关 = 成本清零快捷（withFreeCost 模块级实现——价格即事实，无平行标记） */
   const toggleFree = (id: number, free: boolean) =>
-    setSelected((prev) => prev.map((s) => (s.channelId === id ? withFreeCost(s, free) : s)));
+    setSelected((prev) => prev.map((s) => (s.channelId === id ? withFreeCost(s, model, free) : s)));
 
   function onSubmit() {
     const pricingUnit = model.pricingUnit ?? 'token';
