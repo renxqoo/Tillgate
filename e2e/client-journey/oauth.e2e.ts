@@ -1,8 +1,9 @@
 /**
  * OAuth 社交登录 E2E（老仓 e2e-oauth 迁移；本地 mock GitHub 上游）：
  * providers 目录 → authorize 302（state cookie 双提交 + 端点参数）→ callback
- * find-or-create 建号 + #token= fragment 回传 → token 可用 → state 单次消费
- * （重放 410）/ cookie 不符 403 / 未配置 provider 404 / 未知 provider 404。
+ * find-or-create 建号 + #token= fragment 回传 → token 可用 → 失败面统一
+ * 302 前端错误页（重放/上游故障/cookie 不符均经 ?oauth_error=<code> 回传）/
+ * 未配置 provider 404 / 未知 provider 404。
  * 旅程步骤拆为模块级阶段函数（.e2e.ts 不在 root override 的 *.test.ts 放宽集内——
  * 规模限制生效；断言逐字随迁，仅变量管道化）。
  */
@@ -124,18 +125,23 @@ async function firstCallbackAndSession(
   return { token: fragmentToken, userId: me.id };
 }
 
-/** state 单次消费（重放 410）+ 上游换码故障 502 + cookie 不符（双提交破坏）403 */
+/** state 单次消费（重放 302 错误页）+ 上游换码故障 302 错误页 + cookie 不符（双提交破坏）302 错误页 */
 async function assertStateSingleUseAndAttackSurface(
   client: Api,
   harness: E2eHarness,
   state: string,
 ): Promise<void> {
+  // 浏览器面回调失败统一 302 前端错误页（?oauth_error=<code>），不再回裸 JSON
   const replay = await client(`/v1/oauth/github/callback?code=mock-code&state=${state}`, {
     headers: { cookie: `tl_oauth_state=${state}` },
+    redirect: 'manual',
   });
-  expect(replay.status).toBe(410);
+  expect(replay.status).toBe(302);
+  expect(replay.headers.get('location')).toBe(
+    `${harness.baseUrl}/oauth/callback?oauth_error=identity.oauth_state_invalid`,
+  );
 
-  // 上游换码故障 → identity.oauth_profile_failed → 502（FaceOverride 钉死）
+  // 上游换码故障 → identity.oauth_profile_failed → 302 错误页（前端引导邮箱登录）
   const failAuthorize = await rawGet(`${harness.baseUrl}/v1/oauth/github/authorize`);
   const failUrl = new URL(String(failAuthorize.headers.location ?? ''));
   const failState = failUrl.searchParams.get('state') ?? '';
@@ -143,14 +149,20 @@ async function assertStateSingleUseAndAttackSurface(
     `${harness.baseUrl}/v1/oauth/github/callback?code=fail-code&state=${failState}`,
     { cookie: `tl_oauth_state=${failState}` },
   );
-  expect(failCallback.status).toBe(502);
-  expect(JSON.parse(failCallback.body).error.code).toBe('identity.oauth_profile_failed');
+  expect(failCallback.status).toBe(302);
+  expect(String(failCallback.headers.location)).toBe(
+    `${harness.baseUrl}/oauth/callback?oauth_error=identity.oauth_profile_failed`,
+  );
 
-  // cookie 不符（双提交破坏）→ 403
+  // cookie 不符（双提交破坏）→ 302 错误页 client.oauth_state_mismatch
   const mismatch = await client(`/v1/oauth/github/callback?code=c&state=${state}`, {
     headers: { cookie: 'tl_oauth_state=evil' },
+    redirect: 'manual',
   });
-  expect(mismatch.status).toBe(403);
+  expect(mismatch.status).toBe(302);
+  expect(mismatch.headers.get('location')).toBe(
+    `${harness.baseUrl}/oauth/callback?oauth_error=client.oauth_state_mismatch`,
+  );
 }
 
 /** 已绑定用户二次登录：同 subject 直用既有账号（不重建） */

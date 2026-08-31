@@ -1,12 +1,13 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { CallbackLoadingCard } from './callback-loading-card';
+import { CallbackShell } from './callback-shell';
 
+/** Suspense 兜底：useSearchParams 就绪前的首屏，与加载态同卡同壳 */
 export function CallbackFallback() {
-  const t = useTranslations('auth');
   return (
-    <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-      {t('completing')}
-    </div>
+    <CallbackShell>
+      <CallbackLoadingCard />
+    </CallbackShell>
   );
 }
