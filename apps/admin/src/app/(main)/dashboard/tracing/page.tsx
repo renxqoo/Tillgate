@@ -5,9 +5,9 @@ import Link from 'next/link';
 import { Activity } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { fmtDateTime } from '@/lib/formatters';
 import { fetchAdminList } from '@/server/admin-list';
 import { ListPage } from '@/components/list-page';
+import { LocalTime } from '@/components/local-time';
 import { firstParam, parseListSearchParams } from '@/lib/list-query';
 import { TraceDetailDialog } from '@/features/tracing/trace-detail-dialog';
 
@@ -69,7 +69,7 @@ function renderRequestIdCell(tr: TraceSummary) {
 }
 
 function renderStartTimeCell(tr: TraceSummary) {
-  return <span className="text-xs">{fmtDateTime(new Date(tr.startTimeMs).toISOString())}</span>;
+  return <LocalTime iso={new Date(tr.startTimeMs).toISOString()} className="text-xs" />;
 }
 
 export default async function TracingPage({

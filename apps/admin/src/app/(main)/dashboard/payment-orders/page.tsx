@@ -6,9 +6,9 @@ import { StatusPill } from '@/components/status-pill';
 import { CreditCard } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { fmtDateTime } from '@/lib/formatters';
 import { fetchAdminList } from '@/server/admin-list';
 import { ListPage } from '@/components/list-page';
+import { LocalTime } from '@/components/local-time';
 
 import { CloseOrderActions } from '@/features/billing/close-order-actions';
 
@@ -56,7 +56,7 @@ export default async function PaymentOrdersPage({ searchParams }: PageProps) {
   });
 
   const columns: DataTableColumn<PaymentOrderRow>[] = [
-    { key: 'createdAt', header: tc('createdAt'), render: (r) => fmtDateTime(r.createdAt) },
+    { key: 'createdAt', header: tc('createdAt'), render: (r) => <LocalTime iso={r.createdAt} /> },
     {
       key: 'user',
       header: tc('user'),

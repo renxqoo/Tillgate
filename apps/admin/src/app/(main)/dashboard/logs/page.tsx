@@ -9,8 +9,9 @@ import type { ReactNode } from 'react';
 
 import { ApiError } from '@tillgate/api-client';
 import type { LogRow, Paginated } from '@tillgate/api-client';
-import { fmtDateTime, msToHuman } from '@/lib/formatters';
+import { msToHuman } from '@/lib/formatters';
 import { ListPage } from '@/components/list-page';
+import { LocalTime } from '@/components/local-time';
 import { firstParam, parseListSearchParams } from '@/lib/list-query';
 
 import { LogsFilter } from '@/features/tracing/logs-filter';
@@ -159,9 +160,7 @@ function buildLogColumns(
       header: tc('time'),
       sortable: true,
       headerClassName: 'w-44',
-      render: (l) => (
-        <span className="text-xs text-muted-foreground">{fmtDateTime(l.createdAt)}</span>
-      ),
+      render: (l) => <LocalTime iso={l.createdAt} className="text-xs text-muted-foreground" />,
     },
     {
       key: 'errorCode',

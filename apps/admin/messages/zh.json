@@ -540,7 +540,7 @@
     "back": "返回费率卡",
     "notFound": "费率卡不存在",
     "noDescription": "无说明",
-    "detailDescription": "{desc} · 状态 {status} · 更新于 {time}",
+    "detailDescription": "{desc} · 状态 {status} · 更新于 <local>{time}</local>",
     "boundUsersUnit": "个绑定用户",
     "searchUsersPlaceholder": "搜索 subject / 显示名 / 邮箱",
     "noBoundUsers": "暂无绑定用户",

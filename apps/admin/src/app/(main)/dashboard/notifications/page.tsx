@@ -7,8 +7,8 @@ import { BellIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { adminApi } from '@/server/admin-api';
-import { fmtDateTime } from '@/lib/formatters';
 import { ListPage } from '@/components/list-page';
+import { LocalTime } from '@/components/local-time';
 
 import { ChannelForm } from '@/features/notifications/channel-form';
 import { ChannelActions } from '@/features/notifications/channel-actions';
@@ -57,7 +57,7 @@ export default async function NotificationsPage() {
         <span className="font-mono text-xs text-muted-foreground">{r.events.join(', ')}</span>
       ),
     },
-    { key: 'createdAt', header: tc('createdAt'), render: (r) => fmtDateTime(r.createdAt) },
+    { key: 'createdAt', header: tc('createdAt'), render: (r) => <LocalTime iso={r.createdAt} /> },
     {
       key: 'status',
       header: tc('status'),
