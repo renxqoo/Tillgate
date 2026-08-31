@@ -1,9 +1,11 @@
-// 模型定价编辑器的构造与提交组装纯函数（仅模型表单消费）：计价卡片选项、差价档位/
-// 分时段窗口行的构造与形状校验、提交载荷转换，以及 schedule/variant 互斥分流的
-// billingConfig 组装。无 React 运行时依赖，行为由 __test__/model-form-pricing.test.ts 锁定。
+// 定价编辑器的构造与提交组装纯函数（模型表单与绑定渠道成本轴共用）：计价卡片选项、
+// 差价档位/分时段窗口行的构造与形状校验、提交载荷转换、schedule/variant 互斥分流的
+// billingConfig 组装，以及 PricingEditor 受控值（PricingValue）与策略行模型草稿的
+// 构造/切换/收口纯函数。无 React 运行时依赖，行为由 __test__/model-form-pricing.test.ts 锁定。
 
 import { CoinsIcon, FilmIcon, HashIcon, ImageIcon, TypeIcon } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
+import * as z from 'zod';
 
 import { TIER_PRESETS, type PricingUnit } from './model-pricing';
 
@@ -199,4 +201,185 @@ export function buildBillingConfigPayload(input: {
       },
     },
   };
+}
+
+// ── PricingEditor 受控域（官方价/成本价双轴共用）────────────────────────────
+
+/** 单位计价判定：token → 四价轴；request/image/second/char → 单位单价轴 */
+export function isUnitMode(pricingUnit: string): boolean {
+  return pricingUnit !== '' && pricingUnit !== 'token';
+}
+
+/**
+ * 策略草稿（PricingEditor 的 schedule/variant 编辑无损态）：行模型直接受控，
+ * 随受控值回传（跨折叠/重挂载存活），提交时经 buildPricingBillingConfig 收口为
+ * {strategy, params} 载荷——提交校验（windows/tiers 未填齐）只发生在收口时点。
+ */
+export interface PricingStrategyDraft {
+  /** 分时段启用中（与 variant 单值互斥的开关） */
+  scheduleOn: boolean;
+  windows: WindowRow[];
+  tiers: TierRow[];
+  selector: string;
+}
+
+/** PricingEditor 受控值：计价方式 + 价格五轴（按计价方式取用）+ 策略草稿 */
+export interface PricingValue {
+  /** 计价方式（'' = 未选择，仅创建态起点；unitLocked 消费方保证恒为有效单位） */
+  pricingUnit: string;
+  inputPrice: string;
+  outputPrice: string;
+  cacheInputPrice: string;
+  cacheWritePrice: string;
+  unitPrice: string;
+  /** 策略草稿（分时段/差价行模型）；缺省 = 无策略（继承官方定价策略） */
+  strategy?: PricingStrategyDraft;
+}
+
+/** 价格五轴（不含计价方式与策略） */
+export type PriceAxes = Pick<
+  PricingValue,
+  'inputPrice' | 'outputPrice' | 'cacheInputPrice' | 'cacheWritePrice' | 'unitPrice'
+>;
+
+/** 字段级错误形状（RHF 嵌套 errors 的结构收窄；非 RHF 消费方不传） */
+export type PricingFieldErrors = Partial<
+  Record<'pricingUnit' | keyof PriceAxes, { message?: string }>
+>;
+
+/** billingConfig/costConfig 的同构回显形状（DTO 面为宽类型，编辑回显先经此收窄） */
+export interface BillingConfigLike {
+  strategy?: string;
+  params?: {
+    selector?: string;
+    prices?: Record<string, string>;
+    windows?: Array<Record<string, string>>;
+  };
+}
+
+/** 策略草稿 zod 形状（与 WindowRow/TierRow 行模型逐字段对应；对话框 schema 组装用） */
+export const pricingStrategyDraftShape = {
+  scheduleOn: z.boolean(),
+  windows: z.array(
+    z.object({
+      label: z.string(),
+      start: z.string(),
+      end: z.string(),
+      inputPrice: z.string(),
+      outputPrice: z.string(),
+      cacheInputPrice: z.string(),
+      unitPrice: z.string(),
+    }),
+  ),
+  tiers: z.array(
+    z.object({
+      label: z.string(),
+      value: z.string(),
+      price: z.string(),
+      on: z.boolean(),
+      custom: z.boolean(),
+    }),
+  ),
+  selector: z.string(),
+} as const;
+
+/** 空策略草稿（新模型/新绑定行起点：档位按计价方式铺预设、selector 取单位默认） */
+export function emptyStrategyDraft(pricingUnit: string): PricingStrategyDraft {
+  return {
+    scheduleOn: false,
+    windows: [],
+    tiers: buildTiers(pricingUnit),
+    selector: DEFAULT_SELECTOR[pricingUnit as PricingUnit] ?? 'model',
+  };
+}
+
+/** billingConfig/costConfig 回显 → 策略草稿（编辑弹窗与绑定行共用；selector 缺省回落单位默认） */
+export function strategyDraftFromConfig(
+  pricingUnit: string,
+  cfg?: BillingConfigLike,
+): PricingStrategyDraft {
+  return {
+    scheduleOn: cfg?.strategy === 'schedule',
+    windows: buildWindows(cfg),
+    tiers: buildTiers(pricingUnit, cfg),
+    selector: cfg?.params?.selector ?? DEFAULT_SELECTOR[pricingUnit as PricingUnit] ?? 'model',
+  };
+}
+
+/** 切换计价方式联动：差价档位按新单位重建（已填价格不跨单位保留）+ selector 重置默认；分时段窗口跨单位保留 */
+export function switchStrategyDraftUnit(
+  draft: PricingStrategyDraft,
+  pricingUnit: string,
+): PricingStrategyDraft {
+  return {
+    ...draft,
+    tiers: buildTiers(pricingUnit),
+    selector: DEFAULT_SELECTOR[pricingUnit as PricingUnit] ?? 'model',
+  };
+}
+
+/** 策略草稿是否有覆盖配置（绑定行折叠摘要「继承官方价」的判定面） */
+export function strategyHasOverride(draft: PricingStrategyDraft | undefined): boolean {
+  if (draft == null) return false;
+  return draft.scheduleOn || draft.tiers.some((tr) => tr.custom || tr.on);
+}
+
+/** 策略草稿 → 提交组装（buildBillingConfigPayload 的受控值适配；错误分流标记原样回传） */
+export function buildPricingBillingConfig(
+  draft: PricingStrategyDraft,
+  pricingUnit: string,
+): { billingConfig?: BillingConfigPayload; error?: 'windows' | 'tiers' } {
+  return buildBillingConfigPayload({
+    scheduleOn: draft.scheduleOn,
+    windows: draft.windows,
+    tiers: draft.tiers,
+    selector: draft.selector,
+    pricingUnit,
+    unitMode: isUnitMode(pricingUnit),
+  });
+}
+
+/** prices（jsonb 宽类型）→ 字符串价目表：字符串原样、有限数字 String 化，其余剔除 */
+function pricesShapeOf(raw: unknown): Record<string, string> {
+  const prices: Record<string, string> = {};
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return prices;
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === 'string') prices[key] = value;
+    else if (typeof value === 'number' && Number.isFinite(value)) prices[key] = String(value);
+  }
+  return prices;
+}
+
+/** windows（jsonb 宽类型）→ 字符串窗口行：仅保留对象行中的字符串字段 */
+function windowsShapeOf(raw: unknown): Array<Record<string, string>> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (w): w is Record<string, unknown> => w != null && typeof w === 'object' && !Array.isArray(w),
+    )
+    .map((w) =>
+      Object.fromEntries(
+        Object.entries(w).filter(
+          (entry): entry is [string, string] => typeof entry[1] === 'string',
+        ),
+      ),
+    );
+}
+
+/** 绑定行 costConfig（jsonb 宽类型）→ 同构 cfg 收窄：逐字段类型把关，非预期形状剔除（回显不因脏数据崩溃） */
+export function costConfigShape(raw: unknown): BillingConfigLike | undefined {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const rec = raw as Record<string, unknown>;
+  const shape: BillingConfigLike = {};
+  if (typeof rec.strategy === 'string') shape.strategy = rec.strategy;
+  const { params } = rec;
+  if (params != null && typeof params === 'object' && !Array.isArray(params)) {
+    const p = params as Record<string, unknown>;
+    shape.params = {
+      ...(typeof p.selector === 'string' ? { selector: p.selector } : {}),
+      prices: pricesShapeOf(p.prices),
+      windows: windowsShapeOf(p.windows),
+    };
+  }
+  return shape;
 }

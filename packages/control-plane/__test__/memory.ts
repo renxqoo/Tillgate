@@ -443,6 +443,15 @@ export function createMemoryChannelStore(
           tpmLimit: row.tpmLimit,
           upstreamBudget: row.upstreamBudget,
           upstreamRemaining: row.upstreamBudget,
+          // 成本轴 stand-in：内存行无绑定覆盖——零价（成本评分器对 0 名义成本不参与，
+          // COALESCE 继承语义由 postgres.real 测试承担）
+          costInputPrice: '0',
+          costOutputPrice: '0',
+          costCacheInputPrice: '0',
+          costCacheWritePrice: '0',
+          costUnitPrice: '0',
+          costConfig: {},
+          costIsFree: false,
         });
       }
       return out;
@@ -576,11 +585,33 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
       return input.channels.length;
     },
     async listBindingsByMappingIds(_db, mappingIds) {
-      const out: Array<{ mappingId: number; channelId: number; upstreamModel: string }> = [];
+      const out: Array<{
+        mappingId: number;
+        channelId: number;
+        upstreamModel: string;
+        costInputPrice: string | null;
+        costOutputPrice: string | null;
+        costCacheInputPrice: string | null;
+        costCacheWritePrice: string | null;
+        costUnitPrice: string | null;
+        costConfig: Record<string, unknown>;
+        costIsFree: boolean;
+      }> = [];
       for (const row of rows.values()) {
         if (mappingIds.includes(row.id)) {
           for (const b of row.bindings) {
-            out.push({ mappingId: row.id, channelId: b.channelId, upstreamModel: b.upstreamModel });
+            out.push({
+              mappingId: row.id,
+              channelId: b.channelId,
+              upstreamModel: b.upstreamModel,
+              costInputPrice: null,
+              costOutputPrice: null,
+              costCacheInputPrice: null,
+              costCacheWritePrice: null,
+              costUnitPrice: null,
+              costConfig: {},
+              costIsFree: false,
+            });
           }
         }
       }

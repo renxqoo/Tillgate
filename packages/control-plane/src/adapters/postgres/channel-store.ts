@@ -56,6 +56,17 @@ const RECHARGE_SORTS = {
   createdAt: channelRecharges.createdAt,
 } as const;
 
+/** 路由候选成本五轴 + 成本配置（COALESCE 绑定覆盖/映射官方——读取处单轨收口，docs/channel-cost-pricing.md C2） */
+const ROUTE_COST_COLUMNS = {
+  costInputPrice: sql<string>`coalesce(${modelChannels.costInputPrice}, ${modelMappings.inputPrice})::text`,
+  costOutputPrice: sql<string>`coalesce(${modelChannels.costOutputPrice}, ${modelMappings.outputPrice})::text`,
+  costCacheInputPrice: sql<string>`coalesce(${modelChannels.costCacheInputPrice}, ${modelMappings.cacheInputPrice})::text`,
+  costCacheWritePrice: sql<string>`coalesce(${modelChannels.costCacheWritePrice}, ${modelMappings.cacheWritePrice})::text`,
+  costUnitPrice: sql<string>`coalesce(${modelChannels.costUnitPrice}, ${modelMappings.unitPrice})::text`,
+  costConfig: modelChannels.costConfig,
+  costIsFree: modelChannels.costIsFree,
+} as const;
+
 export const postgresChannelStore: ChannelStore = {
   async insertChannel(db, input) {
     const [row] = await db
@@ -339,6 +350,7 @@ export const postgresChannelStore: ChannelStore = {
         tpmLimit: channels.tpmLimit,
         upstreamBudget: channels.upstreamBudget,
         upstreamRemaining: sql<string>`(${channels.upstreamBudget} - ${channels.upstreamReserved})::numeric`,
+        ...ROUTE_COST_COLUMNS,
       })
       .from(modelChannels)
       .innerJoin(channels, eq(modelChannels.channelId, channels.id))
@@ -362,7 +374,8 @@ export const postgresChannelStore: ChannelStore = {
         ),
       )
       .orderBy(desc(channels.priority), desc(channels.weight));
-    return rows as RouteCandidateRow[];
+    // costConfig 列类型 BillingConfigJson（接口无索引签名）→ 行边界整体收窄到端口类型
+    return rows as unknown as RouteCandidateRow[];
   },
 
   // ---- worker 任务轮询读 ----

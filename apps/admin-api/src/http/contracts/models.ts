@@ -11,6 +11,15 @@ const CONTEXT_LENGTH_MAX = 2_000_000_000;
 
 const price = nonNegativeMoneyString;
 
+/**
+ * 渠道成本覆盖价（双轨定价）：numeric 字符串可空——''/缺省/null 归一 null（继承映射官方价）。
+ * 空串必须 preprocess 先归一：transform 排在基础校验之后，空串直入 nonNegativeMoneyString
+ * 会被形状校验拒（绑定行「留空 = 继承」整单 400 的回归锚点）。
+ */
+const costPrice = z
+  .preprocess((v) => (typeof v === 'string' && v.trim() === '' ? null : v), price.nullish())
+  .transform((v) => (v == null ? null : v.trim()));
+
 /** 多模态统一输入计费策略（billingPolicy 消费方在网关 build-quote/receipt） */
 const billingPolicySchema = z.object({
   version: z.literal(1),
@@ -170,6 +179,16 @@ const modelBindSchema = z.object({
           .max(128)
           .optional()
           .transform((v) => (v === '' ? undefined : v)),
+        // 渠道成本覆盖（双轨定价）：可空字符串价格；'' 归一 null（回继承映射官方价）
+        costInputPrice: costPrice,
+        costOutputPrice: costPrice,
+        costCacheInputPrice: costPrice,
+        costCacheWritePrice: costPrice,
+        costUnitPrice: costPrice,
+        /** 成本侧计费配置（与映射 billingConfig 同构：schedule 峰谷成本 / variant 差价成本） */
+        costConfig: billingConfigSchema.optional(),
+        /** 成本免费显式标记（价格列保持继承默认；true = 成本恒 0） */
+        costIsFree: z.boolean().optional(),
       }),
     )
     .max(500),

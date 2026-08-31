@@ -155,9 +155,36 @@ export const modelChannels = pgTable(
     /** 出站上游模型名（厂商各异名；绑定 API 缺省物化为映射 realModel，落库恒显式） */
     upstreamModel: varchar('upstream_model', { length: 128 }).notNull(),
     // 路由排序的 weight/priority 单轨住在 channels 层（用户裁决 D4；迁移 0107 清退本表旧列）
+
+    // ---- 渠道成本价（双轨定价：NULL = 继承映射官方价——读取处 SQL COALESCE 单轨收口） ----
+    /** 该渠道进货输入单价（元/百万 token）；NULL = 继承映射 input_price */
+    costInputPrice: numeric('cost_input_price', { precision: 38, scale: 18 }),
+    /** 该渠道进货输出单价；NULL = 继承 */
+    costOutputPrice: numeric('cost_output_price', { precision: 38, scale: 18 }),
+    /** 该渠道进货缓存命中单价；NULL = 继承 */
+    costCacheInputPrice: numeric('cost_cache_input_price', { precision: 38, scale: 18 }),
+    /** 该渠道进货缓存写单价；NULL = 继承 */
+    costCacheWritePrice: numeric('cost_cache_write_price', { precision: 38, scale: 18 }),
+    /** 该渠道进货单位单价（次/张/秒/字符）；NULL = 继承 */
+    costUnitPrice: numeric('cost_unit_price', { precision: 38, scale: 18 }),
+    /**
+     * 成本侧计费配置（与映射 billingConfig 同构：schedule 峰谷成本窗口等）——
+     * 窗口按解析时刻命中后字段级覆盖成本平价列；未覆盖轴回落 COALESCE 合并价。
+     */
+    costConfig: jsonb('cost_config').$type<BillingConfigJson>().notNull().default({}),
+    /**
+     * 渠道成本免费显式标记（用户裁决 2026-08-31）：true = 进货成本恒 0（目录解析
+     * 物化全 0 成本轴），价格列保持继承默认不被清写——业务判定走本标记而非 token 价。
+     */
+    costIsFree: boolean('cost_is_free').notNull().default(false),
   },
   (t) => [
     { name: 'model_channels_pk', columns: [t.mappingId, t.channelId], primaryKey: true },
     index('model_channels_channel_id_idx').on(t.channelId),
+    // 成本价非负（可空列——NULL 继承不触发；负成本经钳 0 会静默免费，DB 兜底拒绝）
+    check(
+      'model_channels_cost_nonnegative_ck',
+      sql`${t.costInputPrice} is null or (${t.costInputPrice} >= 0 and ${t.costOutputPrice} >= 0 and ${t.costCacheInputPrice} >= 0 and ${t.costCacheWritePrice} >= 0 and ${t.costUnitPrice} >= 0)`,
+    ),
   ],
 );

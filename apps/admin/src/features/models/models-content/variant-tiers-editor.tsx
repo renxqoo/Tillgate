@@ -1,7 +1,7 @@
 'use client';
 
 // 参数差价编辑器（variant 策略，受控哑件）：selector 下拉直选 + 档位行勾选/自定义 CRUD；
-// 显隐（仅单位计价且未启用分时段）与提交组装由 model-form 编排
+// 显隐（仅单位计价且未启用分时段）与提交组装由消费方（PricingEditor）编排
 
 import { Button, Checkbox, Input, cn } from '@tillgate/ui';
 import type { useTranslations } from 'next-intl';
@@ -13,6 +13,40 @@ import { SELECTOR_OPTIONS, type TierRow } from './billing-config-payload';
 /** 新增自定义档位行的空形状（value=label=手输参数值，恒开） */
 const EMPTY_CUSTOM_TIER: TierRow = { label: '', value: '', price: '', on: true, custom: true };
 
+/** 取价参数名直选（下拉；函数调用而非组件——no-multi-component 门禁）：
+ * 常用取价参数候选；存量 selector 不在候选内时追加为选项，编辑回显不丢值 */
+function selectorPicker(props: {
+  pricingUnit: string;
+  selector: string;
+  onSelectorChange: (v: string) => void;
+  t: ReturnType<typeof useTranslations<'models'>>;
+}) {
+  const { pricingUnit, selector, onSelectorChange, t } = props;
+  return (
+    <div className="grid max-w-xs gap-1">
+      <label className="text-xs text-muted-foreground" htmlFor="m-selector">
+        {t('selectorLabel')}
+      </label>
+      <select
+        id="m-selector"
+        value={selector}
+        onChange={(e) => onSelectorChange(e.target.value)}
+        className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        {(() => {
+          const base = [...(SELECTOR_OPTIONS[pricingUnit as PricingUnit] ?? ['model'])];
+          if (selector && !base.includes(selector)) base.push(selector);
+          return base.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ));
+        })()}
+      </select>
+    </div>
+  );
+}
+
 export function VariantTiersEditor({
   pricingUnit,
   selector,
@@ -22,6 +56,7 @@ export function VariantTiersEditor({
   onSelectorChange,
   onChange,
   onTierToggle,
+  pricePlaceholderOf,
   t,
   tc,
 }: {
@@ -35,8 +70,10 @@ export function VariantTiersEditor({
   onSelectorChange: (v: string) => void;
   /** 档位行集合更新（setTiers 直传；函数式更新防行间 stale） */
   onChange: (update: (cur: TierRow[]) => TierRow[]) => void;
-  /** 勾选预设档位（编排器：清 root 提交校验错误） */
-  onTierToggle: () => void;
+  /** 勾选预设档位（可选：受控域组件 root 错误清理在 onChange 单点完成，无需单独回调） */
+  onTierToggle?: () => void;
+  /** 价格输入占位覆盖（成本轴继承回显：空输入显示实际将生效的继承值）；缺省回落默认文案 */
+  pricePlaceholderOf?: (axis: 'unitPrice') => string | undefined;
   t: ReturnType<typeof useTranslations<'models'>>;
   tc: ReturnType<typeof useTranslations<'common'>>;
 }) {
@@ -46,28 +83,7 @@ export function VariantTiersEditor({
         <p className="text-sm font-medium">{t('tiersTitle')}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{t('tiersSubHint')}</p>
       </div>
-      <div className="grid max-w-xs gap-1">
-        <label className="text-xs text-muted-foreground" htmlFor="m-selector">
-          {t('selectorLabel')}
-        </label>
-        {/* 常用取价参数直选；存量 selector 不在候选内时追加为选项，编辑回显不丢值 */}
-        <select
-          id="m-selector"
-          value={selector}
-          onChange={(e) => onSelectorChange(e.target.value)}
-          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          {(() => {
-            const base = [...(SELECTOR_OPTIONS[pricingUnit as PricingUnit] ?? ['model'])];
-            if (selector && !base.includes(selector)) base.push(selector);
-            return base.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ));
-          })()}
-        </select>
-      </div>
+      {selectorPicker({ pricingUnit, selector, onSelectorChange, t })}
       {tiers.length > 0 ? (
         <div className="space-y-1.5">
           {tiers.map((tier, i) => {
@@ -101,7 +117,7 @@ export function VariantTiersEditor({
                         checked={tier.on}
                         onCheckedChange={(v) => {
                           patch({ on: v === true });
-                          onTierToggle();
+                          onTierToggle?.();
                         }}
                       />
                       {tier.label}
@@ -120,7 +136,7 @@ export function VariantTiersEditor({
                     <Input
                       value={tier.price}
                       onChange={(e) => patch({ price: e.target.value })}
-                      placeholder={t('unitPricePlaceholder')}
+                      placeholder={pricePlaceholderOf?.('unitPrice') ?? t('unitPricePlaceholder')}
                       className="h-8 w-36"
                       inputMode="decimal"
                     />

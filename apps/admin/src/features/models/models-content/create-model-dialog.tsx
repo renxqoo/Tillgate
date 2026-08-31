@@ -22,8 +22,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 
 import { useActionResult } from '@/components/action-toast';
-import { ModelForm, type ModelFormValues, type WithBillingConfig } from './model-form';
-import { PRICING_UNITS, FREE_MODEL_PRICES, refinePricing, type PricingUnit } from './model-pricing';
+import {
+  buildPricingShape,
+  ModelForm,
+  type ModelFormValues,
+  type WithBillingConfig,
+} from './model-form';
+import { FREE_MODEL_PRICES, refinePricingField } from './model-pricing';
 
 /** 校验消息走目录：schema 在组件内用 t 构造 */
 function buildCreateSchema(t: ReturnType<typeof useTranslations<'models'>>) {
@@ -39,21 +44,14 @@ function buildCreateSchema(t: ReturnType<typeof useTranslations<'models'>>) {
     .object({
       externalName: z.string().min(1),
       realModel: z.string().min(1),
-      inputPrice: z.string(),
-      outputPrice: z.string(),
-      cacheInputPrice: z.string(),
-      cacheWritePrice: z.string(),
-      pricingUnit: z
-        .string()
-        .refine(
-          (v): v is PricingUnit => (PRICING_UNITS as readonly string[]).includes(v),
-          t('unitRequired'),
-        ),
-      unitPrice: z.string(),
+      // 定价域（PricingEditor 受控值）：计价方式必选 + 价格五价 + 策略草稿
+      pricing: buildPricingShape(t),
       isFree: z.boolean().optional(),
       contextLength: optionalIntText,
     })
-    .superRefine((v, ctx) => refinePricing(v, ctx, t('invalidPrice')));
+    .superRefine((v, ctx) =>
+      refinePricingField({ ...v.pricing, isFree: v.isFree }, ctx, t('invalidPrice')),
+    );
 }
 
 export function CreateModelDialog() {
@@ -70,12 +68,14 @@ export function CreateModelDialog() {
     defaultValues: {
       externalName: '',
       realModel: '',
-      inputPrice: '',
-      outputPrice: '',
-      cacheInputPrice: '',
-      cacheWritePrice: '',
-      pricingUnit: '',
-      unitPrice: '',
+      pricing: {
+        pricingUnit: '',
+        inputPrice: '',
+        outputPrice: '',
+        cacheInputPrice: '',
+        cacheWritePrice: '',
+        unitPrice: '',
+      },
       isFree: false,
       contextLength: '',
     },
@@ -84,31 +84,32 @@ export function CreateModelDialog() {
   function onSubmit(values: WithBillingConfig<FormValues>) {
     startTransition(async () => {
       const { createModelAction } = await import('@/server/models-actions');
-      const tokenMode = values.pricingUnit === 'token';
+      const { pricing } = values;
+      const tokenMode = pricing.pricingUnit === 'token';
       const res = await createModelAction({
         externalName: values.externalName,
         realModel: values.realModel,
-        pricingUnit: values.pricingUnit,
+        pricingUnit: pricing.pricingUnit,
         // 免费模型：五价显式归零（价格输入已禁用免填）；其余只提交当前计价方式下的价格：
         // token 三价 / 单位单价（另一侧字段对 API 无意义，补 0 占位）
         ...(values.isFree
           ? FREE_MODEL_PRICES
           : tokenMode
             ? {
-                inputPrice: values.inputPrice,
-                outputPrice: values.outputPrice,
-                cacheInputPrice: values.cacheInputPrice,
-                ...(values.cacheWritePrice !== ''
-                  ? { cacheWritePrice: values.cacheWritePrice }
+                inputPrice: pricing.inputPrice,
+                outputPrice: pricing.outputPrice,
+                cacheInputPrice: pricing.cacheInputPrice,
+                ...(pricing.cacheWritePrice !== ''
+                  ? { cacheWritePrice: pricing.cacheWritePrice }
                   : {}),
               }
             : {
                 inputPrice: '0',
                 outputPrice: '0',
                 cacheInputPrice: '0',
-                unitPrice: values.unitPrice,
+                unitPrice: pricing.unitPrice,
               }),
-        // billingConfig 由 ModelForm 差价编辑器并入（单位计价 + 按参数差价时存在）
+        // billingConfig 由 ModelForm 提交编排并入（buildPricingBillingConfig 收口；单位计价 + 按参数差价时存在）
         ...(values.billingConfig != null ? { billingConfig: values.billingConfig } : {}),
         isFree: values.isFree ?? false,
         contextLength: values.contextLength.trim() === '' ? null : Number(values.contextLength),

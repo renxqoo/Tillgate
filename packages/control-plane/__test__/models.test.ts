@@ -257,7 +257,17 @@ describe('绑定全量替换 + 绑定回显', () => {
       channels: [{ channelId: 22, upstreamModel: 'vendor-x/claude' }],
     });
     expect(defined(models.rows.get(row.id)).bindings).toEqual([
-      { channelId: 22, upstreamModel: 'vendor-x/claude' },
+      {
+        channelId: 22,
+        upstreamModel: 'vendor-x/claude',
+        costInputPrice: null,
+        costOutputPrice: null,
+        costCacheInputPrice: null,
+        costCacheWritePrice: null,
+        costUnitPrice: null,
+        costConfig: {},
+        costIsFree: false,
+      },
     ]);
     const listResult = await listModels(deps, {
       q: row.externalName,
@@ -266,8 +276,19 @@ describe('绑定全量替换 + 绑定回显', () => {
       limit: 10,
       offset: 0,
     });
+    // 回显含成本覆盖列（未配置 = null 继承 + 空策略——双轨定价契约）
     expect(defined(listResult.rows[0]).channels).toEqual([
-      { channelId: 22, upstreamModel: 'vendor-x/claude' },
+      {
+        channelId: 22,
+        upstreamModel: 'vendor-x/claude',
+        costInputPrice: null,
+        costOutputPrice: null,
+        costCacheInputPrice: null,
+        costCacheWritePrice: null,
+        costUnitPrice: null,
+        costConfig: {},
+        costIsFree: false,
+      },
     ]);
     // 空数组 = 解绑全部
     await bindModelChannels(deps, { ctx: adminCtx(), mappingId: row.id, channels: [] });

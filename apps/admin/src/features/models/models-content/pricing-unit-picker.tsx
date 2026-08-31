@@ -1,7 +1,8 @@
 'use client';
 
 // 计价方式卡片选择器（受控哑件）：卡片直选决定表单下方出现哪些价格输入；
-// 切换联动（清字段错误 + 档位按新单位重建 + selector 重置默认）经 onPicked 回调由 model-form 编排
+// 切换联动（档位按新单位重建 + selector 重置默认）默认经 onPicked 回调由编排器接线；
+// 受控域组件（PricingEditor）单一 onChange 收口时可省略 onPicked——联动在 onChange 内完成
 
 import { FieldError, FieldLabel, FormItem, cn } from '@tillgate/ui';
 import type { useTranslations } from 'next-intl';
@@ -23,8 +24,8 @@ export function PricingUnitPicker({
   error?: { message?: string };
   /** 选中卡片：写回 RHF 字段值 */
   onChange: (unit: PricingUnit) => void;
-  /** 选中卡片后的联动（编排器侧：清 pricingUnit 错误 + 档位按新单位重建 + selector 重置默认） */
-  onPicked: (unit: PricingUnit) => void;
+  /** 选中卡片后的联动（编排器侧；可选——受控域组件单一 onChange 收口时省略） */
+  onPicked?: (unit: PricingUnit) => void;
   t: ReturnType<typeof useTranslations<'models'>>;
 }) {
   return (
@@ -46,7 +47,7 @@ export function PricingUnitPicker({
               onClick={() => {
                 if (selected) return;
                 onChange(o.value);
-                onPicked(o.value);
+                onPicked?.(o.value);
               }}
               className={cn(
                 'flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors',

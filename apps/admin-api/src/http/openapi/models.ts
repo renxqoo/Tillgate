@@ -31,12 +31,29 @@ export const adminModelRowSchema = z
             unitPrice: z.string().optional(),
             selector: z.string().optional(),
             prices: z.record(z.string(), z.string()).optional(),
+            /** schedule 策略窗口（分时段定价——编辑回显依赖此声明） */
+            windows: z
+              .array(
+                z.object({
+                  label: z.string().optional(),
+                  start: z.string(),
+                  end: z.string(),
+                  inputPrice: z.string().optional(),
+                  outputPrice: z.string().optional(),
+                  cacheInputPrice: z.string().optional(),
+                  cacheWritePrice: z.string().optional(),
+                  unitPrice: z.string().optional(),
+                }),
+              )
+              .optional(),
           })
           .optional(),
       })
       .nullable()
       .optional()
-      .describe('变体价格配置(分辨率差价):strategy=variant + params.{selector, prices}'),
+      .describe(
+        '计费配置:variant=params.{selector,prices}(差价档位) / schedule=params.windows(分时段) / flat=缺省',
+      ),
     isFree: z.boolean(),
     contextLength: z.number().nullable(),
     fallbackModels: z.string().nullable().describe('兜底模型清单(无来源,恒 null)'),
@@ -55,6 +72,29 @@ export const adminModelRowSchema = z
           upstreamModel: z
             .string()
             .describe('该渠道的出站模型名(厂商异名;缺省 = 映射规范名 realModel)'),
+          costInputPrice: z
+            .string()
+            .nullable()
+            .describe('渠道成本覆盖·输入单价(null = 继承映射官方价;双轨定价)'),
+          costOutputPrice: z.string().nullable().describe('渠道成本覆盖·输出单价(null = 继承)'),
+          costCacheInputPrice: z
+            .string()
+            .nullable()
+            .describe('渠道成本覆盖·缓存命中单价(null = 继承)'),
+          costCacheWritePrice: z
+            .string()
+            .nullable()
+            .describe('渠道成本覆盖·缓存写单价(null = 继承)'),
+          costUnitPrice: z
+            .string()
+            .nullable()
+            .describe('渠道成本覆盖·单位单价(次/张/秒/字符;null = 继承)'),
+          costConfig: z
+            .record(z.string(), z.unknown())
+            .describe('成本侧计费配置(schedule 峰谷窗口等;与映射 billingConfig 同构)'),
+          costIsFree: z
+            .boolean()
+            .describe('成本免费显式标记(true = 进货成本恒 0;价格列保持继承默认)'),
         }),
       )
       .describe('已绑定渠道(含出站模型名;供「绑定渠道」弹窗回显已选与异名)'),

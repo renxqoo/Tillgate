@@ -1,7 +1,7 @@
 'use client';
 
 // 分时段定价编辑器（schedule 策略，受控哑件）：窗口行 CRUD 走 onChange 单向数据流；
-// 与参数差价的 strategy 单值互斥（启用即隐藏 variant）与提交优先级由 model-form 编排
+// 与参数差价的 strategy 单值互斥（启用即隐藏 variant）与提交优先级由消费方（PricingEditor）编排
 
 import { Button, Checkbox, Input } from '@tillgate/ui';
 import type { useTranslations } from 'next-intl';
@@ -18,6 +18,7 @@ export function ScheduleWindowsEditor({
   rootError,
   onScheduleToggle,
   onChange,
+  pricePlaceholderOf,
   t,
   tc,
 }: {
@@ -34,6 +35,10 @@ export function ScheduleWindowsEditor({
   onScheduleToggle: (on: boolean) => void;
   /** 窗口行集合更新（setWindows 直传；函数式更新防行间 stale） */
   onChange: (update: (cur: WindowRow[]) => WindowRow[]) => void;
+  /** 价格输入占位覆盖（成本轴继承回显：空输入显示实际将生效的继承值）；缺省回落各轴默认文案 */
+  pricePlaceholderOf?: (
+    axis: 'inputPrice' | 'outputPrice' | 'cacheInputPrice' | 'unitPrice',
+  ) => string | undefined;
   t: ReturnType<typeof useTranslations<'models'>>;
   tc: ReturnType<typeof useTranslations<'common'>>;
 }) {
@@ -89,7 +94,7 @@ export function ScheduleWindowsEditor({
                       <Input
                         value={row.unitPrice}
                         onChange={(e) => patch({ unitPrice: e.target.value })}
-                        placeholder={t('unitPricePlaceholder')}
+                        placeholder={pricePlaceholderOf?.('unitPrice') ?? t('unitPricePlaceholder')}
                         className="h-8 w-36"
                         inputMode="decimal"
                       />
@@ -102,21 +107,21 @@ export function ScheduleWindowsEditor({
                       <Input
                         value={row.inputPrice}
                         onChange={(e) => patch({ inputPrice: e.target.value })}
-                        placeholder={t('inputPrice')}
+                        placeholder={pricePlaceholderOf?.('inputPrice') ?? t('inputPrice')}
                         className="h-8 w-32"
                         inputMode="decimal"
                       />
                       <Input
                         value={row.outputPrice}
                         onChange={(e) => patch({ outputPrice: e.target.value })}
-                        placeholder={t('outputPrice')}
+                        placeholder={pricePlaceholderOf?.('outputPrice') ?? t('outputPrice')}
                         className="h-8 w-32"
                         inputMode="decimal"
                       />
                       <Input
                         value={row.cacheInputPrice}
                         onChange={(e) => patch({ cacheInputPrice: e.target.value })}
-                        placeholder={t('cachePrice')}
+                        placeholder={pricePlaceholderOf?.('cacheInputPrice') ?? t('cachePrice')}
                         className="h-8 w-32"
                         inputMode="decimal"
                       />

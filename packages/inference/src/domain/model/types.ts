@@ -96,6 +96,18 @@ export interface ChannelCandidate {
   upstreamBudget?: string;
   /** 可用余额快照（budget - reserved；软水位降权信号——非准入硬闸，硬闸在 reserveChannel） */
   upstreamRemaining?: string | null;
+  /**
+   * 渠道成本五轴（双轨定价）：生产目录恒提供（COALESCE 绑定覆盖/映射官方 + cost_config
+   * 窗口解析——docs/channel-cost-pricing.md C3 hold==settle）。缺省 = 测试替身未携带，
+   * 消费方（预留估算/收据/成本评分）回落候选映射价，行为与继承口径一致。
+   */
+  costPrices?: {
+    inputPrice: string;
+    cacheInputPrice: string;
+    cacheWritePrice: string;
+    outputPrice: string;
+    unitPrice: string;
+  };
 }
 
 /** 请求凭证事实（鉴权结论由 app 中间件产出，inference 只消费） */

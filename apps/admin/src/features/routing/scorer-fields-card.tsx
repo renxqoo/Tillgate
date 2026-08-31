@@ -1,4 +1,4 @@
-/** 策略表单卡：渠道选择与重试（缓存亲和 / 余额降权 / 重试熔断——状态与保存留在编排器） */
+/** 策略表单卡：渠道选择与重试（缓存亲和 / 余额降权 / 成本亲和 / 重试熔断——状态与保存留在编排器） */
 import { Input, Switch } from '@tillgate/ui';
 import type { PolicyForm } from './routing-content-types';
 
@@ -69,6 +69,33 @@ export function ScorerFieldsCard({
             />
           </div>
           <p className="text-xs text-muted-foreground">{t('softRatioHint')}</p>
+        </div>
+      </section>
+      <section className="space-y-3">
+        <p className="text-muted-foreground text-xs font-medium">{t('groupCost')}</p>
+        <div className="space-y-1">
+          <label className="flex items-center justify-between gap-2 text-sm">
+            <span>{t('costAffinity')}</span>
+            <Switch
+              checked={form.costEnabled}
+              onCheckedChange={(v) => set('costEnabled', v)}
+              disabled={disabled}
+            />
+          </label>
+          <p className="text-xs text-muted-foreground">{t('costAffinityHint')}</p>
+        </div>
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-2 text-sm">
+            <span>{t('costFloor')}</span>
+            <Input
+              value={form.costFloor}
+              onChange={(e) => set('costFloor', e.target.value)}
+              className="h-8 w-28"
+              inputMode="decimal"
+              disabled={disabled}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">{t('costFloorHint')}</p>
         </div>
       </section>
       <section className="space-y-3">

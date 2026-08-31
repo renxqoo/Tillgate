@@ -92,6 +92,7 @@ export async function gateChannel(input: {
         requestId,
         channelId: channel.channelId,
         candidate,
+        ...(channel.costPrices != null ? { costPrices: channel.costPrices } : {}),
         estimatedInputTokens: prepared.inputUpperBound,
         maxOutputTokens: prepared.outputCap,
       });

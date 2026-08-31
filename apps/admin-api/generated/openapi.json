@@ -1417,7 +1417,7 @@
             "type": "string"
           },
           "billingConfig": {
-            "description": "变体价格配置(分辨率差价):strategy=variant + params.{selector, prices}",
+            "description": "计费配置:variant=params.{selector,prices}(差价档位) / schedule=params.windows(分时段) / flat=缺省",
             "anyOf": [
               {
                 "type": "object",
@@ -1441,6 +1441,42 @@
                         },
                         "additionalProperties": {
                           "type": "string"
+                        }
+                      },
+                      "windows": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "label": {
+                              "type": "string"
+                            },
+                            "start": {
+                              "type": "string"
+                            },
+                            "end": {
+                              "type": "string"
+                            },
+                            "inputPrice": {
+                              "type": "string"
+                            },
+                            "outputPrice": {
+                              "type": "string"
+                            },
+                            "cacheInputPrice": {
+                              "type": "string"
+                            },
+                            "cacheWritePrice": {
+                              "type": "string"
+                            },
+                            "unitPrice": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "start",
+                            "end"
+                          ]
                         }
                       }
                     }
@@ -1552,11 +1588,85 @@
                 "upstreamModel": {
                   "type": "string",
                   "description": "该渠道的出站模型名(厂商异名;缺省 = 映射规范名 realModel)"
+                },
+                "costInputPrice": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "渠道成本覆盖·输入单价(null = 继承映射官方价;双轨定价)"
+                },
+                "costOutputPrice": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "渠道成本覆盖·输出单价(null = 继承)"
+                },
+                "costCacheInputPrice": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "渠道成本覆盖·缓存命中单价(null = 继承)"
+                },
+                "costCacheWritePrice": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "渠道成本覆盖·缓存写单价(null = 继承)"
+                },
+                "costUnitPrice": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "渠道成本覆盖·单位单价(次/张/秒/字符;null = 继承)"
+                },
+                "costConfig": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {},
+                  "description": "成本侧计费配置(schedule 峰谷窗口等;与映射 billingConfig 同构)"
+                },
+                "costIsFree": {
+                  "type": "boolean",
+                  "description": "成本免费显式标记(true = 进货成本恒 0;价格列保持继承默认)"
                 }
               },
               "required": [
                 "channelId",
-                "upstreamModel"
+                "upstreamModel",
+                "costInputPrice",
+                "costOutputPrice",
+                "costCacheInputPrice",
+                "costCacheWritePrice",
+                "costUnitPrice",
+                "costConfig",
+                "costIsFree"
               ]
             },
             "description": "已绑定渠道(含出站模型名;供「绑定渠道」弹窗回显已选与异名)"
@@ -4074,6 +4184,10 @@
                   "budgetWatermark": {
                     "enabled": true,
                     "softRatio": 0.2
+                  },
+                  "costAffinity": {
+                    "enabled": false,
+                    "floor": 0.5
                   }
                 },
                 "type": "object",
@@ -4139,11 +4253,35 @@
                       "enabled",
                       "softRatio"
                     ]
+                  },
+                  "costAffinity": {
+                    "default": {
+                      "enabled": false,
+                      "floor": 0.5
+                    },
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "floor": {
+                        "default": 0.5,
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "enabled",
+                      "floor"
+                    ]
                   }
                 },
                 "required": [
                   "cacheAffinity",
-                  "budgetWatermark"
+                  "budgetWatermark",
+                  "costAffinity"
                 ]
               },
               "retry": {
@@ -4338,6 +4476,10 @@
                   "budgetWatermark": {
                     "enabled": true,
                     "softRatio": 0.2
+                  },
+                  "costAffinity": {
+                    "enabled": false,
+                    "floor": 0.5
                   }
                 },
                 "type": "object",
@@ -4403,11 +4545,35 @@
                       "enabled",
                       "softRatio"
                     ]
+                  },
+                  "costAffinity": {
+                    "default": {
+                      "enabled": false,
+                      "floor": 0.5
+                    },
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "floor": {
+                        "default": 0.5,
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "enabled",
+                      "floor"
+                    ]
                   }
                 },
                 "required": [
                   "cacheAffinity",
-                  "budgetWatermark"
+                  "budgetWatermark",
+                  "costAffinity"
                 ]
               },
               "retry": {
@@ -4569,6 +4735,10 @@
                   "budgetWatermark": {
                     "enabled": true,
                     "softRatio": 0.2
+                  },
+                  "costAffinity": {
+                    "enabled": false,
+                    "floor": 0.5
                   }
                 },
                 "type": "object",
@@ -4621,6 +4791,25 @@
                         "default": 0.2,
                         "type": "number",
                         "minimum": 0.01,
+                        "maximum": 1
+                      }
+                    }
+                  },
+                  "costAffinity": {
+                    "default": {
+                      "enabled": false,
+                      "floor": 0.5
+                    },
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "floor": {
+                        "default": 0.5,
+                        "type": "number",
+                        "minimum": 0.1,
                         "maximum": 1
                       }
                     }
@@ -18137,6 +18326,141 @@
                         "upstreamModel": {
                           "type": "string",
                           "maxLength": 128
+                        },
+                        "costInputPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "costOutputPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "costCacheInputPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "costCacheWritePrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "costUnitPrice": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "costConfig": {
+                          "type": "object",
+                          "properties": {
+                            "strategy": {
+                              "type": "string",
+                              "enum": [
+                                "flat",
+                                "variant",
+                                "schedule"
+                              ]
+                            },
+                            "params": {
+                              "type": "object",
+                              "properties": {
+                                "unitPrice": {
+                                  "type": "string"
+                                },
+                                "selector": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 64
+                                },
+                                "prices": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "additionalProperties": {
+                                    "type": "string"
+                                  }
+                                },
+                                "windows": {
+                                  "minItems": 1,
+                                  "maxItems": 24,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 32
+                                      },
+                                      "start": {
+                                        "type": "string",
+                                        "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                                      },
+                                      "end": {
+                                        "type": "string",
+                                        "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                                      },
+                                      "inputPrice": {
+                                        "type": "string"
+                                      },
+                                      "outputPrice": {
+                                        "type": "string"
+                                      },
+                                      "cacheInputPrice": {
+                                        "type": "string"
+                                      },
+                                      "cacheWritePrice": {
+                                        "type": "string"
+                                      },
+                                      "unitPrice": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "start",
+                                      "end"
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "required": [
+                            "strategy"
+                          ]
+                        },
+                        "costIsFree": {
+                          "type": "boolean"
                         }
                       },
                       "required": [

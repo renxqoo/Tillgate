@@ -30,12 +30,25 @@ const budgetWatermarkSchema = z.object({
   softRatio: z.number().min(0.01).max(1).default(0.2),
 });
 
+/**
+ * 成本亲和评分器：同 priority 层内偏爱更便宜的渠道（双轨定价——docs/channel-cost-pricing.md）。
+ * 缺省关闭（裁决 C4：不隐式改变存量路由分布）；factor = cheapest/own（名义成本 =
+ * 绑定成本五轴的输入+输出轴），floor 为降权下限（防垄断对偶——过强会把流量全部压向
+ * 最便宜渠道，压过健康信号，与 cacheAffinity boost 上限同哲学）。
+ */
+const costAffinitySchema = z.object({
+  enabled: z.boolean().default(false),
+  floor: z.number().min(0.1).max(1).default(0.5),
+});
+const COST_AFFINITY_DEFAULT = { enabled: false, floor: 0.5 };
+
 const CACHE_AFFINITY_DEFAULT = { enabled: true, boost: 3, ttlMs: 300_000, prefixChars: 4_096 };
 const BUDGET_WATERMARK_DEFAULT = { enabled: true, softRatio: 0.2 };
 
 const scorersSchema = z.object({
   cacheAffinity: cacheAffinitySchema.default(CACHE_AFFINITY_DEFAULT),
   budgetWatermark: budgetWatermarkSchema.default(BUDGET_WATERMARK_DEFAULT),
+  costAffinity: costAffinitySchema.default(COST_AFFINITY_DEFAULT),
 });
 
 /** 同渠道重试预算（瞬态类扛短暂限流——退避下界已实现取 Retry-After） */
@@ -92,6 +105,7 @@ export const routingPolicySchema = z
     scorers: scorersSchema.default({
       cacheAffinity: CACHE_AFFINITY_DEFAULT,
       budgetWatermark: BUDGET_WATERMARK_DEFAULT,
+      costAffinity: COST_AFFINITY_DEFAULT,
     }),
     retry: retrySchema.default({ sameChannelMaxRetries: 3 }),
     penalty: penaltySchema.default({

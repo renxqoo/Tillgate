@@ -161,7 +161,56 @@ async function toSnapshotRow(input: {
   };
 }
 
-function toChannelCandidate(row: RouteCandidateRow): ChannelCandidate {
+/**
+ * 渠道成本五轴解析：COALESCE 合并价（绑定覆盖 ?? 映射官方）经 cost_config schedule
+ * 窗口字段级覆盖（解析时刻 = hold==settle，与变体定价同哲学——预留与结算共用同一快照，
+ * settle 不变式 cost ≤ reserved 由同源快照保证）。无策略/未命中 → 合并平价原样。
+ */
+function costPricesOf(
+  row: RouteCandidateRow,
+  clock: { now: Date; timezone: string },
+): NonNullable<ChannelCandidate['costPrices']> {
+  // 免费标记是业务判定源（用户裁决 2026-08-31）：价格列保持继承默认不清写，
+  // 此处物化全 0 成本轴——预留/结算/评分下游全部零改动
+  if (row.costIsFree) {
+    return {
+      inputPrice: '0',
+      cacheInputPrice: '0',
+      cacheWritePrice: '0',
+      outputPrice: '0',
+      unitPrice: '0',
+    };
+  }
+  const flat = {
+    inputPrice: row.costInputPrice,
+    cacheInputPrice: row.costCacheInputPrice,
+    cacheWritePrice: row.costCacheWritePrice,
+    outputPrice: row.costOutputPrice,
+    unitPrice: row.costUnitPrice,
+  };
+  const config = row.costConfig as Parameters<typeof strategyOf>[0];
+  if (config == null || config.strategy == null) return flat;
+  const overrides = strategyOf(config).resolvePriceOverrides({
+    units: 0,
+    body: {},
+    config,
+    fallbackUnitPrice: flat.unitPrice,
+    now: clock.now,
+    timezone: clock.timezone,
+  });
+  return {
+    inputPrice: overrides?.inputPrice ?? flat.inputPrice,
+    cacheInputPrice: overrides?.cacheInputPrice ?? flat.cacheInputPrice,
+    cacheWritePrice: overrides?.cacheWritePrice ?? flat.cacheWritePrice,
+    outputPrice: overrides?.outputPrice ?? flat.outputPrice,
+    unitPrice: overrides?.unitPrice ?? flat.unitPrice,
+  };
+}
+
+function toChannelCandidate(
+  row: RouteCandidateRow,
+  clock: { now: Date; timezone: string },
+): ChannelCandidate {
   return {
     channelId: row.channelId,
     channelName: row.channelName,
@@ -177,6 +226,7 @@ function toChannelCandidate(row: RouteCandidateRow): ChannelCandidate {
     ...(row.tpmLimit != null ? { tpmLimit: row.tpmLimit } : {}),
     ...(row.upstreamBudget != null ? { upstreamBudget: row.upstreamBudget } : {}),
     ...(row.upstreamRemaining != null ? { upstreamRemaining: row.upstreamRemaining } : {}),
+    costPrices: costPricesOf(row, clock),
   };
 }
 
@@ -204,7 +254,9 @@ export function createGatewayCatalog(stores: CatalogStores): CatalogPort {
     },
     async resolveChannels(realModel): Promise<ChannelCandidate[]> {
       const rows = await stores.channels.findRouteCandidates(realModel);
-      return rows.map(toChannelCandidate);
+      // 成本窗口解析时刻 = hold==settle（裁决 C3）：预留与结算共用同一成本快照
+      const clock = { now: new Date(), timezone: await stores.billingTimezone.read() };
+      return rows.map((row) => toChannelCandidate(row, clock));
     },
   };
 }

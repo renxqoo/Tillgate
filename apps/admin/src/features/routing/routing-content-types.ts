@@ -35,6 +35,10 @@ export interface PolicyForm {
   cacheBoost: string;
   budgetWatermarkEnabled: boolean;
   softRatio: string;
+  /** 成本亲和评分器（scorers.costAffinity）：同层内偏爱更便宜渠道，缺省关闭 */
+  costEnabled: boolean;
+  /** 降权下限 floor（0.1–1，schema 缺省 0.5）——表单态为字符串 */
+  costFloor: string;
   sameChannelMaxRetries: string;
   rateLimitBaseMs: string;
   rateLimitMaxMs: string;

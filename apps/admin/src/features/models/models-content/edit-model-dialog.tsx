@@ -23,8 +23,9 @@ import * as z from 'zod';
 import type { AdminModelRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 import { numericText } from '@/lib/forms';
-import { ModelForm, type WithBillingConfig } from './model-form';
-import { PRICING_UNITS, FREE_MODEL_PRICES, refinePricing, type PricingUnit } from './model-pricing';
+import { strategyDraftFromConfig } from './billing-config-payload';
+import { buildPricingShape, ModelForm, type WithBillingConfig } from './model-form';
+import { FREE_MODEL_PRICES, refinePricingField } from './model-pricing';
 
 function buildEditSchema(
   t: ReturnType<typeof useTranslations<'models'>>,
@@ -41,17 +42,8 @@ function buildEditSchema(
     .object({
       externalName: z.string().min(1),
       realModel: z.string().min(1),
-      inputPrice: z.string(),
-      outputPrice: z.string(),
-      cacheInputPrice: z.string(),
-      cacheWritePrice: z.string(),
-      pricingUnit: z
-        .string()
-        .refine(
-          (v): v is PricingUnit => (PRICING_UNITS as readonly string[]).includes(v),
-          t('unitRequired'),
-        ),
-      unitPrice: z.string(),
+      // 定价域（PricingEditor 受控值）：计价方式编辑态锁定（UI 只读，值保持模型行原值）
+      pricing: buildPricingShape(t),
       isFree: z.boolean().optional(),
       contextLength: optionalIntText,
       fallbackModels: z.string().optional(),
@@ -75,23 +67,29 @@ function buildEditSchema(
         tc('invalidInteger'),
       ),
     })
-    .superRefine((v, ctx) => refinePricing(v, ctx, t('invalidPrice')));
+    .superRefine((v, ctx) =>
+      refinePricingField({ ...v.pricing, isFree: v.isFree }, ctx, t('invalidPrice')),
+    );
 }
 
 /** 编辑表单值类型（zod schema 输入侧） */
 type EditFormValues = z.input<ReturnType<typeof buildEditSchema>>;
 
-/** 编辑表单默认值：DB 行 → 字符串形态（空值归一为 ''，JSON 策略美化回显） */
+/** 编辑表单默认值：DB 行 → 字符串形态（空值归一为 ''，JSON 策略美化回显；billingConfig → 策略行模型草稿） */
 function buildEditDefaultValues(model: AdminModelRow) {
+  const pricingUnit = model.pricingUnit ?? 'token';
   return {
     externalName: model.externalName,
     realModel: model.realModel,
-    inputPrice: model.inputPrice ?? '',
-    outputPrice: model.outputPrice ?? '',
-    cacheInputPrice: model.cacheInputPrice ?? '',
-    cacheWritePrice: model.cacheWritePrice ?? '',
-    pricingUnit: model.pricingUnit ?? 'token',
-    unitPrice: model.unitPrice ? String(Number(model.unitPrice)) : '',
+    pricing: {
+      pricingUnit,
+      inputPrice: model.inputPrice ?? '',
+      outputPrice: model.outputPrice ?? '',
+      cacheInputPrice: model.cacheInputPrice ?? '',
+      cacheWritePrice: model.cacheWritePrice ?? '',
+      unitPrice: model.unitPrice ? String(Number(model.unitPrice)) : '',
+      strategy: strategyDraftFromConfig(pricingUnit, model.billingConfig ?? undefined),
+    },
     isFree: model.isFree ?? false,
     contextLength: model.contextLength == null ? '' : String(model.contextLength),
     fallbackModels: model.fallbackModels ?? '',
@@ -105,23 +103,25 @@ function buildEditDefaultValues(model: AdminModelRow) {
 
 /** 编辑提交载荷：表单字符串值 → API 载荷（免费五价归零、价格按计价方式分流、空值归 null/undefined、billingConfig 显式清除） */
 function toEditPayload(values: WithBillingConfig<EditFormValues>) {
-  const tokenMode = values.pricingUnit === 'token';
+  const { pricing } = values;
+  const tokenMode = pricing.pricingUnit === 'token';
   return {
     externalName: values.externalName,
     realModel: values.realModel,
-    pricingUnit: values.pricingUnit,
+    // 计价方式在创建时确定（UI 锁定不可改）：照旧提交模型行原值
+    pricingUnit: pricing.pricingUnit,
     // 免费模型：五价显式归零（价格输入已禁用免填，合并判不残留旧非零价）；
     // 其余只提交当前计价方式下的价格（另一侧保留 DB 旧值，计费按 pricingUnit 分流不受影响）
     ...(values.isFree
       ? FREE_MODEL_PRICES
       : tokenMode
         ? {
-            inputPrice: values.inputPrice,
-            outputPrice: values.outputPrice,
-            cacheInputPrice: values.cacheInputPrice,
-            ...(values.cacheWritePrice !== '' ? { cacheWritePrice: values.cacheWritePrice } : {}),
+            inputPrice: pricing.inputPrice,
+            outputPrice: pricing.outputPrice,
+            cacheInputPrice: pricing.cacheInputPrice,
+            ...(pricing.cacheWritePrice !== '' ? { cacheWritePrice: pricing.cacheWritePrice } : {}),
           }
-        : { unitPrice: values.unitPrice }),
+        : { unitPrice: pricing.unitPrice }),
     // 差价/时段配置显式管理：表单带 billingConfig 提交（variant 或 schedule），
     // 否则 null 清除（避免 DB 残留与界面不一致）——token 模式也可配分时段价
     ...(values.billingConfig == null
@@ -199,13 +199,7 @@ export function EditModelDialog({
             <PencilIcon /> {t('editTitle', { name: model.externalName })}
           </DialogTitle>
         </DialogHeader>
-        <ModelForm
-          form={form}
-          onSubmit={onSubmit}
-          formId="model-edit-form"
-          isEdit
-          initialBillingConfig={model.billingConfig ?? undefined}
-        />
+        <ModelForm form={form} onSubmit={onSubmit} formId="model-edit-form" isEdit />
         <DialogFooter>
           <DialogClose render={<Button variant="outline">{tUi('cancel')}</Button>} />
           <Button type="submit" form="model-edit-form" disabled={pending}>

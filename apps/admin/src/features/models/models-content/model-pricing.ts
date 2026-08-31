@@ -96,3 +96,38 @@ export function refinePricing(
     bad('unitPrice', invalidPrice);
   }
 }
+
+/**
+ * 定价域嵌套字段校验（schema 将定价收进 pricing 字段后的两弹窗共用入口）：
+ * 复用 refinePricing 平铺逻辑，字段路径前置 'pricing'，RHF 错误按路径落到
+ * errors.pricing.<field>，由 PricingEditor 的 fieldErrors 逐字段渲染。
+ */
+export function refinePricingField(
+  v: {
+    isFree?: boolean;
+    pricingUnit: string;
+    inputPrice: string;
+    outputPrice: string;
+    cacheInputPrice: string;
+    cacheWritePrice?: string;
+    unitPrice?: string;
+  },
+  ctx: z.RefinementCtx,
+  invalidPrice: string,
+) {
+  refinePricing(v, remapIssuePath(ctx, 'pricing'), invalidPrice);
+}
+
+/** ctx 路径重映射：addIssue 的字段路径前置 prefix（zod v4 issue 为联合——字符串简写单独收口） */
+function remapIssuePath(ctx: z.RefinementCtx, prefix: string): z.RefinementCtx {
+  return {
+    ...ctx,
+    addIssue: (arg) => {
+      if (typeof arg === 'string') {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: arg, path: [prefix] });
+        return;
+      }
+      ctx.addIssue({ ...arg, path: [prefix, ...(arg.path ?? [])] });
+    },
+  };
+}

@@ -101,6 +101,7 @@ async function settleChatDelivered(
     externalModel: ctx.prepared.externalModel,
     channelId: ctx.channel.channelId,
     channelKey: ctx.channel.channelName,
+    channel: ctx.channel,
     durationMs,
     body: ctx.prepared.body,
     responseBody: result.body,

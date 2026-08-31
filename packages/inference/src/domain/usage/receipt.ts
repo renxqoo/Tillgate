@@ -1,4 +1,4 @@
-import type { RequestAuth } from '../model/types';
+import type { ChannelCandidate, RequestAuth } from '../model/types';
 import type { QuoteCandidate } from '../model/types';
 import { measurementOf } from './measurement';
 import type { EstimateAttribution } from './attribution';
@@ -79,6 +79,17 @@ export interface UsageReceipt {
   /** 首字延迟观测（流式专属；上游锚点=本次渠道发起，客户端锚点=请求进入） */
   upstreamTtftMs?: number;
   clientTtftMs?: number;
+  /**
+   * 渠道成本五轴快照（结算双口径的成本轴——upstreamCost = 本轴 × 系数 1）：
+   * buildReceipt 恒物化（channel.costPrices ?? 候选映射官方价），继承口径不靠缺省隐式。
+   */
+  costPrices: {
+    inputPrice: string;
+    cacheInputPrice: string;
+    cacheWritePrice: string;
+    outputPrice: string;
+    unitPrice: string;
+  };
 }
 
 export interface ReceiptParams {
@@ -96,6 +107,8 @@ export interface ReceiptParams {
   /** 上游响应体——计量描述符的实值源（images 的 data.length）；估算分支可缺 */
   responseBody?: unknown;
   usage: ReceiptUsage;
+  /** 实际服务渠道（成本五轴来源；缺省 = 无渠道面的收据，回落候选映射官方价） */
+  channel?: Pick<ChannelCandidate, 'costPrices'>;
 }
 
 /**
@@ -162,5 +175,13 @@ export function buildReceipt(params: ReceiptParams): UsageReceipt {
     ...(usage.estimated ? { estimatedFor: 'usage_missing_nonstream' } : {}),
     ...(usage.estimated ? { bytesRelayed: 0 } : {}),
     ...(outputEvidenceBytes !== undefined ? { outputEvidenceBytes } : {}),
+    // 成本轴物化（双轨定价 C3）：渠道绑定成本 ?? 候选映射官方价——upstreamCost 单一来源
+    costPrices: (params.channel?.costPrices ?? {
+      inputPrice: candidate.inputPrice,
+      cacheInputPrice: candidate.cacheInputPrice,
+      cacheWritePrice: candidate.cacheWritePrice ?? '0',
+      outputPrice: candidate.outputPrice,
+      unitPrice: candidate.unitPrice ?? '0',
+    }) as UsageReceipt['costPrices'],
   };
 }

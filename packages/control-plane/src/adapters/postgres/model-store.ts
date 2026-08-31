@@ -189,14 +189,32 @@ export const postgresModelStore: ModelStore = {
 
   async listBindingsByMappingIds(db, mappingIds) {
     if (mappingIds.length === 0) return [];
-    return db
-      .select({
-        mappingId: modelChannels.mappingId,
-        channelId: modelChannels.channelId,
-        upstreamModel: modelChannels.upstreamModel,
-      })
-      .from(modelChannels)
-      .where(inArray(modelChannels.mappingId, [...mappingIds]));
+    return (
+      db
+        .select({
+          mappingId: modelChannels.mappingId,
+          channelId: modelChannels.channelId,
+          upstreamModel: modelChannels.upstreamModel,
+          // 成本覆盖回显（null = 继承映射官方价——双轨定价绑定编辑态）
+          costInputPrice: sql<string | null>`${modelChannels.costInputPrice}::text`,
+          costOutputPrice: sql<string | null>`${modelChannels.costOutputPrice}::text`,
+          costCacheInputPrice: sql<string | null>`${modelChannels.costCacheInputPrice}::text`,
+          costCacheWritePrice: sql<string | null>`${modelChannels.costCacheWritePrice}::text`,
+          costUnitPrice: sql<string | null>`${modelChannels.costUnitPrice}::text`,
+          costConfig: modelChannels.costConfig,
+          costIsFree: modelChannels.costIsFree,
+        })
+        .from(modelChannels)
+        .where(inArray(modelChannels.mappingId, [...mappingIds]))
+        // costConfig 列类型 BillingConfigJson → 行边界收窄（端口契约 Record<string,unknown>）
+        .then((rows) =>
+          rows.map((r) => ({
+            ...r,
+            costConfig: r.costConfig as unknown as Record<string, unknown>,
+            costIsFree: r.costIsFree ?? false,
+          })),
+        )
+    );
   },
 
   async listBoundChannelsForProbe(db, mappingId) {

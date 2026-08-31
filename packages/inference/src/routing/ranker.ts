@@ -13,10 +13,12 @@ import type { RoutingPolicy } from './policy';
 export interface RankContext {
   /** cache 亲和命中的渠道（无 = null；不健康渠道由 gates 拦，打分不判健康） */
   stickyChannelId: number | null;
+  /** 本轮候选全集（costAffinity 取层内最便宜基线用；缺省 = 空集，成本评分器不挂） */
+  channels?: readonly ChannelCandidate[];
 }
 
 export interface ChannelScorer {
-  name: 'budget-watermark' | 'cache-affinity';
+  name: 'budget-watermark' | 'cache-affinity' | 'cost-affinity';
   /** 权重乘数：>=0.1（floor——不归零，归零等于禁用试探流量） */
   factor(channel: ChannelCandidate): number;
 }
@@ -36,6 +38,31 @@ export function budgetWatermarkFactor(
 }
 
 /** 按策略段装配评分器管线（注册表——新增评分器在此登记） */
+/**
+ * 成本亲和因子：层内名义成本（input+output 五轴之二）相对最便宜的降权比。
+ * cheapest/own（自身即最便宜 → 1）；无成本面（测试替身）或零成本分母 → 1（不参与）。
+ * floor 钳下限（裁决 C4：防成本信号垄断流量分布）。
+ */
+export function costAffinityFactor(
+  channel: Pick<ChannelCandidate, 'costPrices'>,
+  cheapestNominal: number,
+  floor: number,
+): number {
+  const cost = channel.costPrices;
+  if (cost == null) return 1;
+  const nominal = Number(cost.inputPrice) + Number(cost.outputPrice);
+  if (!Number.isFinite(nominal) || nominal <= 0 || cheapestNominal <= 0) return 1;
+  return Math.max(floor, Math.min(1, cheapestNominal / nominal));
+}
+
+/** 层内名义成本（input+output 五轴之二；无成本面/非数 → Infinity = 不参与基线竞争） */
+function nominalCostOf(ch: ChannelCandidate): number {
+  const cost = ch.costPrices;
+  if (cost == null) return Number.POSITIVE_INFINITY;
+  const nominal = Number(cost.inputPrice) + Number(cost.outputPrice);
+  return Number.isFinite(nominal) && nominal > 0 ? nominal : Number.POSITIVE_INFINITY;
+}
+
 export function buildScorers(policy: RoutingPolicy, ctx: RankContext): ChannelScorer[] {
   const scorers: ChannelScorer[] = [];
   if (policy.scorers.budgetWatermark.enabled) {
@@ -44,6 +71,17 @@ export function buildScorers(policy: RoutingPolicy, ctx: RankContext): ChannelSc
       name: 'budget-watermark',
       factor: (ch) => budgetWatermarkFactor(ch, softRatio),
     });
+  }
+  if (policy.scorers.costAffinity.enabled) {
+    const { floor } = policy.scorers.costAffinity;
+    // 空集/全无成本面 → Infinity → 不挂评分器（缺省禁用态零行为）
+    const cheapest = Math.min(...(ctx.channels ?? []).map(nominalCostOf));
+    if (Number.isFinite(cheapest)) {
+      scorers.push({
+        name: 'cost-affinity',
+        factor: (ch) => costAffinityFactor(ch, cheapest, floor),
+      });
+    }
   }
   if (policy.scorers.cacheAffinity.enabled && ctx.stickyChannelId != null) {
     const { boost } = policy.scorers.cacheAffinity;
@@ -88,7 +126,7 @@ export function rankChannels(input: {
 }): ChannelCandidate[] {
   const { channels, policy, ctx } = input;
   const rng = input.rng ?? Math.random;
-  const scorers = buildScorers(policy, ctx);
+  const scorers = buildScorers(policy, { ...ctx, channels });
   const tiers = new Map<number, ChannelCandidate[]>();
   for (const channel of channels) {
     const tier = tiers.get(channel.priority);

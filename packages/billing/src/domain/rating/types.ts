@@ -79,6 +79,18 @@ export interface UsageReceipt {
   estimatedFor?: EstimateAttribution;
   /** 触发估算的透传字节数（校准作业与审计数据源；TTFB 期取消为 0） */
   bytesRelayed?: number;
+  /**
+   * 渠道成本价快照（双轨定价：实际服务渠道的绑定成本，catalog 解析时刻 hold==settle）。
+   * 缺省 = 无渠道成本面（继承口径由 inference 侧物化成映射官方价后传入）；
+   * upstreamCost = 本五轴 × 系数 1（amounts.ts），不参与收据授权（C5）。
+   */
+  costPrices?: {
+    inputPrice: string;
+    cacheInputPrice: string;
+    cacheWritePrice: string;
+    outputPrice: string;
+    unitPrice: string;
+  };
 }
 
 /** 用户侧取消原因（网关路由判定与收据验收共用子集） */

@@ -29,9 +29,49 @@ export interface ModelRowSource {
   readonly updatedAt: Date;
 }
 
+/** 绑定行 → wire channels 项（成本面透传：可空列判空后 normalizeAmount 砍尾零；
+ * 曾在此被截成两字段导致弹窗成本回显恒空——回归锚点） */
+function toBindingWireChannels(
+  channels: ReadonlyArray<{
+    channelId: number;
+    upstreamModel: string;
+    costInputPrice: string | null;
+    costOutputPrice: string | null;
+    costCacheInputPrice: string | null;
+    costCacheWritePrice: string | null;
+    costUnitPrice: string | null;
+    costConfig: Record<string, unknown>;
+    costIsFree: boolean;
+  }>,
+) {
+  return channels.map((c) => ({
+    channelId: c.channelId,
+    upstreamModel: c.upstreamModel,
+    costInputPrice: c.costInputPrice == null ? null : normalizeAmount(c.costInputPrice),
+    costOutputPrice: c.costOutputPrice == null ? null : normalizeAmount(c.costOutputPrice),
+    costCacheInputPrice:
+      c.costCacheInputPrice == null ? null : normalizeAmount(c.costCacheInputPrice),
+    costCacheWritePrice:
+      c.costCacheWritePrice == null ? null : normalizeAmount(c.costCacheWritePrice),
+    costUnitPrice: c.costUnitPrice == null ? null : normalizeAmount(c.costUnitPrice),
+    costConfig: c.costConfig,
+    costIsFree: c.costIsFree,
+  }));
+}
+
 export function toModelWireRow(
   row: ModelRowSource,
-  channels: ReadonlyArray<{ channelId: number; upstreamModel: string }> = [],
+  channels: ReadonlyArray<{
+    channelId: number;
+    upstreamModel: string;
+    costInputPrice: string | null;
+    costOutputPrice: string | null;
+    costCacheInputPrice: string | null;
+    costCacheWritePrice: string | null;
+    costUnitPrice: string | null;
+    costConfig: Record<string, unknown>;
+    costIsFree: boolean;
+  }> = [],
 ) {
   return {
     id: row.id,
@@ -55,6 +95,6 @@ export function toModelWireRow(
     deletedAt: iso(row.deletedAt),
     createdAt: isoRequired(row.createdAt),
     updatedAt: isoRequired(row.updatedAt),
-    channels: channels.map((c) => ({ channelId: c.channelId, upstreamModel: c.upstreamModel })),
+    channels: toBindingWireChannels(channels),
   };
 }

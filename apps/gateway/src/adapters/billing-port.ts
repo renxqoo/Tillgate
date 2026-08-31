@@ -18,6 +18,10 @@ import {
 } from '@tillgate/billing';
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
 import type { BillingPort, BillingSignal, QuoteCandidate, UsageReceipt } from '@tillgate/inference';
+import type { ChannelCandidate } from '@tillgate/inference';
+
+/** 渠道成本五轴形状（ChannelCandidate.costPrices——避免重复内联） */
+type QuoteCandidateCostPrices = NonNullable<ChannelCandidate['costPrices']>;
 
 export interface GatewayBillingConfig {
   /** 单笔预估敞口上限解析（每次 authorize 现读——TTL 缓存的 system_configs KV） */
@@ -144,20 +148,26 @@ function toBillingEvent(signal: BillingSignal): BillingEvent {
   }
 }
 
-/** 渠道进货额度金额：官方价口径（coefficient=1，衡量上游成本，与用户费率卡无关） */
-function officialPriceAmount(
-  c: QuoteCandidate,
-  estimatedInputTokens: number,
-  maxOutputTokens: number,
-): string {
+/**
+ * 渠道进货额度金额：成本口径（coefficient=1，衡量上游成本，与用户费率卡无关）。
+ * 双轨定价：优先渠道绑定成本五轴（含 cost_config 窗口解析——与结算同一快照），
+ * 缺省回落候选映射官方价（继承口径，行为与旧实现一致）。
+ */
+function channelCostAmount(input: {
+  candidate: QuoteCandidate;
+  costPrices?: QuoteCandidateCostPrices;
+  estimatedInputTokens: number;
+  maxOutputTokens: number;
+}): string {
+  const { candidate: c, costPrices: cost } = input;
   return estimateMaxCost({
-    estimatedInputTokens,
-    maxOutputTokens,
-    inputPrice: c.inputPrice,
-    cacheInputPrice: c.cacheInputPrice,
-    cacheWritePrice: c.cacheWritePrice ?? undefined,
-    outputPrice: c.outputPrice,
-    unitPrice: c.unitPrice ?? '0',
+    estimatedInputTokens: input.estimatedInputTokens,
+    maxOutputTokens: input.maxOutputTokens,
+    inputPrice: cost?.inputPrice ?? c.inputPrice,
+    cacheInputPrice: cost?.cacheInputPrice ?? c.cacheInputPrice,
+    cacheWritePrice: cost?.cacheWritePrice ?? c.cacheWritePrice ?? undefined,
+    outputPrice: cost?.outputPrice ?? c.outputPrice,
+    unitPrice: cost?.unitPrice ?? c.unitPrice ?? '0',
     unitUpperBound: c.unitUpperBound,
     coefficient: '1',
   }).toString();
@@ -248,11 +258,7 @@ export function createGatewayBilling(
     },
 
     async reserveChannel(input) {
-      const amount = officialPriceAmount(
-        input.candidate,
-        input.estimatedInputTokens,
-        input.maxOutputTokens,
-      );
+      const amount = channelCostAmount(input);
       const result = await api.reserveChannel({
         requestId: input.requestId,
         channelId: input.channelId,

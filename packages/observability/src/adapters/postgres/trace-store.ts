@@ -207,6 +207,37 @@ function findTraceByRequestId(db: Db, requestId: string) {
     .orderBy(asc(traceSpans.startTime));
 }
 
+/**
+ * 换渠事实面:billing.reserve_channel span 聚合(attributes.billing.switched 由 gates
+ * 桥接层只在 allowed 且发生换渠时写入)。与 upstream 尝试分列聚合——拓扑行集仍由
+ * upstream 尝试定义(零尝试渠道不出现),预留数只做既有行的增补。
+ */
+async function channelReserveAggOf(
+  db: Db,
+  since: Date,
+): Promise<Map<string, { reservations: number; switchedReservations: number }>> {
+  const reserves = await db.execute<{
+    channel: string | null;
+    reservations: string;
+    switched: string;
+  }>(sql`
+    select channel,
+           count(*)::text as reservations,
+           count(*) filter (where attributes->>'billing.switched' = 'true')::text as switched
+    from trace_spans
+    where service = 'gateway'
+      and name = 'billing.reserve_channel'
+      and start_time >= ${since}
+    group by channel
+  `);
+  return new Map(
+    reserves.map((r) => [
+      r.channel ?? '(未标注)',
+      { reservations: Number(r.reservations), switchedReservations: Number(r.switched) },
+    ]),
+  );
+}
+
 /** 渠道健康拓扑(48h 窗口径由调用方定) */
 async function channelTopologyImpl(db: Db, sinceMs: number): Promise<ChannelHealth[]> {
   const since = new Date(sinceMs);
@@ -232,29 +263,7 @@ async function channelTopologyImpl(db: Db, sinceMs: number): Promise<ChannelHeal
     group by channel
     order by count(*) desc
   `);
-  // 换渠事实在 billing.reserve_channel span(attributes.billing.switched=gates 桥接层
-  // 只在 allowed 且发生换渠时写入)——与 upstream 尝试分列聚合,JS 侧按渠道名合并:
-  // 拓扑行集仍由 upstream 尝试定义(零尝试渠道不出现),预留数只做既有行的增补
-  const reserves = await db.execute<{
-    channel: string | null;
-    reservations: string;
-    switched: string;
-  }>(sql`
-    select channel,
-           count(*)::text as reservations,
-           count(*) filter (where attributes->>'billing.switched' = 'true')::text as switched
-    from trace_spans
-    where service = 'gateway'
-      and name = 'billing.reserve_channel'
-      and start_time >= ${since}
-    group by channel
-  `);
-  const reserveByChannel = new Map(
-    reserves.map((r) => [
-      r.channel ?? '(未标注)',
-      { reservations: Number(r.reservations), switchedReservations: Number(r.switched) },
-    ]),
-  );
+  const reserveByChannel = await channelReserveAggOf(db, since);
   return result.map((row) => ({
     channel: row.channel ?? '(未标注)',
     attempts: Number(row.attempts),

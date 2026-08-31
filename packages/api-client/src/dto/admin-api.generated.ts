@@ -303,8 +303,8 @@ export interface AdminModelRow {
   pricingUnit?: string;
   /** 单位单价(元/张·秒·字符·次;token 模型 0) */
   unitPrice?: string;
-  /** 变体价格配置(分辨率差价):strategy=variant + params.{selector, prices} */
-  billingConfig?: { strategy?: string; params?: { unitPrice?: string; selector?: string; prices?: Record<string, string> } } | null;
+  /** 计费配置:variant=params.{selector,prices}(差价档位) / schedule=params.windows(分时段) / flat=缺省 */
+  billingConfig?: { strategy?: string; params?: { unitPrice?: string; selector?: string; prices?: Record<string, string>; windows?: { label?: string; start: string; end: string; inputPrice?: string; outputPrice?: string; cacheInputPrice?: string; cacheWritePrice?: string; unitPrice?: string }[] } } | null;
   isFree: boolean;
   contextLength: number | null;
   /** 兜底模型清单(无来源,恒 null) */
@@ -320,7 +320,7 @@ export interface AdminModelRow {
   createdAt: string;
   updatedAt: string;
   /** 已绑定渠道(含出站模型名;供「绑定渠道」弹窗回显已选与异名) */
-  channels: { channelId: number; /** 该渠道的出站模型名(厂商异名;缺省 = 映射规范名 realModel) */upstreamModel: string }[];
+  channels: { channelId: number; /** 该渠道的出站模型名(厂商异名;缺省 = 映射规范名 realModel) */upstreamModel: string; /** 渠道成本覆盖·输入单价(null = 继承映射官方价;双轨定价) */costInputPrice: string | null; /** 渠道成本覆盖·输出单价(null = 继承) */costOutputPrice: string | null; /** 渠道成本覆盖·缓存命中单价(null = 继承) */costCacheInputPrice: string | null; /** 渠道成本覆盖·缓存写单价(null = 继承) */costCacheWritePrice: string | null; /** 渠道成本覆盖·单位单价(次/张/秒/字符;null = 继承) */costUnitPrice: string | null; /** 成本侧计费配置(schedule 峰谷窗口等;与映射 billingConfig 同构) */costConfig: Record<string, unknown>; /** 成本免费显式标记(true = 进货成本恒 0;价格列保持继承默认) */costIsFree: boolean }[];
 }
 
 /** 创建模型映射请求体（POST /v1/models;字段真相 = contracts zod,价格十进制字符串,unitPrice 收 string | number） */
@@ -789,7 +789,7 @@ export interface RoutingPolicyRecord {
   /** 策略版本（每次保存行级自增——观测/回滚锚点） */
   version: string;
   /** 当前生效策略体（五段结构） */
-  policy: { version: number; enabled: boolean; scorers: { cacheAffinity: { enabled: boolean; boost: number; ttlMs: number; prefixChars: number }; budgetWatermark: { enabled: boolean; softRatio: number } }; retry: { sameChannelMaxRetries: number }; penalty: { rateLimitBaseMs: number; rateLimitMaxMs: number; quotaMs: number; conditionalBypass: boolean }; modelDead: { failureThreshold: number; ttlMs: number; windowMs: number }; wait: { enabled: boolean; maxWaitMs: number } };
+  policy: { version: number; enabled: boolean; scorers: { cacheAffinity: { enabled: boolean; boost: number; ttlMs: number; prefixChars: number }; budgetWatermark: { enabled: boolean; softRatio: number }; costAffinity: { enabled: boolean; floor: number } }; retry: { sameChannelMaxRetries: number }; penalty: { rateLimitBaseMs: number; rateLimitMaxMs: number; quotaMs: number; conditionalBypass: boolean }; modelDead: { failureThreshold: number; ttlMs: number; windowMs: number }; wait: { enabled: boolean; maxWaitMs: number } };
   /** 变更备注（最近一次保存） */
   note: string | null;
   /** 最近保存人（管理员标识） */
@@ -802,12 +802,12 @@ export interface RoutingPolicyRecord {
 export interface RoutingPolicyDefaults {
   unconfigured: true;
   /** 编译期缺省策略（zod 内建 default 全展开） */
-  policy: { version: number; enabled: boolean; scorers: { cacheAffinity: { enabled: boolean; boost: number; ttlMs: number; prefixChars: number }; budgetWatermark: { enabled: boolean; softRatio: number } }; retry: { sameChannelMaxRetries: number }; penalty: { rateLimitBaseMs: number; rateLimitMaxMs: number; quotaMs: number; conditionalBypass: boolean }; modelDead: { failureThreshold: number; ttlMs: number; windowMs: number }; wait: { enabled: boolean; maxWaitMs: number } };
+  policy: { version: number; enabled: boolean; scorers: { cacheAffinity: { enabled: boolean; boost: number; ttlMs: number; prefixChars: number }; budgetWatermark: { enabled: boolean; softRatio: number }; costAffinity: { enabled: boolean; floor: number } }; retry: { sameChannelMaxRetries: number }; penalty: { rateLimitBaseMs: number; rateLimitMaxMs: number; quotaMs: number; conditionalBypass: boolean }; modelDead: { failureThreshold: number; ttlMs: number; windowMs: number }; wait: { enabled: boolean; maxWaitMs: number } };
 }
 
 /** 保存路由策略请求体（PUT /v1/routing-policy;policy 形状单一真相 = @tillgate/inference routingPolicySchema） */
 export interface RoutingPolicySaveBody {
-  policy: { version?: number; enabled?: boolean; scorers?: { cacheAffinity?: { enabled?: boolean; boost?: number; ttlMs?: number; prefixChars?: number }; budgetWatermark?: { enabled?: boolean; softRatio?: number } }; retry?: { sameChannelMaxRetries?: number }; penalty?: { rateLimitBaseMs?: number; rateLimitMaxMs?: number; quotaMs?: number; conditionalBypass?: boolean }; modelDead?: { failureThreshold?: number; ttlMs?: number; windowMs?: number }; wait?: { enabled?: boolean; maxWaitMs?: number } };
+  policy: { version?: number; enabled?: boolean; scorers?: { cacheAffinity?: { enabled?: boolean; boost?: number; ttlMs?: number; prefixChars?: number }; budgetWatermark?: { enabled?: boolean; softRatio?: number }; costAffinity?: { enabled?: boolean; floor?: number } }; retry?: { sameChannelMaxRetries?: number }; penalty?: { rateLimitBaseMs?: number; rateLimitMaxMs?: number; quotaMs?: number; conditionalBypass?: boolean }; modelDead?: { failureThreshold?: number; ttlMs?: number; windowMs?: number }; wait?: { enabled?: boolean; maxWaitMs?: number } };
   note?: string;
 }
 

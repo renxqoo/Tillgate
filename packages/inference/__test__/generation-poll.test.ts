@@ -49,6 +49,13 @@ function receiptTemplate(requestId: string): UsageReceipt {
     streamAborted: false,
     mappingId: 3,
     billingPolicyFingerprint: null,
+    costPrices: {
+      inputPrice: '1',
+      cacheInputPrice: '1',
+      cacheWritePrice: '0',
+      outputPrice: '2',
+      unitPrice: '0',
+    },
   };
 }
 
