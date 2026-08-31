@@ -953,6 +953,7 @@
     "duration": "Duration",
     "retries": "Retries",
     "channels": "Channels",
+    "noHit": "no hit",
     "errorCode": "Error code",
     "retryTimes": "{count}×",
     "noLogs": "No logs",

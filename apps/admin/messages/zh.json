@@ -953,6 +953,7 @@
     "duration": "耗时",
     "retries": "重试",
     "channels": "渠道",
+    "noHit": "未命中",
     "errorCode": "错误码",
     "retryTimes": "{count}次",
     "noLogs": "暂无日志",
