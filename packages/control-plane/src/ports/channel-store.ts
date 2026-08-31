@@ -58,26 +58,29 @@ export interface RouteCandidateRow {
   readonly upstreamBudget: string;
   /** 可用余额（upstream_budget - upstream_reserved；软水位降权信号，非准入硬闸） */
   readonly upstreamRemaining: string;
+  /** 累计正向充值（软水位基数——adjust 纠偏不入；0 = 无充值记录回退 budget 列口径） */
+  readonly upstreamFunded: string;
   /**
-   * 渠道成本五轴（SQL 已 COALESCE：绑定覆盖价 ?? 映射官方价——双轨定价 C2 单轨收口，
-   * docs/channel-cost-pricing.md）。预留估算/收据/成本评分直接消费，无需再判继承。
+   * 渠道成本五轴（绑定值原样——NULL = 未配置该轴，不 COALESCE 继承映射卖价；
+   * docs/channel-cost-pricing.md。消费方单一语义：全 NULL 且未标 free = 成本面缺失
+   * → 预留/结算/评分按零成本，配了成本价才有预算管控）
    */
-  readonly costInputPrice: string;
-  readonly costOutputPrice: string;
-  readonly costCacheInputPrice: string;
-  readonly costCacheWritePrice: string;
-  readonly costUnitPrice: string;
+  readonly costInputPrice: string | null;
+  readonly costOutputPrice: string | null;
+  readonly costCacheInputPrice: string | null;
+  readonly costCacheWritePrice: string | null;
+  readonly costUnitPrice: string | null;
   /** 绑定级成本配置（schedule 峰谷窗口等；'{}' = 无策略）——命中后字段级覆盖成本轴 */
   readonly costConfig: Record<string, unknown>;
   /** 成本免费显式标记：true = 成本轴恒物化全 0（价格列保持继承默认） */
   readonly costIsFree: boolean;
 }
 
-/** worker 任务渠道行：路由候选去掉出站名（任务族的出站名在任务行快照，不在渠道） */
-/** 任务渠道行：路由候选去掉出站名（任务出站名在任务行快照）与成本轴（任务路径不消费成本价） */
+/** 任务渠道行：路由候选去掉出站名（任务出站名在任务行快照）与成本/水位轴（任务路径不消费成本价与软水位） */
 export type TaskChannelRow = Omit<
   RouteCandidateRow,
   | 'upstreamModel'
+  | 'upstreamFunded'
   | 'costInputPrice'
   | 'costOutputPrice'
   | 'costCacheInputPrice'

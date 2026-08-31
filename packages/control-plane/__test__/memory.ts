@@ -443,6 +443,8 @@ export function createMemoryChannelStore(
           tpmLimit: row.tpmLimit,
           upstreamBudget: row.upstreamBudget,
           upstreamRemaining: row.upstreamBudget,
+          // 水位基数 stand-in：内存行无充值聚合——0（回退 budget 列口径）
+          upstreamFunded: '0',
           // 成本轴 stand-in：内存行无绑定覆盖——零价（成本评分器对 0 名义成本不参与，
           // COALESCE 继承语义由 postgres.real 测试承担）
           costInputPrice: '0',

@@ -150,8 +150,10 @@ function toBillingEvent(signal: BillingSignal): BillingEvent {
 
 /**
  * 渠道进货额度金额：成本口径（coefficient=1，衡量上游成本，与用户费率卡无关）。
- * 双轨定价：优先渠道绑定成本五轴（含 cost_config 窗口解析——与结算同一快照），
- * 缺省回落候选映射官方价（继承口径，行为与旧实现一致）。
+ * 渠道绑定成本五轴（含 cost_config 窗口解析——与结算同一快照）；
+ * **undefined = 成本面缺失（绑定全 NULL 未标 free）→ 金额 0（闸门不预扣不拒绝）**，
+ * 与结算口径同源（结算对未配置成本按 0 扣减）——静默回落用户卖价会把免费/低价
+ * 渠道按卖价虚拒（2026-08-30/31 生产事故：敞口 $2.13 > 双渠道余额 → 全 503）。
  */
 function channelCostAmount(input: {
   candidate: QuoteCandidate;
@@ -160,14 +162,15 @@ function channelCostAmount(input: {
   maxOutputTokens: number;
 }): string {
   const { candidate: c, costPrices: cost } = input;
+  if (cost == null) return '0';
   return estimateMaxCost({
     estimatedInputTokens: input.estimatedInputTokens,
     maxOutputTokens: input.maxOutputTokens,
-    inputPrice: cost?.inputPrice ?? c.inputPrice,
-    cacheInputPrice: cost?.cacheInputPrice ?? c.cacheInputPrice,
-    cacheWritePrice: cost?.cacheWritePrice ?? c.cacheWritePrice ?? undefined,
-    outputPrice: cost?.outputPrice ?? c.outputPrice,
-    unitPrice: cost?.unitPrice ?? c.unitPrice ?? '0',
+    inputPrice: cost.inputPrice,
+    cacheInputPrice: cost.cacheInputPrice,
+    cacheWritePrice: cost.cacheWritePrice,
+    outputPrice: cost.outputPrice,
+    unitPrice: cost.unitPrice,
     unitUpperBound: c.unitUpperBound,
     coefficient: '1',
   }).toString();

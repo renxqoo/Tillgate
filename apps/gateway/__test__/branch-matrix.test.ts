@@ -178,6 +178,7 @@ const candidateRow = (over: Partial<RouteCandidateRow> = {}): RouteCandidateRow 
   tpmLimit: null,
   upstreamBudget: '0',
   upstreamRemaining: '0',
+  upstreamFunded: '0',
   costInputPrice: '0',
   costOutputPrice: '0',
   costCacheInputPrice: '0',

@@ -96,10 +96,12 @@ export interface ChannelCandidate {
   upstreamBudget?: string;
   /** 可用余额快照（budget - reserved；软水位降权信号——非准入硬闸，硬闸在 reserveChannel） */
   upstreamRemaining?: string | null;
+  /** 累计正向充值（软水位基数——adjust 纠偏不入；缺省 = 无充值记录回退 budget 口径） */
+  upstreamFunded?: string;
   /**
-   * 渠道成本五轴（双轨定价）：生产目录恒提供（COALESCE 绑定覆盖/映射官方 + cost_config
-   * 窗口解析——docs/channel-cost-pricing.md C3 hold==settle）。缺省 = 测试替身未携带，
-   * 消费方（预留估算/收据/成本评分）回落候选映射价，行为与继承口径一致。
+   * 渠道成本五轴（双轨定价）：free 标记物化全 0；绑定轴任一配置即物化（缺轴 0）；
+   * **undefined = 成本面缺失（全 NULL 未标 free）→ 预留/结算/评分按零成本**
+   * （docs/channel-cost-pricing.md）。静默回落用户卖价会按卖价虚扣虚拒免费/低价渠道。
    */
   costPrices?: {
     inputPrice: string;

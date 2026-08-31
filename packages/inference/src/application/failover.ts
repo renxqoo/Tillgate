@@ -10,7 +10,7 @@ import type { RoutingPolicyReader, StickyStore } from '../ports/routing';
 import type { TracePort } from '../ports/trace';
 import type { UpstreamPort } from '../ports/upstream';
 import type { RoutingPolicy } from '../routing/policy';
-import { gateChannel } from '../routing/gates';
+import { gateChannel, othersAllCoolingFor } from '../routing/gates';
 import { pickPrimaryChannel, rankChannels } from '../routing/ranker';
 import { recordSticky, resolveStickyContext } from '../routing/sticky';
 import type { PreparedRequest } from './quote';
@@ -251,11 +251,11 @@ function candidatesOf(
 
 /** 尝试轨迹上报（attempt 后与全 gate 拒收尾共用——快照数组防调用方突变） */
 function reportAttemptTrace(
-  onAttempts: PassArgs<unknown>['onAttempts'],
+  on: PassArgs<unknown>['onAttempts'],
   total: number,
   trace: readonly string[],
 ): void {
-  onAttempts?.(total, [...trace]);
+  on?.(total, [...trace]);
 }
 
 /** 一轮候选×渠道循环（全败返回事实供有界等待决策） */
@@ -307,6 +307,8 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
     // 预占按本请求估算）不判死模型，只有健康证据（上游失败/熔断/死凭据/惩罚）
     // 才计入死记忆（isRequestScopedRejection 词表单一真相）
     let healthEvidence = false;
+    // 请求维门拒绝存在时判死（临时状态会连坐其恢复后的流量——2026-08-31 修复）
+    let requestScopedRejection = false;
     for (const channel of channels) {
       channelAttempt += 1;
       channelTrace.push(channel.channelName);
@@ -323,12 +325,16 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
         penaltyEnforced,
         // 现场复核仅 bypass 语义下生效——conditionalBypass=false 是保守硬拒（冷却即拒）
         ...(policy.penalty.conditionalBypass
-          ? { penaltyFallback: (currentId: number) => othersAllCooling(deps, channels, currentId) }
+          ? {
+              penaltyFallback: (currentId: number) =>
+                othersAllCoolingFor(deps.memory, channels, currentId),
+            }
           : {}),
       });
       if (gateCode != null) {
         lastCode = gateCode;
-        if (!isRequestScopedRejection(gateCode)) healthEvidence = true;
+        if (isRequestScopedRejection(gateCode)) requestScopedRejection = true;
+        else healthEvidence = true;
         continue;
       }
       if (!leaseStarted) {
@@ -357,8 +363,10 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
       return { value: outcome.value, lastCode, channels: allChannels, failedRealModels };
     }
     // 记账上移请求级（runCandidateLoop 差集收口）——等待重试轮重跑本函数时
-    // 不再重复计数（契约「一次请求最多记一次」，model-dead.ts）
-    if (healthEvidence) failedRealModels.add(candidate.realModel);
+    // 不再重复计数（契约「一次请求最多记一次」，model-dead.ts）。
+    // 判死 = 全部渠道以健康证据耗尽：请求维门拒绝（预算/软限流）是临时状态，
+    // 混入证据会把「从未真死」的渠道连坐进死窗口
+    if (healthEvidence && !requestScopedRejection) failedRealModels.add(candidate.realModel);
   }
   // 全渠道被门拒绝（零上游尝试）也要带出轨迹——预算闸门竭尽场景的排障事实
   reportAttemptTrace(args.onAttempts, attemptTotal, channelTrace);
@@ -379,18 +387,6 @@ function accumulateHealthEvidence(
 ): boolean {
   if (outcome.kind === 'respond') return current;
   return outcome.code != null && !NON_HEALTH_EVIDENCE_CODES.has(outcome.code);
-}
-
-/** 现场复核：除当前渠道外是否全部处于惩罚冷却（单渠道 = 无其它选择 → true） */
-async function othersAllCooling(
-  deps: ExecutionDeps,
-  channels: readonly ChannelCandidate[],
-  currentId: number,
-): Promise<boolean> {
-  const rest = channels.filter((ch) => ch.channelId !== currentId);
-  if (rest.length === 0) return true;
-  const states = await Promise.all(rest.map((ch) => deps.memory.penalized(ch.channelId)));
-  return states.every((p) => p);
 }
 
 /** 候选跳过事实进 trace 不进响应 */
