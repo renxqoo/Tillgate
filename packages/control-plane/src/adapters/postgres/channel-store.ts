@@ -77,7 +77,6 @@ const ROUTE_COST_COLUMNS = {
   costCacheWritePrice: sql<string | null>`${modelChannels.costCacheWritePrice}::text`,
   costUnitPrice: sql<string | null>`${modelChannels.costUnitPrice}::text`,
   costConfig: modelChannels.costConfig,
-  costIsFree: modelChannels.costIsFree,
 } as const;
 
 export const postgresChannelStore: ChannelStore = {

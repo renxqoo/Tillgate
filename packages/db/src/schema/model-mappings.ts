@@ -9,7 +9,6 @@ import {
   index,
   uniqueIndex,
   numeric,
-  boolean,
 } from 'drizzle-orm/pg-core';
 import { jsonb } from './jsonb.js';
 import { sql } from 'drizzle-orm';
@@ -79,11 +78,6 @@ export const modelMappings = pgTable(
      * 系数解析优先级 model > group > global（packages/ledger coefficient.ts 单一真相）。
      */
     pricingGroup: varchar('pricing_group', { length: 32 }),
-    /**
-     * 显式免费模型标记：true 时授权走 0 元 fast-path（不预留余额/额度）。
-     * 免费判定不再靠 `:free` 命名约定——由管理员在建模时显式声明，是唯一事实源。
-     */
-    isFree: boolean('is_free').notNull().default(false),
     /**
      * 可扩展计费配置（策略选择 + 变体价格表）：
      *   {"strategy": "flat"}                                    — 缺省，unitPrice 列直接生效
@@ -172,11 +166,6 @@ export const modelChannels = pgTable(
      * 窗口按解析时刻命中后字段级覆盖成本平价列；未覆盖轴回落 COALESCE 合并价。
      */
     costConfig: jsonb('cost_config').$type<BillingConfigJson>().notNull().default({}),
-    /**
-     * 渠道成本免费显式标记（用户裁决 2026-08-31）：true = 进货成本恒 0（目录解析
-     * 物化全 0 成本轴），价格列保持继承默认不被清写——业务判定走本标记而非 token 价。
-     */
-    costIsFree: boolean('cost_is_free').notNull().default(false),
   },
   (t) => [
     { name: 'model_channels_pk', columns: [t.mappingId, t.channelId], primaryKey: true },

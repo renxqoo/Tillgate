@@ -1489,7 +1489,8 @@
             ]
           },
           "isFree": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "免费标签(价格推导——全零价 = 免费;docs/free-by-price.md)"
           },
           "contextLength": {
             "anyOf": [
@@ -1651,10 +1652,6 @@
                   },
                   "additionalProperties": {},
                   "description": "成本侧计费配置(schedule 峰谷窗口等;与映射 billingConfig 同构)"
-                },
-                "costIsFree": {
-                  "type": "boolean",
-                  "description": "成本免费显式标记(true = 进货成本恒 0;价格列保持继承默认)"
                 }
               },
               "required": [
@@ -1665,8 +1662,7 @@
                 "costCacheInputPrice",
                 "costCacheWritePrice",
                 "costUnitPrice",
-                "costConfig",
-                "costIsFree"
+                "costConfig"
               ]
             },
             "description": "已绑定渠道(含出站模型名;供「绑定渠道」弹窗回显已选与异名)"
@@ -1844,9 +1840,6 @@
                 "type": "null"
               }
             ]
-          },
-          "isFree": {
-            "type": "boolean"
           },
           "billingPolicy": {
             "anyOf": [
@@ -18473,9 +18466,6 @@
                           "required": [
                             "strategy"
                           ]
-                        },
-                        "costIsFree": {
-                          "type": "boolean"
                         }
                       },
                       "required": [

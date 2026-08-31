@@ -91,13 +91,6 @@ describe('模型创建校验', () => {
     expect(v.prices.cacheWritePrice).toBe('0');
     expect(v.pricingUnit).toBe('token');
     expect(v.billingConfig).toEqual({});
-    expect(v.isFree).toBe(false);
-  });
-
-  it('免费冲突（isFree=true + 非零价）→ free_price_conflict', () => {
-    expect(() => validateModelCreate({ ...base, isFree: true })).toThrowError(
-      expect.objectContaining({ code: 'control_plane.free_price_conflict' }),
-    );
   });
 
   it.each([

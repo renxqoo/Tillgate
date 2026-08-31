@@ -54,7 +54,7 @@ export const adminModelRowSchema = z
       .describe(
         '计费配置:variant=params.{selector,prices}(差价档位) / schedule=params.windows(分时段) / flat=缺省',
       ),
-    isFree: z.boolean(),
+    isFree: z.boolean().describe('免费标签(价格推导——全零价 = 免费;docs/free-by-price.md)'),
     contextLength: z.number().nullable(),
     fallbackModels: z.string().nullable().describe('兜底模型清单(无来源,恒 null)'),
     paramRules: z.string().nullable().describe('参数规则(无来源,恒 null)'),
@@ -92,9 +92,6 @@ export const adminModelRowSchema = z
           costConfig: z
             .record(z.string(), z.unknown())
             .describe('成本侧计费配置(schedule 峰谷窗口等;与映射 billingConfig 同构)'),
-          costIsFree: z
-            .boolean()
-            .describe('成本免费显式标记(true = 进货成本恒 0;价格列保持继承默认)'),
         }),
       )
       .describe('已绑定渠道(含出站模型名;供「绑定渠道」弹窗回显已选与异名)'),

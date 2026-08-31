@@ -29,11 +29,6 @@ export interface ModelMappingSnapshot {
    * 这笔账为什么是这个价一查便知；缺省 = 无时段策略/未命中窗口。
    */
   pricingWindow?: string;
-  /**
-   * 显式免费标记（可选）：true 时授权走 0 元 fast-path
-   * （显式免费与候选价格非全零结构性拒绝）。目录实现方携带。
-   */
-  isFree?: boolean;
   /** 模型维限流（目录实现方携带；admitModel 钩子消费，缺省不限） */
   rpmLimit?: number | null;
   tpmLimit?: number | null;
@@ -66,8 +61,6 @@ export interface QuoteCandidate {
   contextLength?: number | null;
   /** 命中时段标签透传（收据审计列；见 ModelMappingSnapshot.pricingWindow） */
   pricingWindow?: string;
-  /** 显式免费标记透传（授权 0 元 fast-path 判定；见 ModelMappingSnapshot.isFree） */
-  isFree?: boolean;
 }
 
 /** 渠道候选（目录返回的启用渠道；顺序由 inference 加权调度决定） */

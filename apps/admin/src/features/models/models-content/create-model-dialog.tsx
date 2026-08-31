@@ -111,7 +111,6 @@ export function CreateModelDialog() {
               }),
         // billingConfig 由 ModelForm 提交编排并入（buildPricingBillingConfig 收口；单位计价 + 按参数差价时存在）
         ...(values.billingConfig != null ? { billingConfig: values.billingConfig } : {}),
-        isFree: values.isFree ?? false,
         contextLength: values.contextLength.trim() === '' ? null : Number(values.contextLength),
       });
       if (!notify(res, tc('createFailed'), tc('created'))) return;

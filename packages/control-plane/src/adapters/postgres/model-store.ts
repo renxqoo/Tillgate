@@ -13,7 +13,17 @@ import type {
   ModelProbeChannelRow,
   ActiveMappingRow,
 } from '../../ports/model-store';
+import { isFreeByPrice } from '../../domain/model/model-pricing';
 import { escapeLikePattern } from './search';
+
+/** ModelRecord 免费标签物化：价格推导（全零价 = 免费——docs/free-by-price.md 单一口径） */
+function withDerivedFree(row: {
+  inputPrice: string;
+  outputPrice: string;
+  cacheInputPrice: string;
+}): boolean {
+  return isFreeByPrice(row);
+}
 
 const MAPPING_ADMIN_COLUMNS = {
   id: modelMappings.id,
@@ -28,7 +38,6 @@ const MAPPING_ADMIN_COLUMNS = {
   pricingUnit: modelMappings.pricingUnit,
   unitPrice: modelMappings.unitPrice,
   billingConfig: modelMappings.billingConfig,
-  isFree: modelMappings.isFree,
   billingPolicy: modelMappings.billingPolicy,
   rpmLimit: modelMappings.rpmLimit,
   tpmLimit: modelMappings.tpmLimit,
@@ -51,7 +60,6 @@ const ACTIVE_MAPPING_COLUMNS = {
   pricingGroup: modelMappings.pricingGroup,
   rpmLimit: modelMappings.rpmLimit,
   tpmLimit: modelMappings.tpmLimit,
-  isFree: modelMappings.isFree,
   fallbackModels: modelMappings.fallbackModels,
   billingPolicy: modelMappings.billingPolicy,
   billingConfig: modelMappings.billingConfig,
@@ -81,14 +89,13 @@ export const postgresModelStore: ModelStore = {
         pricingUnit: input.pricingUnit ?? 'token',
         unitPrice: input.unitPrice ?? '0',
         billingConfig: input.billingConfig ?? {},
-        isFree: input.isFree,
         billingPolicy: input.billingPolicy ?? null,
         rpmLimit: input.rpmLimit ?? null,
         tpmLimit: input.tpmLimit ?? null,
       })
       .returning(MAPPING_ADMIN_COLUMNS);
     if (!row) throw new Error('model_mapping.insert_failed');
-    return row as ModelRecord;
+    return { ...row, isFree: withDerivedFree(row) } as ModelRecord;
   },
 
   async findById(db, mappingId) {
@@ -96,7 +103,7 @@ export const postgresModelStore: ModelStore = {
       .select(MAPPING_ADMIN_COLUMNS)
       .from(modelMappings)
       .where(and(eq(modelMappings.id, mappingId), isNull(modelMappings.deletedAt)));
-    return (row as ModelRecord) ?? null;
+    return row != null ? ({ ...row, isFree: withDerivedFree(row) } as ModelRecord) : null;
   },
 
   async findByExternalName(db, externalName) {
@@ -104,7 +111,7 @@ export const postgresModelStore: ModelStore = {
       .select(MAPPING_ADMIN_COLUMNS)
       .from(modelMappings)
       .where(and(eq(modelMappings.externalName, externalName), isNull(modelMappings.deletedAt)));
-    return (row as ModelRecord) ?? null;
+    return row != null ? ({ ...row, isFree: withDerivedFree(row) } as ModelRecord) : null;
   },
 
   async updateMapping(db, input) {
@@ -114,7 +121,8 @@ export const postgresModelStore: ModelStore = {
       // 已删除记录不可编辑（回收站行只读——恢复走 restoreMapping）
       .where(and(eq(modelMappings.id, input.mappingId), isNull(modelMappings.deletedAt)))
       .returning(MAPPING_ADMIN_COLUMNS);
-    return (rows[0] as ModelRecord) ?? null;
+    const [first] = rows;
+    return first != null ? ({ ...first, isFree: withDerivedFree(first) } as ModelRecord) : null;
   },
 
   async retireMapping(db, input) {
@@ -174,7 +182,10 @@ export const postgresModelStore: ModelStore = {
         .from(modelMappings)
         .where(where),
     ]);
-    return { rows: rows as ModelRecord[], total: countRows[0]?.count ?? 0 };
+    return {
+      rows: rows.map((row) => ({ ...row, isFree: withDerivedFree(row) })) as ModelRecord[],
+      total: countRows[0]?.count ?? 0,
+    };
   },
 
   async replaceModelChannels(db, input) {
@@ -202,7 +213,6 @@ export const postgresModelStore: ModelStore = {
           costCacheWritePrice: sql<string | null>`${modelChannels.costCacheWritePrice}::text`,
           costUnitPrice: sql<string | null>`${modelChannels.costUnitPrice}::text`,
           costConfig: modelChannels.costConfig,
-          costIsFree: modelChannels.costIsFree,
         })
         .from(modelChannels)
         .where(inArray(modelChannels.mappingId, [...mappingIds]))
@@ -211,7 +221,6 @@ export const postgresModelStore: ModelStore = {
           rows.map((r) => ({
             ...r,
             costConfig: r.costConfig as unknown as Record<string, unknown>,
-            costIsFree: r.costIsFree ?? false,
           })),
         )
     );
@@ -263,7 +272,7 @@ export const postgresModelStore: ModelStore = {
           isNull(modelMappings.deletedAt),
         ),
       );
-    return rows as ModelRecord[];
+    return rows.map((row) => ({ ...row, isFree: withDerivedFree(row) })) as ModelRecord[];
   },
 
   async listMappingRowsByChannelId(db, channelId) {

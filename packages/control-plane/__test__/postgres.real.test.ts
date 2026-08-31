@@ -204,7 +204,6 @@ describe('model-store（真实 PG：绑定全量替换 + 幂等绑定）', () =>
       inputPrice: '1',
       outputPrice: '2',
       cacheInputPrice: '0.5',
-      isFree: false,
     });
     expect(inserted.billingConfig).toEqual({});
     const bound = await postgresModelStore.replaceModelChannels(db, {
@@ -239,7 +238,6 @@ describe('model-store（真实 PG：绑定全量替换 + 幂等绑定）', () =>
         inputPrice: '1',
         outputPrice: '2',
         cacheInputPrice: '0',
-        isFree: false,
       }),
     ).rejects.toSatisfy(isUniqueViolation);
     await db.delete(modelChannels).where(eq(modelChannels.mappingId, inserted.id));

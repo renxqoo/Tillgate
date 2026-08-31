@@ -194,7 +194,6 @@ describe('comparison：三态 diff + 预填 + fx 快照 + channelReady + gone', 
       inputPrice: '18',
       outputPrice: '72',
       cacheInputPrice: '0',
-      isFree: false,
     });
     const gone = await s.models.store.insertMapping(s.db, {
       externalName: 'legacy',
@@ -202,7 +201,6 @@ describe('comparison：三态 diff + 预填 + fx 快照 + channelReady + gone', 
       inputPrice: '1',
       outputPrice: '1',
       cacheInputPrice: '0',
-      isFree: false,
     });
     await s.models.store.ensureModelChannelBinding(s.db, {
       mappingId: kept.id,
@@ -554,7 +552,6 @@ describe('reference 导入（models.dev 草稿 + 对应渠道 find-or-create 绑
       inputPrice: '5',
       outputPrice: '5',
       cacheInputPrice: '0',
-      isFree: false,
       status: 1,
     });
     const result = await importCatalog(s.importDeps, {

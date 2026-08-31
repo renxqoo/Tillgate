@@ -36,7 +36,6 @@ const mapping = (
   pricingGroup: null,
   rpmLimit: null,
   tpmLimit: null,
-  isFree: false,
   fallbackModels: null,
   billingPolicy: null,
   billingConfig: {},
@@ -232,7 +231,6 @@ describe('catalog-port：系数解析（C-G2）', () => {
             costCacheWritePrice: '0',
             costUnitPrice: '0',
             costConfig: {},
-            costIsFree: false,
           },
         ],
       }),
@@ -439,7 +437,7 @@ describe('billing-port（C-G3）', () => {
     expect(input.reservationPolicy).toEqual({ mode: 'fixed', amount: '0.5' });
   });
 
-  it('authorize：候选链全免费（isFree 标记或全零价）→ explicitlyFree', async () => {
+  it('authorize：候选链全零价 → explicitlyFree（价格推导，docs/free-by-price.md）', async () => {
     const { api, calls } = spyApi();
     const port = createGatewayBilling(api as never, {
       resolveReservationLimit: async () => '1000',
@@ -451,9 +449,7 @@ describe('billing-port（C-G3）', () => {
       apiKeyId: null,
       appId: null,
       stream: false,
-      candidates: [
-        candidate({ isFree: true, inputPrice: '0', cacheInputPrice: '0', outputPrice: '0' }),
-      ],
+      candidates: [candidate({ inputPrice: '0', cacheInputPrice: '0', outputPrice: '0' })],
       inputTokenUpperBound: 0,
       maxOutputTokens: 0,
       authorizationTtlMs: 1,

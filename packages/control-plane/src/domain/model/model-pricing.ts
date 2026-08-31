@@ -12,9 +12,19 @@ export interface PriceTriple {
 
 const isZero = (v: string): boolean => /^0+(\.0+)?$/.test(v.trim());
 
-/** 全零价 = 免费（目录导入/价格更新推导 isFree 的唯一口径） */
-export function isFreeByPrice(p: PriceTriple): boolean {
-  return isZero(p.inputPrice) && isZero(p.outputPrice) && isZero(p.cacheInputPrice);
+/** 全零价 = 免费（目录导入/价格更新推导 isFree 的唯一口径）。
+ *  五价全判（token 模型 cacheWrite/unit 缺省 0；单位计价模型三价占位 0 时
+ *  必须由 unitPrice 决定——三价口径会把收费的单位计价模型误判免费） */
+export function isFreeByPrice(
+  p: PriceTriple & { cacheWritePrice?: string; unitPrice?: string },
+): boolean {
+  return (
+    isZero(p.inputPrice) &&
+    isZero(p.outputPrice) &&
+    isZero(p.cacheInputPrice) &&
+    isZero(p.cacheWritePrice ?? '0') &&
+    isZero(p.unitPrice ?? '0')
+  );
 }
 
 /** 显式免费与价格相容（isFree=true → 全部价格分量归零，含缓存写价与单位价）；

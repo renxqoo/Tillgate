@@ -13,7 +13,6 @@ import type { ProviderStore } from '../../ports/provider-store';
 import type { ChannelStore } from '../../ports/channel-store';
 import type { ModelStore } from '../../ports/model-store';
 import { toCny } from '../../domain/catalog/convert';
-import { isFreeByPrice } from '../../domain/model/model-pricing';
 import { controlPlaneErrors } from '../../errors';
 import { adminIdOf, type ControlContext } from '../context';
 import { emitAudit } from '../audit';
@@ -209,7 +208,6 @@ export async function importCatalog(
           realModel: m.realModel,
           contextLength: m.contextLength ?? null,
           ...prices,
-          isFree: isFreeByPrice(prices),
           status: 1,
         });
         await deps.stores.model.ensureModelChannelBinding(tx, {
@@ -233,12 +231,10 @@ export async function importCatalog(
             boundTo: existingMapping.realModel,
           });
         }
-        // 重复导入 = 价格更新确认（同一真实模型）；isFree 按价格全零重推导
         await deps.stores.model.updateMapping(tx, {
           mappingId: existingMapping.id,
           patch: {
             ...prices,
-            isFree: isFreeByPrice(prices),
             ...(m.contextLength != null ? { contextLength: m.contextLength } : {}),
           },
         });
@@ -254,7 +250,6 @@ export async function importCatalog(
           realModel: m.realModel,
           contextLength: m.contextLength ?? null,
           ...prices,
-          isFree: isFreeByPrice(prices),
         });
         await deps.stores.model.ensureModelChannelBinding(tx, {
           mappingId: inserted.id,

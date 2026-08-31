@@ -29,7 +29,6 @@ export interface BindModelChannelsInput {
     costUnitPrice?: string | null;
     costConfig?: Record<string, unknown>;
     /** 成本免费显式标记：true = 成本恒 0（价格列保持继承默认不清写） */
-    costIsFree?: boolean;
   }>;
 }
 
@@ -71,7 +70,6 @@ export async function bindModelChannels(
         costCacheWritePrice: costColumnOf(ch.costCacheWritePrice),
         costUnitPrice: costColumnOf(ch.costUnitPrice),
         costConfig: ch.costConfig ?? {},
-        costIsFree: ch.costIsFree === true,
       })),
     }),
   );

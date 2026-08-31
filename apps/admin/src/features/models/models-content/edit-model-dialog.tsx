@@ -127,7 +127,6 @@ function toEditPayload(values: WithBillingConfig<EditFormValues>) {
     ...(values.billingConfig == null
       ? { billingConfig: null }
       : { billingConfig: values.billingConfig }),
-    isFree: values.isFree ?? false,
     contextLength: values.contextLength.trim() === '' ? null : Number(values.contextLength),
     fallbackModels: values.fallbackModels?.trim() || undefined,
     paramRules: values.paramRules?.trim() || undefined,

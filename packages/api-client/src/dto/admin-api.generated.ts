@@ -305,6 +305,7 @@ export interface AdminModelRow {
   unitPrice?: string;
   /** 计费配置:variant=params.{selector,prices}(差价档位) / schedule=params.windows(分时段) / flat=缺省 */
   billingConfig?: { strategy?: string; params?: { unitPrice?: string; selector?: string; prices?: Record<string, string>; windows?: { label?: string; start: string; end: string; inputPrice?: string; outputPrice?: string; cacheInputPrice?: string; cacheWritePrice?: string; unitPrice?: string }[] } } | null;
+  /** 免费标签(价格推导——全零价 = 免费;docs/free-by-price.md) */
   isFree: boolean;
   contextLength: number | null;
   /** 兜底模型清单(无来源,恒 null) */
@@ -320,7 +321,7 @@ export interface AdminModelRow {
   createdAt: string;
   updatedAt: string;
   /** 已绑定渠道(含出站模型名;供「绑定渠道」弹窗回显已选与异名) */
-  channels: { channelId: number; /** 该渠道的出站模型名(厂商异名;缺省 = 映射规范名 realModel) */upstreamModel: string; /** 渠道成本覆盖·输入单价(null = 继承映射官方价;双轨定价) */costInputPrice: string | null; /** 渠道成本覆盖·输出单价(null = 继承) */costOutputPrice: string | null; /** 渠道成本覆盖·缓存命中单价(null = 继承) */costCacheInputPrice: string | null; /** 渠道成本覆盖·缓存写单价(null = 继承) */costCacheWritePrice: string | null; /** 渠道成本覆盖·单位单价(次/张/秒/字符;null = 继承) */costUnitPrice: string | null; /** 成本侧计费配置(schedule 峰谷窗口等;与映射 billingConfig 同构) */costConfig: Record<string, unknown>; /** 成本免费显式标记(true = 进货成本恒 0;价格列保持继承默认) */costIsFree: boolean }[];
+  channels: { channelId: number; /** 该渠道的出站模型名(厂商异名;缺省 = 映射规范名 realModel) */upstreamModel: string; /** 渠道成本覆盖·输入单价(null = 继承映射官方价;双轨定价) */costInputPrice: string | null; /** 渠道成本覆盖·输出单价(null = 继承) */costOutputPrice: string | null; /** 渠道成本覆盖·缓存命中单价(null = 继承) */costCacheInputPrice: string | null; /** 渠道成本覆盖·缓存写单价(null = 继承) */costCacheWritePrice: string | null; /** 渠道成本覆盖·单位单价(次/张/秒/字符;null = 继承) */costUnitPrice: string | null; /** 成本侧计费配置(schedule 峰谷窗口等;与映射 billingConfig 同构) */costConfig: Record<string, unknown> }[];
 }
 
 /** 创建模型映射请求体（POST /v1/models;字段真相 = contracts zod,价格十进制字符串,unitPrice 收 string | number） */
@@ -335,7 +336,6 @@ export interface ModelCreateBody {
   pricingUnit?: 'token' | 'request' | 'image' | 'second' | 'char';
   unitPrice?: string | number;
   billingConfig?: { strategy: 'flat' | 'variant' | 'schedule'; params?: { unitPrice?: string; selector?: string; prices?: Record<string, string>; windows?: { label?: string; start: string; end: string; inputPrice?: string; outputPrice?: string; cacheInputPrice?: string; cacheWritePrice?: string; unitPrice?: string }[] } } | null;
-  isFree?: boolean;
   billingPolicy?: { version: 1; billingMode: 'unified_input_tokens'; maxInputTokens: number; modalities: { image?: { maxItems: number; maxInlineBytes?: number }; audio?: { maxItems: number; maxInlineBytes?: number }; file?: { maxItems: number; maxInlineBytes?: number } } } | null;
   rpmLimit?: number | null;
   tpmLimit?: number | null;

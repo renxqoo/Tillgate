@@ -9,6 +9,7 @@ import type { Redis } from 'ioredis';
 import type { Db } from '@tillgate/db';
 import { systemConfigs } from '@tillgate/db';
 import { postgresModelStore, postgresRateCardStore } from '@tillgate/control-plane/composition';
+import { isFreeByPrice } from '@tillgate/control-plane';
 import type { RateCardCoefficientSnapshot } from '@tillgate/billing';
 import type { BaseCatalog, PricingEnrichedRow } from '../http/presenters/pricing.js';
 import { scheduleWindowsOf } from '../http/presenters/pricing.js';
@@ -80,7 +81,7 @@ export function createPricingRead(
         outputPrice: row.outputPrice,
         cacheInputPrice: row.cacheInputPrice,
         unitPrice: row.unitPrice,
-        isFree: row.isFree,
+        isFree: isFreeByPrice(row),
         pricingGroup: row.pricingGroup,
         ...(schedule != null ? { schedule } : {}),
       });

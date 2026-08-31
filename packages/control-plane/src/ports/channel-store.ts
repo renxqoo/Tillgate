@@ -72,8 +72,6 @@ export interface RouteCandidateRow {
   readonly costUnitPrice: string | null;
   /** 绑定级成本配置（schedule 峰谷窗口等；'{}' = 无策略）——命中后字段级覆盖成本轴 */
   readonly costConfig: Record<string, unknown>;
-  /** 成本免费显式标记：true = 成本轴恒物化全 0（价格列保持继承默认） */
-  readonly costIsFree: boolean;
 }
 
 /** 任务渠道行：路由候选去掉出站名（任务出站名在任务行快照）与成本/水位轴（任务路径不消费成本价与软水位） */
@@ -87,7 +85,6 @@ export type TaskChannelRow = Omit<
   | 'costCacheWritePrice'
   | 'costUnitPrice'
   | 'costConfig'
-  | 'costIsFree'
 >;
 
 /** 探针专用读（含密文——仅 application 解密用，返回面不回传） */

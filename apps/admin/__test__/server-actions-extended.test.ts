@@ -65,7 +65,7 @@ describe('models-actions 覆盖面', () => {
     outputPrice: '2',
   };
 
-  it('create：空名被拒；合法输入展开默认值（token/0/isFree false）', async () => {
+  it('create：空名被拒；合法输入展开默认值（token/0）', async () => {
     const { mod, calls } = await loadModule('../src/server/models-actions', [{}]);
     await expect(mod.createModelAction({ ...createInput, externalName: ' ' })).resolves.toEqual({
       error: 'nameRequired',
@@ -75,7 +75,7 @@ describe('models-actions 覆盖面', () => {
     expect(last(calls)).toMatchObject({
       method: 'POST',
       url: expect.stringContaining('/v1/models'),
-      body: { pricingUnit: 'token', cacheInputPrice: '0', isFree: false },
+      body: { pricingUnit: 'token', cacheInputPrice: '0' },
     });
   });
 
