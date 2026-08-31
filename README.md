@@ -82,7 +82,7 @@ docker run -d --name tillgate --restart always \
   --log-opt max-size=10m --log-opt max-file=3 \
   -p 443:443 -p 8443:8443 -p 80:80 \
   -v "$PWD/data:/data" \
-  renxqoo/tillgate:sha-d427314
+  renxqoo/tillgate:latest
 ```
 
 Grab the one-time admin password and watch the stack come up:

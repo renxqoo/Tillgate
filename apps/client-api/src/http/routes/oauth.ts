@@ -5,11 +5,16 @@
  *   GET /v1/oauth/:provider/callback?code&state —— 验 state → find-or-create 建号
  *     （赠送 best-effort）→ 会话 token 经 URL fragment 回传前端（#token=…，
  *     不进服务端日志/Referer）。cookie 双提交比对与 next 归一归本层。
+ *     本路由是浏览器导航面：业务失败不再回裸 JSON，统一 302 前端错误页并经
+ *     ?oauth_error=<code> 回传错误码（码出自服务端错误目录，非用户输入；
+ *     前端按码映射文案，上游不可用时引导邮箱登录）。非业务错误仍交全局错误面。
  */
 import { Hono } from 'hono';
+import { isBusinessError } from '@tillgate/errors';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { AccountUseCases } from '@tillgate/accounts';
 import type { Identity, OAuthCallbackResult } from '@tillgate/identity';
+import { clientErrors } from '../error-face.js';
 import { OAUTH_STATE_COOKIE, safeNext } from '../contracts/oauth.js';
 
 export interface OAuthDeps {
@@ -88,38 +93,40 @@ export function oauthRoutes(deps: OAuthDeps) {
         404,
       );
     }
-    // 双提交第一因子：cookie state 必须与 query state 一致（cookie 缺失/不符 = 拒绝）
-    const cookieState = getCookie(c, OAUTH_STATE_COOKIE);
-    const queryState = c.req.query('state') ?? '';
-    if (cookieState == null || cookieState !== queryState) {
-      return c.json(
-        { error: { code: 'client.oauth_state_mismatch', message: 'Login state mismatch' } },
-        403,
-      );
-    }
-    // identity 半程：redis 单次消费 state + code 换 profile（上游失败 502）
-    const result = await deps.callback({
-      provider,
-      code: c.req.query('code') ?? '',
-      state: queryState,
-      redirectUri: `${deps.apiBase}/v1/oauth/${provider}/callback`,
-    });
-    deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/v1/oauth' });
+    try {
+      // 双提交第一因子：cookie state 必须与 query state 一致（cookie 缺失/不符 = 拒绝）
+      const cookieState = getCookie(c, OAUTH_STATE_COOKIE);
+      const queryState = c.req.query('state') ?? '';
+      if (cookieState == null || cookieState !== queryState) {
+        throw clientErrors.business('oauth_state_mismatch');
+      }
+      // identity 半程：redis 单次消费 state + code 换 profile（上游失败业务错误）
+      const result = await deps.callback({
+        provider,
+        code: c.req.query('code') ?? '',
+        state: queryState,
+        redirectUri: `${deps.apiBase}/v1/oauth/${provider}/callback`,
+      });
+      deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/v1/oauth' });
 
-    // find-or-create：已绑定直用；首次建号（建号赠送归 app）
-    const userId = await resolveOAuthUserId(deps, { provider, result });
-    const status = await deps.userStatus(userId);
-    if (status !== 0) {
-      return c.json(
-        { error: { code: 'client.account_unavailable', message: 'Account is unavailable' } },
-        403,
-      );
+      // find-or-create：已绑定直用；首次建号（建号赠送归 app）
+      const userId = await resolveOAuthUserId(deps, { provider, result });
+      const status = await deps.userStatus(userId);
+      if (status !== 0) {
+        throw clientErrors.business('account_unavailable');
+      }
+      const token = await deps.sign(userId);
+      // 登录事实回写（与密码/邮箱码/注册即登录路径同口径——四条会话签发路径统一记录）
+      await deps.touchLastLogin(userId).catch(() => {});
+      const next = safeNext(result.next);
+      return c.redirect(`${deps.frontendUrl}${next}#token=${encodeURIComponent(token)}`);
+    } catch (error) {
+      // 浏览器面：业务错误 302 前端错误页（码经 URL 参数回传，state cookie 一并清除
+      // ——其绑定的 state 已消费/作废，残留只会让后续回调再吃一次 mismatch）
+      if (!isBusinessError(error)) throw error;
+      deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/v1/oauth' });
+      return c.redirect(`${deps.frontendUrl}/oauth/callback?oauth_error=${error.code}`);
     }
-    const token = await deps.sign(userId);
-    // 登录事实回写（与密码/邮箱码/注册即登录路径同口径——四条会话签发路径统一记录）
-    await deps.touchLastLogin(userId).catch(() => {});
-    const next = safeNext(result.next);
-    return c.redirect(`${deps.frontendUrl}${next}#token=${encodeURIComponent(token)}`);
   });
 
   return app;

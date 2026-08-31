@@ -27,6 +27,7 @@ interface TestState {
   keys: Array<{ id: number; name: string; keyPreview: string }>;
   redeems: { failWith?: unknown };
   oauthCallbackState: string | null;
+  oauthProfileFails: boolean;
   oauthFindUserAs: number | null;
   oauthTouched: number[];
   authTouched: number[];
@@ -63,6 +64,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
     keys: [{ id: 1, name: 'k1', keyPreview: 'sk_***' }],
     redeems: {},
     oauthCallbackState: 'good-state',
+    oauthProfileFails: false,
     oauthFindUserAs: null,
     oauthTouched: [],
     authTouched: [],
@@ -222,6 +224,9 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       callback: (input) => {
         if (input.state !== state.oauthCallbackState) {
           throw identityErrors.business('oauth_state_invalid', { provider: input.provider });
+        }
+        if (state.oauthProfileFails) {
+          throw identityErrors.business('oauth_profile_failed', { provider: input.provider });
         }
         return Promise.resolve({
           provider: 'github',
@@ -1945,12 +1950,12 @@ describe('oauth 社交登录', () => {
     );
   });
 
-  it('callback 双提交不匹配 403；单次消费失败 410；成功 302 fragment 回传', async () => {
+  it('callback 双提交不匹配 302 错误页；单次消费失败 302 错误页；成功 302 fragment 回传', async () => {
     const { app } = build();
     const mismatch = await app.request('/v1/oauth/github/callback?code=c&state=evil');
-    expect(mismatch.status).toBe(403);
-    expect(((await mismatch.json()) as { error: { code: string } }).error.code).toBe(
-      'client.oauth_state_mismatch',
+    expect(mismatch.status).toBe(302);
+    expect(mismatch.headers.get('location')).toBe(
+      'https://app.example/oauth/callback?oauth_error=client.oauth_state_mismatch',
     );
 
     const { app: app2, state: s2 } = build();
@@ -1958,9 +1963,13 @@ describe('oauth 社交登录', () => {
     const expired = await app2.request('/v1/oauth/github/callback?code=c&state=good-state', {
       headers: { cookie: 'tl_oauth_state=good-state' },
     });
-    expect(expired.status).toBe(410);
-    expect(((await expired.json()) as { error: { code: string } }).error.code).toBe(
-      'identity.oauth_state_invalid',
+    expect(expired.status).toBe(302);
+    expect(expired.headers.get('location')).toBe(
+      'https://app.example/oauth/callback?oauth_error=identity.oauth_state_invalid',
+    );
+    // 失败跳转同时作废 state cookie——残留只会让后续重试再吃一次 mismatch
+    expect(expired.headers.get('set-cookie')).toContain(
+      'tl_oauth_state=; Max-Age=0; Path=/v1/oauth',
     );
 
     const { app: app3, state: s3 } = build();
@@ -1972,6 +1981,18 @@ describe('oauth 社交登录', () => {
     expect(ok.headers.get('location')).toContain('https://app.example/dashboard');
     // 登录事实回写:回调签发会话即 touch(修复前 OAuth 路径恒漏)
     expect(s3.oauthTouched.length).toBe(1);
+  });
+
+  it('callback 上游换码失败(境内直连 GitHub 不可用)302 错误页回传 oauth_profile_failed', async () => {
+    const { app, state } = build();
+    state.oauthProfileFails = true;
+    const res = await app.request('/v1/oauth/github/callback?code=c&state=good-state', {
+      headers: { cookie: 'tl_oauth_state=good-state' },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      'https://app.example/oauth/callback?oauth_error=identity.oauth_profile_failed',
+    );
   });
 });
 
@@ -2158,7 +2179,7 @@ describe('覆盖收尾：纯函数与路由分支变体', () => {
     expect(await res.json()).toMatchObject({ error: { code: 'client.register_disabled' } });
   });
 
-  it('oauth 回调:存量用户不可用 403 account_unavailable', async () => {
+  it('oauth 回调:存量用户不可用 302 错误页 account_unavailable', async () => {
     const parts = createDeps();
     parts.state.oauthFindUserAs = 43;
     parts.state.oauthUserStatus = 1;
@@ -2166,7 +2187,9 @@ describe('覆盖收尾：纯函数与路由分支变体', () => {
     const res = await app.request('/v1/oauth/github/callback?code=good&state=good-state', {
       headers: { cookie: 'tl_oauth_state=good-state' },
     });
-    expect(res.status).toBe(403);
-    expect(await res.json()).toMatchObject({ error: { code: 'client.account_unavailable' } });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      'https://app.example/oauth/callback?oauth_error=client.account_unavailable',
+    );
   });
 });
