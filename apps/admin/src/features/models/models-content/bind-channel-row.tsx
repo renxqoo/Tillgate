@@ -43,7 +43,6 @@ export interface DraftBinding {
   /** 成本策略草稿（schedule/variant 行模型，编辑无损态）；undefined = 未配置（继承官方定价策略） */
   strategy?: PricingStrategyDraft;
   /** 成本免费显式标记：true = 进货成本恒 0（价格列保持继承默认） */
-  costIsFree: boolean;
 }
 
 /** 空白成本五轴（新勾选行起点：全部继承官方价） */
@@ -83,6 +82,11 @@ function costValueOf(model: AdminModelRow, draft: DraftBinding): PricingValue {
 }
 
 /** 全五轴空且无策略 = 该渠道无价格覆盖（折叠摘要「继承官方价」；免费标记独立判定） */
+/** 免费渠道 = 成本五轴显式全 0（价格推导，无平行标记——docs/free-by-price.md） */
+function costAllZero(draft: DraftBinding): boolean {
+  return COST_PRICE_KEYS.every((key) => draft.cost[key] === '0');
+}
+
 function allInherit(draft: DraftBinding): boolean {
   return (
     COST_PRICE_KEYS.every((key) => draft.cost[key] === '') && !strategyHasOverride(draft.strategy)
@@ -156,7 +160,7 @@ export function ChannelBindingRow({
               <ChevronRightIcon className="size-3.5" />
             )}
             {t('costOverride')}
-            {draft.costIsFree ? (
+            {costAllZero(draft) ? (
               <span className="text-muted-foreground">· {t('costFreeLabel')}</span>
             ) : allInherit(draft) ? (
               <span className="text-muted-foreground">· {t('costInherit')}</span>
@@ -169,7 +173,7 @@ export function ChannelBindingRow({
               allowEmpty
               value={costValueOf(model, draft)}
               referenceValue={officialReferenceOf(model)}
-              free={draft.costIsFree}
+              free={costAllZero(draft)}
               onFreeChange={(free) => onToggleFree(channel.id, free)}
               onChange={(next) => onCostValue(channel.id, next)}
             />

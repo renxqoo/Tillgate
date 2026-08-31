@@ -125,7 +125,6 @@ const modelCreateSchema = z.object({
     .optional(),
   /** 变体价格（分辨率差价）;null = 清除 */
   billingConfig: billingConfigSchema.nullable().optional(),
-  isFree: z.boolean().optional(),
   billingPolicy: billingPolicySchema.nullable().optional(),
   rpmLimit: z.coerce.number().int().positive().max(1e9).nullable().optional(),
   tpmLimit: z.coerce.number().int().positive().max(1e9).nullable().optional(),
@@ -187,8 +186,6 @@ const modelBindSchema = z.object({
         costUnitPrice: costPrice,
         /** 成本侧计费配置（与映射 billingConfig 同构：schedule 峰谷成本 / variant 差价成本） */
         costConfig: billingConfigSchema.optional(),
-        /** 成本免费显式标记（价格列保持继承默认；true = 成本恒 0） */
-        costIsFree: z.boolean().optional(),
       }),
     )
     .max(500),

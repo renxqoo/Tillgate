@@ -41,7 +41,6 @@ function toBindingWireChannels(
     costCacheWritePrice: string | null;
     costUnitPrice: string | null;
     costConfig: Record<string, unknown>;
-    costIsFree: boolean;
   }>,
 ) {
   return channels.map((c) => ({
@@ -55,7 +54,6 @@ function toBindingWireChannels(
       c.costCacheWritePrice == null ? null : normalizeAmount(c.costCacheWritePrice),
     costUnitPrice: c.costUnitPrice == null ? null : normalizeAmount(c.costUnitPrice),
     costConfig: c.costConfig,
-    costIsFree: c.costIsFree,
   }));
 }
 
@@ -70,7 +68,6 @@ export function toModelWireRow(
     costCacheWritePrice: string | null;
     costUnitPrice: string | null;
     costConfig: Record<string, unknown>;
-    costIsFree: boolean;
   }> = [],
 ) {
   return {

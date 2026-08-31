@@ -7,7 +7,6 @@ import type { ErrorContext } from '@tillgate/errors';
 import { validateScheduleWindows, type PricingWindow } from '@tillgate/billing';
 import { controlPlaneErrors } from '../../errors';
 import { parseNonNegativeAmount } from '../money';
-import { freePriceConsistent } from './model-pricing';
 
 /** 计价单位词表（与 db CHECK model_mappings_pricing_unit_ck 同集合——新增单位须双改） */
 export const PRICING_UNITS = ['token', 'request', 'image', 'second', 'char'] as const;
@@ -44,7 +43,6 @@ export interface ModelCreateInput {
   readonly prices: ModelPrices;
   readonly pricingUnit?: string;
   readonly billingConfig?: BillingConfig | null;
-  readonly isFree?: boolean;
   readonly billingPolicy?: Record<string, unknown> | null;
   readonly rpmLimit?: number | null;
   readonly tpmLimit?: number | null;
@@ -58,7 +56,6 @@ export interface ModelPatchInput {
   readonly prices?: Partial<ModelPrices>;
   readonly pricingUnit?: string;
   readonly billingConfig?: BillingConfig | null;
-  readonly isFree?: boolean;
   readonly billingPolicy?: Record<string, unknown> | null;
   readonly rpmLimit?: number | null;
   readonly tpmLimit?: number | null;
@@ -162,22 +159,6 @@ function assertLimits(
   }
 }
 
-/** isFree 全零价一致性（创建直判口径） */
-function assertFreeConsistency(isFree: boolean, prices: ModelPrices): void {
-  if (!freePriceConsistent(isFree, prices)) {
-    throw controlPlaneErrors.business('free_price_conflict', {
-      isFree,
-      prices: {
-        inputPrice: prices.inputPrice,
-        outputPrice: prices.outputPrice,
-        cacheInputPrice: prices.cacheInputPrice,
-        cacheWritePrice: prices.cacheWritePrice ?? '0',
-        unitPrice: prices.unitPrice ?? '0',
-      },
-    });
-  }
-}
-
 /** 创建输入校验：名称域/价格数值域/单位词表/变体形状/上下文长度/限流域 + 免费一致性 */
 // eslint-disable-next-line complexity, max-lines-per-function -- 创建校验矩阵:字段域+价格域+词表+免费一致性,平铺守卫
 export function validateModelCreate(input: ModelCreateInput): {
@@ -187,7 +168,6 @@ export function validateModelCreate(input: ModelCreateInput): {
   prices: Required<ModelPrices>;
   pricingUnit: PricingUnit;
   billingConfig: BillingConfig;
-  isFree: boolean;
   billingPolicy: Record<string, unknown> | null;
   rpmLimit: number | null;
   tpmLimit: number | null;
@@ -217,8 +197,6 @@ export function validateModelCreate(input: ModelCreateInput): {
   }
   assertBillingConfig(input.billingConfig ?? null);
   assertLimits(input.rpmLimit, input.tpmLimit);
-  const isFree = input.isFree ?? false;
-  assertFreeConsistency(isFree, prices);
   return {
     externalName: input.externalName,
     realModel: input.realModel,
@@ -226,14 +204,13 @@ export function validateModelCreate(input: ModelCreateInput): {
     prices,
     pricingUnit: pricingUnit as PricingUnit,
     billingConfig: input.billingConfig ?? {},
-    isFree,
     billingPolicy: input.billingPolicy ?? null,
     rpmLimit: input.rpmLimit ?? null,
     tpmLimit: input.tpmLimit ?? null,
   };
 }
 
-/** 更新补丁校验（出现字段校验；价格/免费一致性由 application 按「旧值∪新值」合并判） */
+/** 更新补丁校验（出现字段校验；免费 = 价格取值，无平行标记可矛盾——docs/free-by-price.md） */
 // eslint-disable-next-line complexity -- 补丁校验矩阵(出现字段校验),平铺守卫
 export function validateModelPatch(patch: ModelPatchInput): ModelPatchInput {
   if (

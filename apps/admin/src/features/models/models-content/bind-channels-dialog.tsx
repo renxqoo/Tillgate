@@ -56,8 +56,17 @@ function draftsOf(model: AdminModelRow): DraftBinding[] {
       costUnitPrice: c.costUnitPrice ?? '',
     },
     strategy: strategyDraftFromConfig(pricingUnit, costConfigShape(c.costConfig)),
-    costIsFree: c.costIsFree === true,
   }));
+}
+
+/** 免费开关 = 成本清零快捷（勾选五轴写 '0'、取消回继承 ''——价格即事实，无平行标记） */
+function withFreeCost(draft: DraftBinding, free: boolean): DraftBinding {
+  return {
+    ...draft,
+    cost: free
+      ? (Object.fromEntries(COST_PRICE_KEYS.map((key) => [key, '0'])) as DraftBinding['cost'])
+      : emptyCost(),
+  };
 }
 
 /** 绑定提交体：留空不传出站名（服务端物化规范名）；成本覆盖恒显式提交（'' = 继承，全量覆盖语义下不残留旧值）；
@@ -77,7 +86,6 @@ function bindPayloadOf(selected: DraftBinding[], pricingUnit: string): BindChann
       costCacheWritePrice: s.cost.costCacheWritePrice,
       costUnitPrice: s.cost.costUnitPrice,
       ...(built.billingConfig != null ? { costConfig: built.billingConfig } : {}),
-      costIsFree: s.costIsFree,
     };
   });
 }
@@ -158,7 +166,7 @@ export function BindChannelsDialog({
     setSelected((prev) =>
       prev.some((s) => s.channelId === id)
         ? prev.filter((s) => s.channelId !== id)
-        : [...prev, { channelId: id, upstreamModel: '', cost: emptyCost(), costIsFree: false }],
+        : [...prev, { channelId: id, upstreamModel: '', cost: emptyCost() }],
     );
   }
 
@@ -175,10 +183,9 @@ export function BindChannelsDialog({
     setCostEditorOpen((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
-  /** 免费标记切换：价格草稿不动（业务判定走标记——用户裁决 2026-08-31） */
-  function toggleFree(id: number, free: boolean) {
-    setSelected((prev) => prev.map((s) => (s.channelId === id ? { ...s, costIsFree: free } : s)));
-  }
+  /** 免费开关 = 成本清零快捷（withFreeCost 模块级实现——价格即事实，无平行标记） */
+  const toggleFree = (id: number, free: boolean) =>
+    setSelected((prev) => prev.map((s) => (s.channelId === id ? withFreeCost(s, free) : s)));
 
   function onSubmit() {
     const pricingUnit = model.pricingUnit ?? 'token';

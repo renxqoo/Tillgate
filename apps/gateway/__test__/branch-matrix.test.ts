@@ -185,7 +185,6 @@ const candidateRow = (over: Partial<RouteCandidateRow> = {}): RouteCandidateRow 
   costCacheWritePrice: '0',
   costUnitPrice: '0',
   costConfig: {},
-  costIsFree: false,
   ...over,
 });
 
@@ -277,7 +276,6 @@ describe('catalog 快照杂项防御', () => {
       pricingGroup: null,
       rpmLimit: null,
       tpmLimit: null,
-      isFree: false,
       fallbackModels: null,
       billingPolicy: null,
       billingConfig: {},

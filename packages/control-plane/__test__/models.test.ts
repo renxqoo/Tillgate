@@ -46,37 +46,27 @@ async function createOk(
 }
 
 describe('模型 CRUD 与 R6 免费价格一致性', () => {
-  it('创建 isFree=true + 非零价 → free_price_conflict', async () => {
-    const { deps, models } = setup();
-    await expect(createOk(deps, { isFree: true })).rejects.toMatchObject({
-      code: 'control_plane.free_price_conflict',
-    });
-    expect(models.rows.size).toBe(0);
-  });
-
-  it('创建全零价 + isFree=true → 成功', async () => {
+  it('全零价创建 → 免费模型（isFree 价格推导物化——docs/free-by-price.md）', async () => {
     const { deps } = setup();
     const row = await createOk(deps, {
-      isFree: true,
       prices: { inputPrice: '0', outputPrice: '0', cacheInputPrice: '0' },
     });
     expect(row.isFree).toBe(true);
   });
 
-  it('部分补丁不能造矛盾态：isFree=true + 只改 outputPrice>0 → free_price_conflict（合并判）且库中价格未动', async () => {
+  it('价格补丁后免费标签随价格重推导（免费 → 收费翻转，无矛盾态可言）', async () => {
     const { deps, models } = setup();
     const row = await createOk(deps, {
-      isFree: true,
       prices: { inputPrice: '0', outputPrice: '0', cacheInputPrice: '0' },
     });
-    await expect(
-      updateModel(deps, {
-        ctx: adminCtx(),
-        mappingId: row.id,
-        patch: { prices: { outputPrice: '3' } },
-      }),
-    ).rejects.toMatchObject({ code: 'control_plane.free_price_conflict' });
-    expect(defined(models.rows.get(row.id)).outputPrice).toBe('0');
+    expect(row.isFree).toBe(true);
+    const updated = await updateModel(deps, {
+      ctx: adminCtx(),
+      mappingId: row.id,
+      patch: { prices: { outputPrice: '3' } },
+    });
+    expect(updated?.isFree).toBe(false);
+    expect(defined(models.rows.get(row.id)).outputPrice).toBe('3');
   });
 
   it('更新/删除不存在 → model_not_found', async () => {
@@ -171,15 +161,13 @@ describe('单位计价与变体价格', () => {
     expect(row.unitPrice).toBe('0.2');
   });
 
-  it('isFree + unitPrice>0 → free_price_conflict（免费一致性含单价）', async () => {
+  it('token 三价全零但单价 > 0 → 非免费（isFreeByPrice 三价口径）', async () => {
     const { deps } = setup();
-    await expect(
-      createOk(deps, {
-        isFree: true,
-        prices: { inputPrice: '0', outputPrice: '0', cacheInputPrice: '0', unitPrice: '0.1' },
-        pricingUnit: 'image',
-      }),
-    ).rejects.toMatchObject({ code: 'control_plane.free_price_conflict' });
+    const row = await createOk(deps, {
+      prices: { inputPrice: '0', outputPrice: '0', cacheInputPrice: '0', unitPrice: '0.1' },
+      pricingUnit: 'image',
+    });
+    expect(row.isFree).toBe(false);
   });
 
   it('变体差价回显；PATCH billingConfig: null → 清除差价回 {}（不残留 variant）', async () => {
@@ -266,7 +254,6 @@ describe('绑定全量替换 + 绑定回显', () => {
         costCacheWritePrice: null,
         costUnitPrice: null,
         costConfig: {},
-        costIsFree: false,
       },
     ]);
     const listResult = await listModels(deps, {
@@ -287,7 +274,6 @@ describe('绑定全量替换 + 绑定回显', () => {
         costCacheWritePrice: null,
         costUnitPrice: null,
         costConfig: {},
-        costIsFree: false,
       },
     ]);
     // 空数组 = 解绑全部

@@ -100,7 +100,7 @@ function toQuoteCandidate(c: QuoteCandidate, inputTokenUpperBound: number): Bill
   };
 }
 
-/** 报价组装：inputTokenUpperBound 逐候选盖章；显式免费 = 候选链全免费 */
+/** 报价组装：inputTokenUpperBound 逐候选盖章；免费 = 候选链价格全零（价格推导，无平行标记） */
 function toQuote(input: {
   maxOutputTokens: number;
   inputTokenUpperBound: number;
@@ -109,10 +109,7 @@ function toQuote(input: {
   return {
     maxOutputTokens: input.maxOutputTokens,
     candidates: input.candidates.map((c) => toQuoteCandidate(c, input.inputTokenUpperBound)),
-    // billing 结构性校验兜底
-    ...(input.candidates.every((c) => c.isFree === true || allPricesZero(c))
-      ? { explicitlyFree: true }
-      : {}),
+    ...(input.candidates.every(allPricesZero) ? { explicitlyFree: true } : {}),
   };
 }
 

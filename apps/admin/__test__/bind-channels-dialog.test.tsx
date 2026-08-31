@@ -160,31 +160,29 @@ describe('BindChannelsDialog：受控打开的绑定回显', () => {
     expect(screen.queryByText('Cost unit price')).not.toBeInTheDocument();
   });
 
-  it('免费渠道开关回显：costIsFree 标记亮灯（价格列保持继承默认），轴灰化策略隐藏', () => {
+  it('免费渠道回显：成本五轴全 0（价格推导勾选态），轴灰化策略隐藏', () => {
     const freeBound = modelOf([
       {
         channelId: 1,
         upstreamModel: 'up-a',
-        costInputPrice: null,
-        costOutputPrice: null,
-        costCacheInputPrice: null,
-        costCacheWritePrice: null,
-        costUnitPrice: null,
+        costInputPrice: '0',
+        costOutputPrice: '0',
+        costCacheInputPrice: '0',
+        costCacheWritePrice: '0',
+        costUnitPrice: '0',
         costConfig: {},
-        costIsFree: true,
       },
     ] as never) as AdminModelRow;
     renderDialog(freeBound, true);
     fireEvent.click(screen.getByRole('button', { name: /Cost price override/ }));
 
     expect(screen.getByRole('checkbox', { name: /Free channel/ })).toBeChecked();
-    // 免费态：价格保持继承（空）仅灰化，策略编辑隐藏（免费与窗口/档位价矛盾）
+    // 免费态 = 成本显式 0：输入灰化，策略编辑隐藏（免费与窗口/档位价矛盾）
     expect(screen.getByLabelText('Cost input price')).toBeDisabled();
-    expect(screen.getByLabelText('Cost input price')).toHaveValue(null);
     expect(screen.queryByText('Time-of-day pricing')).not.toBeInTheDocument();
   });
 
-  it('免费渠道开关交互：勾选不清价格（保持继承空值）仅灰化，取消即恢复可编辑', async () => {
+  it('免费渠道开关交互：勾选=成本清零快捷（写 0），取消回继承可编辑', async () => {
     const user = userEvent.setup();
     renderDialog(modelOf([{ channelId: 1, upstreamModel: 'up-a' }]), true);
     fireEvent.click(screen.getByRole('button', { name: /Cost price override/ }));
@@ -195,8 +193,8 @@ describe('BindChannelsDialog：受控打开的绑定回显', () => {
 
     expect(screen.getByRole('checkbox', { name: /Free channel/ })).toBeChecked();
     expect(input).toBeDisabled();
-    // 用户裁决：勾选免费不把价格清为 0——保持继承空值（业务判定走标记）
-    expect(input).toHaveValue(null);
+    // 免费即价格取值：勾选把五轴写成显式 0（提交 '0' 成本，无平行标记）
+    expect(input).toHaveValue(0);
     expect(screen.queryByText('Time-of-day pricing')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('checkbox', { name: /Free channel/ }));

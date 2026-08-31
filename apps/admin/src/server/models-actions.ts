@@ -26,7 +26,6 @@ export interface ModelCreateInput {
       windows?: Array<Record<string, string>>;
     };
   };
-  isFree?: boolean;
   contextLength?: number | null;
   billingPolicy?: Record<string, unknown> | null;
 }
@@ -48,7 +47,6 @@ export async function createModelAction(input: ModelCreateInput): Promise<{ erro
       pricingUnit: input.pricingUnit ?? 'token',
       ...(input.unitPrice != null ? { unitPrice: input.unitPrice } : {}),
       ...(input.billingConfig != null ? { billingConfig: input.billingConfig } : {}),
-      isFree: input.isFree ?? false,
       ...(input.contextLength != null ? { contextLength: input.contextLength } : {}),
       billingPolicy: input.billingPolicy ?? null,
     });
@@ -79,7 +77,6 @@ export interface ModelUpdateInput {
       windows?: Array<Record<string, string>>;
     };
   } | null;
-  isFree?: boolean;
   contextLength?: number | null;
   fallbackModels?: string;
   paramRules?: string;
@@ -173,8 +170,6 @@ export interface BindChannelItem {
       windows?: Array<Record<string, string>>;
     };
   };
-  /** 成本免费显式标记（价格列保持继承默认；true = 成本恒 0——业务判定源） */
-  costIsFree?: boolean;
 }
 
 /** 渠道绑定（全量覆盖原绑定；upstreamModel 留空 = 服务端物化映射规范名） */

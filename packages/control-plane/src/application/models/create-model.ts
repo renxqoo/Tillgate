@@ -51,7 +51,6 @@ export async function createModel(
         unitPrice: validated.prices.unitPrice,
         pricingUnit: validated.pricingUnit,
         billingConfig: validated.billingConfig,
-        isFree: validated.isFree,
         billingPolicy: validated.billingPolicy,
         rpmLimit: validated.rpmLimit,
         tpmLimit: validated.tpmLimit,
@@ -75,7 +74,6 @@ export async function createModel(
       externalName: row.externalName,
       realModel: row.realModel,
       prices: validated.prices,
-      isFree: validated.isFree,
     },
   });
   return row;

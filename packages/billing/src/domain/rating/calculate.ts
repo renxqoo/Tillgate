@@ -2,10 +2,10 @@
  * 授权预扣额推导（纯函数）：候选链取最贵（fallback 更贵不得透支），再过单请求上限。
  *
  * 四道保守：输入按上界、单价取贵（缓存命中量未知）、候选取最贵、超限只拒绝不截断。
- * 免费口径一致性：explicitlyFree 是「授权 0 元、不校验余额」的开关，
- * 若候选价格非全零，结算会按价格实扣——授权与结算两套口径结构性拒绝。
+ * 免费口径（docs/free-by-price.md）：explicitlyFree = 候选链价格全零（组装方按价格
+ * 推导，无平行标记可矛盾）→ 授权 0 元不校验余额；结算按价格实扣同样为 0。
  * 组装 estimateMaxCost 必须传 cacheWritePrice（贵价口径覆盖缓存写价——
- * Anthropic 写价 1.25×/2× 可超输入价）；免费一致性检查同步纳入写价。
+ * Anthropic 写价 1.25×/2× 可超输入价）。
  */
 import { Decimal } from '../money.js';
 import { BillingErrors } from '../errors.js';
@@ -39,20 +39,8 @@ export function calculateFundingReservation(
 
 export function calculateRequired(quote: BillingQuote, reservationLimit: string): Decimal {
   if (quote.candidates.length === 0) throw BillingErrors.business('invalid_quote');
-  if (quote.explicitlyFree) {
-    const charged = quote.candidates.some((candidate) => {
-      const prices = [
-        candidate.inputPrice,
-        candidate.outputPrice,
-        candidate.cacheInputPrice,
-        candidate.cacheWritePrice ?? '0',
-        candidate.unitPrice ?? '0',
-      ];
-      return prices.some((price) => new Decimal(price).gt(0));
-    });
-    if (charged) throw BillingErrors.business('invalid_quote');
-    return new Decimal(0);
-  }
+  // 免费链（价格全零，组装方推导）：授权 0 元、不校验余额
+  if (quote.explicitlyFree) return new Decimal(0);
 
   let maximum = new Decimal(0);
   for (const candidate of quote.candidates) {
@@ -83,7 +71,7 @@ export function calculateRequired(quote: BillingQuote, reservationLimit: string)
     });
     if (estimate.gt(maximum)) maximum = estimate;
   }
-  // 零价但未声明免费 = 配置事故（免费额度印刷机）——结构性拒绝
+  // 非免费链（explicitlyFree 缺失）算出零预扣 = 组装事故（价格全零未被推导为免费）——结构性拒绝
   if (maximum.lte(0)) throw BillingErrors.business('invalid_quote');
   return requiredReservation(maximum, reservationLimit);
 }

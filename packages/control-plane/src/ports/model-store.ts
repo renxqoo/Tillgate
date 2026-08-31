@@ -28,7 +28,6 @@ export interface ActiveMappingRow {
   /** 模型维限流（可空 = 不限；网关 admitModel 钩子消费——管理台可配必生效） */
   readonly rpmLimit: number | null;
   readonly tpmLimit: number | null;
-  readonly isFree: boolean;
   /** fallback 对外名链（一级展开；null/空 = 不降级） */
   readonly fallbackModels: string[] | null;
   readonly billingPolicy: Record<string, unknown> | null;
@@ -58,6 +57,7 @@ export interface ModelRecord {
   readonly unitPrice: string;
   /** 变体价格配置（分辨率差价）——管理面编辑回显依赖此列（列 notNull default {}） */
   readonly billingConfig: BillingConfig;
+  /** 免费标签（价格推导物化——全零价 = 免费；docs/free-by-price.md 单一口径） */
   readonly isFree: boolean;
   readonly billingPolicy: Record<string, unknown> | null;
   readonly rpmLimit: number | null;
@@ -79,7 +79,6 @@ export interface ModelInsertInput {
   readonly unitPrice?: string;
   readonly pricingUnit?: string;
   readonly billingConfig?: BillingConfig;
-  readonly isFree: boolean;
   readonly status?: number;
   readonly billingPolicy?: Record<string, unknown> | null;
   readonly rpmLimit?: number | null;
@@ -99,7 +98,6 @@ export interface ModelPatch {
   readonly unitPrice?: string;
   readonly pricingUnit?: string;
   readonly billingConfig?: BillingConfig;
-  readonly isFree?: boolean;
   readonly billingPolicy?: Record<string, unknown> | null;
   readonly rpmLimit?: number | null;
   readonly tpmLimit?: number | null;
@@ -166,7 +164,6 @@ export interface ModelStore {
         costUnitPrice?: string | null;
         costConfig?: Record<string, unknown>;
         /** 成本免费显式标记（价格保持继承默认；true = 成本物化全 0） */
-        costIsFree?: boolean;
       }>;
     },
   ): Promise<number>;
@@ -186,8 +183,6 @@ export interface ModelStore {
       costCacheWritePrice: string | null;
       costUnitPrice: string | null;
       costConfig: Record<string, unknown>;
-      /** 成本免费标记回显 */
-      costIsFree: boolean;
     }>
   >;
   /** 单映射的绑定渠道连接信息（模型探针用；含密文——仅 application 解密） */

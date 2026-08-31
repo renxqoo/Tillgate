@@ -274,26 +274,24 @@ describe('calculateRequired（四道保守）', () => {
     expect(required.isZero()).toBe(true);
   });
 
-  it('R6：声明免费却有价 → 结构性拒绝（含 cacheWritePrice 口径）', () => {
-    expectCode(() => calculateRequired(quote([candidate()], true), '100'), 'billing.invalid_quote');
-    expectCode(
-      () =>
-        calculateRequired(
-          quote(
-            [
-              candidate({
-                inputPrice: '0',
-                outputPrice: '0',
-                cacheInputPrice: '0',
-                cacheWritePrice: '2',
-              }),
-            ],
-            true,
-          ),
-          '100',
-        ),
-      'billing.invalid_quote',
+  /** 免费口径（docs/free-by-price.md）：explicitlyFree = 组装方按「候选链价格全零」
+   * 推导的结果，不再有平行标记可矛盾——矛盾态校验随标记删除；零预扣 fast-path 保留 */
+  it('免费链（explicitlyFree）→ 授权 0 元（价格推导口径，无矛盾态校验）', () => {
+    const zero = calculateRequired(
+      quote(
+        [
+          candidate({
+            inputPrice: '0',
+            outputPrice: '0',
+            cacheInputPrice: '0',
+            cacheWritePrice: '0',
+          }),
+        ],
+        true,
+      ),
+      '100',
     );
+    expect(zero.toString()).toBe('0');
   });
 
   it('零价未声明免费 → 拒绝（免费额度印刷机防线）', () => {

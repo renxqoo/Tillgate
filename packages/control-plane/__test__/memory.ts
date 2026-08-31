@@ -4,6 +4,7 @@
  * （isUniqueViolation 按 cause 链 code 判定——真实形状见 @tillgate/db pg-error）。
  * 真实 SQL 行为等价由 postgres.real.test.ts 承担（默认门禁排除）。
  */
+import { isFreeByPrice } from '../src/domain/model/model-pricing';
 import type { Db, DbTx } from '@tillgate/db';
 import type { ProviderStore, ProviderRecord } from '../src/ports/provider-store';
 import type {
@@ -453,7 +454,6 @@ export function createMemoryChannelStore(
           costCacheWritePrice: '0',
           costUnitPrice: '0',
           costConfig: {},
-          costIsFree: false,
         });
       }
       return out;
@@ -519,10 +519,10 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
         pricingUnit: input.pricingUnit ?? 'token',
         unitPrice: input.unitPrice ?? '0',
         billingConfig: input.billingConfig ?? {},
-        isFree: input.isFree,
         billingPolicy: input.billingPolicy ?? null,
         rpmLimit: input.rpmLimit ?? null,
         tpmLimit: input.tpmLimit ?? null,
+        isFree: isFreeByPrice(input),
         deletedAt: null,
         createdAt: new Date(0),
         updatedAt: new Date(0),
@@ -548,6 +548,8 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
         }
       }
       Object.assign(row, input.patch, { updatedAt: new Date() });
+      // 免费标签价格推导物化（与 postgres adapter 同口径——docs/free-by-price.md）
+      row.isFree = isFreeByPrice(row);
       return row;
     },
     async retireMapping(_db, input) {
@@ -597,7 +599,6 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
         costCacheWritePrice: string | null;
         costUnitPrice: string | null;
         costConfig: Record<string, unknown>;
-        costIsFree: boolean;
       }> = [];
       for (const row of rows.values()) {
         if (mappingIds.includes(row.id)) {
@@ -612,7 +613,6 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
               costCacheWritePrice: null,
               costUnitPrice: null,
               costConfig: {},
-              costIsFree: false,
             });
           }
         }
@@ -1045,7 +1045,6 @@ function toActiveRow(row: MemoryModelRow): ActiveMappingRow {
     pricingGroup: row.pricingGroup ?? null,
     rpmLimit: row.rpmLimit ?? null,
     tpmLimit: row.tpmLimit ?? null,
-    isFree: row.isFree,
     fallbackModels: row.fallbackModels ?? null,
     billingPolicy: row.billingPolicy,
     billingConfig: row.billingConfig,

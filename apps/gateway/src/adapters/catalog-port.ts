@@ -208,31 +208,18 @@ function scheduleCostOf(
 }
 
 /**
- * 渠道成本五轴解析：free 标记物化全 0；绑定五轴任一配置（非 NULL）即物化（缺轴按 0
- * ——NULL 轴 = 该轴无成本）；**全 NULL 且未标 free → undefined（成本面缺失）**——
- * 预留/结算/评分消费方按零成本处理（配了成本价才有预算管控；静默继承用户卖价会把
- * 免费/低价渠道按卖价虚扣虚拒——2026-08-30/31 生产事故）。
+ * 渠道成本五轴解析：绑定五轴任一配置（非 NULL）即物化（缺轴按 0——NULL 轴 = 该轴
+ * 无成本；全 0 = 免费渠道，docs/free-by-price.md）；**全 NULL → undefined（成本面
+ * 缺失）**——预留/结算/评分消费方按零成本处理（配了成本价才有预算管控；静默继承
+ * 用户卖价会把免费/低价渠道按卖价虚扣虚拒——2026-08-30/31 生产事故）。
  */
 function costPricesOf(
   row: RouteCandidateRow,
   clock: { now: Date; timezone: string },
 ): ChannelCandidate['costPrices'] {
-  // 免费标记是业务判定源（用户裁决 2026-08-31）：价格列保持继承默认不清写，
-  // 此处物化全 0 成本轴——预留/结算/评分下游全部零改动
-  if (row.costIsFree) return zeroCostOf();
+  // 免费渠道 = 成本五轴全 0（显式配置）；未配置（全 NULL）= 成本面缺失 → undefined
   if (!COST_AXES_OF(row).some((price) => price != null)) return undefined;
   return scheduleCostOf(row, flatCostOf(row), clock);
-}
-
-/** 全 0 成本轴（free 物化与缺省语义共用形状） */
-function zeroCostOf(): NonNullable<ChannelCandidate['costPrices']> {
-  return {
-    inputPrice: '0',
-    cacheInputPrice: '0',
-    cacheWritePrice: '0',
-    outputPrice: '0',
-    unitPrice: '0',
-  };
 }
 
 function toChannelCandidate(

@@ -461,8 +461,8 @@
     "contextLabel": "上下文（token，可空）",
     "unitModeHint": "单位：元 / {unit}；差价未命中时按统一单价计费",
     "tokenModeHint": "单位：元 / 百万 token；缓存写价留空 = 不收缓存写费",
-    "isFreeLabel": "显式免费模型（0 元授权，不预留余额/额度）",
-    "freeModeHint": "已勾选免费模型：价格无需填写，保存时全部按 0 处理",
+    "isFreeLabel": "免费模型（价格全 0，授权不预留余额）",
+    "freeModeHint": "免费 = 价格取值 0：勾选后价格免填，保存时五价全部按 0 提交",
     "advanced": "高级设置（兜底模型 / 参数规则 / 计费策略 / 限流 / 状态）",
     "fallbackLabel": "兜底模型（逗号分隔）",
     "paramRulesLabel": "参数规则（JSON）",
@@ -518,7 +518,7 @@
     "addWindow": "添加时段",
     "windowsFillError": "时段行不完整：起止须为 HH:MM 且不相等，每档至少填一个价格",
     "windowsHint": "边界左闭右开（如 18:00→07:00 含 18:00 不含 07:00，可跨午夜）；时段不可互相重叠",
-    "costFreeLabel": "免费渠道（进货成本恒 0）",
+    "costFreeLabel": "免费渠道（成本五轴全 0）",
     "costFreeHint": "勾选后该渠道进货成本恒按 0 计（不预留进货额度、结算成本记 0）；价格无需修改，保持继承官方价即可"
   },
   "rateCards": {

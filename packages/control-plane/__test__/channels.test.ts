@@ -143,7 +143,6 @@ describe('逻辑删除（回收站）', () => {
       inputPrice: '1',
       outputPrice: '1',
       cacheInputPrice: '0',
-      isFree: false,
     });
     await models.store.ensureModelChannelBinding(deps.db, {
       mappingId: mapping.id,
@@ -217,7 +216,6 @@ describe('批量导入（best-effort）', () => {
       inputPrice: '1',
       outputPrice: '2',
       cacheInputPrice: '0.5',
-      isFree: false,
     });
     const result = await importChannels(deps, {
       ctx: adminCtx(),

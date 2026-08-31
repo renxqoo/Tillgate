@@ -461,8 +461,8 @@
     "contextLabel": "Context (tokens, optional)",
     "unitModeHint": "Unit: ¥ / {unit}; tier misses bill at the flat price",
     "tokenModeHint": "Unit: ¥ / million tokens; blank cache write price = no cache write fee",
-    "isFreeLabel": "Explicit free model (¥0 authorization, no balance/quota reserved)",
-    "freeModeHint": "Free model checked: prices are optional and saved as 0",
+    "isFreeLabel": "Free model (all prices 0, no balance reserved)",
+    "freeModeHint": "Free = price 0: leave prices empty when checked; all five submit as 0",
     "advanced": "Advanced (fallback models / param rules / billing policy / limits / status)",
     "fallbackLabel": "Fallback models (comma-separated)",
     "paramRulesLabel": "Param rules (JSON)",
@@ -518,7 +518,7 @@
     "addWindow": "Add window",
     "windowsFillError": "Incomplete window rows: start/end must be HH:MM and differ; each window needs at least one price",
     "windowsHint": "Left-closed right-open (18:00→07:00 includes 18:00, excludes 07:00; may cross midnight); windows must not overlap",
-    "costFreeLabel": "Free channel (cost stays zero)",
+    "costFreeLabel": "Free channel (all cost axes 0)",
     "costFreeHint": "When checked, this channel cost is billed as zero (no budget reservation, zero settlement cost); prices stay untouched and inherit the official price"
   },
   "rateCards": {

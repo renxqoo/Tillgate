@@ -25,7 +25,6 @@ export interface ModelChannelBinding {
   readonly costCacheWritePrice: string | null;
   readonly costUnitPrice: string | null;
   readonly costConfig: Record<string, unknown>;
-  readonly costIsFree: boolean;
 }
 
 export interface ModelListItem extends ModelRecord {
@@ -68,7 +67,6 @@ export async function listModels(
       costCacheWritePrice: binding.costCacheWritePrice,
       costUnitPrice: binding.costUnitPrice,
       costConfig: binding.costConfig,
-      costIsFree: binding.costIsFree,
     });
     byMapping.set(binding.mappingId, list);
   }
