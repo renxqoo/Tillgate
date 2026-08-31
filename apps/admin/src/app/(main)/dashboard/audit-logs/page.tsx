@@ -8,8 +8,8 @@ import { getTranslations } from 'next-intl/server';
 import { fetchAdminList } from '@/server/admin-list';
 import type { AuditLogRow } from '@tillgate/api-client';
 
-import { fmtDateTime } from '@/lib/formatters';
 import { ListPage } from '@/components/list-page';
+import { LocalTime } from '@/components/local-time';
 import { parseListSearchParams } from '@/lib/list-query';
 
 export const dynamic = 'force-dynamic';
@@ -80,9 +80,7 @@ export default async function AuditLogsPage({ searchParams }: PageProps) {
       header: tc('time'),
       sortable: true,
       headerClassName: 'w-44',
-      render: (a) => (
-        <span className="text-xs text-muted-foreground">{fmtDateTime(a.createdAt)}</span>
-      ),
+      render: (a) => <LocalTime iso={a.createdAt} className="text-xs text-muted-foreground" />,
     },
   ];
 

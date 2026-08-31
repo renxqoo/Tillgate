@@ -2,7 +2,7 @@ import type { getTranslations } from 'next-intl/server';
 import type { AuditLogRow } from '@tillgate/api-client';
 
 import type { DataTableColumn } from '@/components/data-table';
-import { fmtDateTime } from '@/lib/formatters';
+import { LocalTime } from '@/components/local-time';
 
 /** 审计日志表列定义 */
 export function buildAuditColumns(
@@ -53,9 +53,7 @@ export function buildAuditColumns(
       header: tc('time'),
       sortable: true,
       headerClassName: 'w-44',
-      render: (a) => (
-        <span className="text-xs text-muted-foreground">{fmtDateTime(a.createdAt)}</span>
-      ),
+      render: (a) => <LocalTime iso={a.createdAt} className="text-xs text-muted-foreground" />,
     },
   ];
 }

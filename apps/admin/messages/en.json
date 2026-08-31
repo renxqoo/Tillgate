@@ -540,7 +540,7 @@
     "back": "Back to rate cards",
     "notFound": "Rate card not found",
     "noDescription": "No description",
-    "detailDescription": "{desc} · Status {status} · Updated {time}",
+    "detailDescription": "{desc} · Status {status} · Updated <local>{time}</local>",
     "boundUsersUnit": "bound users",
     "searchUsersPlaceholder": "Search subject / display name / email",
     "noBoundUsers": "No bound users",

@@ -4,9 +4,10 @@ import Link from 'next/link';
 import { ShieldAlert } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { fmtDateTime, formatMoney } from '@/lib/formatters';
+import { formatMoney } from '@/lib/formatters';
 import { fetchAdminList } from '@/server/admin-list';
 import { ListPage } from '@/components/list-page';
+import { LocalTime } from '@/components/local-time';
 import { parseListSearchParams } from '@/lib/list-query';
 import { ReviewActions } from '@/features/billing/review-actions';
 
@@ -49,6 +50,10 @@ function renderReasonCell(item: BillingCase) {
 
 function renderActionsCell(item: BillingCase) {
   return <ReviewActions requestId={item.requestId} revision={item.revision} status={item.status} />;
+}
+
+function renderUpdatedAtCell(item: BillingCase) {
+  return <LocalTime iso={item.updatedAt} />;
 }
 
 export default async function BillingOperationsPage({
@@ -105,7 +110,7 @@ export default async function BillingOperationsPage({
           {
             key: 'updatedAt',
             header: tc('updatedAt'),
-            render: (item: BillingCase) => fmtDateTime(item.updatedAt),
+            render: renderUpdatedAtCell,
           },
           {
             key: 'actions',

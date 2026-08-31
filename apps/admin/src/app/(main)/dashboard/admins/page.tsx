@@ -9,8 +9,8 @@ import { getTranslations } from 'next-intl/server';
 
 import { ApiError, type Paginated } from '@tillgate/api-client';
 import { adminApi } from '@/server/admin-api';
-import { fmtDateTime } from '@/lib/formatters';
 import { ListPage } from '@/components/list-page';
+import { LocalTime } from '@/components/local-time';
 import { parseListSearchParams } from '@/lib/list-query';
 
 import { AdminCreateForm, type RoleOption } from '@/features/admins/admin-create-form';
@@ -97,8 +97,12 @@ export default async function AdminsPage({ searchParams }: PageProps) {
         </span>
       ),
     },
-    { key: 'lastLoginAt', header: tc('lastLogin'), render: (r) => fmtDateTime(r.lastLoginAt) },
-    { key: 'createdAt', header: tc('createdAt'), render: (r) => fmtDateTime(r.createdAt) },
+    {
+      key: 'lastLoginAt',
+      header: tc('lastLogin'),
+      render: (r) => <LocalTime iso={r.lastLoginAt} />,
+    },
+    { key: 'createdAt', header: tc('createdAt'), render: (r) => <LocalTime iso={r.createdAt} /> },
     {
       key: 'actions',
       header: tc('actions'),

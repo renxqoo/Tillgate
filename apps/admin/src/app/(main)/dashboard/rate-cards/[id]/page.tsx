@@ -9,12 +9,18 @@ import { getTranslations } from 'next-intl/server';
 
 import { ApiError } from '@tillgate/api-client';
 import type { AdminRateCardRow, AdminUserRow } from '@tillgate/api-client';
-import { fmtBalance, fmtDateTime } from '@/lib/formatters';
+import { fmtBalance } from '@/lib/formatters';
 import { fetchAdminList } from '@/server/admin-list';
 import { ListPage } from '@/components/list-page';
+import { LocalTime } from '@/components/local-time';
 import { parseListSearchParams } from '@/lib/list-query';
 
 export const dynamic = 'force-dynamic';
+
+/** 详情描述 <local> 标签内容：时间用客户端组件按访客本地时区渲染（服务端 HTML 为 UTC 文本） */
+function localTimeTag(iso: string) {
+  return <LocalTime iso={iso} />;
+}
 
 const PAGE_SIZE = 20;
 
@@ -83,7 +89,7 @@ function buildBoundUserColumns(
       headerClassName: 'w-44',
       render: (u) => (
         <span className="text-xs text-muted-foreground">
-          {u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : tc('never')}
+          {u.lastLoginAt ? <LocalTime iso={u.lastLoginAt} /> : tc('never')}
         </span>
       ),
     },
@@ -163,10 +169,12 @@ export default async function RateCardDetailPage({ params, searchParams }: PageP
 
       <ListPage
         title={`${card.name} ×${card.coefficient}`}
-        description={t('detailDescription', {
+        description={t.rich('detailDescription', {
           desc: card.description ?? t('noDescription'),
           status: card.status === 0 ? tc('enabled') : tc('disabled'),
-          time: fmtDateTime(card.updatedAt),
+          time: card.updatedAt,
+          // 标签回调由客户端组件替换占位的 UTC 文本（模块级辅助，避免渲染期定义组件）
+          local: () => localTimeTag(card.updatedAt),
         })}
         total={total}
         totalUnit={t('boundUsersUnit')}

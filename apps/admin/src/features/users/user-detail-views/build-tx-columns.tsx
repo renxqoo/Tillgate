@@ -2,7 +2,8 @@ import type { getTranslations } from 'next-intl/server';
 import type { AdminTransactionRow } from '@tillgate/api-client';
 
 import type { DataTableColumn } from '@/components/data-table';
-import { fmtBalance, fmtDateTime } from '@/lib/formatters';
+import { LocalTime } from '@/components/local-time';
+import { fmtBalance } from '@/lib/formatters';
 import { signedAmountTone } from '@/lib/money-tone';
 
 /** 流水表列定义（cell 渲染器随列声明平铺；t/tc/locale 经参数传入） */
@@ -77,9 +78,7 @@ export function buildTxColumns(
       header: tc('time'),
       sortable: true,
       headerClassName: 'w-44',
-      render: (tr) => (
-        <span className="text-xs text-muted-foreground">{fmtDateTime(tr.createdAt)}</span>
-      ),
+      render: (tr) => <LocalTime iso={tr.createdAt} className="text-xs text-muted-foreground" />,
     },
   ];
 }

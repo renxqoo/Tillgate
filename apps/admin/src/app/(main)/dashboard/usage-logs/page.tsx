@@ -8,10 +8,10 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { unitWord } from '@/lib/formatters';
 import { ApiError } from '@tillgate/api-client';
 import type { AdminUsageRow, Paginated } from '@tillgate/api-client';
-import { fmtDateTime } from '@/lib/formatters';
 import { msToHuman } from '@/lib/formatters';
 import { adminApi } from '@/server/admin-api';
 import { ListPage } from '@/components/list-page';
+import { LocalTime } from '@/components/local-time';
 import { cn } from '@/lib/utils';
 import { firstParam, parseListSearchParams } from '@/lib/list-query';
 
@@ -272,9 +272,7 @@ function buildUsageColumns(
       header: tc('time'),
       sortable: true,
       headerClassName: 'w-44',
-      render: (r) => (
-        <span className="text-xs text-muted-foreground">{fmtDateTime(r.createdAt)}</span>
-      ),
+      render: (r) => <LocalTime iso={r.createdAt} className="text-xs text-muted-foreground" />,
     },
   ];
 }

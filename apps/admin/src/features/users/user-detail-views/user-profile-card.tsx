@@ -4,7 +4,8 @@ import type { AdminUserRow } from '@tillgate/api-client';
 
 import { UserActions } from '@/features/users/user-actions';
 import { rateCardLabel, type RateCardOptionLike } from '@/features/users/rate-card-label';
-import { fmtBalance, fmtDateTime } from '@/lib/formatters';
+import { LocalTime } from '@/components/local-time';
+import { fmtBalance } from '@/lib/formatters';
 import { Field } from './field';
 
 /** 用户资料卡（状态/余额/额度/限流字段平铺；从页面提出，规模与复杂度收敛） */
@@ -79,8 +80,8 @@ export function UserProfileCard({
             value={user.tpmLimit === null ? tc('default') : String(user.tpmLimit)}
           />
           <Field label="Issuer" value={user.issuer ?? '—'} />
-          <Field label={tc('lastLogin')} value={fmtDateTime(user.lastLoginAt)} />
-          <Field label={tc('createdAt')} value={fmtDateTime(user.createdAt)} />
+          <Field label={tc('lastLogin')} value={<LocalTime iso={user.lastLoginAt} />} />
+          <Field label={tc('createdAt')} value={<LocalTime iso={user.createdAt} />} />
         </dl>
       </CardContent>
     </Card>
