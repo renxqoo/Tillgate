@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
+import { Keala } from 'keala';
+import { withRequest } from '../src/framework/keala';
 import {
   clientIpFromContext,
   socketAddressFromContext,
@@ -120,14 +121,16 @@ describe('trustedClientIp', () => {
   });
 });
 
-describe('Hono 上下文封装', () => {
+describe('keala 上下文封装', () => {
   it('app.request 测试形态无连接信息：socketAddressFromContext → null；XFF 命中时 clientIpFromContext 取 XFF', async () => {
-    const app = new Hono();
+    const app = new Keala();
     app.get('/ip', (c) => {
       expect(socketAddressFromContext(c)).toBeNull();
       return c.json({ ip: clientIpFromContext(c, { trustedProxyHops: 1 }) });
     });
-    const res = await app.request('/ip', { headers: { 'x-forwarded-for': 'fake, 203.0.113.9' } });
+    const res = await withRequest(app).request('/ip', {
+      headers: { 'x-forwarded-for': 'fake, 203.0.113.9' },
+    });
     expect(((await res.json()) as { ip: string }).ip).toBe('203.0.113.9');
   });
 });

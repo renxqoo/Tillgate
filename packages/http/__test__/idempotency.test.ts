@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
+import { Keala } from 'keala';
+import { withRequest } from '../src/framework/keala';
 import { operationId } from '../src/idempotency/operation-id';
-import { errorHandler } from '../src/errors/handler';
+import { errorHandling } from '../src/errors/handler';
 
 /**
  * 客户端幂等键与系统自然键的命名空间隔离。
@@ -10,11 +11,11 @@ import { errorHandler } from '../src/errors/handler';
  * 永久占用该键，使受害者首次登录的礼金发放撞主键 → 登录 500。
  */
 
-function app(): Hono {
-  const a = new Hono();
-  a.onError(errorHandler());
+function app(): ReturnType<typeof withRequest> {
+  const a = new Keala();
+  a.use(errorHandling());
   a.post('/op', (c) => c.json({ operationId: operationId(c) }));
-  return a;
+  return withRequest(a);
 }
 
 describe('operationId 客户键边界（T1）', () => {

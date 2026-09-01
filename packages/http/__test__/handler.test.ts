@@ -1,26 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
+import { Keala, createBodyParser, createError } from 'keala';
 import { InfrastructureError, defineErrorCatalog } from '@tillgate/errors';
-import { errorHandler } from '../src/errors/handler';
+import { withRequest, asMiddleware, type ContextWithBody } from '../src/framework/keala';
+import { errorHandling } from '../src/errors/handler';
 import { HttpErrors } from '../src/errors/catalog';
 
 /**
- * errorHandler 边界翻译。
+ * errorHandling 边界翻译。
  * 原则：可预期的客户端错误必须在边界层翻译成 4xx，不得伪装 500。
  */
 
-function app(deps: Parameters<typeof errorHandler>[0] = {}): Hono {
-  const a = new Hono();
-  a.onError(errorHandler(deps));
+function app(deps: Parameters<typeof errorHandling>[0] = {}): ReturnType<typeof withRequest> {
+  const a = new Keala();
+  a.use(errorHandling(deps), createBodyParser());
   a.get('/boom', () => {
     throw HttpErrors.business('not_found', { resource: 'org' });
   });
-  a.post('/echo', async (c) => c.json(await c.req.json()));
-  return a;
+  a.post('/echo', asMiddleware(async (c: ContextWithBody) => c.json(await c.req.json())));
+  return withRequest(a);
 }
 
-describe('errorHandler：TillgateError → 对应状态码 + 统一信封', () => {
+describe('errorHandling：TillgateError → 对应状态码 + 统一信封', () => {
   it('business → category 默认 status + context 出站', async () => {
     const res = await app().request('/boom');
     expect(res.status).toBe(404);
@@ -33,9 +33,9 @@ describe('errorHandler：TillgateError → 对应状态码 + 统一信封', () =
     const Face = defineErrorCatalog('handler_test', {
       session_invalid: { category: 'forbidden', message: 'Session invalid', zh: '会话无效' },
     });
-    const a = new Hono();
-    a.onError(
-      errorHandler({
+    const a = new Keala();
+    a.use(
+      errorHandling({
         catalog: Face,
         overrides: { 'handler_test.session_invalid': { status: 401 } },
       }),
@@ -43,7 +43,7 @@ describe('errorHandler：TillgateError → 对应状态码 + 统一信封', () =
     a.get('/x', () => {
       throw Face.business('session_invalid');
     });
-    const res = await a.request('/x');
+    const res = await withRequest(a).request('/x');
     expect(res.status).toBe(401);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
       'handler_test.session_invalid',
@@ -60,18 +60,18 @@ describe('errorHandler：TillgateError → 对应状态码 + 统一信封', () =
   });
 
   it('retryAfterMs → Retry-After 响应头（秒，向上取整）', async () => {
-    const a = new Hono();
-    a.onError(errorHandler());
+    const a = new Keala();
+    a.use(errorHandling());
     a.get('/limited', () => {
       throw HttpErrors.business('not_found', undefined, { retryAfterMs: 1_500 });
     });
-    const res = await a.request('/limited');
+    const res = await withRequest(a).request('/limited');
     expect(res.headers.get('retry-after')).toBe('2');
   });
 });
 
-describe('errorHandler：坏 JSON → 400 http.invalid_json（W2 契约）', () => {
-  it('非法 JSON 体（手写 c.req.json() 路径的 SyntaxError）→ 400', async () => {
+describe('errorHandling：坏 JSON → 400 http.invalid_json（W2 契约）', () => {
+  it('非法 JSON 体（c.req.json() facade 的 400）→ 400', async () => {
     const res = await app().request('/echo', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -84,14 +84,14 @@ describe('errorHandler：坏 JSON → 400 http.invalid_json（W2 契约）', () 
   });
 });
 
-describe('errorHandler：Hono HTTPException 4xx 保留状态码（不兜 500）', () => {
+describe('errorHandling：keala HttpError 4xx 保留状态码（不兜 500）', () => {
   it('通用 4xx → 保留状态 + http.invalid_request 信封', async () => {
-    const a = new Hono();
-    a.onError(errorHandler());
+    const a = new Keala();
+    a.use(errorHandling());
     a.get('/x', () => {
-      throw new HTTPException(422, { message: 'unprocessable' });
+      throw createError(422, 'unprocessable');
     });
-    const res = await a.request('/x');
+    const res = await withRequest(a).request('/x');
     expect(res.status).toBe(422);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
       'http.invalid_request',
@@ -99,25 +99,25 @@ describe('errorHandler：Hono HTTPException 4xx 保留状态码（不兜 500）'
   });
 
   it('413 → http.payload_too_large（出站 status 修正链）', async () => {
-    const a = new Hono();
-    a.onError(errorHandler());
+    const a = new Keala();
+    a.use(errorHandling());
     a.get('/x', () => {
-      throw new HTTPException(413);
+      throw createError(413);
     });
-    const res = await a.request('/x');
+    const res = await withRequest(a).request('/x');
     expect(res.status).toBe(413);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
       'http.payload_too_large',
     );
   });
 
-  it('HTTPException(400, Malformed JSON) → 走 invalid_json 分支', async () => {
-    const a = new Hono();
-    a.onError(errorHandler());
+  it('HttpError(400, Malformed JSON) → 走 invalid_json 分支', async () => {
+    const a = new Keala();
+    a.use(errorHandling());
     a.get('/x', () => {
-      throw new HTTPException(400, { message: 'Malformed JSON in request body' });
+      throw createError(400, 'Malformed JSON in request body');
     });
-    const res = await a.request('/x');
+    const res = await withRequest(a).request('/x');
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
       'http.invalid_json',
     );
@@ -145,7 +145,7 @@ function pgErr(sqlstate: string): Error {
   return drizzle;
 }
 
-describe('errorHandler：PG SQLSTATE → 4xx 翻译（探测注入）', () => {
+describe('errorHandling：PG SQLSTATE → 4xx 翻译（探测注入）', () => {
   const cases: Array<[string, number, string, string]> = [
     ['23505', 409, 'http.pg_unique_violation', '唯一冲突'],
     ['23503', 400, 'http.pg_fk_violation', 'FK 不存在'],
@@ -156,12 +156,12 @@ describe('errorHandler：PG SQLSTATE → 4xx 翻译（探测注入）', () => {
   ];
   for (const [state, status, code, label] of cases) {
     it(`${label}（${state}）→ ${status} ${code}（cause 链包裹 + context 携带原 state）`, async () => {
-      const a = new Hono();
-      a.onError(errorHandler({ sqlState: fakeSqlState }));
+      const a = new Keala();
+      a.use(errorHandling({ sqlState: fakeSqlState }));
       a.post('/t', () => {
         throw pgErr(state);
       });
-      const res = await a.request('/t', { method: 'POST' });
+      const res = await withRequest(a).request('/t', { method: 'POST' });
       expect(res.status).toBe(status);
       expect(await res.json()).toEqual({
         error: { code, message: HttpErrors.get(code)?.message, context: { sqlstate: state } },
@@ -170,25 +170,25 @@ describe('errorHandler：PG SQLSTATE → 4xx 翻译（探测注入）', () => {
   }
 
   it('B1 回归：探测改为装配注入——未注入时无 PG 翻译（v1 越界依赖 core 的结构修复）', async () => {
-    const a = new Hono();
-    a.onError(errorHandler());
+    const a = new Keala();
+    a.use(errorHandling());
     a.post('/t', () => {
       throw pgErr('23505');
     });
-    expect((await a.request('/t', { method: 'POST' })).status).toBe(500);
+    expect((await withRequest(a).request('/t', { method: 'POST' })).status).toBe(500);
   });
 
   it('非翻译族错误码（ENOENT）与未知 SQLSTATE → 仍 500（不误吞服务端故障）', async () => {
-    const a = new Hono();
-    a.onError(errorHandler({ sqlState: fakeSqlState }));
+    const a = new Keala();
+    a.use(errorHandling({ sqlState: fakeSqlState }));
     a.post('/v', () => {
       throw Object.assign(new Error('fs error'), { code: 'ENOENT' });
     });
     a.post('/w', () => {
       throw pgErr('42P01');
     });
-    expect((await a.request('/v', { method: 'POST' })).status).toBe(500);
-    expect((await a.request('/w', { method: 'POST' })).status).toBe(500);
+    expect((await withRequest(a).request('/v', { method: 'POST' })).status).toBe(500);
+    expect((await withRequest(a).request('/w', { method: 'POST' })).status).toBe(500);
   });
 
   it('深链 cause（>5 层包裹）的 PG 错误同样命中——模拟与 pgSqlState 全链契约对齐', async () => {
@@ -199,12 +199,12 @@ describe('errorHandler：PG SQLSTATE → 4xx 翻译（探测注入）', () => {
       (wrap as { cause?: unknown }).cause = cur;
       cur = wrap;
     }
-    const a = new Hono();
-    a.onError(errorHandler({ sqlState: fakeSqlState }));
+    const a = new Keala();
+    a.use(errorHandling({ sqlState: fakeSqlState }));
     a.post('/deep', () => {
       throw cur;
     });
-    const res = await a.request('/deep', { method: 'POST' });
+    const res = await withRequest(a).request('/deep', { method: 'POST' });
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
       'http.pg_unique_violation',
@@ -212,15 +212,15 @@ describe('errorHandler：PG SQLSTATE → 4xx 翻译（探测注入）', () => {
   });
 });
 
-describe('errorHandler：分派顺序——已分类错误优先，PG 翻译只兜未分类', () => {
+describe('errorHandling：分派顺序——已分类错误优先，PG 翻译只兜未分类', () => {
   it('P1 回归①：BusinessError 带 23505 PG cause → 业务码保留（不被 http.pg_unique_violation 覆盖）', async () => {
-    const a = new Hono();
-    a.onError(errorHandler({ sqlState: fakeSqlState }));
+    const a = new Keala();
+    a.use(errorHandling({ sqlState: fakeSqlState }));
     a.post('/biz', () => {
       // 业务层已把唯一冲突翻译成业务语义（cause 保留 PG 事实链）
       throw HttpErrors.business('not_found', { resource: 'org' }, { cause: pgErr('23505') });
     });
-    const res = await a.request('/biz', { method: 'POST' });
+    const res = await withRequest(a).request('/biz', { method: 'POST' });
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({
       error: { code: 'http.not_found', message: 'Path not found', context: { resource: 'org' } },
@@ -228,12 +228,12 @@ describe('errorHandler：分派顺序——已分类错误优先，PG 翻译只�
   });
 
   it('P1 回归②：未分类 Error 带 PG cause → http.pg_unique_violation（兜底路径仍生效）', async () => {
-    const a = new Hono();
-    a.onError(errorHandler({ sqlState: fakeSqlState }));
+    const a = new Keala();
+    a.use(errorHandling({ sqlState: fakeSqlState }));
     a.post('/raw', () => {
       throw pgErr('23505');
     });
-    const res = await a.request('/raw', { method: 'POST' });
+    const res = await withRequest(a).request('/raw', { method: 'POST' });
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
       'http.pg_unique_violation',
@@ -241,14 +241,14 @@ describe('errorHandler：分派顺序——已分类错误优先，PG 翻译只�
   });
 
   it('P1 回归③：InfrastructureError 带 PG cause → 503 身份码保留（环境故障不伪装 4xx）', async () => {
-    const a = new Hono();
-    a.onError(errorHandler({ sqlState: fakeSqlState }));
+    const a = new Keala();
+    a.use(errorHandling({ sqlState: fakeSqlState }));
     a.post('/infra', () => {
       throw new InfrastructureError('connection terminated', 'db.unavailable', undefined, {
         cause: pgErr('23505'),
       });
     });
-    const res = await a.request('/infra', { method: 'POST' });
+    const res = await withRequest(a).request('/infra', { method: 'POST' });
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({
       error: { code: 'db.unavailable', message: 'Service temporarily unavailable' },
@@ -256,15 +256,15 @@ describe('errorHandler：分派顺序——已分类错误优先，PG 翻译只�
   });
 });
 
-describe('errorHandler：未知错误 → 500 errors.unhandled + 记日志', () => {
+describe('errorHandling：未知错误 → 500 errors.unhandled + 记日志', () => {
   it('细节不外泄；logger.error 恰好一次', async () => {
     const logged: Array<Record<string, unknown>> = [];
-    const a = new Hono();
-    a.onError(errorHandler({ logger: { error: (obj) => logged.push(obj) } }));
+    const a = new Keala();
+    a.use(errorHandling({ logger: { error: (obj) => logged.push(obj) } }));
     a.get('/kaboom', () => {
       throw new Error('secret internals');
     });
-    const res = await a.request('/kaboom');
+    const res = await withRequest(a).request('/kaboom');
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({
       error: { code: 'errors.unhandled', message: 'Internal server error' },
@@ -290,9 +290,9 @@ describe('errorHandler：未知错误 → 500 errors.unhandled + 记日志', () 
       },
     });
     const logged: Array<Record<string, unknown>> = [];
-    const a = new Hono();
-    a.onError(
-      errorHandler({
+    const a = new Keala();
+    a.use(
+      errorHandling({
         catalog: Drained,
         logger: { error: (obj) => logged.push(obj) },
       }),
@@ -303,7 +303,7 @@ describe('errorHandler：未知错误 → 500 errors.unhandled + 记日志', () 
         upstream_code: 'channel_budget_exhausted',
       });
     });
-    const res = await a.request('/drained');
+    const res = await withRequest(a).request('/drained');
     expect(res.status).toBe(503);
     expect(logged.length).toBe(1);
     expect(logged[0]?.context).toEqual({

@@ -8,13 +8,13 @@
  * （若可投毒 signup-gift:{受害者id} 会导致受害者登录永久 500）。
  */
 import { randomUUID } from 'node:crypto';
-import type { Context } from 'hono';
+import type { Context } from 'keala';
 import { HttpErrors } from '../errors/catalog';
 
 const CLIENT_KEY_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 export function operationId(c: Context): string {
-  const key = c.req.header('idempotency-key');
+  const key = c.get('idempotency-key');
   if (key === undefined || key === '') return randomUUID();
   if (!CLIENT_KEY_RE.test(key)) {
     throw HttpErrors.business('invalid_idempotency_key', { length: key.length });

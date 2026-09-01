@@ -328,7 +328,6 @@
       "version": "0.1.0",
       "dependencies": {
         "@tillgate/errors": "workspace:*",
-        "hono": "^4.13.0",
         "keala": "^0.5.1",
         "zod": "^4.4.3",
       },

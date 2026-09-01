@@ -18,7 +18,7 @@
  * LB 探活不能排在请求后面（否则实例被误判死亡摘除）。队列溢出与等待超时
  * fail-closed 503（客户端重试）。
  */
-import type { MiddlewareHandler } from 'hono';
+import type { Middleware } from '../framework/keala';
 import { HttpErrors } from '../errors/catalog.js';
 
 export interface DbBudgetOptions {
@@ -41,7 +41,7 @@ interface BudgetWaiter {
 const BYPASS = new Set(['/healthz', '/livez', '/readyz']);
 
 // eslint-disable-next-line max-lines-per-function -- 排队/超时/取消共享 inflight/queue 闭包状态,拆段即互相回读
-export function dbBudgetMiddleware(opts: DbBudgetOptions): MiddlewareHandler {
+export function dbBudgetMiddleware(opts: DbBudgetOptions): Middleware {
   let inflight = 0;
   const queue: Array<BudgetWaiter> = [];
   const release = (): void => {
@@ -122,7 +122,10 @@ export function dbBudgetMiddleware(opts: DbBudgetOptions): MiddlewareHandler {
   );
 
   return async (c, next) => {
-    if (BYPASS.has(c.req.path)) return next();
+    if (BYPASS.has(c.path)) {
+      await next();
+      return;
+    }
     if (opts.drainSignal?.aborted === true) {
       // 统一错误出口:抛目录码(unavailable→503),由各 app 的 errorHandler face
       // 渲染信封/双语/Retry-After——机制件不自带出站形态
@@ -134,7 +137,7 @@ export function dbBudgetMiddleware(opts: DbBudgetOptions): MiddlewareHandler {
         },
       );
     }
-    if (c.req.raw.signal.aborted) {
+    if (c.raw.signal.aborted) {
       throw HttpErrors.business(
         'db_budget_abandoned',
         { limit: opts.limit },
@@ -153,12 +156,12 @@ export function dbBudgetMiddleware(opts: DbBudgetOptions): MiddlewareHandler {
           },
         );
       }
-      await enqueue(c.req.raw.signal);
+      await enqueue(c.raw.signal);
     } else {
       inflight += 1;
     }
     try {
-      return await next();
+      await next();
     } finally {
       release();
     }

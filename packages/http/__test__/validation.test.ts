@@ -1,31 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
+import { Keala, createBodyParser } from 'keala';
 import * as z from 'zod';
+import { withRequest } from '../src/framework/keala';
 import { intParam } from '../src/validation/int-param';
-import { jsonBody, query } from '../src/validation/zod-validator';
-import { errorHandler } from '../src/errors/handler';
+import { jsonBody, query, jsonBodyOf, queryOf } from '../src/validation/zod-validator';
+import { errorHandling } from '../src/errors/handler';
 
 /**
  * 校验组件：
  * 失败统一 400 http.validation_failed，context 平铺 `body.name` / `query.n` 形态。
  */
 
-function app(): Hono {
-  const a = new Hono();
-  a.onError(errorHandler());
+function app(): ReturnType<typeof withRequest> {
+  const a = new Keala();
+  a.use(errorHandling(), createBodyParser());
   a.post('/body', jsonBody(z.object({ name: z.string().min(3) })), (c) =>
-    c.json(c.req.valid('json')),
+    c.json(jsonBodyOf<{ name: string }>(c)),
   );
   a.get('/query', query(z.object({ n: z.coerce.number().int() })), (c) =>
-    c.json(c.req.valid('query')),
+    c.json(queryOf<{ n: number }>(c)),
   );
-  a.get('/query-tag', query(z.object({ tag: z.string() })), (c) => c.json(c.req.valid('query')));
+  a.get('/query-tag', query(z.object({ tag: z.string() })), (c) =>
+    c.json(queryOf<{ tag: string }>(c)),
+  );
   a.get('/item/:id', (c) => c.json({ id: intParam(c, 'id') }));
-  return a;
+  return withRequest(a);
 }
 
 describe('jsonBody', () => {
-  it('合法输入 → 200 且 valid("json") 得解析值', async () => {
+  it('合法输入 → 200 且 jsonBodyOf 得解析值', async () => {
     const res = await app().request('/body', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

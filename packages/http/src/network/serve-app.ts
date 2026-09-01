@@ -1,7 +1,7 @@
 /**
  * Bun 原生 HTTP 服务适配（bun-native 形态单一真相）：
- * hono app → Bun.serve（fetch 协议原生,不经 node:http 兼容层）;
- * env.server 注入 hono 上下文（trusted-client-ip 的 socket 取址依赖它）;
+ * keala app → Bun.serve（fetch 协议原生,不经 node:http 兼容层）;
+ * runtime.server 注入 keala 上下文（trusted-client-ip 的 socket 取址依赖它）;
  * close(callback) 对齐 runtime 停机契约——stop(false) 停收新连接、等在途
  * 自然收口,宽限兜底仍归 runtime 的强退计时器。
  * idleTimeout 显式默认 60s:Bun 缺省 10s 会切断「handler 等慢上游期间未写
@@ -31,7 +31,7 @@ const IDLE_TIMEOUT_MAX_SECONDS = 255;
 const IDLE_TIMEOUT_DEFAULT_SECONDS = 60;
 
 export function serveApp(
-  app: { fetch: (request: Request, env: unknown) => Response | Promise<Response> },
+  app: { handle: (request: Request, runtime?: unknown) => Response | Promise<Response> },
   opts: ServeAppOptions,
   onListening?: (info: { port: number }) => void,
 ): AppServer {
@@ -49,7 +49,7 @@ export function serveApp(
     port: opts.port,
     ...(opts.hostname != null ? { hostname: opts.hostname } : {}),
     idleTimeout: opts.idleTimeoutSeconds ?? IDLE_TIMEOUT_DEFAULT_SECONDS,
-    fetch: (request, bunServer) => app.fetch(request, { server: bunServer }),
+    fetch: (request, bunServer) => app.handle(request, { server: bunServer }),
   });
   // server.port 在 port=0(随机端口)时由系统分配后回填——实际监听值回传调用方
   const actualPort = server.port;

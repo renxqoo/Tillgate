@@ -1,6 +1,6 @@
 /** 请求 ID 中间件 */
 import { randomUUID } from 'node:crypto';
-import type { MiddlewareHandler } from 'hono';
+import type { ContextOf, Middleware } from '../framework/keala';
 
 /**
  * requestId **永远服务端生成**（randomUUID），不信任客户端 X-Request-Id：
@@ -9,13 +9,12 @@ import type { MiddlewareHandler } from 'hono';
  *   - requestId 同时是 billing/usage 的幂等键（uuid 列），客户端控制会导致
  *     重放冲突与 500。
  * 客户端 X-Request-Id 仅用于日志关联（不入 requestId）；响应回显服务端 ID。
+ * 读取端：`ContextOf<{ requestId: string }>` 收窄 `c.state.requestId`。
  */
-export function requestIdMiddleware<
-  E extends { Variables: { requestId: string } },
->(): MiddlewareHandler<E> {
+export function requestIdMiddleware(): Middleware<ContextOf<{ requestId: string }>> {
   return async (c, next) => {
-    c.set('requestId', randomUUID());
+    c.state.requestId = randomUUID();
     await next();
-    c.header('x-request-id', c.get('requestId'));
+    c.set('x-request-id', c.state.requestId);
   };
 }

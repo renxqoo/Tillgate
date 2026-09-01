@@ -1,19 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
-import { bodyParserLimit, corsPreflight, securityHeaders } from '../src/security/protocol';
+import { Keala } from 'keala';
+import { withRequest, asMiddleware, type ContextWithBody } from '../src/framework/keala';
+import { errorHandling } from '../src/errors/handler';
+import { bodyParser, bodyParserLimit, corsPreflight, securityHeaders } from '../src/security/protocol';
 
 /**
  * 协议安全三件套的行为锁：
  * 统一安全头 4 头全集、CORS 策略参数化（白名单外静默放行、预检 204）、
- * bodyLimit 双路径（声明长度快路径 + 实际流计数）413 经单一渲染路径。
+ * body 预算双路径（声明长度快路径 + 读取侧流计数）413 经单一渲染路径。
  */
 
-function app(): Hono {
-  const a = new Hono();
-  a.use('*', securityHeaders);
+function app(): ReturnType<typeof withRequest> {
+  const a = new Keala();
+  a.use(errorHandling());
+  a.use(securityHeaders);
   // CORS 策略四要素全部显式注入，不藏默认
   a.use(
-    '*',
     corsPreflight({
       origins: ['https://console.example.com'],
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -21,10 +23,13 @@ function app(): Hono {
       maxAgeSeconds: 600,
     }),
   );
-  a.use('*', bodyParserLimit(64));
-  a.post('/echo', async (c) => c.text(`len:${(await c.req.text()).length}`));
+  a.use(bodyParserLimit(64), bodyParser(64));
+  a.post(
+    '/echo',
+    asMiddleware(async (c: ContextWithBody) => c.text(`len:${(await c.req.text()).length}`)),
+  );
   a.get('/ping', (c) => c.text('pong'));
-  return a;
+  return withRequest(a);
 }
 
 describe('securityHeaders（统一 4 头全集）', () => {
@@ -67,9 +72,8 @@ describe('corsPreflight', () => {
   });
 
   it('B4 回归：CORS 策略参数化（v1 三面方法集/允许头/Max-Age 硬编码漂移）', async () => {
-    const a = new Hono();
+    const a = new Keala();
     a.use(
-      '*',
       corsPreflight({
         origins: ['https://gw.example.com'],
         methods: ['GET', 'POST', 'OPTIONS'],
@@ -78,7 +82,7 @@ describe('corsPreflight', () => {
       }),
     );
     a.get('/x', (c) => c.text('ok'));
-    const res = await a.request('/x', {
+    const res = await withRequest(a).request('/x', {
       method: 'OPTIONS',
       headers: { origin: 'https://gw.example.com' },
     });

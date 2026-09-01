@@ -12,10 +12,10 @@
  *     TRUSTED_PROXY_HOPS 条目有明确说明。
  */
 import { isIP } from 'node:net';
-import type { Context } from 'hono';
+import type { Context } from 'keala';
 
-/** Bun.serve 注入 env.server 的最小结构面（requestIP 取不可伪造的 socket 对端） */
-interface ServeEnv {
+/** keala runtime.server 的最小结构面（requestIP 取不可伪造的 socket 对端） */
+interface ServerRuntime {
   server?: { requestIP(request: Request): { address: string } | null };
 }
 
@@ -58,20 +58,20 @@ export function trustedClientIp(input: TrustedClientIpInput): string {
 /** 从请求上下文取不可伪造的 socket 对端地址；无连接信息（app.request 测试等）→ null */
 export function socketAddressFromContext(c: Context): string | null {
   try {
-    const server = (c.env as ServeEnv | undefined)?.server;
-    return server?.requestIP(c.req.raw)?.address ?? null;
+    const server = (c.runtime as ServerRuntime | undefined)?.server;
+    return server?.requestIP(c.raw)?.address ?? null;
   } catch {
     return null;
   }
 }
 
 /**
- * 从 Hono 上下文提取客户端 IP（Bun.serve 部署形态——serveApp 注入 env.server）。
+ * 从请求上下文提取客户端 IP（Bun.serve 部署形态——serveApp 注入 runtime.server）。
  * config 只需含 trustedProxyHops。
  */
 export function clientIpFromContext(c: Context, config: { trustedProxyHops: number }): string {
   return trustedClientIp({
-    headers: c.req.raw.headers,
+    headers: c.raw.headers,
     trustedProxyHops: config.trustedProxyHops,
     socketAddress: socketAddressFromContext(c),
   });

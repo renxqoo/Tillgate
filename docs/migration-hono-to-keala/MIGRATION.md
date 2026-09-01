@@ -47,6 +47,8 @@ catch (e) { ... }` 产生。`@tillgate/http` 的 `errorHandler(deps)` 重写为
 |---|---|
 | app 工厂统一 `return withRequest(app)` | 580 处 `app.request` 零改动（D3） |
 | `new Hono()` → `withRequest(new Keala())`（13 处测试 harness） | 同上 |
+| db-budget 单测 next 替身返回值断言（'served'）→ 完成性断言 | keala 中间件契约：next 只以 void 完成，不透传返回值 |
+| jsonBody/query 经 `c.state.validJson/validQuery` + 类型化读取器 | keala 无 c.req.valid() |
 | 断言 `res.headers.get('allow')` 新增 | 405 行为（§4-1）随 keala 引入 |
 | 重复 query 键断言如存在需按 §4-4 核对 | query 形态差异 |
 
@@ -61,6 +63,7 @@ catch (e) { ... }` 产生。`@tillgate/http` 的 `errorHandler(deps)` 重写为
 | 5 | OPTIONS（非 CORS 预检） | 404 | 200 + Allow | 无消费者 |
 | 6 | HEAD 无显式路由 | 404 | 回落到 GET handler（无 body） | 探针仅用 GET，无影响 |
 | 7 | 默认错误体 | onError JSON 封套 | errorHandling 中间件 JSON 封套（等价） | 需 e2e 验证 |
+| 8 | 流式 413 信封 context | 含 max_bytes | 谎报头（声明小实发大）路径不含 max_bytes（keala readBodyLimited 错误不带限值）；声明超限与 chunked 预读路径均带 | 极端构造输入，信封 code/status/message 不变 |
 
 ## 5. 验收清单
 

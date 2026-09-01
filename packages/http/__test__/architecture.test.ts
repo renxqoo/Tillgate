@@ -1,6 +1,6 @@
 /**
  * 边界测试——边界必须可执行：
- * src import 白名单（仅 @tillgate/errors、hono、zod、@hono/node-server、node:*）/
+ * src import 白名单（仅 @tillgate/errors、keala、zod、node:*）/
  * index.ts 导出面快照（新增导出是契约变更）/
  * 断言零 @tillgate/db 与业务包引用（http 永不认识业务码）。
  */
@@ -33,10 +33,9 @@ function externalSpecifiers(text: string): string[] {
   return out;
 }
 
-describe('依赖白名单（§5.1：http 只依赖 @tillgate/errors + hono/zod/@hono/node-server/node:）', () => {
+describe('依赖白名单（§5.1：http 只依赖 @tillgate/errors + keala/zod/node:）', () => {
   it('src 全部外部 import 落在白名单内', () => {
-    const ALLOWED =
-      /^(?:@tillgate\/errors|hono(?:\/[\w/-]+)?|@hono\/node-server(?:\/[\w/-]+)?|zod|node:[\w:]+)$/;
+    const ALLOWED = /^(?:@tillgate\/errors|keala(?:\/[\w/-]+)?|zod|node:[\w:]+)$/;
     const offenders: string[] = [];
     for (const file of files) {
       for (const spec of externalSpecifiers(readFileSync(file, 'utf8'))) {
@@ -76,18 +75,21 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
       'LOCALE_COOKIE_MAX_AGE',
       'PAGE_SIZE_DEFAULT',
       'PAGE_SIZE_MAX',
+      'asMiddleware',
+      'bodyParser',
       'bodyParserLimit',
       'clientIpFromContext',
       'corsPreflight',
       'dbBudgetMiddleware',
       'errorBody',
-      'errorHandler',
+      'errorHandling',
       'escapeLike',
       'generateRedeemCode',
       'htmlLang',
       'intParam',
       'isLocale',
       'jsonBody',
+      'jsonBodyOf',
       'limitOffset',
       'listQuerySchema',
       'localeFromContext',
@@ -100,9 +102,11 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
       'parsePagination',
       'pgRejection',
       'query',
+      'queryOf',
       'renderError',
       'requestIdMiddleware',
       'resolveLocale',
+      'routes',
       'searchQuerySchema',
       'securityHeaders',
       'serveApp',
@@ -112,6 +116,7 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
       'suggestDbBudget',
       'timingSafeTokenEqual',
       'trustedClientIp',
+      'withRequest',
     ]);
   });
 

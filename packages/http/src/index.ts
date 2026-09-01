@@ -1,10 +1,22 @@
 /**
- * @tillgate/http 公共出口——纯 HTTP/Hono 基础工具。
+ * @tillgate/http 公共出口——纯 HTTP/keala 基础工具。
  * 出口面有意维护：错误渲染出口（@tillgate/errors 第一消费者）、本地化、
  * 校验、分页、可信网络提取、请求上下文、幂等键、安全件。
  */
 
-// ---- 错误：http 自有目录 + 渲染出口 + Hono onError ----
+// ---- keala 框架收口：类型面 + request() 装配糖 + 类型化路由组 ----
+export {
+  withRequest,
+  routes,
+  asMiddleware,
+  type App,
+  type ContextOf,
+  type Middleware,
+  type Next,
+  type Routes,
+} from './framework/keala';
+
+// ---- 错误：http 自有目录 + 渲染出口 + 最外层错误中间件 ----
 export {
   HttpErrors,
   GENERIC_INTERNAL_MESSAGE,
@@ -17,12 +29,12 @@ export {
   type RenderOptions,
   type RenderedError,
 } from './errors/render';
-export { errorHandler, type ErrorHandlerDeps, type ErrorLogger } from './errors/handler';
+export { errorHandling, type ErrorHandlerDeps, type ErrorLogger } from './errors/handler';
 export { pgRejection } from './errors/sqlstate';
 export { errorBody } from './errors/render';
 
 // ---- 校验 / 参数 ----
-export { jsonBody, query } from './validation/zod-validator';
+export { jsonBody, query, jsonBodyOf, queryOf } from './validation/zod-validator';
 export { intParam } from './validation/int-param';
 
 // ---- 分页：容错解析 + 列表 query 组合基底 ----
@@ -71,6 +83,7 @@ export {
   securityHeaders,
   corsPreflight,
   bodyParserLimit,
+  bodyParser,
   type CorsConfig,
 } from './security/protocol';
 

@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { BusinessError } from '@tillgate/errors';
-import type { Next } from 'hono';
+import type { Next } from '../src/framework/keala';
 import { dbBudgetMiddleware, suggestDbBudget } from '../src/middleware/db-budget.js';
 
 /** 目录码错误的最小形状断言面 */
@@ -18,7 +18,7 @@ interface CatalogErrorShape {
 }
 
 const fakeContext = (path: string, signal?: AbortSignal) =>
-  ({ req: { path, raw: { signal: signal ?? new AbortController().signal } } }) as never;
+  ({ path, raw: { signal: signal ?? new AbortController().signal } }) as never;
 
 /** 目录码错误判定：unavailable 族专属形状 */
 const isUnavailableCode = (err: unknown, code: string): boolean => {
@@ -36,9 +36,9 @@ function latch() {
   return { open: () => release?.(), spy, next: spy as unknown as Next };
 }
 
-/** 即时完成的 next */
+/** 即时完成的 next（keala 中间件契约：next 只以 void 完成，不透传返回值） */
 function immediateNext() {
-  const spy = vi.fn(async () => 'served');
+  const spy = vi.fn(async () => {});
   return { spy, next: spy as unknown as Next };
 }
 
@@ -61,7 +61,7 @@ describe('dbBudgetMiddleware', () => {
     await vi.waitFor(() => expect(third.spy).toHaveBeenCalledTimes(1)); // 释放即放行
     gate2.open();
     await p2;
-    expect(await p3).toBe('served');
+    await p3;
   });
 
   it('队列溢出 → http.db_budget_full(unavailable,fail-closed)', async () => {
@@ -119,7 +119,7 @@ describe('dbBudgetMiddleware', () => {
     const holder = mw(fakeContext('/biz'), gate.next);
     void holder;
     const probe = immediateNext();
-    await expect(mw(fakeContext('/healthz'), probe.next)).resolves.toBe('served');
+    await expect(mw(fakeContext('/healthz'), probe.next)).resolves.toBeUndefined();
     expect(probe.spy).toHaveBeenCalledTimes(1);
     gate.open();
     await holder;
@@ -157,7 +157,7 @@ describe('dbBudgetMiddleware 取消感知（db-budget-signals 方案）', () => 
     gate.open();
     await holder;
     await vi.waitFor(() => expect(b.spy).toHaveBeenCalledTimes(1)); // B 顶上,死请求不占名额
-    expect(await pB).toBe('served');
+    await pB;
   });
 
   it('入口即断连 → db_budget_abandoned,不占预算(后续请求仍直通)', async () => {
@@ -170,7 +170,7 @@ describe('dbBudgetMiddleware 取消感知（db-budget-signals 方案）', () => 
     );
     expect(dead.spy).not.toHaveBeenCalled();
     const live = immediateNext();
-    await expect(mw(fakeContext('/live'), live.next)).resolves.toBe('served');
+    await expect(mw(fakeContext('/live'), live.next)).resolves.toBeUndefined();
   });
 
   it('授予后断连 → 无 late-reject,请求照常完成(唤醒源已拆除)', async () => {
@@ -182,7 +182,7 @@ describe('dbBudgetMiddleware 取消感知（db-budget-signals 方案）', () => 
     const p = mw(fakeContext('/q', ctrl.signal), served.next);
     gate.open();
     await holder;
-    expect(await p).toBe('served');
+    await p;
     ctrl.abort(); // 已结算的等待不受拆除后的信号影响(无未处理拒绝即通过)
     await new Promise((r) => {
       setTimeout(r, 10);
@@ -233,7 +233,7 @@ describe('dbBudgetMiddleware 取消感知（db-budget-signals 方案）', () => 
       drainSignal: drain.signal,
     });
     const probe = immediateNext();
-    await expect(mw(fakeContext('/healthz'), probe.next)).resolves.toBe('served');
+    await expect(mw(fakeContext('/healthz'), probe.next)).resolves.toBeUndefined();
     expect(probe.spy).toHaveBeenCalledTimes(1);
   });
 

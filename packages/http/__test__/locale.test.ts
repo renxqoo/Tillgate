@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
+import { Keala } from 'keala';
+import { withRequest } from '../src/framework/keala';
 import {
   DEFAULT_LOCALE,
   LOCALES,
@@ -57,12 +58,13 @@ describe('词表与工具', () => {
 });
 
 describe('localeFromContext', () => {
-  it('从 Hono 上下文取 accept-language 协商结果', async () => {
-    const app = new Hono();
+  it('从 keala 上下文取 accept-language 协商结果', async () => {
+    const app = new Keala();
     app.get('/locale', (c) => c.json({ locale: localeFromContext(c) }));
-    const zh = await app.request('/locale', { headers: { 'accept-language': 'zh-TW' } });
+    const adapted = withRequest(app);
+    const zh = await adapted.request('/locale', { headers: { 'accept-language': 'zh-TW' } });
     expect(((await zh.json()) as { locale: string }).locale).toBe('zh');
-    const none = await app.request('/locale');
+    const none = await adapted.request('/locale');
     expect(((await none.json()) as { locale: string }).locale).toBe('en');
   });
 });

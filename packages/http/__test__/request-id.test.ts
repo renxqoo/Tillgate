@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
+import { Keala } from 'keala';
+import { asMiddleware, withRequest, type ContextOf } from '../src/framework/keala';
 import { requestIdMiddleware } from '../src/request-context/request-id';
 
 /**
@@ -7,15 +8,14 @@ import { requestIdMiddleware } from '../src/request-context/request-id';
  * requestId 永远服务端生成，不信任客户端头（限流 ZSET member / 计费幂等键安全性）。
  */
 
-interface TestEnv {
-  Variables: { requestId: string; userId: number };
-}
+/** state 形状超集（requestId + 业务变量）——验证收窄类型在更宽 app 下可用 */
+type TestContext = ContextOf<{ requestId: string; userId: number }>;
 
-function app(): Hono<TestEnv> {
-  const a = new Hono<TestEnv>();
-  a.use(requestIdMiddleware());
-  a.get('/id', (c) => c.json({ requestId: c.get('requestId') }));
-  return a;
+function app(): ReturnType<typeof withRequest> {
+  const a = new Keala();
+  a.use(asMiddleware(requestIdMiddleware()));
+  a.get('/id', asMiddleware((c: TestContext) => c.json({ requestId: c.state.requestId })));
+  return withRequest(a);
 }
 
 describe('requestIdMiddleware', () => {
@@ -43,8 +43,8 @@ describe('requestIdMiddleware', () => {
     expect(first).not.toBe(second);
   });
 
-  it('泛型兼容更宽的 app Env（Variables 超集可用）', async () => {
-    // 编译期验证 + 运行时同一实现：TestEnv 比 { Variables: { requestId } } 多 userId
+  it('state 形状超集可用（更宽的 app Context 下同一实现）', async () => {
+    // 编译期验证 + 运行时同一实现：TestContext 比 { requestId } 多 userId
     const res = await app().request('/id');
     expect(res.headers.get('x-request-id')).toBeTruthy();
   });

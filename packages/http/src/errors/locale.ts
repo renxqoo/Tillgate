@@ -4,7 +4,7 @@
  * 支持语言固定为 en | zh，默认英文。zh-CN/zh-TW/zh-HK 等全部归并为 zh，
  * en-* 归并为 en；其余语言不命中，回落默认。
  */
-import type { Context } from 'hono';
+import type { Context } from 'keala';
 
 export const LOCALES = ['en', 'zh'] as const;
 export type Locale = (typeof LOCALES)[number];
@@ -75,5 +75,5 @@ export function resolveLocale(
 
 /** 从请求上下文协商出口语言（Accept-Language → en|zh，默认英文） */
 export function localeFromContext(c: Context): Locale {
-  return parseAcceptLanguage(c.req.header('accept-language'));
+  return parseAcceptLanguage(c.get('accept-language'));
 }
