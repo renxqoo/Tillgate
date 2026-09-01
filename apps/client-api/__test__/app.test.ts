@@ -2100,7 +2100,7 @@ describe('覆盖收尾：纯函数与路由分支变体', () => {
     expect(guardKeyOf('a@b.c', '1.2.3.4')).toBe(guardKeyOf('a@b.c', '1.2.3.4'));
     expect(guardKeyOf('a@b.c', '1.2.3.4')).not.toBe(guardKeyOf('a@b.c', '4.3.2.1'));
     const ctx = (lang: string) =>
-      ({ req: { header: () => lang } }) as unknown as Parameters<typeof localeOf>[0];
+      ({ get: () => lang }) as unknown as Parameters<typeof localeOf>[0];
     expect(localeOf(ctx('zh'))).toBe('zh');
     expect(localeOf(ctx('en-US,en;q=0.9'))).toBe('en');
   });

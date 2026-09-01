@@ -60,12 +60,22 @@ export function query<S extends z.ZodType>(schema: S): Middleware {
   };
 }
 
-/** jsonBody 落值的类型化读取（旧 c.req.valid('json') 的替代） */
-export function jsonBodyOf<T>(c: Context): T {
-  return c.state.validJson as T;
+/** jsonBody 落值的类型化读取（旧 c.req.valid('json') 的替代；带 schema 时推断输出类型） */
+export function jsonBodyOf<S extends z.ZodType>(c: Context, schema: S): z.output<S>;
+export function jsonBodyOf<T>(c: Context): T;
+export function jsonBodyOf(c: Context): unknown {
+  return c.state.validJson;
 }
 
-/** query 落值的类型化读取（旧 c.req.valid('query') 的替代） */
-export function queryOf<T>(c: Context): T {
-  return c.state.validQuery as T;
+/** query 落值的类型化读取（旧 c.req.valid('query') 的替代；带 schema 时推断输出类型） */
+export function queryOf<S extends z.ZodType>(c: Context, schema: S): z.output<S>;
+export function queryOf<T>(c: Context): T;
+export function queryOf(c: Context): unknown {
+  return c.state.validQuery;
+}
+
+/** 单值 query 读取（keala 重复键收集为数组——取首项；无值 undefined） */
+export function queryString(c: Context, key: string): string | undefined {
+  const value = c.query[key];
+  return Array.isArray(value) ? value[0] : value;
 }

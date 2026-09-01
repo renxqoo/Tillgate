@@ -4,25 +4,31 @@
  * （错误目录装配与协议闸是契约，不是规则）。本层不触数据库句柄与能力包装配子入口；
  * pgSqlState 是纯 SQLSTATE 分类函数（trace-receiver 同款白名单例外）。
  */
-import { Hono } from 'hono';
+import { Keala } from 'keala';
 import {
-  dbBudgetMiddleware,
+  asMiddleware,
+  bodyParser,
   bodyParserLimit,
   corsPreflight,
-  errorHandler,
-  HttpErrors,
+  dbBudgetMiddleware,
+  errorHandling,
+  notFoundResponse,
   requestIdMiddleware,
   securityHeaders,
+  withRequest,
+  type App,
   type DbBudgetOptions,
 } from '@tillgate/http';
 import { pgSqlState } from '@tillgate/db';
 import { CLIENT_FACE_OVERRIDES, clientErrorCatalog } from './http/error-face.js';
 import {
   sessionMiddleware,
-  type SessionEnv,
+  type SessionMiddleware,
   type SessionValidator,
 } from './http/middleware/session.js';
 import { authRoutes, type AuthDeps } from './http/routes/auth.js';
+import { registerRoutes } from './http/routes/auth-register.js';
+import { loginRoutes } from './http/routes/auth-login.js';
 import { forgotRoutes } from './http/routes/auth-forgot.js';
 import { meRoutes, type MeDeps } from './http/routes/me.js';
 import { keysRoutes, type KeysDeps } from './http/routes/keys.js';
@@ -65,24 +71,25 @@ export interface ClientApiDeps {
 }
 
 // eslint-disable-next-line max-lines-per-function -- 应用装配:错误处理/中间件栈/路由挂载线性平铺
-export function createClientApiApp(deps: ClientApiDeps): Hono<SessionEnv> {
-  const app = new Hono<SessionEnv>();
-  const session = sessionMiddleware(deps.validateSession);
+export function createClientApiApp(deps: ClientApiDeps): App {
+  const app = new Keala();
+  const session: SessionMiddleware = sessionMiddleware(deps.validateSession);
 
-  app.onError(
-    errorHandler({
+  // 错误响应由最外层中间件产生（keala onError 是日志监听器）——必须第一个注册
+  app.use(
+    errorHandling({
       catalog: clientErrorCatalog(),
       overrides: CLIENT_FACE_OVERRIDES,
       sqlState: pgSqlState,
       logger: deps.logger,
     }),
   );
-  app.notFound(() => {
-    throw HttpErrors.business('not_found');
-  });
+  // keala notFound 在中间件链外执行——直接产出同款本地化信封（throw 不可达错误链）
+  app.notFound((c) =>
+    notFoundResponse(c, { catalog: clientErrorCatalog(), overrides: CLIENT_FACE_OVERRIDES }),
+  );
 
   app.use(
-    '*',
     corsPreflight({
       origins: deps.protocol.corsOrigins,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -90,10 +97,11 @@ export function createClientApiApp(deps: ClientApiDeps): Hono<SessionEnv> {
       maxAgeSeconds: deps.protocol.corsMaxAgeSeconds,
     }),
   );
-  app.use('*', securityHeaders);
-  app.use('*', bodyParserLimit(deps.protocol.bodyLimitBytes));
-  if (deps.dbBudget != null) app.use('*', dbBudgetMiddleware(deps.dbBudget));
-  app.use('*', requestIdMiddleware<SessionEnv>());
+  app.use(securityHeaders);
+  app.use(bodyParserLimit(deps.protocol.bodyLimitBytes));
+  app.use(bodyParser(deps.protocol.bodyLimitBytes));
+  if (deps.dbBudget != null) app.use(dbBudgetMiddleware(deps.dbBudget));
+  app.use(asMiddleware(requestIdMiddleware()));
 
   app.get('/healthz', async (c) => {
     await deps.health.pingDb();
@@ -106,20 +114,22 @@ export function createClientApiApp(deps: ClientApiDeps): Hono<SessionEnv> {
     return c.json({ ok: true });
   });
 
-  app.route('/', authRoutes(deps.auth, session));
-  app.route('/', forgotRoutes(deps.auth));
-  app.route('/', meRoutes(deps.me, session));
-  app.route('/', keysRoutes(deps.keys, session));
-  app.route('/', appsRoutes(deps.apps, session));
-  app.route('/', orgRoutes(deps.orgs, session));
-  app.route('/', walletRoutes(deps.wallet, session));
-  app.route('/', redeemRoutes(deps.redeem, session));
-  app.route('/', paymentsRoutes(deps.payments, session));
-  app.route('/', subscriptionRoutes(deps.subscriptions, session));
-  app.route('/', usageRoutes(deps.usage, session));
-  app.route('/', oauthRoutes(deps.oauth));
-  app.route('/', pricingRoutes(deps.pricing, session));
-  app.route('/', referralRoutes(deps.referrals, session));
+  app.mount('/', authRoutes(deps.auth, session));
+  app.mount('/', registerRoutes(deps.auth));
+  app.mount('/', loginRoutes(deps.auth));
+  app.mount('/', forgotRoutes(deps.auth));
+  app.mount('/', meRoutes(deps.me, session));
+  app.mount('/', keysRoutes(deps.keys, session));
+  app.mount('/', appsRoutes(deps.apps, session));
+  app.mount('/', orgRoutes(deps.orgs, session));
+  app.mount('/', walletRoutes(deps.wallet, session));
+  app.mount('/', redeemRoutes(deps.redeem, session));
+  app.mount('/', paymentsRoutes(deps.payments, session));
+  app.mount('/', subscriptionRoutes(deps.subscriptions, session));
+  app.mount('/', usageRoutes(deps.usage, session));
+  app.mount('/', oauthRoutes(deps.oauth));
+  app.mount('/', pricingRoutes(deps.pricing, session));
+  app.mount('/', referralRoutes(deps.referrals, session));
 
-  return app;
+  return withRequest(app);
 }

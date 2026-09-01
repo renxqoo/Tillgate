@@ -25,8 +25,8 @@ export type Middleware<C extends Context = Context> = (
   next: Next,
 ) => Response | void | Promise<Response | void>;
 
-/** Hono `Hono<Env>` Variables 泛型的替代：`c.state` 形状收窄 */
-export type ContextOf<V extends Record<string, unknown>> = Context & { state: V };
+/** Hono `Hono<Env>` Variables 泛型的替代：`c.state` 形状收窄（interface 形态亦可） */
+export type ContextOf<V extends object> = Context & { state: V };
 
 /** 已装 bodyParser 插件的上下文（c.req.* facade 可用） */
 export type ContextWithBody = Context & { req: RequestBodyFacade };

@@ -1,9 +1,10 @@
 /**
  * API Key 路由（会话）：列表 / 创建（明文仅此一次返回）/ 修补 / 轮换 / 吊销。
  */
-import { Hono } from 'hono';
-import { jsonBody, query as queryMiddleware } from '@tillgate/http';
-import type { MiddlewareHandler } from 'hono';
+import { jsonBody, query as queryMiddleware,
+  jsonBodyOf,
+  queryOf,
+  type Middleware, routes } from '@tillgate/http';
 import type { AccountUseCases } from '@tillgate/accounts';
 import {
   keyCreateSchema,
@@ -13,7 +14,7 @@ import {
 } from '../contracts/keys.js';
 import { toKeyRow } from '../presenters/keys.js';
 import { parsePath } from '../contracts/shared.js';
-import type { SessionEnv } from '../middleware/session.js';
+import type { SessionContext } from '../middleware/session.js';
 
 export interface KeysDeps {
   readonly create: AccountUseCases['createKey'];
@@ -24,13 +25,13 @@ export interface KeysDeps {
 }
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器平铺
-export function keysRoutes(deps: KeysDeps, session: MiddlewareHandler<SessionEnv>) {
-  const app = new Hono<SessionEnv>();
+export function keysRoutes(deps: KeysDeps, session: Middleware<SessionContext>) {
+  const app = routes<SessionContext>();
 
   app.get('/v1/keys', session, queryMiddleware(keysListQuerySchema), async (c) => {
-    const query = c.req.valid('query');
+    const query = queryOf(c, keysListQuerySchema);
     const result = await deps.list({
-      userId: c.get('userId'),
+      userId: c.state.userId,
       page: query.page,
       limit: query.limit,
     });
@@ -43,9 +44,9 @@ export function keysRoutes(deps: KeysDeps, session: MiddlewareHandler<SessionEnv
   });
 
   app.post('/v1/keys', session, jsonBody(keyCreateSchema), async (c) => {
-    const body = c.req.valid('json');
+    const body = jsonBodyOf(c, keyCreateSchema);
     const result = await deps.create({
-      userId: c.get('userId'),
+      userId: c.state.userId,
       name: body.name,
       remark: body.remark,
       rpmLimit: body.rpmLimit,
@@ -58,10 +59,10 @@ export function keysRoutes(deps: KeysDeps, session: MiddlewareHandler<SessionEnv
   });
 
   app.patch('/v1/keys/:id', session, jsonBody(keyPatchSchema), async (c) => {
-    const { id } = parsePath(keyIdParamSchema, c.req.param());
-    const patch = c.req.valid('json');
+    const { id } = parsePath(keyIdParamSchema, c.params ?? {});
+    const patch = jsonBodyOf(c, keyPatchSchema);
     const key = await deps.patch({
-      userId: c.get('userId'),
+      userId: c.state.userId,
       keyId: id,
       patch: {
         name: patch.name,
@@ -76,16 +77,16 @@ export function keysRoutes(deps: KeysDeps, session: MiddlewareHandler<SessionEnv
   });
 
   app.post('/v1/keys/:id/rotate', session, async (c) => {
-    const { id } = parsePath(keyIdParamSchema, c.req.param());
-    const result = await deps.rotate({ userId: c.get('userId'), keyId: id });
+    const { id } = parsePath(keyIdParamSchema, c.params ?? {});
+    const result = await deps.rotate({ userId: c.state.userId, keyId: id });
     return c.json({ ...toKeyRow(result.key), plaintext: result.plaintext }, 201);
   });
 
   app.delete('/v1/keys/:id', session, async (c) => {
-    const { id } = parsePath(keyIdParamSchema, c.req.param());
-    const key = await deps.revoke({ userId: c.get('userId'), keyId: id });
+    const { id } = parsePath(keyIdParamSchema, c.params ?? {});
+    const key = await deps.revoke({ userId: c.state.userId, keyId: id });
     return c.json({ id: key.id });
   });
 
-  return app;
+  return app.router;
 }

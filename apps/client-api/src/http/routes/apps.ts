@@ -1,14 +1,15 @@
 /**
  * Apps 路由（会话）：列表 / 创建（client_secret 仅此一次）/ 禁用 / 轮换密钥。
  */
-import { Hono } from 'hono';
-import { jsonBody, query as queryMiddleware } from '@tillgate/http';
-import type { MiddlewareHandler } from 'hono';
+import { jsonBody, query as queryMiddleware,
+  jsonBodyOf,
+  queryOf,
+  type Middleware, routes } from '@tillgate/http';
 import type { AccountUseCases } from '@tillgate/accounts';
 import { appCreateSchema, appIdParamSchema, appsListQuerySchema } from '../contracts/apps.js';
 import { toAppRow } from '../presenters/keys.js';
 import { parsePath } from '../contracts/shared.js';
-import type { SessionEnv } from '../middleware/session.js';
+import type { SessionContext } from '../middleware/session.js';
 
 export interface AppsDeps {
   readonly create: AccountUseCases['createApp'];
@@ -17,13 +18,13 @@ export interface AppsDeps {
   readonly rotateSecret: AccountUseCases['rotateAppSecret'];
 }
 
-export function appsRoutes(deps: AppsDeps, session: MiddlewareHandler<SessionEnv>) {
-  const app = new Hono<SessionEnv>();
+export function appsRoutes(deps: AppsDeps, session: Middleware<SessionContext>) {
+  const app = routes<SessionContext>();
 
   app.get('/v1/apps', session, queryMiddleware(appsListQuerySchema), async (c) => {
-    const query = c.req.valid('query');
+    const query = queryOf(c, appsListQuerySchema);
     const result = await deps.list({
-      userId: c.get('userId'),
+      userId: c.state.userId,
       page: query.page,
       limit: query.limit,
     });
@@ -36,9 +37,9 @@ export function appsRoutes(deps: AppsDeps, session: MiddlewareHandler<SessionEnv
   });
 
   app.post('/v1/apps', session, jsonBody(appCreateSchema), async (c) => {
-    const body = c.req.valid('json');
+    const body = jsonBodyOf(c, appCreateSchema);
     const result = await deps.create({
-      userId: c.get('userId'),
+      userId: c.state.userId,
       name: body.name,
       description: body.description,
       subscriptionId: body.subscriptionId,
@@ -48,16 +49,16 @@ export function appsRoutes(deps: AppsDeps, session: MiddlewareHandler<SessionEnv
   });
 
   app.post('/v1/apps/:id/disable', session, async (c) => {
-    const { id } = parsePath(appIdParamSchema, c.req.param());
-    const record = await deps.disable({ userId: c.get('userId'), appId: id });
+    const { id } = parsePath(appIdParamSchema, c.params ?? {});
+    const record = await deps.disable({ userId: c.state.userId, appId: id });
     return c.json({ id: record.id });
   });
 
   app.post('/v1/apps/:id/rotate', session, async (c) => {
-    const { id } = parsePath(appIdParamSchema, c.req.param());
-    const result = await deps.rotateSecret({ userId: c.get('userId'), appId: id });
+    const { id } = parsePath(appIdParamSchema, c.params ?? {});
+    const result = await deps.rotateSecret({ userId: c.state.userId, appId: id });
     return c.json({ id: result.app.id, clientSecret: result.clientSecret });
   });
 
-  return app;
+  return app.router;
 }

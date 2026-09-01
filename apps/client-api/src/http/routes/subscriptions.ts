@@ -2,10 +2,10 @@
  * 套餐/订阅路由：目录（公开）+ 购买/变更/续费/我的订阅（会话）。
  * 幂等键：idempotency-key 头缺省服务端生成 uuid；非法形态 400。
  */
-import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
 import { randomUUID } from 'node:crypto';
-import { HttpErrors, jsonBody } from '@tillgate/http';
+import { HttpErrors, jsonBody,
+  jsonBodyOf,
+  type Middleware, routes } from '@tillgate/http';
 import type { SubscriptionsApi } from '@tillgate/billing';
 import {
   IDEMPOTENCY_KEY_PATTERN,
@@ -19,7 +19,7 @@ import {
   type SubscriptionBaseRow,
 } from '../presenters/subscriptions.js';
 import { parsePath } from '../contracts/shared.js';
-import type { SessionEnv } from '../middleware/session.js';
+import type { SessionContext } from '../middleware/session.js';
 
 export interface SubscriptionReads {
   readonly listPlans: () => Promise<readonly PlanRow[]>;
@@ -42,9 +42,9 @@ function operationIdOf(headerValue: string | undefined): string {
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器平铺
 export function subscriptionRoutes(
   deps: SubscriptionsDeps,
-  session: MiddlewareHandler<SessionEnv>,
+  session: Middleware<SessionContext>,
 ) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<SessionContext>();
 
   // 目录公开（只读上架套餐，无个人数据）
   app.get('/v1/plans', async (c) => {
@@ -53,15 +53,15 @@ export function subscriptionRoutes(
   });
 
   app.get('/v1/subscriptions', session, async (c) => {
-    const rows = await deps.reads.mySubscriptions(c.get('userId'));
+    const rows = await deps.reads.mySubscriptions(c.state.userId);
     return c.json({ rows: rows.map(toMySubscriptionRow) });
   });
 
   app.post('/v1/subscriptions', session, jsonBody(purchaseSchema), async (c) => {
-    const body = c.req.valid('json');
+    const body = jsonBodyOf(c, purchaseSchema);
     const result = await deps.api.purchase({
-      operationId: operationIdOf(c.req.header('idempotency-key')),
-      userId: c.get('userId'),
+      operationId: operationIdOf(c.get('idempotency-key')),
+      userId: c.state.userId,
       planId: body.planId,
       quantity: body.quantity,
       ensureOrg: true,
@@ -70,11 +70,11 @@ export function subscriptionRoutes(
   });
 
   app.post('/v1/subscriptions/:id/change', session, jsonBody(planChangeSchema), async (c) => {
-    const { id } = parsePath(subscriptionIdParamSchema, c.req.param());
-    const body = c.req.valid('json');
+    const { id } = parsePath(subscriptionIdParamSchema, c.params ?? {});
+    const body = jsonBodyOf(c, planChangeSchema);
     const result = await deps.api.change({
-      operationId: operationIdOf(c.req.header('idempotency-key')),
-      userId: c.get('userId'),
+      operationId: operationIdOf(c.get('idempotency-key')),
+      userId: c.state.userId,
       subscriptionId: id,
       targetPlanId: body.targetPlanId,
       quantity: body.quantity,
@@ -83,14 +83,14 @@ export function subscriptionRoutes(
   });
 
   app.post('/v1/subscriptions/:id/renew', session, async (c) => {
-    const { id } = parsePath(subscriptionIdParamSchema, c.req.param());
+    const { id } = parsePath(subscriptionIdParamSchema, c.params ?? {});
     const result = await deps.api.renew({
-      operationId: operationIdOf(c.req.header('idempotency-key')),
-      userId: c.get('userId'),
+      operationId: operationIdOf(c.get('idempotency-key')),
+      userId: c.state.userId,
       subscriptionId: id,
     });
     return c.json(result);
   });
 
-  return app;
+  return app.router;
 }

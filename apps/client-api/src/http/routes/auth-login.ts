@@ -3,14 +3,14 @@
  * 401）→ 账户状态闸 → 两级登录开关（发码）或直签会话；login/verify 凭 uid 载荷
  * 免二次鉴别后签发。失败计数 best-effort，成功清零。
  */
-import { Hono } from 'hono';
 import { isBusinessError } from '@tillgate/errors';
-import { jsonBody } from '@tillgate/http';
+import { jsonBody,
+  jsonBodyOf, routes } from '@tillgate/http';
 import { USER_STATUS } from '@tillgate/accounts';
 import { identityErrors } from '@tillgate/identity';
 import { loginSchema, verifySchema } from '../contracts/auth.js';
 import { clientErrors } from '../error-face.js';
-import type { SessionEnv } from '../middleware/session.js';
+import type { SessionContext } from '../middleware/session.js';
 import { clientIpOf, guardKeyOf, localeOf, type AuthDeps } from './auth.js';
 
 /** 登录期挑战载荷（uid 供 verify 半程免二次认证） */
@@ -20,11 +20,11 @@ interface LoginPayload {
 
 // eslint-disable-next-line max-lines-per-function -- 登录族装配平铺:路由表+多级登录处理器平铺
 export function loginRoutes(deps: AuthDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<SessionContext>();
 
   // eslint-disable-next-line max-lines-per-function -- 凭证登录链(守卫闸/鉴别/防枚举/状态/计数)语义连续,拆段即互相回读
   app.post('/v1/auth/login', jsonBody(loginSchema), async (c) => {
-    const body = c.req.valid('json');
+    const body = jsonBodyOf(c, loginSchema);
     const ip = clientIpOf(deps, c);
     const guardKey = guardKeyOf(body.email, ip);
     let emailLock: { locked: boolean; retryAfterSec: number };
@@ -89,7 +89,7 @@ export function loginRoutes(deps: AuthDeps) {
   });
 
   app.post('/v1/auth/login/verify', jsonBody(verifySchema), async (c) => {
-    const body = c.req.valid('json');
+    const body = jsonBodyOf(c, verifySchema);
     const verified = await deps.challenges.verify({
       challengeId: body.challengeId,
       code: body.code,
@@ -111,5 +111,5 @@ export function loginRoutes(deps: AuthDeps) {
     return c.json({ token, userId });
   });
 
-  return app;
+  return app.router;
 }

@@ -6,12 +6,12 @@
  * 与登录/找回的哑口径一致）。
  */
 import { randomUUID } from 'node:crypto';
-import { Hono } from 'hono';
-import { jsonBody } from '@tillgate/http';
+import { jsonBody,
+  jsonBodyOf, routes } from '@tillgate/http';
 import { assertPasswordPolicy } from '@tillgate/identity';
 import { registerSchema, verifySchema } from '../contracts/auth.js';
 import { clientErrors } from '../error-face.js';
-import type { SessionEnv } from '../middleware/session.js';
+import type { SessionContext } from '../middleware/session.js';
 import { clientIpOf, localeOf, type AuthDeps } from './auth.js';
 
 /** 注册期挑战载荷（identity challenges.payload 的 app 形状） */
@@ -23,10 +23,10 @@ interface RegisterPayload {
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器平铺
 export function registerRoutes(deps: AuthDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<SessionContext>();
 
   app.post('/v1/auth/register', jsonBody(registerSchema), async (c) => {
-    const body = c.req.valid('json');
+    const body = jsonBodyOf(c, registerSchema);
     const ip = clientIpOf(deps, c);
     if (!deps.capabilities().registerEnabled) {
       throw clientErrors.business('register_disabled');
@@ -73,7 +73,7 @@ export function registerRoutes(deps: AuthDeps) {
   });
 
   app.post('/v1/auth/register/verify', jsonBody(verifySchema), async (c) => {
-    const body = c.req.valid('json');
+    const body = jsonBodyOf(c, verifySchema);
     if (!deps.capabilities().registerEnabled) {
       throw clientErrors.business('register_disabled');
     }
@@ -112,5 +112,5 @@ export function registerRoutes(deps: AuthDeps) {
     );
   });
 
-  return app;
+  return app.router;
 }

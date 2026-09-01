@@ -3,12 +3,13 @@
  * 易支付回调为 urlencoded 表单或 query：合并后交 billing payments 验签归一；
  * Stripe 回调为 POST 原始事件体 + Stripe-Signature 头（非 2xx 应答触发渠道重试）。
  */
-import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
-import { HttpErrors, jsonBody, query as queryMiddleware } from '@tillgate/http';
+import { HttpErrors, jsonBody, query as queryMiddleware,
+  jsonBodyOf,
+  queryOf,
+  type Middleware, routes } from '@tillgate/http';
 import type { PaymentsApi } from '@tillgate/billing';
 import { createOrderSchema, orderIdPattern, ordersListQuerySchema } from '../contracts/billing.js';
-import type { SessionEnv } from '../middleware/session.js';
+import type { SessionContext } from '../middleware/session.js';
 
 export interface PaymentsDeps {
   /** 回调资金面快照预刷（强制重读——消除 latest 盲窗） */
@@ -17,12 +18,12 @@ export interface PaymentsDeps {
 }
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器平铺
-export function paymentsRoutes(deps: PaymentsDeps, session: MiddlewareHandler<SessionEnv>) {
-  const app = new Hono<SessionEnv>();
+export function paymentsRoutes(deps: PaymentsDeps, session: Middleware<SessionContext>) {
+  const app = routes<SessionContext>();
 
   app.post('/v1/payments/orders', session, jsonBody(createOrderSchema), async (c) => {
-    const body = c.req.valid('json');
-    const result = await deps.payments.createTopupOrder(c.get('userId'), {
+    const body = jsonBodyOf(c, createOrderSchema);
+    const result = await deps.payments.createTopupOrder(c.state.userId, {
       amount: body.amount,
       provider: body.provider,
     });
@@ -30,16 +31,16 @@ export function paymentsRoutes(deps: PaymentsDeps, session: MiddlewareHandler<Se
   });
 
   app.get('/v1/payments/orders/:id', session, async (c) => {
-    const id = c.req.param('id');
+    const id = (c.params?.['id'] ?? '');
     if (!orderIdPattern.test(id)) {
       throw HttpErrors.business('invalid_request', { field: 'id' });
     }
-    return c.json(await deps.payments.orderDetail(c.get('userId'), id));
+    return c.json(await deps.payments.orderDetail(c.state.userId, id));
   });
 
   app.get('/v1/payments/orders', session, queryMiddleware(ordersListQuerySchema), async (c) => {
-    const query = c.req.valid('query');
-    const rows = await deps.payments.listOrders(c.get('userId'), {
+    const query = queryOf(c, ordersListQuerySchema);
+    const rows = await deps.payments.listOrders(c.state.userId, {
       page: query.page,
       limit: query.limit,
     });
@@ -49,16 +50,16 @@ export function paymentsRoutes(deps: PaymentsDeps, session: MiddlewareHandler<Se
   app.get('/v1/payments/channels', session, (c) => c.json({ channels: deps.payments.channels() }));
 
   app.post('/v1/payments/notify/:provider', async (c) => {
-    const provider = c.req.param('provider');
+    const provider = (c.params?.['provider'] ?? '');
     // 资金面预刷缓存：验签端口是同步签名（latest 面），
     // 路由先强制重读快照，密钥轮换后新签回调零盲窗；读失败 fail-loud（DB 故障时回调 5xx，
     // 渠道按重试语义回放——与旧「验签失败 fail」同向）
     await deps.refreshIntegrationSnapshot();
     if (provider === 'epay') {
       // 表单体 + query 合并（各 epay 实现放置位置不一；重复键以表单优先）
-      const form = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
+      const form = await c.req.formData().then(f => Object.fromEntries(f.entries())).catch(() => ({}) as Record<string, unknown>);
       const merged: Record<string, string> = {};
-      for (const [k, v] of Object.entries(c.req.query())) merged[k] = v;
+      for (const [k, v] of Object.entries(c.query)) merged[k] = Array.isArray(v) ? (v[0] ?? '') : v;
       for (const [k, v] of Object.entries(form)) if (typeof v === 'string') merged[k] = v;
       const answer = await deps.payments.handleNotify('epay', merged);
       // 渠道回调应答是裸文本（epay 协议：success/fail）
@@ -68,7 +69,7 @@ export function paymentsRoutes(deps: PaymentsDeps, session: MiddlewareHandler<Se
       const payload = await c.req.text();
       const answer = await deps.payments.handleNotify('stripe', {
         payload,
-        'stripe-signature': c.req.header('stripe-signature') ?? '',
+        'stripe-signature': c.get('stripe-signature') ?? '',
       });
       // Stripe 协议：2xx 即确认；非 2xx 渠道按指数退避重试（验签失败重试也无害）
       return c.json({ received: answer === 'success' }, answer === 'success' ? 200 : 400);
@@ -76,5 +77,5 @@ export function paymentsRoutes(deps: PaymentsDeps, session: MiddlewareHandler<Se
     return c.text('fail', 404);
   });
 
-  return app;
+  return app.router;
 }

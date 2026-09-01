@@ -10,20 +10,20 @@
  * 配置前置:SMTP(smtp 集成行)与控制台基地址(env OAUTH_FRONTEND_URL)缺一即 503 fail-closed
  * ——发不出链接的功能绝不静默降级。
  */
-import { Hono } from 'hono';
-import { jsonBody } from '@tillgate/http';
+import { jsonBody,
+  jsonBodyOf, routes } from '@tillgate/http';
 import { assertPasswordPolicy } from '@tillgate/identity';
 import { forgotSchema, forgotResetSchema } from '../contracts/auth.js';
 import { clientErrors } from '../error-face.js';
-import type { SessionEnv } from '../middleware/session.js';
+import type { SessionContext } from '../middleware/session.js';
 import { clientIpOf, localeOf, type AuthDeps } from './auth.js';
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器平铺
 export function forgotRoutes(deps: AuthDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<SessionContext>();
 
   app.post('/v1/auth/forgot', jsonBody(forgotSchema), async (c) => {
-    const body = c.req.valid('json');
+    const body = jsonBodyOf(c, forgotSchema);
     const ip = clientIpOf(deps, c);
 
     // SMTP 未生效或控制台基地址未配——fail-closed,不静默降级（快照动态判定）
@@ -72,7 +72,7 @@ export function forgotRoutes(deps: AuthDeps) {
   });
 
   app.post('/v1/auth/forgot/reset', jsonBody(forgotResetSchema), async (c) => {
-    const body = c.req.valid('json');
+    const body = jsonBodyOf(c, forgotResetSchema);
     assertPasswordPolicy(body.password, deps.passwordPolicy);
     const userId = await deps.consumeResetToken(body.token);
     if (userId == null) {
@@ -83,5 +83,5 @@ export function forgotRoutes(deps: AuthDeps) {
     return c.json({ ok: true });
   });
 
-  return app;
+  return app.router;
 }

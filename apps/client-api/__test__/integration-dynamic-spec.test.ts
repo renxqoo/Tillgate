@@ -5,15 +5,17 @@
  * - mailerOverride 注入时 auto 口径与 main 基线一致（mailer != null）；
  * - stripe 下单打到快照 apiBase（私有化网关语义）。
  */
-import { Hono } from 'hono';
+import { Keala, createBodyParser } from 'keala';
+import { withRequest, type Middleware } from '@tillgate/http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { MiddlewareHandler } from 'hono';
+
 import { epaySign } from '@tillgate/billing';
 import type { Billing } from '@tillgate/billing';
 import { createClientPayments } from '../src/adapters/payment-providers.js';
 import { captchaSiteKeyOf, createDynamicCaptcha } from '../src/adapters/dynamic-captcha.js';
 import { createIdentityStack } from '../src/adapters/identity-stack.js';
 import { registerRoutes } from '../src/http/routes/auth-register.js';
+import type { SessionContext } from '../src/http/middleware/session.js';
 import { paymentsRoutes } from '../src/http/routes/payments.js';
 import type { AuthDeps } from '../src/http/routes/auth.js';
 import { loadClientApiConfig } from '../src/config.js';
@@ -84,14 +86,19 @@ const CAPTCHA_ON: ResolvedIntegration<CaptchaConfig> = {
 
 function mountRegister(deps: AuthDeps) {
   const errors: Array<{ code: string }> = [];
-  const app = new Hono();
-  app.onError((err, c) => {
-    const code = (err as { code?: string }).code ?? 'unknown';
-    errors.push({ code });
-    return c.json({ error: { code } }, 500);
+  const app = new Keala();
+  app.use(async (c, next) => {
+    try {
+      await next();
+    } catch (error) {
+      const code = (error as { code?: string }).code ?? 'unknown';
+      errors.push({ code });
+      return c.json({ error: { code } }, 500);
+    }
   });
-  app.route('/', registerRoutes(deps));
-  return { app, errors };
+  app.use(createBodyParser());
+  app.mount('/', registerRoutes(deps));
+  return { app: withRequest(app), errors };
 }
 
 function registerDepsOf(reader: IntegrationSettingsReader, captchaEnabled: boolean): AuthDeps {
@@ -282,8 +289,18 @@ describe('B-2 规格：回调路由先 refresh 再验签（轮换后新 key 零�
       logger: { error: () => {} } as unknown as Logger,
       clock: () => new Date('2026-08-25T00:00:00Z'),
     });
-    const app = new Hono();
-    app.route(
+    const app = new Keala();
+    const errors: Array<string> = [];
+    app.use(async (c, next) => {
+      try {
+        await next();
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+        return c.text('error', 500);
+      }
+    });
+    app.use(createBodyParser());
+    app.mount(
       '/',
       paymentsRoutes(
         {
@@ -295,13 +312,8 @@ describe('B-2 规格：回调路由先 refresh 再验签（轮换后新 key 零�
         sessionPassthrough,
       ),
     );
-    const errors: Array<string> = [];
-    app.onError((err, c) => {
-      errors.push(err.message);
-      return c.text('error', 500);
-    });
     return {
-      app,
+      app: withRequest(app),
       errors,
       readCalls: () => reads,
     };
@@ -439,7 +451,7 @@ describe('B-4 规格：stripe 下单打到快照 apiBase（私有化网关语义
 });
 
 /** 会话中间件直通（notify 路由无会话消费） */
-const sessionPassthrough: MiddlewareHandler = async (_c, next) => {
+const sessionPassthrough: Middleware<SessionContext> = async (_c, next) => {
   await next();
 };
 

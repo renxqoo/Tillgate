@@ -1,24 +1,22 @@
 /**
  * 认证路由装配（动词文件聚合处）：能力探测 / 登出 / 改密在本文件；
- * 注册两步制在 auth-register.ts、登录（含两级验证码）在 auth-login.ts。
+ * 注册两步制在 auth-register.ts、登录（含两级验证码）在 auth-login.ts——
+ * 两者经 app.ts 平铺挂载（keala Router 不支持二级 mount）。
  * 共享 deps 形状与协议助手在此定义——本层只编排 facade 动词与协议闸，
  * 业务规则单源在 identity/accounts。
  */
-import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
 import {
   jsonBody,
   parseAcceptLanguage,
   socketAddressFromContext,
   trustedClientIp,
-} from '@tillgate/http';
+  jsonBodyOf,
+  type Middleware, routes } from '@tillgate/http';
 import { sha256Hex } from '@tillgate/billing';
 import type { Identity, PasswordPolicy } from '@tillgate/identity';
 import type { AuthFailureGuard, KeyBruteForceGuard } from '@tillgate/runtime';
 import { passwordSchema } from '../contracts/auth.js';
-import type { SessionEnv } from '../middleware/session.js';
-import { registerRoutes } from './auth-register.js';
-import { loginRoutes } from './auth-login.js';
+import type { SessionContext } from '../middleware/session.js';
 
 /** 前端能力探测（登录/注册页按钮渲染依据；无个人数据） */
 export interface ClientCapabilities {
@@ -95,36 +93,33 @@ export function guardKeyOf(email: string, ip: string): string {
 }
 
 /** Accept-Language → identity delivery locale（'zh' 之外一律 en） */
-export function localeOf(c: Parameters<MiddlewareHandler<SessionEnv>>[0]): 'en' | 'zh' {
-  return parseAcceptLanguage(c.req.header('accept-language')) === 'zh' ? 'zh' : 'en';
+export function localeOf(c: SessionContext): 'en' | 'zh' {
+  return parseAcceptLanguage(c.get('accept-language')) === 'zh' ? 'zh' : 'en';
 }
 
 /** 真实 socket 对端地址必须注入：置 null 时全部请求落到进程级常量桶——
  *  注册限频与登录 IP 锁退化为「全站一个桶」的自伤开关（app.request 测试 → null 合法） */
-export function clientIpOf(
-  deps: { trustedProxyHops: number },
-  c: Parameters<MiddlewareHandler<SessionEnv>>[0],
-): string {
+export function clientIpOf(deps: { trustedProxyHops: number }, c: SessionContext): string {
   return trustedClientIp({
-    headers: c.req.raw.headers,
+    headers: c.raw.headers,
     trustedProxyHops: deps.trustedProxyHops,
     socketAddress: socketAddressFromContext(c),
   });
 }
 
-export function authRoutes(deps: AuthDeps, session: MiddlewareHandler<SessionEnv>) {
-  const app = new Hono<SessionEnv>();
+export function authRoutes(deps: AuthDeps, session: Middleware<SessionContext>) {
+  const app = routes<SessionContext>();
 
   app.get('/v1/auth/capabilities', (c) => c.json(deps.capabilities()));
 
   app.post('/v1/auth/logout', session, async (c) => {
-    await deps.logout(bearerToken(c.req.header('authorization')));
+    await deps.logout(bearerToken(c.get('authorization')));
     return c.json({ ok: true });
   });
 
   app.post('/v1/auth/password', session, jsonBody(passwordSchema), async (c) => {
-    const body = c.req.valid('json');
-    const userId = c.get('userId');
+    const body = jsonBodyOf(c, passwordSchema);
+    const { userId } = c.state;
     await deps.changePassword({
       userId,
       realm: 'user',
@@ -136,7 +131,5 @@ export function authRoutes(deps: AuthDeps, session: MiddlewareHandler<SessionEnv
     return c.json({ token });
   });
 
-  app.route('/', registerRoutes(deps));
-  app.route('/', loginRoutes(deps));
-  return app;
+  return app.router;
 }

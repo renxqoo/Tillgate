@@ -9,13 +9,13 @@
  *     ?oauth_error=<code> 回传错误码（码出自服务端错误目录，非用户输入；
  *     前端按码映射文案，上游不可用时引导邮箱登录）。非业务错误仍交全局错误面。
  */
-import { Hono } from 'hono';
+import { queryString, routes } from '@tillgate/http';
 import { isBusinessError } from '@tillgate/errors';
-import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { AccountUseCases } from '@tillgate/accounts';
 import type { Identity, OAuthCallbackResult } from '@tillgate/identity';
 import { clientErrors } from '../error-face.js';
 import { OAUTH_STATE_COOKIE, safeNext } from '../contracts/oauth.js';
+import type { SessionContext } from '../middleware/session.js';
 
 export interface OAuthDeps {
   /** 已配置登录方式（快照求值——前端按钮显隐与路由词表共用） */
@@ -58,12 +58,12 @@ async function resolveOAuthUserId(
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器平铺
 export function oauthRoutes(deps: OAuthDeps) {
-  const app = new Hono();
+  const app = routes<SessionContext>();
 
   app.get('/v1/oauth/providers', (c) => c.json({ providers: deps.providers() }));
 
   app.get('/v1/oauth/:provider/authorize', async (c) => {
-    const provider = c.req.param('provider');
+    const provider = (c.params?.['provider'] ?? '');
     if (!deps.providers().includes(provider)) {
       return c.json(
         { error: { code: 'client.oauth_unknown', message: 'Unknown login method' } },
@@ -73,9 +73,9 @@ export function oauthRoutes(deps: OAuthDeps) {
     const { url, state } = await deps.authorize({
       provider,
       redirectUri: `${deps.apiBase}/v1/oauth/${provider}/callback`,
-      next: safeNext(c.req.query('next')),
+      next: safeNext(queryString(c, 'next')),
     });
-    setCookie(c, OAUTH_STATE_COOKIE, state, {
+    c.cookies.set(OAUTH_STATE_COOKIE, state, {
       httpOnly: true,
       sameSite: 'lax',
       path: '/v1/oauth',
@@ -86,7 +86,7 @@ export function oauthRoutes(deps: OAuthDeps) {
   });
 
   app.get('/v1/oauth/:provider/callback', async (c) => {
-    const provider = c.req.param('provider');
+    const provider = (c.params?.['provider'] ?? '');
     if (!deps.providers().includes(provider)) {
       return c.json(
         { error: { code: 'client.oauth_unknown', message: 'Unknown login method' } },
@@ -95,19 +95,19 @@ export function oauthRoutes(deps: OAuthDeps) {
     }
     try {
       // 双提交第一因子：cookie state 必须与 query state 一致（cookie 缺失/不符 = 拒绝）
-      const cookieState = getCookie(c, OAUTH_STATE_COOKIE);
-      const queryState = c.req.query('state') ?? '';
+      const cookieState = c.cookies.get(OAUTH_STATE_COOKIE);
+      const queryState = queryString(c, 'state') ?? '';
       if (cookieState == null || cookieState !== queryState) {
         throw clientErrors.business('oauth_state_mismatch');
       }
       // identity 半程：redis 单次消费 state + code 换 profile（上游失败业务错误）
       const result = await deps.callback({
         provider,
-        code: c.req.query('code') ?? '',
+        code: queryString(c, 'code') ?? '',
         state: queryState,
         redirectUri: `${deps.apiBase}/v1/oauth/${provider}/callback`,
       });
-      deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/v1/oauth' });
+      c.cookies.set(OAUTH_STATE_COOKIE, '', { path: '/v1/oauth', maxAge: 0 });
 
       // find-or-create：已绑定直用；首次建号（建号赠送归 app）
       const userId = await resolveOAuthUserId(deps, { provider, result });
@@ -124,10 +124,10 @@ export function oauthRoutes(deps: OAuthDeps) {
       // 浏览器面：业务错误 302 前端错误页（码经 URL 参数回传，state cookie 一并清除
       // ——其绑定的 state 已消费/作废，残留只会让后续回调再吃一次 mismatch）
       if (!isBusinessError(error)) throw error;
-      deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/v1/oauth' });
+      c.cookies.set(OAUTH_STATE_COOKIE, '', { path: '/v1/oauth', maxAge: 0 });
       return c.redirect(`${deps.frontendUrl}/oauth/callback?oauth_error=${error.code}`);
     }
   });
 
-  return app;
+  return app.router;
 }

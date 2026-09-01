@@ -114,3 +114,22 @@ function respond(c: Context, rendered: RenderedError, statusOverride?: number): 
 function isClassifiedError(err: unknown): boolean {
   return isBusinessError(err) || isInfrastructureError(err) || isDefectError(err);
 }
+
+/**
+ * 404 渲染器（app.notFound 用）：keala 的 notFound 在中间件链之外执行，throw
+ * 不可达 errorHandling——必须在此直接产出与错误链同款的本地化信封。
+ * context 可携带 path 等定位事实（gateway 形态）。
+ */
+export function notFoundResponse(
+  c: Context,
+  deps: Pick<ErrorHandlerDeps, 'catalog' | 'overrides'> = {},
+  context?: Record<string, string>,
+): Response {
+  const locale = localeFromContext(c);
+  const rendered = renderError(HttpErrors.business('not_found', context), {
+    locale,
+    catalog: deps.catalog,
+    overrides: deps.overrides,
+  });
+  return c.json(errorBody(rendered), rendered.status);
+}
