@@ -29,10 +29,10 @@ function aclApp(owner: { status: number; grants: { isSuper: boolean; codes: stri
   app.use(
     asMiddleware(
       createAclMiddleware(
-      {
-        validate: async (token: string) => (token === VALID_TOKEN ? sessionPayload : null),
-        ...(owner != null ? { owner: async () => owner } : {}),
-      },
+        {
+          validate: async (token: string) => (token === VALID_TOKEN ? sessionPayload : null),
+          ...(owner != null ? { owner: async () => owner } : {}),
+        },
         async (method, path) => matchBinding(BINDINGS, method, path),
       ),
     ),

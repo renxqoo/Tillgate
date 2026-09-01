@@ -61,7 +61,7 @@ export function modelsRoutes(deps: ModelsRoutesDeps) {
 
   // eslint-disable-next-line complexity -- 补丁字段映射平铺(逐字段条件展开,分支即 schema 搬运)
   app.patch('/v1/models/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = modelsContracts.update.parse(await c.req.json());
     const priceSet =
       body.inputPrice !== undefined ||
@@ -105,18 +105,18 @@ export function modelsRoutes(deps: ModelsRoutesDeps) {
   });
 
   app.delete('/v1/models/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(await models.delete({ ctx: controlContextOf(c), mappingId: id }));
   });
 
   /** 恢复已删除记录（回收站取出，回下架态）；在册行调用 → 404 */
   app.post('/v1/models/:id/restore', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(await models.undelete({ ctx: controlContextOf(c), mappingId: id }));
   });
 
   app.post('/v1/models/:id/channels', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = modelsContracts.bind.parse(await c.req.json());
     const result = await models.bindChannels({
       ctx: controlContextOf(c),
@@ -127,7 +127,7 @@ export function modelsRoutes(deps: ModelsRoutesDeps) {
   });
 
   app.post('/v1/models/:id/test', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(await models.probe(id));
   });
 

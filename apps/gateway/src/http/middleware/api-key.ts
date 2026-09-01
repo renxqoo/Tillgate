@@ -95,8 +95,6 @@ interface GatewayJwtPayload {
   scope?: { rpm?: number; tpm?: number; models?: string[] };
 }
 
-
-
 const UNLOCKED: GuardCheck = { locked: false, retryAfterSec: 0 };
 
 /** guards 未注入时的直通替身（单副本开发形态：爆破防护跳过） */

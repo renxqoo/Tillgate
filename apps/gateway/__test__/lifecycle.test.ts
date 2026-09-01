@@ -4,7 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Keala } from 'keala';
-import { asMiddleware, withRequest } from '@tillgate/http';import { createGatewayShutdown } from '../src/shutdown';
+import { asMiddleware, withRequest } from '@tillgate/http';
+import { createGatewayShutdown } from '../src/shutdown';
 import { otelMiddleware } from '../src/http/middleware/otel';
 
 describe('createGatewayShutdown（gateway 绑定形状）', () => {

@@ -1,10 +1,14 @@
 /**
  * 兑换码路由（会话）：POST /v1/redeem（频率闸在 billing redemption）+ 历史列表。
  */
-import { jsonBody, query as queryMiddleware,
+import {
+  jsonBody,
+  query as queryMiddleware,
   jsonBodyOf,
   queryOf,
-  type Middleware, routes } from '@tillgate/http';
+  type Middleware,
+  routes,
+} from '@tillgate/http';
 import type { RedemptionApi } from '@tillgate/billing';
 import { redeemHistoryQuerySchema, redeemSchema } from '../contracts/billing.js';
 import type { SessionContext } from '../middleware/session.js';

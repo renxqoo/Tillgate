@@ -25,7 +25,7 @@ export function billingOperationsRoutes(deps: BillingOperationsRoutesDeps) {
   });
 
   app.post('/v1/billing-operations/:requestId/retry', async (c) => {
-    const requestId = requestIdParam((c.params?.['requestId'] ?? ''));
+    const requestId = requestIdParam(c.params?.['requestId'] ?? '');
     const body = reviewContracts.decision.parse(await c.req.json());
     return c.json(
       await deps.review.retryDead({
@@ -40,7 +40,7 @@ export function billingOperationsRoutes(deps: BillingOperationsRoutesDeps) {
   });
 
   app.post('/v1/billing-operations/:requestId/abandon', async (c) => {
-    const requestId = requestIdParam((c.params?.['requestId'] ?? ''));
+    const requestId = requestIdParam(c.params?.['requestId'] ?? '');
     const body = reviewContracts.decision.parse(await c.req.json());
     return c.json(
       await deps.review.abandonDead({

@@ -27,8 +27,11 @@ export interface OAuthTokenDeps {
   trustedProxyHops: number;
 }
 
-const oauthError = (c: GwContext, status: 400 | 401, body: { error: string; description: string }) =>
-  c.json({ error: body.error, error_description: body.description }, status);
+const oauthError = (
+  c: GwContext,
+  status: 400 | 401,
+  body: { error: string; description: string },
+) => c.json({ error: body.error, error_description: body.description }, status);
 
 /** 表单字段收窄（File 值不是合法凭证串——按缺失处理） */
 function formField(form: FormData, name: string): string | undefined {

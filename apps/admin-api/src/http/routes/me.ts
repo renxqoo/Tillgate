@@ -9,7 +9,10 @@ import {
   jsonBody,
   socketAddressFromContext,
   trustedClientIp,
-  parseAcceptLanguage, routes, jsonBodyOf } from '@tillgate/http';
+  parseAcceptLanguage,
+  routes,
+  jsonBodyOf,
+} from '@tillgate/http';
 import type { ControlPlane, PermissionNode } from '@tillgate/control-plane';
 import { ENFORCED_CODES, granted } from '@tillgate/control-plane';
 import type { Identity } from '@tillgate/identity';

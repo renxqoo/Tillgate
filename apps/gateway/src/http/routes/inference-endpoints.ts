@@ -102,10 +102,7 @@ function contextAttemptsWriter(c: GwContext) {
 }
 
 /** 限流准入 + 推理调用（chat/stream 分派）；失败释放 TPM 预占（零上游执行） */
-export function inferenceRoutes(
-  deps: InferenceRouteDeps,
-  endpoint: InferenceEndpoint,
-) {
+export function inferenceRoutes(deps: InferenceRouteDeps, endpoint: InferenceEndpoint) {
   const app = routes<GwContext>();
   app.post('/', async (c) => {
     const raw = (await c.req.json().catch(() => null)) as unknown;
@@ -158,16 +155,13 @@ export function inferenceRoutes(
  * 路径段模型名注入 body.model 后走端点同一管线（鉴权/计费/计量完全一致）。
  * 挂载路径已带 :model 参数段（app.route('/v1/engines/:model', …)——param 全程可见）。
  */
-export function enginesAliasRoutes(
-  deps: InferenceRouteDeps,
-  endpoint: InferenceEndpoint,
-) {
+export function enginesAliasRoutes(deps: InferenceRouteDeps, endpoint: InferenceEndpoint) {
   const app = routes<GwContext>();
   app.post('/embeddings', async (c) => {
     const raw = (await c.req.json().catch(() => null)) as unknown;
     const aliasSummary = requestSummaryOf(c.method, raw);
     if (aliasSummary != null) c.state.requestLogSummary = aliasSummary;
-    const model = (c.params?.['model'] ?? '');
+    const model = c.params?.['model'] ?? '';
     const merged = { ...(raw as Record<string, unknown> | null), model };
     const parsed = endpoint.schema.safeParse(merged);
     if (!parsed.success) return invalidBody(c.json.bind(c), parsed.error.issues);

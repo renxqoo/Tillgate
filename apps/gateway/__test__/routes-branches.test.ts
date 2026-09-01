@@ -4,13 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Keala, createBodyParser, type Router } from 'keala';
-import {
-  asMiddleware,
-  errorHandling,
-  pathPrefixGate,
-  withRequest,
-  type App,
-} from '@tillgate/http';
+import { asMiddleware, errorHandling, pathPrefixGate, withRequest, type App } from '@tillgate/http';
 import type { Inference } from '@tillgate/inference';
 import { GATEWAY_FACE_OVERRIDES, gatewayErrorCatalog } from '../src/http/openai-error-face';
 import type { AuthReadModel } from '../src/http/middleware/api-key';
@@ -43,7 +37,9 @@ function gwShell(auth: boolean, ...routers: Router[]): App {
   shell.use(errorHandling({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
   shell.use(createBodyParser());
   if (auth) {
-    shell.use(asMiddleware(pathPrefixGate(['/v1', '/v1beta'], apiKeyMiddleware(READER, undefined, JWT))));
+    shell.use(
+      asMiddleware(pathPrefixGate(['/v1', '/v1beta'], apiKeyMiddleware(READER, undefined, JWT))),
+    );
   }
   for (const router of routers) shell.mount('/', router);
   return withRequest(shell);
@@ -420,9 +416,7 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
       errorHandling({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }),
       createBodyParser(),
     );
-    gemini.use(
-      asMiddleware(pathPrefixGate(['/v1beta'], apiKeyMiddleware(READER, undefined, JWT))),
-    );
+    gemini.use(asMiddleware(pathPrefixGate(['/v1beta'], apiKeyMiddleware(READER, undefined, JWT))));
     gemini.mount('/', geminiNativeRoutes({ inference }));
     const geminiApp = withRequest(gemini);
     const badBody = await geminiApp.request('/v1beta/models/g:generateContent', {

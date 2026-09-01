@@ -41,20 +41,20 @@ export function providersRoutes(deps: ProvidersRoutesDeps) {
   });
 
   app.patch('/v1/providers/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const patch = providersContracts.update.parse(await c.req.json());
     const row = await providers.update({ ctx: controlContextOf(c), providerId: id, patch });
     return c.json(toProviderWireRow(row));
   });
 
   app.delete('/v1/providers/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(await providers.delete({ ctx: controlContextOf(c), providerId: id }));
   });
 
   /** 恢复已删除记录（回收站取出，回禁用态）；在册行调用 → 404 */
   app.post('/v1/providers/:id/restore', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(await providers.undelete({ ctx: controlContextOf(c), providerId: id }));
   });
 

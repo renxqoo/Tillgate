@@ -102,7 +102,7 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
       return c.json(
         await integrations.update({
           ctx: controlContextOf(c),
-          key: (c.params?.['key'] ?? ''),
+          key: c.params?.['key'] ?? '',
           ...(body.enabled != null ? { enabled: body.enabled } : {}),
           ...(body.config != null ? { config: body.config } : {}),
         }),

@@ -16,7 +16,7 @@ export function vouchersRoutes(deps: VouchersRoutesDeps) {
   const app = routes<AdminContext>();
 
   app.get('/v1/vouchers/:key', async (c) => {
-    const stored = await deps.controlPlane.channels.loadVoucher((c.params?.['key'] ?? ''));
+    const stored = await deps.controlPlane.channels.loadVoucher(c.params?.['key'] ?? '');
     if (stored === null) {
       throw AdminErrors.business('voucher_not_found', {});
     }

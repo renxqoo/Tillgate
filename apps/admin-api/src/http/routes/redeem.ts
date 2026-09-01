@@ -68,12 +68,12 @@ export function redeemRoutes(deps: RedeemRoutesDeps) {
   });
 
   app.get('/v1/redeem-batches/:id', async (c) => {
-    const row = await deps.redeemBatches.detail(idParam((c.params?.['id'] ?? '')));
+    const row = await deps.redeemBatches.detail(idParam(c.params?.['id'] ?? ''));
     return c.json(toBatchWireRow(row));
   });
 
   app.get('/v1/redeem-batches/:id/codes', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const extra = redeemContracts.codesQueryExtra.parse(queryObject(c));
     const query = parseListQuery(queryObject(c), CODE_SORTS, 'id');
     const page = await deps.redeemBatches.codes({
@@ -88,7 +88,7 @@ export function redeemRoutes(deps: RedeemRoutesDeps) {
   });
 
   app.post('/v1/redeem-batches/codes/:codeId/revoke', async (c) => {
-    const codeId = idParam((c.params?.['codeId'] ?? ''));
+    const codeId = idParam(c.params?.['codeId'] ?? '');
     const result = await deps.redeemBatches.revoke({ codeId });
     await deps.postAudit({
       actor: 'admin',

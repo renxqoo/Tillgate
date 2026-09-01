@@ -56,7 +56,7 @@ export function plansRoutes(deps: PlansRoutesDeps) {
   });
 
   app.patch('/v1/plans/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = plansContracts.update.parse(await c.req.json());
     const row = await deps.plans.update({ planId: id, patch: body });
     await deps.postAudit({
@@ -71,7 +71,7 @@ export function plansRoutes(deps: PlansRoutesDeps) {
   });
 
   app.delete('/v1/plans/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const result = await deps.plans.remove({ planId: id });
     await deps.postAudit({
       actor: 'admin',

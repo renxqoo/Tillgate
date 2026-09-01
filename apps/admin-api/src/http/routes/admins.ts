@@ -165,7 +165,7 @@ export function adminsRoutes(deps: AdminsRoutesDeps) {
 
   // 重发邀请:前置校验(404/409/403/503) → 冷却占用(429) → 签发+投递 → 审计
   app.post('/v1/admins/:id/resend-invite', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const admin = await deps.admins.find(id);
     if (admin == null) {
       throw AdminErrors.business('admin_not_found', { adminId: id });
@@ -200,7 +200,7 @@ export function adminsRoutes(deps: AdminsRoutesDeps) {
   });
 
   app.patch('/v1/admins/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = adminsContracts.patch.parse(await c.req.json());
     // 自改守卫：roleId/status 不可改自身（displayName 可改——无权限面影响）
     if (id === c.state.adminId && (body.roleId !== undefined || body.status !== undefined)) {

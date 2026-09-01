@@ -84,7 +84,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
 
   // eslint-disable-next-line max-lines-per-function -- 管理员调账(资金域):事务内双侧转账与回执构造语义连续,lint 清零期不动资金逻辑
   app.put('/v1/users/:id/debit-floor', jsonBody(debitFloorUpdateSchema), async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = jsonBodyOf(c, debitFloorUpdateSchema);
     await assertUser(id);
     const before = await deps.wallet.accounts(id);
@@ -121,7 +121,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
 
   // eslint-disable-next-line max-lines-per-function -- 调账资金动词事务体:幂等键+双路径+审计平铺(同族既有惯例)
   app.post('/v1/users/:id/adjust', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = usersContracts.adjust.parse(await c.req.json());
     const opId = operationId(c);
     const remark =
@@ -183,7 +183,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
   });
 
   app.post('/v1/users/:id/gift', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = usersContracts.gift.parse(await c.req.json());
     const opId = operationId(c);
     const remark = body.remark ?? '管理员赠送';
@@ -223,7 +223,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
   });
 
   app.get('/v1/users/:id/transactions', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     // from/to 校验但忽略（日期过滤未启用;非法日期仍 400）
     usersContracts.transactionsQuery.parse(queryObject(c));
     const query = parseListQuery(queryObject(c), ['id'], 'id');
@@ -234,7 +234,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
   });
 
   app.get('/v1/users/:id/audit-logs', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const query = parseListQuery(queryObject(c), ['id', 'action', 'createdAt'], 'createdAt');
     const rows = await deps.audit.listByTarget({
       targetType: 'user',

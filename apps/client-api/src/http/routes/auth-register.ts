@@ -6,8 +6,7 @@
  * 与登录/找回的哑口径一致）。
  */
 import { randomUUID } from 'node:crypto';
-import { jsonBody,
-  jsonBodyOf, routes } from '@tillgate/http';
+import { jsonBody, jsonBodyOf, routes } from '@tillgate/http';
 import { assertPasswordPolicy } from '@tillgate/identity';
 import { registerSchema, verifySchema } from '../contracts/auth.js';
 import { clientErrors } from '../error-face.js';

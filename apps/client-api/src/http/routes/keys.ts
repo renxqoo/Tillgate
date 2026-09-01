@@ -1,10 +1,14 @@
 /**
  * API Key 路由（会话）：列表 / 创建（明文仅此一次返回）/ 修补 / 轮换 / 吊销。
  */
-import { jsonBody, query as queryMiddleware,
+import {
+  jsonBody,
+  query as queryMiddleware,
   jsonBodyOf,
   queryOf,
-  type Middleware, routes } from '@tillgate/http';
+  type Middleware,
+  routes,
+} from '@tillgate/http';
 import type { AccountUseCases } from '@tillgate/accounts';
 import {
   keyCreateSchema,

@@ -32,11 +32,11 @@ export function tracingRoutes(deps: TracingRoutesDeps) {
   });
 
   app.get('/v1/tracing/traces/:traceId', async (c) =>
-    c.json(await traces.traceDetail((c.params?.['traceId'] ?? ''))),
+    c.json(await traces.traceDetail(c.params?.['traceId'] ?? '')),
   );
 
   app.get('/v1/tracing/by-request/:requestId', async (c) =>
-    c.json(await traces.byRequest((c.params?.['requestId'] ?? ''))),
+    c.json(await traces.byRequest(c.params?.['requestId'] ?? '')),
   );
 
   app.get('/v1/tracing/topology', async (c) => {

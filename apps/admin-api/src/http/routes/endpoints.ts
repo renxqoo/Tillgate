@@ -62,7 +62,7 @@ export function endpointsRoutes(deps: EndpointsRoutesDeps) {
   });
 
   app.patch('/v1/endpoint-bindings/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = endpointContracts.update.parse(await c.req.json());
     const updated = await deps.rbac.endpoints.update(id, body);
     if (updated == null) {
@@ -85,7 +85,7 @@ export function endpointsRoutes(deps: EndpointsRoutesDeps) {
   });
 
   app.delete('/v1/endpoint-bindings/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     await deps.rbac.endpoints.remove(id);
     await deps.postAudit({
       actor: 'admin',

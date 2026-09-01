@@ -61,7 +61,7 @@ export function usersRoutes(deps: UsersRoutesDeps) {
   });
 
   app.get('/v1/users/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const profile = await deps.accounts.adminGetUser(id);
     return c.json(
       toUserWireRow(
@@ -73,7 +73,7 @@ export function usersRoutes(deps: UsersRoutesDeps) {
   });
 
   app.patch('/v1/users/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = usersContracts.patch.parse(await c.req.json());
     const { creditLimit, ...patch } = body;
     await deps.accounts.adminPatchUser({
@@ -88,7 +88,7 @@ export function usersRoutes(deps: UsersRoutesDeps) {
   });
 
   app.post('/v1/users/:id/set-password', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = authContracts.setPassword.parse(await c.req.json());
     const profile = await deps.accounts.adminGetUser(id);
     // 只能为本地账号设密：给 OIDC 身份挂本地密码 = 管理员接管

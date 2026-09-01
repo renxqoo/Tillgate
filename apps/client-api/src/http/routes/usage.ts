@@ -2,9 +2,7 @@
  * 用量路由（会话）：明细（billedBy 拆分）/ 按模型聚合 / 按日汇总（北京时间日桶）/
  * 实时速率。用户隔离在 usage-read 硬绑定（userId 从会话取，不收请求参数）。
  */
-import { query as queryMiddleware,
-  queryOf,
-  type Middleware, routes } from '@tillgate/http';
+import { query as queryMiddleware, queryOf, type Middleware, routes } from '@tillgate/http';
 import { usageListQuerySchema, usageRangeQuerySchema } from '../contracts/usage.js';
 import type { UsageWireRow, UsageByModelRow, UsageDayRow } from '../contracts/usage.js';
 import type { SessionContext } from '../middleware/session.js';

@@ -50,7 +50,7 @@ export function subscriptionsRoutes(deps: SubscriptionsRoutesDeps) {
   });
 
   app.post('/v1/subscriptions/:id/renew', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(
       await deps.subscriptions.renew({
         operationId: operationId(c),
@@ -61,7 +61,7 @@ export function subscriptionsRoutes(deps: SubscriptionsRoutesDeps) {
   });
 
   app.post('/v1/subscriptions/:id/change', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = subscriptionsContracts.change.parse(await c.req.json());
     return c.json(
       await deps.subscriptions.change({
@@ -75,14 +75,14 @@ export function subscriptionsRoutes(deps: SubscriptionsRoutesDeps) {
   });
 
   app.post('/v1/subscriptions/:id/cancel', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(
       await deps.subscriptions.cancel({ operationId: operationId(c), subscriptionId: id }),
     );
   });
 
   app.post('/v1/subscriptions/:id/grant', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = subscriptionsContracts.grant.parse(await c.req.json());
     return c.json(
       await deps.subscriptions.grantPack({

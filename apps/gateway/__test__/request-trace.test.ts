@@ -10,7 +10,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Keala } from 'keala';
-import { asMiddleware, withRequest } from '@tillgate/http';import {
+import { asMiddleware, withRequest } from '@tillgate/http';
+import {
   context,
   getTracer,
   initOtel,

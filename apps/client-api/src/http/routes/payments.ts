@@ -3,10 +3,15 @@
  * 易支付回调为 urlencoded 表单或 query：合并后交 billing payments 验签归一；
  * Stripe 回调为 POST 原始事件体 + Stripe-Signature 头（非 2xx 应答触发渠道重试）。
  */
-import { HttpErrors, jsonBody, query as queryMiddleware,
+import {
+  HttpErrors,
+  jsonBody,
+  query as queryMiddleware,
   jsonBodyOf,
   queryOf,
-  type Middleware, routes } from '@tillgate/http';
+  type Middleware,
+  routes,
+} from '@tillgate/http';
 import type { PaymentsApi } from '@tillgate/billing';
 import { createOrderSchema, orderIdPattern, ordersListQuerySchema } from '../contracts/billing.js';
 import type { SessionContext } from '../middleware/session.js';
@@ -31,7 +36,7 @@ export function paymentsRoutes(deps: PaymentsDeps, session: Middleware<SessionCo
   });
 
   app.get('/v1/payments/orders/:id', session, async (c) => {
-    const id = (c.params?.['id'] ?? '');
+    const id = c.params?.['id'] ?? '';
     if (!orderIdPattern.test(id)) {
       throw HttpErrors.business('invalid_request', { field: 'id' });
     }
@@ -50,14 +55,17 @@ export function paymentsRoutes(deps: PaymentsDeps, session: Middleware<SessionCo
   app.get('/v1/payments/channels', session, (c) => c.json({ channels: deps.payments.channels() }));
 
   app.post('/v1/payments/notify/:provider', async (c) => {
-    const provider = (c.params?.['provider'] ?? '');
+    const provider = c.params?.['provider'] ?? '';
     // 资金面预刷缓存：验签端口是同步签名（latest 面），
     // 路由先强制重读快照，密钥轮换后新签回调零盲窗；读失败 fail-loud（DB 故障时回调 5xx，
     // 渠道按重试语义回放——与旧「验签失败 fail」同向）
     await deps.refreshIntegrationSnapshot();
     if (provider === 'epay') {
       // 表单体 + query 合并（各 epay 实现放置位置不一；重复键以表单优先）
-      const form = await c.req.formData().then(f => Object.fromEntries(f.entries())).catch(() => ({}) as Record<string, unknown>);
+      const form = await c.req
+        .formData()
+        .then((f) => Object.fromEntries(f.entries()))
+        .catch(() => ({}) as Record<string, unknown>);
       const merged: Record<string, string> = {};
       for (const [k, v] of Object.entries(c.query)) merged[k] = Array.isArray(v) ? (v[0] ?? '') : v;
       for (const [k, v] of Object.entries(form)) if (typeof v === 'string') merged[k] = v;

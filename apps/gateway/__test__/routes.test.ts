@@ -6,13 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Keala, createBodyParser } from 'keala';
-import {
-  asMiddleware,
-  errorHandling,
-  pathPrefixGate,
-  withRequest,
-  type App,
-} from '@tillgate/http';
+import { asMiddleware, errorHandling, pathPrefixGate, withRequest, type App } from '@tillgate/http';
 import { GATEWAY_FACE_OVERRIDES, gatewayErrorCatalog } from '../src/http/openai-error-face';
 
 /** 测试壳挂生产同款错误面 + body facade（keala：错误面为最外层中间件） */
@@ -99,18 +93,18 @@ function oauthApp(guard: AuthFailureGuard) {
   const shell = new Keala();
   shell.mount(
     '/oauth/token',
-      oauthTokenRoutes({
-        verifyAppClient: async ({ clientId, clientSecret }) =>
-          clientId === 'app_0123456789abcdef' && clientSecret === 's'
-            ? { id: 5, appId: 'app-1', userId: 42, scope: null }
-            : null,
-        jwtSecret: JWT.secret,
-        tokenTtlSeconds: 3_600,
-        issuer: JWT.issuer,
-        audience: JWT.audience,
-        ipGuard: guard,
-        trustedProxyHops: 0,
-      }),
+    oauthTokenRoutes({
+      verifyAppClient: async ({ clientId, clientSecret }) =>
+        clientId === 'app_0123456789abcdef' && clientSecret === 's'
+          ? { id: 5, appId: 'app-1', userId: 42, scope: null }
+          : null,
+      jwtSecret: JWT.secret,
+      tokenTtlSeconds: 3_600,
+      issuer: JWT.issuer,
+      audience: JWT.audience,
+      ipGuard: guard,
+      trustedProxyHops: 0,
+    }),
   );
   return withErrorFace(shell);
 }

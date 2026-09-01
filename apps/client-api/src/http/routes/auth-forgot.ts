@@ -10,8 +10,7 @@
  * 配置前置:SMTP(smtp 集成行)与控制台基地址(env OAUTH_FRONTEND_URL)缺一即 503 fail-closed
  * ——发不出链接的功能绝不静默降级。
  */
-import { jsonBody,
-  jsonBodyOf, routes } from '@tillgate/http';
+import { jsonBody, jsonBodyOf, routes } from '@tillgate/http';
 import { assertPasswordPolicy } from '@tillgate/identity';
 import { forgotSchema, forgotResetSchema } from '../contracts/auth.js';
 import { clientErrors } from '../error-face.js';

@@ -3,9 +3,7 @@
  * 接受 / 成员限额 / 移除。
  */
 import * as z from 'zod';
-import { jsonBody,
-  jsonBodyOf,
-  type Middleware, routes } from '@tillgate/http';
+import { jsonBody, jsonBodyOf, type Middleware, routes } from '@tillgate/http';
 import type { AccountUseCases } from '@tillgate/accounts';
 import {
   acceptInvitationSchema,
@@ -100,7 +98,7 @@ export function orgRoutes(deps: OrgsDeps, session: Middleware<SessionContext>) {
     jsonBody(memberPatchSchema),
     async (c) => {
       const { id } = parsePath(orgIdParamSchema, c.params ?? {});
-      const memberUserId = userIdParam.parse((c.params?.['memberUserId'] ?? ''));
+      const memberUserId = userIdParam.parse(c.params?.['memberUserId'] ?? '');
       const body = jsonBodyOf(c, memberPatchSchema);
       await deps.patchMember({
         orgId: id,
@@ -115,7 +113,7 @@ export function orgRoutes(deps: OrgsDeps, session: Middleware<SessionContext>) {
 
   app.delete('/v1/orgs/:id/members/:memberUserId', session, async (c) => {
     const { id } = parsePath(orgIdParamSchema, c.params ?? {});
-    const memberUserId = userIdParam.parse((c.params?.['memberUserId'] ?? ''));
+    const memberUserId = userIdParam.parse(c.params?.['memberUserId'] ?? '');
     await deps.removeMember({ orgId: id, operatorUserId: c.state.userId, memberUserId });
     return c.json({ ok: true });
   });

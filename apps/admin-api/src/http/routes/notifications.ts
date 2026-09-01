@@ -38,7 +38,7 @@ export function notificationsRoutes(deps: NotificationsRoutesDeps) {
   });
 
   app.patch('/v1/notifications/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = notificationsContracts.update.parse(await c.req.json());
     return c.json(
       await channels.patch({
@@ -55,12 +55,12 @@ export function notificationsRoutes(deps: NotificationsRoutesDeps) {
   });
 
   app.delete('/v1/notifications/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(await channels.remove({ ctx: notifyContextOf(c), channelId: id }));
   });
 
   app.post('/v1/notifications/:id/test', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(await channels.test({ ctx: notifyContextOf(c), channelId: id }));
   });
 

@@ -54,7 +54,7 @@ export function rolesRoutes(deps: RolesRoutesDeps) {
   });
 
   app.patch('/v1/roles/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = rbacContracts.patchRole.parse(await c.req.json());
     const result = await deps.rbac.roles.update({
       roleId: id,
@@ -84,7 +84,7 @@ export function rolesRoutes(deps: RolesRoutesDeps) {
   });
 
   app.delete('/v1/roles/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     await deps.rbac.roles.remove(id);
     await deps.postAudit({
       actor: 'admin',

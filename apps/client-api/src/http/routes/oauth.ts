@@ -63,7 +63,7 @@ export function oauthRoutes(deps: OAuthDeps) {
   app.get('/v1/oauth/providers', (c) => c.json({ providers: deps.providers() }));
 
   app.get('/v1/oauth/:provider/authorize', async (c) => {
-    const provider = (c.params?.['provider'] ?? '');
+    const provider = c.params?.['provider'] ?? '';
     if (!deps.providers().includes(provider)) {
       return c.json(
         { error: { code: 'client.oauth_unknown', message: 'Unknown login method' } },
@@ -86,7 +86,7 @@ export function oauthRoutes(deps: OAuthDeps) {
   });
 
   app.get('/v1/oauth/:provider/callback', async (c) => {
-    const provider = (c.params?.['provider'] ?? '');
+    const provider = c.params?.['provider'] ?? '';
     if (!deps.providers().includes(provider)) {
       return c.json(
         { error: { code: 'client.oauth_unknown', message: 'Unknown login method' } },

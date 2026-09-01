@@ -38,7 +38,7 @@ export function catalogRoutes(deps: CatalogRoutesDeps) {
   });
 
   app.get('/v1/model-catalog/:sourceId', async (c) => {
-    const sourceId = catalogSourceParam((c.params?.['sourceId'] ?? ''));
+    const sourceId = catalogSourceParam(c.params?.['sourceId'] ?? '');
     return c.json(await catalog.comparison(sourceId));
   });
 

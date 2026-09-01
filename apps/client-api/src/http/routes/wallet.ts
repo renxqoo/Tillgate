@@ -1,9 +1,7 @@
 /**
  * 钱包路由（会话）：余额摘要 / 腿级流水（游标分页，nextCursor = 满页时的续读锚）。
  */
-import { query as queryMiddleware,
-  queryOf,
-  type Middleware, routes } from '@tillgate/http';
+import { query as queryMiddleware, queryOf, type Middleware, routes } from '@tillgate/http';
 import type { AccountSnapshot, StatementItemView, WalletApi } from '@tillgate/billing';
 import { statementQuerySchema } from '../contracts/billing.js';
 import type { SessionContext } from '../middleware/session.js';

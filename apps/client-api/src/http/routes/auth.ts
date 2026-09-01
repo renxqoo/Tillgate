@@ -11,7 +11,9 @@ import {
   socketAddressFromContext,
   trustedClientIp,
   jsonBodyOf,
-  type Middleware, routes } from '@tillgate/http';
+  type Middleware,
+  routes,
+} from '@tillgate/http';
 import { sha256Hex } from '@tillgate/billing';
 import type { Identity, PasswordPolicy } from '@tillgate/identity';
 import type { AuthFailureGuard, KeyBruteForceGuard } from '@tillgate/runtime';

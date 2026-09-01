@@ -66,7 +66,7 @@ export function permissionsRoutes(deps: PermissionsRoutesDeps) {
   });
 
   app.patch('/v1/permissions/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = rbacContracts.patchPermission.parse(await c.req.json());
     const node = await deps.rbac.permissions.update({
       id,
@@ -94,7 +94,7 @@ export function permissionsRoutes(deps: PermissionsRoutesDeps) {
   });
 
   app.delete('/v1/permissions/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     await deps.rbac.permissions.remove(id);
     await deps.postAudit({
       actor: 'admin',

@@ -1,9 +1,7 @@
 /**
  * 账户资料路由（会话）：GET /v1/me（资料 + 钱包富化）+ PATCH /v1/me/display-name。
  */
-import { jsonBody,
-  jsonBodyOf,
-  type Middleware, routes } from '@tillgate/http';
+import { jsonBody, jsonBodyOf, type Middleware, routes } from '@tillgate/http';
 import type { AccountUseCases } from '@tillgate/accounts';
 import type { AccountSnapshot } from '@tillgate/billing';
 import { displayNameSchema } from '../contracts/me.js';

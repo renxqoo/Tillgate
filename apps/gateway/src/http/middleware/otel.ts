@@ -111,7 +111,10 @@ export function otelMiddleware(): Middleware<GwContext> {
         // content-type 判别，JSON 体不挂接力流：无人消费的体会让收口永不触发）
         const committed = c.res;
         const contentType = committed?.headers.get('content-type') ?? '';
-        if (committed?.body instanceof ReadableStream && contentType.includes('text/event-stream')) {
+        if (
+          committed?.body instanceof ReadableStream &&
+          contentType.includes('text/event-stream')
+        ) {
           deferredByStream = true;
           // keala 无 c.res setter：提交后写 c.body（Response 形态复制 status/headers/body）
           c.body = new Response(relayBodyToEndSpan(span, committed.body, coordinator), committed);

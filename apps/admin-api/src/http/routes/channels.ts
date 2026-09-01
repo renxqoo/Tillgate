@@ -42,20 +42,20 @@ export function channelsRoutes(deps: ChannelsRoutesDeps) {
   });
 
   app.patch('/v1/channels/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = channelsContracts.update.parse(await c.req.json());
     const row = await channels.update({ ctx: controlContextOf(c), channelId: id, patch: body });
     return c.json(row);
   });
 
   app.delete('/v1/channels/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(await channels.delete({ ctx: controlContextOf(c), channelId: id }));
   });
 
   /** 恢复已删除记录（回收站取出，回停用态）；在册行调用 → 404 */
   app.post('/v1/channels/:id/restore', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(await channels.undelete({ ctx: controlContextOf(c), channelId: id }));
   });
 
@@ -66,7 +66,7 @@ export function channelsRoutes(deps: ChannelsRoutesDeps) {
   });
 
   app.post('/v1/channels/:id/test', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(await channels.probe(id));
   });
 

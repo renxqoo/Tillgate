@@ -127,7 +127,7 @@ export function generationRoutes(deps: {
   /** 归属查询（他人任务或异类任务一律 404——不泄露存在性） */
   const query = (kind: 'video' | 'music') => async (c: GwContext) => {
     const { auth } = c.state;
-    const task = await deps.inference.generation.query(auth.userId, String((c.params?.['id'] ?? '')));
+    const task = await deps.inference.generation.query(auth.userId, String(c.params?.['id'] ?? ''));
     if (!task || task.kind !== kind) {
       throw HttpErrors.business('not_found', { detail: 'Task not found' });
     }

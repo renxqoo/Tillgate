@@ -34,7 +34,7 @@ export function opsOrdersRoutes(deps: OpsOrdersRoutesDeps) {
 
   app.post('/v1/payment-orders/:id/close', async (c) => {
     // uuid 形状守卫复用 billing 域参数面(同正则单一真相)
-    const orderId = requestIdParam((c.params?.['id'] ?? ''));
+    const orderId = requestIdParam(c.params?.['id'] ?? '');
     return c.json(await deps.paymentAdmin.close({ orderId, reason: deps.orderCloseReason }));
   });
 

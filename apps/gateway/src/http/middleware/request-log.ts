@@ -97,6 +97,6 @@ export function requestLogMiddleware(deps: RequestLogDeps): Middleware<GwContext
             'request log write failed (best-effort)',
           );
         });
-    };
     }
+  };
 }

@@ -4,8 +4,7 @@
  * 免二次鉴别后签发。失败计数 best-effort，成功清零。
  */
 import { isBusinessError } from '@tillgate/errors';
-import { jsonBody,
-  jsonBodyOf, routes } from '@tillgate/http';
+import { jsonBody, jsonBodyOf, routes } from '@tillgate/http';
 import { USER_STATUS } from '@tillgate/accounts';
 import { identityErrors } from '@tillgate/identity';
 import { loginSchema, verifySchema } from '../contracts/auth.js';

@@ -204,7 +204,11 @@ export function createGatewayApp(deps: GatewayAppDeps): App {
     });
 
   // 鉴权按已注册端点挂载（router.use 域化＝旧路径作用域；未注册路径 404 而非 401）
-  mountAuthed(app, { path: '/v1/models', router: modelsRoutes(deps.models), auth: authMiddleware() });
+  mountAuthed(app, {
+    path: '/v1/models',
+    router: modelsRoutes(deps.models),
+    auth: authMiddleware(),
+  });
 
   const routeDeps = {
     inference: deps.inference,
@@ -225,7 +229,11 @@ export function createGatewayApp(deps: GatewayAppDeps): App {
     // 端点注册表为冻结形状（architecture 快照锁定）；缺失即注册表漂移，启动 fail-fast
     throw new Error('inference endpoint registry missing /v1/embeddings');
   }
-  mountAuthed(app, { path: '/v1/engines/:model', router: enginesAliasRoutes(routeDeps, embeddings), auth: authMiddleware() });
+  mountAuthed(app, {
+    path: '/v1/engines/:model',
+    router: enginesAliasRoutes(routeDeps, embeddings),
+    auth: authMiddleware(),
+  });
   // Gemini 原生入口（/v1beta/models/:model:generateContent|streamGenerateContent）
   mountAuthed(app, { path: '/', router: geminiNativeRoutes(routeDeps), auth: authMiddleware() });
   // 模态 multipart 族（同鉴权）

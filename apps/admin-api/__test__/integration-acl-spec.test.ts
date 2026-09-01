@@ -7,7 +7,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { Keala } from 'keala';import { asMiddleware, errorHandling, withRequest } from '@tillgate/http';
+import { Keala } from 'keala';
+import { asMiddleware, errorHandling, withRequest } from '@tillgate/http';
 
 import { createAclMiddleware, matchBinding } from '../src/http/middleware/acl';
 import { ADMIN_FACE_OVERRIDES, adminErrorCatalog } from '../src/http/error-face';
@@ -87,9 +88,7 @@ function appWithGrants(codes: string[], isSuper = false) {
   );
   // 目标路由形状与 settings.ts 相同（本测试只验 ACL 面，不触 control-plane）
   app.get('/v1/settings/integrations', (c) => c.json({ ok: true }));
-  app.put('/v1/settings/integrations/:key', (c) =>
-    c.json({ ok: true, key: c.params?.['key'] }),
-  );
+  app.put('/v1/settings/integrations/:key', (c) => c.json({ ok: true, key: c.params?.['key'] }));
   app.post('/v1/settings/integrations/:key', (c) => c.json({ ok: true }));
   app.post('/v1/settings/integrations/smtp/test', (c) => c.json({ ok: true }));
   return withRequest(app);

@@ -38,18 +38,18 @@ export function rateCardsRoutes(deps: RateCardsRoutesDeps) {
   });
 
   app.patch('/v1/rate-cards/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const patch = rateCardsContracts.update.parse(await c.req.json());
     return c.json(await rates.updateCard({ ctx: controlContextOf(c), rateCardId: id, patch }));
   });
 
   app.delete('/v1/rate-cards/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(await rates.deleteCard({ ctx: controlContextOf(c), rateCardId: id }));
   });
 
   app.get('/v1/rate-cards/:id/users', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const query = parseListQuery(queryObject(c), RATE_CARD_USER_SORTS, 'id');
     const result = await rates.listCardUsers({
       rateCardId: id,
@@ -63,7 +63,7 @@ export function rateCardsRoutes(deps: RateCardsRoutesDeps) {
   });
 
   app.get('/v1/rate-cards/:id/health', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     return c.json(await rates.cardHealth(id));
   });
 

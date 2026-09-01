@@ -5,7 +5,8 @@
  * 机制语义本体在 identity/runtime 测试;此处锁 app 编排与 wire。
  */
 import { describe, expect, it, vi } from 'vitest';
-import { Keala, createBodyParser, type Router } from 'keala';import { asMiddleware, errorHandling, withRequest, type App } from '@tillgate/http';
+import { Keala, createBodyParser, type Router } from 'keala';
+import { asMiddleware, errorHandling, withRequest, type App } from '@tillgate/http';
 import { identityErrors } from '@tillgate/identity';
 import { createAclMiddleware } from '../src/http/middleware/acl';
 import { ADMIN_FACE_OVERRIDES, adminErrorCatalog } from '../src/http/error-face';
@@ -24,21 +25,21 @@ function withErrorFace(routes: Router): App {
   app.use(
     asMiddleware(
       createAclMiddleware(
-      {
-        validate: async (token: string) =>
-          token === 'tok'
-            ? {
-                realm: 'admin',
-                sub: String(ADMIN_ID),
-                jti: 'j',
-                iss: 'i',
-                exp: 9,
-                iat: 1,
-              }
-            : null,
-        owner: async () => ({ status: 0, grants: { isSuper: true, codes: [] } }),
-      },
-      // 挂具全绑定形态(isSuper 直通;具体绑定判定由专测覆盖)
+        {
+          validate: async (token: string) =>
+            token === 'tok'
+              ? {
+                  realm: 'admin',
+                  sub: String(ADMIN_ID),
+                  jti: 'j',
+                  iss: 'i',
+                  exp: 9,
+                  iat: 1,
+                }
+              : null,
+          owner: async () => ({ status: 0, grants: { isSuper: true, codes: [] } }),
+        },
+        // 挂具全绑定形态(isSuper 直通;具体绑定判定由专测覆盖)
         async (method, path) => ({ method, path, code: 'users:read' }),
       ),
     ),

@@ -32,7 +32,7 @@ export function keysRoutes(deps: KeysRoutesDeps) {
   });
 
   app.patch('/v1/admin-keys/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = keysContracts.patch.parse(await c.req.json());
     const row = await deps.accounts.adminPatchKey({
       keyId: id,

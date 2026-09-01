@@ -1,10 +1,14 @@
 /**
  * Apps 路由（会话）：列表 / 创建（client_secret 仅此一次）/ 禁用 / 轮换密钥。
  */
-import { jsonBody, query as queryMiddleware,
+import {
+  jsonBody,
+  query as queryMiddleware,
   jsonBodyOf,
   queryOf,
-  type Middleware, routes } from '@tillgate/http';
+  type Middleware,
+  routes,
+} from '@tillgate/http';
 import type { AccountUseCases } from '@tillgate/accounts';
 import { appCreateSchema, appIdParamSchema, appsListQuerySchema } from '../contracts/apps.js';
 import { toAppRow } from '../presenters/keys.js';

@@ -22,51 +22,54 @@ const TOKEN = 'tok';
 const ADMIN_ID = 7;
 
 function bare() {
-  return harnessApp(authRoutes({
-    invites: { consume: async () => null },
-    identity: {
-      mfa: mfaStub(),
-      passwords: {
-        authenticate: async () => ({ userId: ADMIN_ID }),
-        change: async () => ({ invalidBefore: 'x' }),
-        reset: async () => ({ invalidBefore: 'x' }),
-        exists: async () => [],
-      },
-      challenges: {
-        begin: (async () => ({ challengeId: 'c' })) as never,
-        verify: (async () => ({ payload: {} })) as never,
-        abort: async () => ({ aborted: true }),
-      },
-      sessions: {
-        sign: async () => 't',
-        verify: async () => {
-          throw new Error('u');
+  return harnessApp(
+    authRoutes({
+      invites: { consume: async () => null },
+      identity: {
+        mfa: mfaStub(),
+        passwords: {
+          authenticate: async () => ({ userId: ADMIN_ID }),
+          change: async () => ({ invalidBefore: 'x' }),
+          reset: async () => ({ invalidBefore: 'x' }),
+          exists: async () => [],
         },
-        validate: async () => null,
-        logout: async () => ({ ok: true as const }),
+        challenges: {
+          begin: (async () => ({ challengeId: 'c' })) as never,
+          verify: (async () => ({ payload: {} })) as never,
+          abort: async () => ({ aborted: true }),
+        },
+        sessions: {
+          sign: async () => 't',
+          verify: async () => {
+            throw new Error('u');
+          },
+          validate: async () => null,
+          logout: async () => ({ ok: true as const }),
+        },
       },
-    },
-    admins: {
-      findByEmail: async () => null,
-      find: async () => null,
-      touchLastLogin: async () => {},
-    },
-    guards: {
-      emailIp: {
-        isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-        recordFailure: async () => {},
-        recordSuccess: async () => {},
+      admins: {
+        findByEmail: async () => null,
+        find: async () => null,
+        touchLastLogin: async () => {},
       },
-      ip: {
-        isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-        recordFailure: async () => {},
+      guards: {
+        emailIp: {
+          isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+          recordFailure: async () => {},
+          recordSuccess: async () => {},
+        },
+        ip: {
+          isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+          recordFailure: async () => {},
+        },
       },
-    },
-    loginAudit: async () => {},
-    trustedProxyHops: 0,
-    mailerConfigured: () => false,
-    sessionTtlSec: 3600,
-  }), { catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES });
+      loginAudit: async () => {},
+      trustedProxyHops: 0,
+      mailerConfigured: () => false,
+      sessionTtlSec: 3600,
+    }),
+    { catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES },
+  );
 }
 
 describe('identity 审计桥', () => {
@@ -266,63 +269,66 @@ describe('auth/me 未走分支', () => {
   });
 
   it('登录成功但 touch/审计为 best-effort 分支（audit 拒绝不阻断登录）', async () => {
-    const app = harnessApp(authRoutes({
-      mailerConfigured: () => false,
-      invites: { consume: async () => null },
-      identity: {
-        mfa: mfaStub(),
-        passwords: {
-          authenticate: async () => ({ userId: ADMIN_ID }),
-          change: async () => ({ invalidBefore: 'x' }),
-          reset: async () => ({ invalidBefore: 'x' }),
-          exists: async () => [],
-        },
-        challenges: {
-          begin: (async () => ({ challengeId: 'c' })) as never,
-          verify: (async () => ({ payload: {} })) as never,
-          abort: async () => ({ aborted: true }),
-        },
-        sessions: {
-          sign: async () => 'signed',
-          verify: async () => {
-            throw new Error('u');
+    const app = harnessApp(
+      authRoutes({
+        mailerConfigured: () => false,
+        invites: { consume: async () => null },
+        identity: {
+          mfa: mfaStub(),
+          passwords: {
+            authenticate: async () => ({ userId: ADMIN_ID }),
+            change: async () => ({ invalidBefore: 'x' }),
+            reset: async () => ({ invalidBefore: 'x' }),
+            exists: async () => [],
           },
-          validate: async () => null,
-          logout: async () => ({ ok: true as const }),
+          challenges: {
+            begin: (async () => ({ challengeId: 'c' })) as never,
+            verify: (async () => ({ payload: {} })) as never,
+            abort: async () => ({ aborted: true }),
+          },
+          sessions: {
+            sign: async () => 'signed',
+            verify: async () => {
+              throw new Error('u');
+            },
+            validate: async () => null,
+            logout: async () => ({ ok: true as const }),
+          },
         },
-      },
-      admins: {
-        findByEmail: async () => ({
-          id: ADMIN_ID,
-          email: 'ops@tillgate.dev',
-          displayName: null,
-          status: 0,
-          roleId: 1,
-          role: 'super_admin',
-          twoFactorEnabled: false,
-          lastLoginAt: null,
-          createdAt: new Date(0),
-        }),
-        find: async () => null,
-        touchLastLogin: async () => {},
-      },
-      guards: {
-        emailIp: {
-          isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-          recordFailure: async () => {},
-          recordSuccess: async () => {},
+        admins: {
+          findByEmail: async () => ({
+            id: ADMIN_ID,
+            email: 'ops@tillgate.dev',
+            displayName: null,
+            status: 0,
+            roleId: 1,
+            role: 'super_admin',
+            twoFactorEnabled: false,
+            lastLoginAt: null,
+            createdAt: new Date(0),
+          }),
+          find: async () => null,
+          touchLastLogin: async () => {},
         },
-        ip: {
-          isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-          recordFailure: async () => {},
+        guards: {
+          emailIp: {
+            isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+            recordFailure: async () => {},
+            recordSuccess: async () => {},
+          },
+          ip: {
+            isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+            recordFailure: async () => {},
+          },
         },
-      },
-      loginAudit: async () => {
-        throw new Error('audit down');
-      },
-      trustedProxyHops: 0,
-      sessionTtlSec: 3600,
-    }), { catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES });
+        loginAudit: async () => {
+          throw new Error('audit down');
+        },
+        trustedProxyHops: 0,
+        sessionTtlSec: 3600,
+      }),
+      { catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES },
+    );
     const res = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: json,
@@ -463,17 +469,20 @@ describe('users set-password（D6 分支面）', () => {
 describe('P6/P5 残余分支（价格溯源参数边界/通知词表边界）', () => {
   it('price-history:externalName 缺失/空串/超长一律 400;合法值透传', async () => {
     const { catalogRoutes } = await import('../src/http/routes/catalog');
-    const app = harnessApp(catalogRoutes({
-      controlPlane: {
-        catalog: {
-          listSources: () => [],
-          priceHistory: EMPTY_PRICE_HISTORY,
-          comparison: async () => ({}) as never,
-          import: async () => ({}) as never,
+    const app = harnessApp(
+      catalogRoutes({
+        controlPlane: {
+          catalog: {
+            listSources: () => [],
+            priceHistory: EMPTY_PRICE_HISTORY,
+            comparison: async () => ({}) as never,
+            import: async () => ({}) as never,
+          },
         },
-      },
-      vendorCatalog: { protocols: [], vendors: [] },
-    } as never), { catalog: adminErrorCatalog });
+        vendorCatalog: { protocols: [], vendors: [] },
+      } as never),
+      { catalog: adminErrorCatalog },
+    );
     for (const qs of ['', '?externalName=', `?externalName=${'x'.repeat(65)}`]) {
       const res = await app.request(`/v1/model-catalog/price-history${qs}`, {
         headers: { authorization: `Bearer ${TOKEN}` },

@@ -3,9 +3,7 @@
  * 幂等键：idempotency-key 头缺省服务端生成 uuid；非法形态 400。
  */
 import { randomUUID } from 'node:crypto';
-import { HttpErrors, jsonBody,
-  jsonBodyOf,
-  type Middleware, routes } from '@tillgate/http';
+import { HttpErrors, jsonBody, jsonBodyOf, type Middleware, routes } from '@tillgate/http';
 import type { SubscriptionsApi } from '@tillgate/billing';
 import {
   IDEMPOTENCY_KEY_PATTERN,
@@ -40,10 +38,7 @@ function operationIdOf(headerValue: string | undefined): string {
 }
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器平铺
-export function subscriptionRoutes(
-  deps: SubscriptionsDeps,
-  session: Middleware<SessionContext>,
-) {
+export function subscriptionRoutes(deps: SubscriptionsDeps, session: Middleware<SessionContext>) {
   const app = routes<SessionContext>();
 
   // 目录公开（只读上架套餐，无个人数据）

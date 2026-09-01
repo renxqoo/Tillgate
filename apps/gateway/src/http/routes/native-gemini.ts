@@ -49,7 +49,7 @@ function canonicalGeminiBody(
 async function readGeminiRequest(
   c: GwContext,
 ): Promise<{ model: string; stream: boolean; raw: Record<string, unknown> }> {
-  const parsed = parseModelAction((c.params?.['modelAction'] ?? ''));
+  const parsed = parseModelAction(c.params?.['modelAction'] ?? '');
   if (parsed == null) {
     throw HttpErrors.business('not_found', {
       detail: 'Path not found (supported: :generateContent / :streamGenerateContent)',

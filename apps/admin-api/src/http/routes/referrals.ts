@@ -32,7 +32,7 @@ export function referralRoutes(deps: ReferralRoutesDeps) {
   });
 
   app.patch('/v1/referrals/relations/:id', async (c) => {
-    const id = idParam((c.params?.['id'] ?? ''));
+    const id = idParam(c.params?.['id'] ?? '');
     const body = referralContracts.patchRelation.parse(await c.req.json());
     return c.json(
       await deps.accounts.setReferralRelationStatus({
