@@ -8,6 +8,7 @@
  * 响应」的连接与「流式响应字节间隔超 10s」的连接——反代侧表现为 502/流截断
  * （OAuth 回调等 GitHub 上游即真实案例）。
  */
+import type { Runtime } from 'keala';
 
 /** runtime.createShutdown 的最小 server 面（node:http Server 形） */
 export interface AppServer {
@@ -31,7 +32,7 @@ const IDLE_TIMEOUT_MAX_SECONDS = 255;
 const IDLE_TIMEOUT_DEFAULT_SECONDS = 60;
 
 export function serveApp(
-  app: { handle: (request: Request, runtime?: unknown) => Response | Promise<Response> },
+  app: { handle: (request: Request, runtime?: Runtime) => Response | Promise<Response> },
   opts: ServeAppOptions,
   onListening?: (info: { port: number }) => void,
 ): AppServer {

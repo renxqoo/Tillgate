@@ -1,7 +1,18 @@
-import { Hono } from 'hono';
-import { pgSqlState } from '@tillgate/db'; // 纯 SQLSTATE 分类函数(http errorHandler 的文档化注入点;非 Db 类型)
+import { Keala } from 'keala';
+import { pgSqlState } from '@tillgate/db'; // 纯 SQLSTATE 分类函数(http errorHandling 的文档化注入点;非 Db 类型)
 import { composeErrorCatalogs } from '@tillgate/errors';
-import { HttpErrors, bodyParserLimit, errorHandler, timingSafeTokenEqual } from '@tillgate/http';
+import {
+  HttpErrors,
+  bodyParser,
+  bodyParserLimit,
+  errorHandling,
+  timingSafeTokenEqual,
+  withRequest,
+  asMiddleware,
+  type App,
+  type ContextWithBody,
+  type Middleware,
+} from '@tillgate/http';
 import {
   decodeOtlpJson,
   observabilityErrors,
@@ -38,60 +49,73 @@ export interface ReceiverAppDeps {
 /** /v1/traces 请求体上限:OTLP JSON 批次远小于此;无上限则整读任意体积 → OOM/存储耗尽 */
 const TRACE_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
 
-// eslint-disable-next-line max-lines-per-function -- HTTP 装配平铺：中间件链与路由挂载顺序即契约
-export function createReceiverApp(deps: ReceiverAppDeps): Hono {
-  const app = new Hono();
+/** 令牌校验门:健康探针豁免;无令牌配置仅限开发内网(config fail-fast 保证) */
+const tokenGate = (deps: ReceiverAppDeps): Middleware => async (c, next) => {
+  // 健康探针豁免鉴权:/readyz /livez 只返回探活状态、无敏感数据——
+  // 若一并挡 401,compose/K8s healthcheck（不带 Bearer）会让容器永久 unhealthy
+  if (c.path === '/readyz' || c.path === '/livez') {
+    await next();
+    return;
+  }
+  // 无令牌放行仅可达于显式 TRACE_RECEIVER_OPEN=true(config fail-fast 保证——
+  // 装配遗漏不会再走到这里;启动日志会打 auth: 'open(dev)')
+  if (deps.token === undefined) {
+    await next();
+    return;
+  }
+  const auth = c.get('authorization') ?? '';
+  if (!timingSafeTokenEqual(auth, `Bearer ${deps.token}`)) {
+    throw HttpErrors.business('unauthorized'); // → 401(自有码 status 修正)
+  }
+  await next();
+};
 
-  // 统一兜底:流动错误按错误目录渲染(http+observability 合成),PG SQLSTATE 探测注入
-  app.onError(
-    errorHandler({
+// eslint-disable-next-line max-lines-per-function -- HTTP 装配平铺：中间件链与路由挂载顺序即契约
+export function createReceiverApp(deps: ReceiverAppDeps): App {
+  const app = new Keala();
+
+  // 统一兜底:流动错误按错误目录渲染(http+observability 合成),PG SQLSTATE 探测注入。
+  // keala 错误响应由最外层中间件产生——errorHandling 必须第一个注册
+  app.use(
+    errorHandling({
       catalog: composeErrorCatalogs(HttpErrors, observabilityErrors),
       sqlState: pgSqlState,
       ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
     }),
   );
+  // body 读取 facade(限值与 /v1/traces 预算同源;路由内 c.req.json() 走共享 memo)
+  app.use(bodyParser(TRACE_BODY_LIMIT_BYTES));
+  app.use(tokenGate(deps));
 
-  // 放在令牌校验之后＝通过认证的调用方同样受限;超限 413 经 http 信封
-  app.use('/v1/traces', bodyParserLimit(TRACE_BODY_LIMIT_BYTES));
-
-  app.use('*', async (c, next) => {
-    // 健康探针豁免鉴权:/readyz /livez 只返回探活状态、无敏感数据——
-    // 若一并挡 401,compose/K8s healthcheck（不带 Bearer）会让容器永久 unhealthy
-    if (c.req.path === '/readyz' || c.req.path === '/livez') return next();
-    // 无令牌放行仅可达于显式 TRACE_RECEIVER_OPEN=true(config fail-fast 保证——
-    // 装配遗漏不会再走到这里;启动日志会打 auth: 'open(dev)')
-    if (deps.token === undefined) return next();
-    const auth = c.req.header('authorization') ?? '';
-    if (!timingSafeTokenEqual(auth, `Bearer ${deps.token}`)) {
-      throw HttpErrors.business('unauthorized'); // → 401(自有码 status 修正)
-    }
-    return next();
-  });
-
-  app.post('/v1/traces', async (c) => {
-    const contentType = c.req.header('content-type') ?? '';
-    // OTLP SDK 缺省走 protobuf——明确告知改配 http/json,这是最常见的接入错误
-    if (contentType.includes('protobuf')) {
-      throw HttpErrors.business('unsupported_media_type', {
-        received: contentType,
-        hint: 'configure the OTLP exporter to use the http/json protocol (application/json)',
-      });
-    }
-    if (!contentType.includes('json')) {
-      throw HttpErrors.business('unsupported_media_type', { received: contentType });
-    }
-    const payload: unknown = await c.req.json(); // 坏 JSON 抛 SyntaxError → onError → 400 http.invalid_json
-    const decoded = decodeOtlpJson(payload); // 结构错误抛 business → 400 observability.invalid_otlp_payload
-    const droppedOverflow = deps.batcher.push(decoded.rows);
-    return c.json(
-      {
-        accepted: decoded.rows.length - droppedOverflow,
-        skippedMalformed: decoded.skipped,
-        droppedOverflow,
-      },
-      202,
-    );
-  });
+  // bodyParserLimit 内联在 /v1/traces 路由链＝通过认证的调用方同样受限;超限 413 经 http 信封
+  app.post(
+    '/v1/traces',
+    bodyParserLimit(TRACE_BODY_LIMIT_BYTES),
+    asMiddleware(async (c: ContextWithBody) => {
+      const contentType = c.get('content-type') ?? '';
+      // OTLP SDK 缺省走 protobuf——明确告知改配 http/json,这是最常见的接入错误
+      if (contentType.includes('protobuf')) {
+        throw HttpErrors.business('unsupported_media_type', {
+          received: contentType,
+          hint: 'configure the OTLP exporter to use the http/json protocol (application/json)',
+        });
+      }
+      if (!contentType.includes('json')) {
+        throw HttpErrors.business('unsupported_media_type', { received: contentType });
+      }
+      const payload: unknown = await c.req.json(); // 坏 JSON 抛 400 → errorHandling → 400 http.invalid_json
+      const decoded = decodeOtlpJson(payload); // 结构错误抛 business → 400 observability.invalid_otlp_payload
+      const droppedOverflow = deps.batcher.push(decoded.rows);
+      return c.json(
+        {
+          accepted: decoded.rows.length - droppedOverflow,
+          skippedMalformed: decoded.skipped,
+          droppedOverflow,
+        },
+        202,
+      );
+    }),
+  );
 
   app.get('/readyz', async (c) => {
     try {
@@ -115,5 +139,5 @@ export function createReceiverApp(deps: ReceiverAppDeps): Hono {
     return c.json({ batcher, storage });
   });
 
-  return app;
+  return withRequest(app);
 }

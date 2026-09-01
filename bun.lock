@@ -185,6 +185,7 @@
         "@tillgate/observability": "workspace:*",
         "@tillgate/runtime": "workspace:*",
         "hono": "^4.13.0",
+        "keala": "^0.5.1",
         "zod": "^4.4.3",
       },
       "devDependencies": {
