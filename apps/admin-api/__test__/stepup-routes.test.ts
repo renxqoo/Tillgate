@@ -8,9 +8,8 @@
  *   开关（expect 主体绑定）；取消 TOTP 前置与 step-up。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
-import { errorHandler } from '@tillgate/http';
+import { Keala, createBodyParser } from 'keala';
+import { asMiddleware, errorHandling, withRequest } from '@tillgate/http';
 import { identityErrors } from '@tillgate/identity';
 import { settingsRoutes } from '../src/http/routes/settings';
 import { meRoutes } from '../src/http/routes/me';
@@ -71,15 +70,20 @@ function appHarness(opts?: {
         updatedByAdminId: null,
       })),
   };
-  const app = new Hono();
+  const app = new Keala();
   app.use(
-    '*',
-    sessionMiddleware({
-      validate: async (token: string) => (token === VALID_TOKEN ? sessionPayload : null),
-      owner: async () => ({ status: 0, grants: { isSuper: true, codes: [] } }),
-    }) as MiddlewareHandler,
+    errorHandling({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES }),
+    createBodyParser(),
   );
-  app.route(
+  app.use(
+    asMiddleware(
+      sessionMiddleware({
+        validate: async (token: string) => (token === VALID_TOKEN ? sessionPayload : null),
+        owner: async () => ({ status: 0, grants: { isSuper: true, codes: [] } }),
+      }),
+    ),
+  );
+  app.mount(
     '/',
     settingsRoutes({
       controlPlane: { settings: { billingTimezone: {} as never, integrations } } as never,
@@ -89,7 +93,7 @@ function appHarness(opts?: {
       trustedProxyHops: 0,
     }),
   );
-  app.route(
+  app.mount(
     '/',
     meRoutes({
       identity: {
@@ -112,10 +116,7 @@ function appHarness(opts?: {
       sessionTtlSec: 3_600,
     }),
   );
-  app.onError((error, c) =>
-    errorHandler({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES })(error, c),
-  );
-  return { app, guard };
+  return { app: withRequest(app), guard };
 }
 
 const json = { 'content-type': 'application/json', authorization: `Bearer ${VALID_TOKEN}` };

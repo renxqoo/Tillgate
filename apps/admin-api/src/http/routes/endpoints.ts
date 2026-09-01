@@ -3,11 +3,11 @@
  * 审计:binding.created/updated/deleted。
  * PATCH 为部分更新（method/path/permissionId 至少一项）。
  */
-import { Hono } from 'hono';
+import { routes } from '@tillgate/http';
 import * as z from 'zod';
 import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { idParam } from '../contracts/common';
 import type { PostAudit } from './redeem';
 
@@ -40,7 +40,7 @@ const endpointContracts = {
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function endpointsRoutes(deps: EndpointsRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
   app.get('/v1/endpoint-bindings', async (c) => {
     const rows = await deps.rbac.endpoints.list();
@@ -52,7 +52,7 @@ export function endpointsRoutes(deps: EndpointsRoutesDeps) {
     const created = await deps.rbac.endpoints.create(body);
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'binding.created',
       targetType: 'endpoint_binding',
       targetId: created.id,
@@ -62,7 +62,7 @@ export function endpointsRoutes(deps: EndpointsRoutesDeps) {
   });
 
   app.patch('/v1/endpoint-bindings/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = endpointContracts.update.parse(await c.req.json());
     const updated = await deps.rbac.endpoints.update(id, body);
     if (updated == null) {
@@ -70,7 +70,7 @@ export function endpointsRoutes(deps: EndpointsRoutesDeps) {
     }
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'binding.updated',
       targetType: 'endpoint_binding',
       targetId: id,
@@ -85,11 +85,11 @@ export function endpointsRoutes(deps: EndpointsRoutesDeps) {
   });
 
   app.delete('/v1/endpoint-bindings/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     await deps.rbac.endpoints.remove(id);
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'binding.deleted',
       targetType: 'endpoint_binding',
       targetId: id,
@@ -98,5 +98,5 @@ export function endpointsRoutes(deps: EndpointsRoutesDeps) {
     return c.json({ ok: true });
   });
 
-  return app;
+  return app.router;
 }

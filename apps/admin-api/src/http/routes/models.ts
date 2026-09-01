@@ -3,9 +3,9 @@
  * 列表（channels 绑定回显 / view=deleted 回收站）/创建/更新（含上下架 status）/
  * 逻辑删除/恢复记录/绑定全量替换/逐渠道探针。价格仅精确十进制字符串。
  */
-import { Hono } from 'hono';
+import { routes, queryString, queryObject } from '@tillgate/http';
 import type { ControlPlane } from '@tillgate/control-plane';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { MODEL_SORTS, modelsContracts } from '../contracts/models';
@@ -17,13 +17,13 @@ export interface ModelsRoutesDeps {
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function modelsRoutes(deps: ModelsRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
   const { models } = deps.controlPlane;
 
   app.get('/v1/models', async (c) => {
-    const query = parseListQuery(c.req.query(), MODEL_SORTS, 'createdAt');
+    const query = parseListQuery(queryObject(c), MODEL_SORTS, 'createdAt');
     // 回收站视图：仅认 'deleted'，其余值容错回退默认在册视图（列表参数永不 400）
-    const view = c.req.query('view') === 'deleted' ? ('deleted' as const) : undefined;
+    const view = queryString(c, 'view') === 'deleted' ? ('deleted' as const) : undefined;
     const result = await models.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
       sortBy: query.sortBy as 'id' | 'externalName' | 'realModel' | 'status' | 'createdAt',
@@ -61,7 +61,7 @@ export function modelsRoutes(deps: ModelsRoutesDeps) {
 
   // eslint-disable-next-line complexity -- 补丁字段映射平铺(逐字段条件展开,分支即 schema 搬运)
   app.patch('/v1/models/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = modelsContracts.update.parse(await c.req.json());
     const priceSet =
       body.inputPrice !== undefined ||
@@ -105,18 +105,18 @@ export function modelsRoutes(deps: ModelsRoutesDeps) {
   });
 
   app.delete('/v1/models/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     return c.json(await models.delete({ ctx: controlContextOf(c), mappingId: id }));
   });
 
   /** 恢复已删除记录（回收站取出，回下架态）；在册行调用 → 404 */
   app.post('/v1/models/:id/restore', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     return c.json(await models.undelete({ ctx: controlContextOf(c), mappingId: id }));
   });
 
   app.post('/v1/models/:id/channels', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = modelsContracts.bind.parse(await c.req.json());
     const result = await models.bindChannels({
       ctx: controlContextOf(c),
@@ -127,9 +127,9 @@ export function modelsRoutes(deps: ModelsRoutesDeps) {
   });
 
   app.post('/v1/models/:id/test', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     return c.json(await models.probe(id));
   });
 
-  return app;
+  return app.router;
 }

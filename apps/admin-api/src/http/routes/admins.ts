@@ -16,13 +16,12 @@
  * 更新 = role/status/displayName 部分更新;「不可改自身 role/status」守卫在此
  * （会话身份是路由的知识——防最后一个超管自锁）。
  */
-import { Hono } from 'hono';
 import { isBusinessError } from '@tillgate/errors';
 import { controlPlaneErrors, type AdminRecord, type ControlPlane } from '@tillgate/control-plane';
 import type { Identity } from '@tillgate/identity';
-import { parseAcceptLanguage } from '@tillgate/http';
+import { parseAcceptLanguage, routes, queryObject } from '@tillgate/http';
 import { AdminErrors } from '../error-face';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { adminsContracts } from '../contracts/admins';
 import type { PostAudit } from './redeem';
@@ -83,7 +82,7 @@ const localeOf = (headers: Headers): 'en' | 'zh' =>
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器保留存量语义(棘轮)
 export function adminsRoutes(deps: AdminsRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
   /**
    * 创建路径的尽力投递:SMTP/链接基地未生效或投递失败返回 false(不抛——
@@ -106,7 +105,7 @@ export function adminsRoutes(deps: AdminsRoutesDeps) {
   };
 
   app.get('/v1/admins', async (c) => {
-    const query = parseListQuery(c.req.query(), ADMIN_SORTS, 'id');
+    const query = parseListQuery(queryObject(c), ADMIN_SORTS, 'id');
     const page = await deps.admins.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
       sortBy: query.sortBy as 'id' | 'email' | 'lastLoginAt' | 'createdAt',
@@ -152,10 +151,10 @@ export function adminsRoutes(deps: AdminsRoutesDeps) {
       }
       throw error;
     }
-    const inviteSent = await deliverInvite(created.id, created.email, localeOf(c.req.raw.headers));
+    const inviteSent = await deliverInvite(created.id, created.email, localeOf(c.raw.headers));
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'admin.created',
       targetType: 'admin',
       targetId: created.id,
@@ -166,7 +165,7 @@ export function adminsRoutes(deps: AdminsRoutesDeps) {
 
   // 重发邀请:前置校验(404/409/403/503) → 冷却占用(429) → 签发+投递 → 审计
   app.post('/v1/admins/:id/resend-invite', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const admin = await deps.admins.find(id);
     if (admin == null) {
       throw AdminErrors.business('admin_not_found', { adminId: id });
@@ -188,10 +187,10 @@ export function adminsRoutes(deps: AdminsRoutesDeps) {
     const token = await deps.invites.issue(id);
     const url = `${deps.inviteLinkBase}/reset-password?token=${encodeURIComponent(token)}`;
     // 投递失败冒泡(冷却保留,60s 后可再试);不哑成功——操作员须知道没发出去
-    await deps.sendInviteLink(admin.email, url, { locale: localeOf(c.req.raw.headers) });
+    await deps.sendInviteLink(admin.email, url, { locale: localeOf(c.raw.headers) });
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'admin.invite_resent',
       targetType: 'admin',
       targetId: id,
@@ -201,10 +200,10 @@ export function adminsRoutes(deps: AdminsRoutesDeps) {
   });
 
   app.patch('/v1/admins/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = adminsContracts.patch.parse(await c.req.json());
     // 自改守卫：roleId/status 不可改自身（displayName 可改——无权限面影响）
-    if (id === c.get('adminId') && (body.roleId !== undefined || body.status !== undefined)) {
+    if (id === c.state.adminId && (body.roleId !== undefined || body.status !== undefined)) {
       throw AdminErrors.business('cannot_modify_self', {});
     }
     const updated = await deps.admins.update({
@@ -219,7 +218,7 @@ export function adminsRoutes(deps: AdminsRoutesDeps) {
     const [hasPassword] = await deps.identity.passwords.exists({ userIds: [id] });
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'admin.updated',
       targetType: 'admin',
       targetId: id,
@@ -232,5 +231,5 @@ export function adminsRoutes(deps: AdminsRoutesDeps) {
     return c.json(adminRowOf(updated, hasPassword != null));
   });
 
-  return app;
+  return app.router;
 }

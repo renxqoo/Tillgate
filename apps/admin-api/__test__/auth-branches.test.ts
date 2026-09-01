@@ -5,23 +5,24 @@
  * config P2 新键缺省与 SMTP 组边界。
  */
 import { describe, expect, it, vi } from 'vitest';
-import type { Hono } from 'hono';
-import { errorHandler } from '@tillgate/http';
-import { sessionMiddleware, type SessionEnv } from '../src/http/middleware/session';
+import { asMiddleware } from '@tillgate/http';
+import { Keala } from 'keala';
+import { errorHandling, withRequest } from '@tillgate/http';
+import { sessionMiddleware } from '../src/http/middleware/session';
 import { createIdentityAuditSinkBridge } from '../src/adapters/identity-audit-bridge';
 import { authRoutes } from '../src/http/routes/auth';
 import * as usersRoutesRef from '../src/http/routes/users';
 import { meRoutes, type MeRoutesDeps } from '../src/http/routes/me';
 import { ADMIN_FACE_OVERRIDES, adminErrorCatalog } from '../src/http/error-face';
 import { loadAdminApiConfig } from '../src/config';
-import { mfaStub } from './helpers';
+import { harnessApp, mfaStub } from './helpers';
 
 const json = { 'content-type': 'application/json' };
 const TOKEN = 'tok';
 const ADMIN_ID = 7;
 
-function bare(): Hono<SessionEnv> {
-  const app = authRoutes({
+function bare() {
+  return harnessApp(authRoutes({
     invites: { consume: async () => null },
     identity: {
       mfa: mfaStub(),
@@ -65,11 +66,7 @@ function bare(): Hono<SessionEnv> {
     trustedProxyHops: 0,
     mailerConfigured: () => false,
     sessionTtlSec: 3600,
-  });
-  app.onError((error, c) =>
-    errorHandler({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES })(error, c),
-  );
-  return app;
+  }), { catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES });
 }
 
 describe('identity 审计桥', () => {
@@ -112,24 +109,25 @@ describe('session 属主回查（D8/W3）', () => {
     // 未注入 owner = 纯会话校验形态;可选参数以支持零参调用
     owner?: () => Promise<{ status: number; grants: { isSuper: boolean; codes: string[] } } | null>,
   ) {
-    const app = new (await import('hono')).Hono<SessionEnv>();
+    const app = new Keala();
+    app.use(errorHandling({ catalog: adminErrorCatalog }));
     app.use(
-      '*',
-      sessionMiddleware({
-        validate: async () => ({
-          realm: 'admin',
-          sub: String(ADMIN_ID),
-          jti: 'j',
-          iss: 'i',
-          exp: 9,
-          iat: 1,
+      asMiddleware(
+        sessionMiddleware({
+          validate: async () => ({
+            realm: 'admin',
+            sub: String(ADMIN_ID),
+            jti: 'j',
+            iss: 'i',
+            exp: 9,
+            iat: 1,
+          }),
+          ...(owner != null ? { owner } : {}),
         }),
-        ...(owner != null ? { owner } : {}),
-      }),
+      ),
     );
-    app.get('/probe', (c) => c.json({ ok: true, adminId: c.get('adminId') }));
-    app.onError((error, c) => errorHandler({ catalog: adminErrorCatalog })(error, c));
-    return app.request('/probe', { headers: { authorization: `Bearer ${TOKEN}` } });
+    app.get('/probe', (c) => c.json({ ok: true, adminId: c.state.adminId }));
+    return withRequest(app).request('/probe', { headers: { authorization: `Bearer ${TOKEN}` } });
   }
 
   it('属主存在且 status=0 放行;不存在/封禁一律 401;未注入 owner 时纯会话校验放行', async () => {
@@ -150,13 +148,14 @@ describe('session 属主回查（D8/W3）', () => {
   });
 
   it('非 Bearer/验签失败统一 401', async () => {
-    const app = new (await import('hono')).Hono<SessionEnv>();
-    app.use('*', sessionMiddleware({ validate: async () => null }));
+    const app = new Keala();
+    app.use(errorHandling({ catalog: adminErrorCatalog }));
+    app.use(asMiddleware(sessionMiddleware({ validate: async () => null })));
     app.get('/probe', (c) => c.json({ ok: true }));
-    app.onError((error, c) => errorHandler({ catalog: adminErrorCatalog })(error, c));
-    const noHeader = await app.request('/probe');
+    const adapted = withRequest(app);
+    const noHeader = await adapted.request('/probe');
     expect(noHeader.status).toBe(401);
-    const invalid = await app.request('/probe', { headers: { authorization: 'Bearer x' } });
+    const invalid = await adapted.request('/probe', { headers: { authorization: 'Bearer x' } });
     expect(invalid.status).toBe(401);
   });
 });
@@ -238,8 +237,7 @@ describe('auth/me 未走分支', () => {
       admins: { find: async () => null, setTwoFactorEnabled: async () => {} },
       sessionTtlSec: 3600,
     };
-    const app = meRoutes(meDeps);
-    app.onError((error, c) => errorHandler({ catalog: adminErrorCatalog })(error, c));
+    const app = harnessApp(meRoutes(meDeps), { catalog: adminErrorCatalog });
     const missing = await app.request('/v1/me', { headers: { authorization: `Bearer ${TOKEN}` } });
     expect(missing.status).toBe(404);
     expect(await missing.json()).toMatchObject({ error: { code: 'admin.admin_not_found' } });
@@ -268,7 +266,7 @@ describe('auth/me 未走分支', () => {
   });
 
   it('登录成功但 touch/审计为 best-effort 分支（audit 拒绝不阻断登录）', async () => {
-    const app = authRoutes({
+    const app = harnessApp(authRoutes({
       mailerConfigured: () => false,
       invites: { consume: async () => null },
       identity: {
@@ -324,10 +322,7 @@ describe('auth/me 未走分支', () => {
       },
       trustedProxyHops: 0,
       sessionTtlSec: 3600,
-    });
-    app.onError((error, c) =>
-      errorHandler({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES })(error, c),
-    );
+    }), { catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES });
     const res = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: json,
@@ -419,8 +414,7 @@ describe('users set-password（D6 分支面）', () => {
       },
       postAudit,
     };
-    const app = usersRoutes(deps as never);
-    app.onError((error, c) => errorHandler({ catalog: adminErrorCatalog })(error, c));
+    const app = harnessApp(usersRoutes(deps as never), { catalog: adminErrorCatalog });
     return { app, patch, reset, updateCard, postAudit };
   }
 
@@ -469,7 +463,7 @@ describe('users set-password（D6 分支面）', () => {
 describe('P6/P5 残余分支（价格溯源参数边界/通知词表边界）', () => {
   it('price-history:externalName 缺失/空串/超长一律 400;合法值透传', async () => {
     const { catalogRoutes } = await import('../src/http/routes/catalog');
-    const app = catalogRoutes({
+    const app = harnessApp(catalogRoutes({
       controlPlane: {
         catalog: {
           listSources: () => [],
@@ -479,8 +473,7 @@ describe('P6/P5 残余分支（价格溯源参数边界/通知词表边界）', 
         },
       },
       vendorCatalog: { protocols: [], vendors: [] },
-    } as never);
-    app.onError((error, c) => errorHandler({ catalog: adminErrorCatalog })(error, c));
+    } as never), { catalog: adminErrorCatalog });
     for (const qs of ['', '?externalName=', `?externalName=${'x'.repeat(65)}`]) {
       const res = await app.request(`/v1/model-catalog/price-history${qs}`, {
         headers: { authorization: `Bearer ${TOKEN}` },

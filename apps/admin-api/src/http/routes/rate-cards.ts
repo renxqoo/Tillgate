@@ -2,9 +2,9 @@
  * 费率卡路由：列表/创建/更新/删除（绑定守卫）/
  * 卡内用户/健康自检。系数 0.001..9.999,落库与回显恒 3 位小数（control-plane）。
  */
-import { Hono } from 'hono';
+import { routes, queryObject } from '@tillgate/http';
 import type { ControlPlane } from '@tillgate/control-plane';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { RATE_CARD_SORTS, RATE_CARD_USER_SORTS, rateCardsContracts } from '../contracts/rates';
@@ -16,11 +16,11 @@ export interface RateCardsRoutesDeps {
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function rateCardsRoutes(deps: RateCardsRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
   const { rates } = deps.controlPlane;
 
   app.get('/v1/rate-cards', async (c) => {
-    const query = parseListQuery(c.req.query(), RATE_CARD_SORTS, 'createdAt');
+    const query = parseListQuery(queryObject(c), RATE_CARD_SORTS, 'createdAt');
     const result = await rates.listCards({
       ...(query.q !== undefined ? { q: query.q } : {}),
       sortBy: query.sortBy as 'id' | 'name' | 'status' | 'createdAt',
@@ -38,19 +38,19 @@ export function rateCardsRoutes(deps: RateCardsRoutesDeps) {
   });
 
   app.patch('/v1/rate-cards/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const patch = rateCardsContracts.update.parse(await c.req.json());
     return c.json(await rates.updateCard({ ctx: controlContextOf(c), rateCardId: id, patch }));
   });
 
   app.delete('/v1/rate-cards/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     return c.json(await rates.deleteCard({ ctx: controlContextOf(c), rateCardId: id }));
   });
 
   app.get('/v1/rate-cards/:id/users', async (c) => {
-    const id = idParam(c.req.param('id'));
-    const query = parseListQuery(c.req.query(), RATE_CARD_USER_SORTS, 'id');
+    const id = idParam((c.params?.['id'] ?? ''));
+    const query = parseListQuery(queryObject(c), RATE_CARD_USER_SORTS, 'id');
     const result = await rates.listCardUsers({
       rateCardId: id,
       ...(query.q !== undefined ? { q: query.q } : {}),
@@ -63,9 +63,9 @@ export function rateCardsRoutes(deps: RateCardsRoutesDeps) {
   });
 
   app.get('/v1/rate-cards/:id/health', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     return c.json(await rates.cardHealth(id));
   });
 
-  return app;
+  return app.router;
 }

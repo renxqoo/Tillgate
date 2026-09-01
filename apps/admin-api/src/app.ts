@@ -4,18 +4,19 @@
  * DB 探活以闭包注入(app 只持有 facade 与纯契约类型)。
  * 会话中间件逐路由挂载（未注册路径 404 而非 401）。
  */
-import { Hono } from 'hono';
+import { Keala } from 'keala';
 import { ZodError } from 'zod';
-import { pgSqlState } from '@tillgate/db'; // 纯 SQLSTATE 分类函数(errorHandler 文档化注入点;非 Db 类型)
+import { pgSqlState } from '@tillgate/db'; // 纯 SQLSTATE 分类函数(errorHandling 文档化注入点;非 Db 类型)
 import {
-  errorBody,
-  errorHandler,
-  renderError,
-  HttpErrors,
+  asMiddleware,
   dbBudgetMiddleware,
+  errorHandling,
+  HttpErrors,
+  notFoundResponse,
+  withRequest,
+  type App,
   type DbBudgetOptions,
 } from '@tillgate/http';
-import { localeFromContext } from '@tillgate/http';
 import type { AccountUseCases } from '@tillgate/accounts';
 import type {
   PlansApi,
@@ -31,7 +32,7 @@ import type { Identity } from '@tillgate/identity';
 import type { PaymentAdminApi } from '@tillgate/billing';
 import type { GenerationTaskStore } from '@tillgate/inference';
 import { adminErrorCatalog, ADMIN_FACE_OVERRIDES } from './http/error-face';
-import type { SessionEnv, SessionValidator } from './http/middleware/session';
+import type { SessionValidator } from './http/middleware/session';
 import { createAclMiddleware, matchBinding } from './http/middleware/acl';
 import { protocolStack } from './http/middleware/protocol';
 import type { OperationsUseCase, WriteAuditInTx } from './http/routes/users-funds';
@@ -158,48 +159,42 @@ export interface AdminAppDeps {
 }
 
 // eslint-disable-next-line max-lines-per-function, max-statements -- 应用装配:错误处理/中间件栈/路由挂载线性平铺,每条语句即一个挂载步骤
-export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
-  const app = new Hono<SessionEnv>();
+export function createAdminApp(deps: AdminAppDeps): App {
+  const app = new Keala();
 
   // DB 并发预算门先行(探针路径在门内旁路):管理端批量操作/导出脚本防打满小池
-  if (deps.dbBudget != null) app.use('*', dbBudgetMiddleware(deps.dbBudget));
+  if (deps.dbBudget != null) app.use(dbBudgetMiddleware(deps.dbBudget));
 
-  // 统一兜底:contracts 层 zod parse 的 ZodError 先行翻译(validation_failed,
-  // 即 invalid_request 语义);其余流动错误按目录渲染,PG SQLSTATE 探测注入
-  const handler = errorHandler({
-    catalog: adminErrorCatalog,
-    overrides: ADMIN_FACE_OVERRIDES,
-    sqlState: pgSqlState,
-    ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
-  });
-  app.onError((error, c) => {
-    if (error instanceof ZodError) {
-      return handler(
-        HttpErrors.business('validation_failed', {
-          issues: error.issues.map((issue) => ({
-            path: issue.path.join('.'),
-            message: issue.message,
-          })),
-        }),
-        c,
-      );
-    }
-    return handler(error, c);
-  });
-
-  app.notFound((c) => {
-    const rendered = renderError(HttpErrors.business('not_found'), {
-      locale: localeFromContext(c),
+  // 错误响应由最外层中间件产生（keala onError 是日志监听器）——必须先于业务链注册。
+  // contracts 层 zod parse 的 ZodError 先行翻译(validation_failed,即 invalid_request 语义);
+  // 其余流动错误按目录渲染,PG SQLSTATE 探测注入
+  app.use(
+    errorHandling({
       catalog: adminErrorCatalog,
-    });
-    return c.json(errorBody(rendered), rendered.status as 404);
-  });
+      overrides: ADMIN_FACE_OVERRIDES,
+      sqlState: pgSqlState,
+      ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
+      preTranslate: (error) =>
+        error instanceof ZodError
+          ? HttpErrors.business('validation_failed', {
+              issues: error.issues.map((issue) => ({
+                path: issue.path.join('.'),
+                message: issue.message,
+              })),
+            })
+          : error,
+    }),
+  );
+  // keala notFound 在中间件链外执行——直接产出同款本地化信封（throw 不可达错误链）
+  app.notFound((c) => notFoundResponse(c, { catalog: adminErrorCatalog }));
 
-  for (const middleware of protocolStack({
+  const protocol = protocolStack({
     corsOrigins: deps.corsOrigins,
     bodyLimitBytes: deps.bodyLimitBytes,
-  })) {
-    app.use('*', middleware);
+  });
+  app.use(protocol.plugin);
+  for (const middleware of protocol.chain) {
+    app.use(asMiddleware(middleware));
   }
 
   // RBAC 全局 ACL（执行面数据化——接口→权限绑定住 endpoint_permissions,
@@ -222,7 +217,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
     );
     return matched != null && matched.code !== '' ? matched : null;
   };
-  app.use('*', createAclMiddleware(deps.sessions, resolveBinding));
+  app.use(asMiddleware(createAclMiddleware(deps.sessions, resolveBinding)));
 
   // 探针:healthz/readyz 查 DB(livez 纯 200);K8s/compose healthcheck 不带 Bearer。
   // 故障细节只进日志——公开探针不回显驱动错误串(S6:主机名/凭据细节不外泄)
@@ -246,7 +241,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
     }
   });
 
-  app.route(
+  app.mount(
     '/',
     usersRoutes({
       accounts: deps.accounts,
@@ -256,7 +251,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       postAudit: deps.postAudit,
     }),
   );
-  app.route(
+  app.mount(
     '/',
     usersFundsRoutes({
       accounts: deps.accounts,
@@ -268,15 +263,15 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       postAudit: deps.postAudit,
     }),
   );
-  app.route('/', keysRoutes({ accounts: deps.accounts }));
-  app.route('/', providersRoutes({ controlPlane: deps.controlPlane }));
-  app.route('/', channelsRoutes({ controlPlane: deps.controlPlane }));
-  app.route('/', channelFundsRoutes({ controlPlane: deps.controlPlane }));
-  app.route('/', routingPolicyRoutes({ controlPlane: deps.controlPlane }));
-  app.route('/', modelsRoutes({ controlPlane: deps.controlPlane }));
-  app.route('/', rateCardsRoutes({ controlPlane: deps.controlPlane }));
-  app.route('/', fxRoutes({ controlPlane: deps.controlPlane }));
-  app.route(
+  app.mount('/', keysRoutes({ accounts: deps.accounts }));
+  app.mount('/', providersRoutes({ controlPlane: deps.controlPlane }));
+  app.mount('/', channelsRoutes({ controlPlane: deps.controlPlane }));
+  app.mount('/', channelFundsRoutes({ controlPlane: deps.controlPlane }));
+  app.mount('/', routingPolicyRoutes({ controlPlane: deps.controlPlane }));
+  app.mount('/', modelsRoutes({ controlPlane: deps.controlPlane }));
+  app.mount('/', rateCardsRoutes({ controlPlane: deps.controlPlane }));
+  app.mount('/', fxRoutes({ controlPlane: deps.controlPlane }));
+  app.mount(
     '/',
     settingsRoutes({
       controlPlane: deps.controlPlane,
@@ -286,28 +281,28 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       trustedProxyHops: deps.trustedProxyHops,
     }),
   );
-  app.route(
+  app.mount(
     '/',
     catalogRoutes({ controlPlane: deps.controlPlane, vendorCatalog: deps.vendorCatalog }),
   );
-  app.route('/', subscriptionsRoutes({ subscriptions: deps.subscriptions }));
-  app.route('/', plansRoutes({ plans: deps.plans, postAudit: deps.postAudit }));
-  app.route('/', redeemRoutes({ redeemBatches: deps.redeemBatches, postAudit: deps.postAudit }));
-  app.route('/', billingOperationsRoutes({ review: deps.review }));
-  app.route('/', tracingRoutes({ observability: deps.observability }));
-  app.route('/', opsLogsRoutes({ observability: deps.observability, now: deps.now }));
-  app.route('/', opsUsageRoutes({ observability: deps.observability, now: deps.now }));
-  app.route('/', opsTasksRoutes({ generationTasks: deps.generationTasks }));
-  app.route(
+  app.mount('/', subscriptionsRoutes({ subscriptions: deps.subscriptions }));
+  app.mount('/', plansRoutes({ plans: deps.plans, postAudit: deps.postAudit }));
+  app.mount('/', redeemRoutes({ redeemBatches: deps.redeemBatches, postAudit: deps.postAudit }));
+  app.mount('/', billingOperationsRoutes({ review: deps.review }));
+  app.mount('/', tracingRoutes({ observability: deps.observability }));
+  app.mount('/', opsLogsRoutes({ observability: deps.observability, now: deps.now }));
+  app.mount('/', opsUsageRoutes({ observability: deps.observability, now: deps.now }));
+  app.mount('/', opsTasksRoutes({ generationTasks: deps.generationTasks }));
+  app.mount(
     '/',
     opsOrdersRoutes({ paymentAdmin: deps.paymentAdmin, orderCloseReason: deps.orderCloseReason }),
   );
-  app.route('/', marketingRoutes({ accounts: deps.accounts }));
-  app.route('/', referralRoutes({ accounts: deps.accounts, wallet: deps.wallet }));
-  app.route('/', vouchersRoutes({ controlPlane: deps.controlPlane }));
-  app.route('/', notificationsRoutes({ notifications: deps.notifications }));
+  app.mount('/', marketingRoutes({ accounts: deps.accounts }));
+  app.mount('/', referralRoutes({ accounts: deps.accounts, wallet: deps.wallet }));
+  app.mount('/', vouchersRoutes({ controlPlane: deps.controlPlane }));
+  app.mount('/', notificationsRoutes({ notifications: deps.notifications }));
   // 动态 RBAC 管理面（admins 域码——roles/permissions CRUD 与管理员管理同域同受众）
-  app.route(
+  app.mount(
     '/',
     adminsRoutes({
       admins: deps.controlPlane.admins,
@@ -319,11 +314,11 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       mailerConfigured: deps.mailerConfigured,
     }),
   );
-  app.route('/', rolesRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
-  app.route('/', permissionsRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
-  app.route('/', endpointsRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
+  app.mount('/', rolesRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
+  app.mount('/', permissionsRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
+  app.mount('/', endpointsRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
   // 登录面:auth 公开组（登录/验码不挂会话件;logout 挂）+ me 会话组
-  app.route(
+  app.mount(
     '/',
     authRoutes({
       identity: deps.identity,
@@ -336,7 +331,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       sessionTtlSec: deps.sessionTtlSec,
     }),
   );
-  app.route(
+  app.mount(
     '/',
     meRoutes({
       identity: deps.identity,
@@ -348,5 +343,5 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
     }),
   );
 
-  return app;
+  return withRequest(app);
 }

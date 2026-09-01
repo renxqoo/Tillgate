@@ -2,9 +2,9 @@
  * 目录汇率路由：状态（含懒拉）/强制刷新/手动覆盖与清除/点差。
  * 全部动作留审计（fx.override / fx.override_clear / fx.buffer——control-plane）。
  */
-import { Hono } from 'hono';
+import { routes } from '@tillgate/http';
 import type { ControlPlane } from '@tillgate/control-plane';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { fxCatalogContracts } from '../contracts/rates';
 
@@ -13,7 +13,7 @@ export interface FxRoutesDeps {
 }
 
 export function fxRoutes(deps: FxRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
   const { fx } = deps.controlPlane;
 
   app.get('/v1/fx/catalog', async (c) => c.json(await fx.state()));
@@ -37,5 +37,5 @@ export function fxRoutes(deps: FxRoutesDeps) {
     return c.json(await fx.setBuffer({ ctx: controlContextOf(c), bufferPct: body.bufferPct }));
   });
 
-  return app;
+  return app.router;
 }

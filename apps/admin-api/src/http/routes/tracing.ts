@@ -3,9 +3,9 @@
  * minDuration/requestId 过滤）/单 trace 瀑布/按 requestId 关联/渠道拓扑/存储统计。
  * 参数守卫在 tracing 存储（regex 白名单——防注入;列表信封由 observability 承接）。
  */
-import { Hono } from 'hono';
+import { routes, queryString, queryObject } from '@tillgate/http';
 import type { Observability } from '@tillgate/observability';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { listEnvelope, parseListQuery } from '../contracts/common';
 import { tracingContracts } from '../contracts/observability';
 
@@ -14,12 +14,12 @@ export interface TracingRoutesDeps {
 }
 
 export function tracingRoutes(deps: TracingRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
   const { traces } = deps.observability;
 
   app.get('/v1/tracing/recent', async (c) => {
-    const parts = parseListQuery(c.req.query(), ['id'], 'id');
-    const raw = tracingContracts.recentQuery.parse(c.req.query());
+    const parts = parseListQuery(queryObject(c), ['id'], 'id');
+    const raw = tracingContracts.recentQuery.parse(queryObject(c));
     const result = await traces.recent({
       ...(raw.service !== undefined && raw.service !== '' ? { service: raw.service } : {}),
       errorsOnly: raw.errorsOnly === 'true' || raw.errorsOnly === '1',
@@ -32,21 +32,21 @@ export function tracingRoutes(deps: TracingRoutesDeps) {
   });
 
   app.get('/v1/tracing/traces/:traceId', async (c) =>
-    c.json(await traces.traceDetail(c.req.param('traceId'))),
+    c.json(await traces.traceDetail((c.params?.['traceId'] ?? ''))),
   );
 
   app.get('/v1/tracing/by-request/:requestId', async (c) =>
-    c.json(await traces.byRequest(c.req.param('requestId'))),
+    c.json(await traces.byRequest((c.params?.['requestId'] ?? ''))),
   );
 
   app.get('/v1/tracing/topology', async (c) => {
     // hours 钳位 1..168（存储侧同钳——双重钳位无害）
-    const hours = Math.min(168, Math.max(1, Number(c.req.query('hours')) || 24));
+    const hours = Math.min(168, Math.max(1, Number(queryString(c, 'hours')) || 24));
     const channels = await traces.topology(hours);
     return c.json({ hours, channels });
   });
 
   app.get('/v1/tracing/stats', async (c) => c.json({ storage: await traces.stats() }));
 
-  return app;
+  return app.router;
 }

@@ -2,10 +2,9 @@
  * 运营系统设置路由：计费时区（system_configs KV）与第三方集成动态配置
  * （integration_settings 表）。写入均留审计（control-plane）。
  */
-import { Hono } from 'hono';
-import { jsonBody } from '@tillgate/http';
+import { jsonBody, routes, jsonBodyOf } from '@tillgate/http';
 import type { ControlPlane } from '@tillgate/control-plane';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { settingsContracts } from '../contracts/settings';
 import { requireTotpStepup, type StepupVerifyDeps } from '../stepup-verify';
@@ -16,7 +15,7 @@ export interface SettingsRoutesDeps extends StepupVerifyDeps {
 
 // eslint-disable-next-line max-lines-per-function -- 设置面路由表平铺:时区+集成+地板（一文件一族,拆分制造人工接缝）
 export function settingsRoutes(deps: SettingsRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
   const {
     billingTimezone,
     debitFloorDefault,
@@ -43,7 +42,7 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
     '/v1/settings/debit-floor-default',
     jsonBody(settingsContracts.debitFloorDefaultUpdate),
     async (c) => {
-      const body = c.req.valid('json');
+      const body = jsonBodyOf(c, settingsContracts.debitFloorDefaultUpdate);
       // 审计在 control-plane 用例内（settings.debit_floor_default；与 billing_timezone 同族）
       return c.json(
         await debitFloorDefault.update({ ctx: controlContextOf(c), floor: body.floor }),
@@ -59,7 +58,7 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
     '/v1/settings/platform-currency',
     jsonBody(settingsContracts.platformCurrencyUpdate),
     async (c) => {
-      const body = c.req.valid('json');
+      const body = jsonBodyOf(c, settingsContracts.platformCurrencyUpdate);
       // 写一次守卫（处女系统）在 control-plane 用例内；非处女 409 platform_currency_locked
       return c.json(
         await platformCurrency.update({ ctx: controlContextOf(c), currency: body.currency }),
@@ -75,7 +74,7 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
     '/v1/settings/billing-reservation-limit',
     jsonBody(settingsContracts.billingReservationLimitUpdate),
     async (c) => {
-      const body = c.req.valid('json');
+      const body = jsonBodyOf(c, settingsContracts.billingReservationLimitUpdate);
       // 审计在 control-plane 用例内（settings.billing_reservation_limit；网关 TTL 内拾取）
       return c.json(
         await billingReservationLimit.update({ ctx: controlContextOf(c), limit: body.limit }),
@@ -87,7 +86,7 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
     '/v1/settings/billing-reservation',
     jsonBody(settingsContracts.billingReservationUpdate),
     async (c) => {
-      const body = c.req.valid('json');
+      const body = jsonBodyOf(c, settingsContracts.billingReservationUpdate);
       // 审计在 control-plane 用例内（settings.billing_reservation；网关 TTL 缓存内拾取）
       return c.json(await billingReservation.update({ ctx: controlContextOf(c), policy: body }));
     },
@@ -97,13 +96,13 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
     '/v1/settings/integrations/:key',
     jsonBody(settingsContracts.integrationsUpdate),
     async (c) => {
-      const body = c.req.valid('json');
+      const body = jsonBodyOf(c, settingsContracts.integrationsUpdate);
       // step-up 强制点：配置/启停共用本端点，未验 TOTP 不得落库
       await requireTotpStepup(deps, c, body.totpCode);
       return c.json(
         await integrations.update({
           ctx: controlContextOf(c),
-          key: c.req.param('key'),
+          key: (c.params?.['key'] ?? ''),
           ...(body.enabled != null ? { enabled: body.enabled } : {}),
           ...(body.config != null ? { config: body.config } : {}),
         }),
@@ -117,12 +116,12 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
     '/v1/settings/integrations/smtp/test',
     jsonBody(settingsContracts.integrationsProbe),
     async (c) => {
-      const body = c.req.valid('json');
+      const body = jsonBodyOf(c, settingsContracts.integrationsProbe);
       return c.json(
         await integrations.probeSmtp(body.config != null ? { config: body.config } : {}),
       );
     },
   );
 
-  return app;
+  return app.router;
 }

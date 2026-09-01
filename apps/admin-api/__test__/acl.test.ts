@@ -1,19 +1,18 @@
 /**
  * 全局 ACL 中间件契约测试：
- *   1. matchBinding:Hono ':param' 模式匹配（段数相等/参数段非空/字面段相等）;HEAD→GET;
+ *   1. matchBinding:':param' 模式匹配（段数相等/参数段非空/字面段相等）;HEAD→GET;
  *   2. 公开白名单直通（无凭据 200）;自身白名单有会话即放行;非 /v1 路径放行走 404;
  *   3. fail-closed:未绑定 → 403 endpoint_unbound（非超管）;超管短路（含未绑定端点）;
  *   4. 码判定:绑定码 ∈ grants 放行 / ∉ 403 insufficient_permission;无凭据 401 优先。
  */
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
-import { errorHandler } from '@tillgate/http';
+import { Keala } from 'keala';
+import { asMiddleware, errorHandling, withRequest } from '@tillgate/http';
 import {
   createAclMiddleware,
   matchBinding,
   type EndpointBinding,
 } from '../src/http/middleware/acl';
-import type { SessionEnv } from '../src/http/middleware/session';
 import { adminErrorCatalog } from '../src/http/error-face';
 import { sessionPayload, VALID_TOKEN } from './helpers';
 
@@ -25,15 +24,17 @@ const BINDINGS: EndpointBinding[] = [
 ];
 
 function aclApp(owner: { status: number; grants: { isSuper: boolean; codes: string[] } } | null) {
-  const app = new Hono<SessionEnv>();
+  const app = new Keala();
+  app.use(errorHandling({ catalog: adminErrorCatalog }));
   app.use(
-    '*',
-    createAclMiddleware(
+    asMiddleware(
+      createAclMiddleware(
       {
         validate: async (token: string) => (token === VALID_TOKEN ? sessionPayload : null),
         ...(owner != null ? { owner: async () => owner } : {}),
       },
-      async (method, path) => matchBinding(BINDINGS, method, path),
+        async (method, path) => matchBinding(BINDINGS, method, path),
+      ),
     ),
   );
   for (const [method, path] of [
@@ -48,8 +49,7 @@ function aclApp(owner: { status: number; grants: { isSuper: boolean; codes: stri
   ] as const) {
     app.on(method, path, (c) => c.json({ ok: true }));
   }
-  app.onError((error, c) => errorHandler({ catalog: adminErrorCatalog })(error, c));
-  return app;
+  return withRequest(app);
 }
 
 const SUPER = { status: 0, grants: { isSuper: true, codes: [] } };

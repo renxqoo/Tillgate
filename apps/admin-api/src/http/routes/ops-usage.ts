@@ -4,9 +4,9 @@
  * 语义全部经 observability.usage facet（SQL 在包 adapter;北京日界口径在包内）。
  * hours 收口为容错语义（Math.min/max + NaN→24,不走 zod 400）。
  */
-import { Hono } from 'hono';
+import { routes, queryString, queryObject } from '@tillgate/http';
 import type { Observability } from '@tillgate/observability';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { listEnvelope, parseListQuery } from '../contracts/common';
 import { USAGE_SORTS, statsContracts, usageContracts } from '../contracts/observability';
 import { toUsageWireRow } from '../presenters/ops';
@@ -19,12 +19,12 @@ export interface OpsUsageRoutesDeps {
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function opsUsageRoutes(deps: OpsUsageRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
   const { usage } = deps.observability;
 
   app.get('/v1/usage-logs', async (c) => {
-    const extra = usageContracts.queryExtra.parse(c.req.query());
-    const query = parseListQuery(c.req.query(), USAGE_SORTS, 'createdAt');
+    const extra = usageContracts.queryExtra.parse(queryObject(c));
+    const query = parseListQuery(queryObject(c), USAGE_SORTS, 'createdAt');
     const result = await usage.adminList({
       ...(query.q !== undefined ? { q: query.q } : {}),
       ...(extra.from !== undefined ? { from: new Date(extra.from) } : {}),
@@ -49,7 +49,7 @@ export function opsUsageRoutes(deps: OpsUsageRoutesDeps) {
   app.get('/v1/stats/overview', async (c) => c.json(await usage.overview({ now: deps.now() })));
 
   app.get('/v1/stats/usage', async (c) => {
-    const query = statsContracts.usage.parse(c.req.query());
+    const query = statsContracts.usage.parse(queryObject(c));
     return c.json(
       await usage.groups({
         group: query.group,
@@ -60,15 +60,15 @@ export function opsUsageRoutes(deps: OpsUsageRoutesDeps) {
   });
 
   app.get('/v1/stats/trends', async (c) => {
-    const query = statsContracts.trends.parse(c.req.query());
+    const query = statsContracts.trends.parse(queryObject(c));
     return c.json(await usage.trends({ days: query.days, now: deps.now() }));
   });
 
   app.get('/v1/analytics/channel-ttft', async (c) => {
     // hours 容错收口:非数/缺省 → 24,越界钳到 [1, 720](不 400)
-    const hours = Math.min(720, Math.max(1, Number(c.req.query('hours')) || 24));
+    const hours = Math.min(720, Math.max(1, Number(queryString(c, 'hours')) || 24));
     return c.json(await usage.channelTtft({ hours, now: deps.now() }));
   });
 
-  return app;
+  return app.router;
 }

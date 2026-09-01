@@ -10,20 +10,17 @@
  *   - 登出 = identity.sessions.logout（jti 入吊销面——泄露副本即刻失效）
  * Bearer 会话——无 Cookie 无 CSRF;客户端自持 token。公开组（登录/验码）不挂会话件。
  */
-import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
 import { isBusinessError } from '@tillgate/errors';
 import { sha256Hex } from '@tillgate/billing';
 import {
   jsonBody,
   socketAddressFromContext,
   trustedClientIp,
-  parseAcceptLanguage,
-} from '@tillgate/http';
+  parseAcceptLanguage, routes, jsonBodyOf } from '@tillgate/http';
 import type { Identity } from '@tillgate/identity';
 import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { authContracts } from '../contracts/auth';
 import type { AdminInvitePort } from './admins';
 
@@ -65,11 +62,11 @@ const invalidResetToken = () => AdminErrors.business('admin_reset_token_invalid'
 
 // eslint-disable-next-line max-lines-per-function -- 登录族装配平铺:路由表 + 凭证鉴别/2FA 共享闭包保留存量语义(棘轮)
 export function authRoutes(deps: AuthRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
-  const clientIpOf = (c: Parameters<MiddlewareHandler<SessionEnv>>[0]) =>
+  const clientIpOf = (c: AdminContext) =>
     trustedClientIp({
-      headers: c.req.raw.headers,
+      headers: c.raw.headers,
       trustedProxyHops: deps.trustedProxyHops,
       // 真实 socket 地址（null = 全进程共享一桶——30 次失败锁死所有管理员,DoS 放大器）
       socketAddress: socketAddressFromContext(c),
@@ -154,7 +151,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
   };
 
   app.post('/v1/auth/logout', async (c) => {
-    await deps.identity.sessions.logout(c.get('sessionToken'), 'admin');
+    await deps.identity.sessions.logout(c.state.sessionToken, 'admin');
     return c.json({ ok: true });
   });
 
@@ -164,7 +161,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
   // (对齐 C 端找回交互,跳登录页手动登录)。旧链接在对方设密后即作废
   // (消费期「目标无密码」校验——泄露链接改不了已激活账号的密码)。
   app.post('/v1/auth/reset-password', jsonBody(authContracts.resetPassword), async (c) => {
-    const body = c.req.valid('json');
+    const body = jsonBodyOf(c, authContracts.resetPassword);
     const adminId = await deps.invites.consume(body.token);
     if (adminId == null) throw invalidResetToken();
     const account = await deps.admins.find(adminId);
@@ -203,7 +200,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
         delivery: {
           ip: ip ?? 'unknown',
           locale:
-            parseAcceptLanguage(c.req.header('accept-language')) === 'zh'
+            parseAcceptLanguage(c.get('accept-language')) === 'zh'
               ? ('zh' as const)
               : ('en' as const),
         },
@@ -233,7 +230,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
   // TOTP 第二步:无挑战行(验证无状态、防重放在 identity lastUsedStep CAS)——
   // 重验凭证(守卫/密码/状态同一口径,失败同样计数)+ 验证器/恢复码
   app.post('/v1/auth/login/totp', jsonBody(authContracts.loginTotp), async (c) => {
-    const body = c.req.valid('json');
+    const body = jsonBodyOf(c, authContracts.loginTotp);
     const ip = clientIpOf(c);
     const { adminId } = await authenticateCredentials(body, ip);
     const totp = await deps.identity.mfa.status({ userId: adminId });
@@ -302,5 +299,5 @@ export function authRoutes(deps: AuthRoutesDeps) {
     });
   });
 
-  return app;
+  return app.router;
 }

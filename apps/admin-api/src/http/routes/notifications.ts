@@ -3,9 +3,9 @@
  * 渠道 CRUD 与测试动词全部经 @tillgate/notifications facade（业务校验/加密/掩码在包内）;
  * 实际投递由 worker dispatchOnce 消费——本面只管理 + 入箱测试事件。
  */
-import { Hono } from 'hono';
+import { routes } from '@tillgate/http';
 import type { Notifications } from '@tillgate/notifications';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { idParam } from '../contracts/common';
 import { notificationsContracts } from '../contracts/notifications';
 
@@ -14,15 +14,12 @@ export interface NotificationsRoutesDeps {
 }
 
 /** HTTP 请求 → notifications 用例上下文（actor=admin） */
-function notifyContextOf(c: { get: (k: 'requestId' | 'adminId') => unknown }) {
-  return {
-    requestId: c.get('requestId') as string,
-    actor: { kind: 'admin' as const, id: c.get('adminId') as number },
-  };
+function notifyContextOf(c: AdminContext) {
+  return { requestId: c.state.requestId, actor: { kind: 'admin' as const, id: c.state.adminId } };
 }
 
 export function notificationsRoutes(deps: NotificationsRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
   const { channels } = deps.notifications;
 
   app.get('/v1/notifications', async (c) => c.json(await channels.list()));
@@ -41,7 +38,7 @@ export function notificationsRoutes(deps: NotificationsRoutesDeps) {
   });
 
   app.patch('/v1/notifications/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = notificationsContracts.update.parse(await c.req.json());
     return c.json(
       await channels.patch({
@@ -58,14 +55,14 @@ export function notificationsRoutes(deps: NotificationsRoutesDeps) {
   });
 
   app.delete('/v1/notifications/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     return c.json(await channels.remove({ ctx: notifyContextOf(c), channelId: id }));
   });
 
   app.post('/v1/notifications/:id/test', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     return c.json(await channels.test({ ctx: notifyContextOf(c), channelId: id }));
   });
 
-  return app;
+  return app.router;
 }

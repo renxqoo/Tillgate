@@ -3,12 +3,12 @@
  * 列表 / 详情 / 批内码列表（哈希脱敏）/ 单码作废。
  * 审计后置（提交后旁路）。
  */
-import { Hono } from 'hono';
+import { routes, queryObject } from '@tillgate/http';
 import type { RedeemBatchesApi } from '@tillgate/billing';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { BATCH_SORTS, CODE_SORTS, redeemContracts } from '../contracts/billing-admin';
 import { toBatchWireRow, toCodeWireRow } from '../presenters/billing';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 
 /** 后置审计闭包形状（提交后旁路、失败不阻断——装配桥 writeAudit） */
 export interface PostAudit {
@@ -29,12 +29,12 @@ export interface RedeemRoutesDeps {
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function redeemRoutes(deps: RedeemRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
   app.post('/v1/redeem-batches', async (c) => {
     const body = redeemContracts.create.parse(await c.req.json());
     const result = await deps.redeemBatches.create({
-      createdBy: c.get('adminId'),
+      createdBy: c.state.adminId,
       name: body.name,
       ...(body.remark !== undefined ? { remark: body.remark } : {}),
       amount: body.amount,
@@ -43,7 +43,7 @@ export function redeemRoutes(deps: RedeemRoutesDeps) {
     });
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'redeem_batch.create',
       targetType: 'redeem_batch',
       targetId: result.batch.id,
@@ -56,7 +56,7 @@ export function redeemRoutes(deps: RedeemRoutesDeps) {
   });
 
   app.get('/v1/redeem-batches', async (c) => {
-    const query = parseListQuery(c.req.query(), BATCH_SORTS, 'createdAt');
+    const query = parseListQuery(queryObject(c), BATCH_SORTS, 'createdAt');
     const page = await deps.redeemBatches.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
       sortBy: query.sortBy as 'id' | 'name' | 'amount' | 'createdAt',
@@ -68,14 +68,14 @@ export function redeemRoutes(deps: RedeemRoutesDeps) {
   });
 
   app.get('/v1/redeem-batches/:id', async (c) => {
-    const row = await deps.redeemBatches.detail(idParam(c.req.param('id')));
+    const row = await deps.redeemBatches.detail(idParam((c.params?.['id'] ?? '')));
     return c.json(toBatchWireRow(row));
   });
 
   app.get('/v1/redeem-batches/:id/codes', async (c) => {
-    const id = idParam(c.req.param('id'));
-    const extra = redeemContracts.codesQueryExtra.parse(c.req.query());
-    const query = parseListQuery(c.req.query(), CODE_SORTS, 'id');
+    const id = idParam((c.params?.['id'] ?? ''));
+    const extra = redeemContracts.codesQueryExtra.parse(queryObject(c));
+    const query = parseListQuery(queryObject(c), CODE_SORTS, 'id');
     const page = await deps.redeemBatches.codes({
       batchId: id,
       ...(extra.status !== undefined ? { status: extra.status } : {}),
@@ -88,11 +88,11 @@ export function redeemRoutes(deps: RedeemRoutesDeps) {
   });
 
   app.post('/v1/redeem-batches/codes/:codeId/revoke', async (c) => {
-    const codeId = idParam(c.req.param('codeId'));
+    const codeId = idParam((c.params?.['codeId'] ?? ''));
     const result = await deps.redeemBatches.revoke({ codeId });
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'redeem_code.revoke',
       targetType: 'redeem_code',
       targetId: codeId,
@@ -101,5 +101,5 @@ export function redeemRoutes(deps: RedeemRoutesDeps) {
     return c.json(result);
   });
 
-  return app;
+  return app.router;
 }

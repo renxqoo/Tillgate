@@ -3,9 +3,9 @@
  * + 已结算任务实扣金额页内批量回填（task.id ≠ 计费锚——回填走 store 的
  * request_id join,路由只组合）。词表/过滤在 inference 包与 contracts 层。
  */
-import { Hono } from 'hono';
+import { routes, queryObject } from '@tillgate/http';
 import type { GenerationTaskStore } from '@tillgate/inference';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { tasksContracts } from '../contracts/inference';
 import { toTaskWireRow } from '../presenters/ops';
 
@@ -14,10 +14,10 @@ export interface OpsTasksRoutesDeps {
 }
 
 export function opsTasksRoutes(deps: OpsTasksRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
   app.get('/v1/generation-tasks', async (c) => {
-    const query = tasksContracts.list.parse(c.req.query());
+    const query = tasksContracts.list.parse(queryObject(c));
     const result = await deps.generationTasks.adminList({
       ...(query.kind !== undefined ? { kind: query.kind } : {}),
       ...(query.status !== undefined ? { status: query.status } : {}),
@@ -35,5 +35,5 @@ export function opsTasksRoutes(deps: OpsTasksRoutesDeps) {
     });
   });
 
-  return app;
+  return app.router;
 }

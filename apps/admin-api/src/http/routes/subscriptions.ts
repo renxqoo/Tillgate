@@ -3,10 +3,9 @@
  * 发放与管理列表。资金动词幂等键经 operationId（http 货架）;管理面 userId:null 直续免属主检查
  * （billing 语义）。
  */
-import { Hono } from 'hono';
 import type { SubscriptionsApi } from '@tillgate/billing';
-import { operationId } from '@tillgate/http';
-import type { SessionEnv } from '../middleware/session';
+import { operationId, routes, queryObject } from '@tillgate/http';
+import type { AdminContext } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { subscriptionsContracts } from '../contracts/subscriptions';
 import { toSubscriptionWireRow } from '../presenters/billing';
@@ -17,10 +16,10 @@ export interface SubscriptionsRoutesDeps {
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function subscriptionsRoutes(deps: SubscriptionsRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
   app.get('/v1/subscriptions', async (c) => {
-    const raw = c.req.query();
+    const raw = queryObject(c);
     const extra = {
       planId: raw.planId !== undefined ? Number(raw.planId) : undefined,
       userId: raw.userId !== undefined ? Number(raw.userId) : undefined,
@@ -51,7 +50,7 @@ export function subscriptionsRoutes(deps: SubscriptionsRoutesDeps) {
   });
 
   app.post('/v1/subscriptions/:id/renew', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     return c.json(
       await deps.subscriptions.renew({
         operationId: operationId(c),
@@ -62,7 +61,7 @@ export function subscriptionsRoutes(deps: SubscriptionsRoutesDeps) {
   });
 
   app.post('/v1/subscriptions/:id/change', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = subscriptionsContracts.change.parse(await c.req.json());
     return c.json(
       await deps.subscriptions.change({
@@ -76,14 +75,14 @@ export function subscriptionsRoutes(deps: SubscriptionsRoutesDeps) {
   });
 
   app.post('/v1/subscriptions/:id/cancel', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     return c.json(
       await deps.subscriptions.cancel({ operationId: operationId(c), subscriptionId: id }),
     );
   });
 
   app.post('/v1/subscriptions/:id/grant', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = subscriptionsContracts.grant.parse(await c.req.json());
     return c.json(
       await deps.subscriptions.grantPack({
@@ -94,5 +93,5 @@ export function subscriptionsRoutes(deps: SubscriptionsRoutesDeps) {
     );
   });
 
-  return app;
+  return app.router;
 }

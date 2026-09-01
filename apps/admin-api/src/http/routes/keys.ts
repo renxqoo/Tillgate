@@ -2,9 +2,9 @@
  * API Key 管理面路由：全量列表 / 限额与状态补丁。
  * status 枚举 0..1;非法 99 → 400。keyPreview 脱敏回显,明文永不回显。
  */
-import { Hono } from 'hono';
+import { routes, queryObject } from '@tillgate/http';
 import type { AccountUseCases } from '@tillgate/accounts';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { KEY_SORTS, keysContracts } from '../contracts/users';
 import { toKeyWireRow } from '../presenters/keys';
@@ -14,11 +14,11 @@ export interface KeysRoutesDeps {
 }
 
 export function keysRoutes(deps: KeysRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
   app.get('/v1/admin-keys', async (c) => {
-    const extra = keysContracts.listQueryExtra.parse(c.req.query());
-    const query = parseListQuery(c.req.query(), KEY_SORTS, 'createdAt');
+    const extra = keysContracts.listQueryExtra.parse(queryObject(c));
+    const query = parseListQuery(queryObject(c), KEY_SORTS, 'createdAt');
     const page = await deps.accounts.adminListKeys({
       ...(query.q !== undefined ? { q: query.q } : {}),
       ...(extra.userId !== undefined ? { userId: extra.userId } : {}),
@@ -32,15 +32,15 @@ export function keysRoutes(deps: KeysRoutesDeps) {
   });
 
   app.patch('/v1/admin-keys/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = keysContracts.patch.parse(await c.req.json());
     const row = await deps.accounts.adminPatchKey({
       keyId: id,
       patch: body,
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
     });
     return c.json(toKeyWireRow(row));
   });
 
-  return app;
+  return app.router;
 }

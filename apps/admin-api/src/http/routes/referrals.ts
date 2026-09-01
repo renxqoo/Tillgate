@@ -5,11 +5,11 @@
  * 关系列表不含 wallet 投影（commissionTotal 不出列,
  * 资金投影走 payouts 端点,billing referralPayouts 单一真相）。
  */
-import { Hono } from 'hono';
+import { routes, queryString, queryObject } from '@tillgate/http';
 import type { AccountUseCases } from '@tillgate/accounts';
 import type { WalletApi } from '@tillgate/billing';
 import { AdminErrors } from '../error-face';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { REFERRAL_KINDS, referralContracts } from '../contracts/marketing';
 
@@ -19,10 +19,10 @@ export interface ReferralRoutesDeps {
 }
 
 export function referralRoutes(deps: ReferralRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
   app.get('/v1/referrals/relations', async (c) => {
-    const query = parseListQuery(c.req.query(), ['id'], 'id');
+    const query = parseListQuery(queryObject(c), ['id'], 'id');
     const page = await deps.accounts.listReferralRelations({
       ...(query.q !== undefined ? { q: query.q } : {}),
       page: query.page,
@@ -32,26 +32,26 @@ export function referralRoutes(deps: ReferralRoutesDeps) {
   });
 
   app.patch('/v1/referrals/relations/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = referralContracts.patchRelation.parse(await c.req.json());
     return c.json(
       await deps.accounts.setReferralRelationStatus({
         relationId: id,
         status: body.status,
-        adminId: c.get('adminId'),
+        adminId: c.state.adminId,
       }),
     );
   });
 
   app.get('/v1/referrals/payouts', async (c) => {
-    const kind = c.req.query('kind');
+    const kind = queryString(c, 'kind');
     if (!REFERRAL_KINDS.includes(kind as (typeof REFERRAL_KINDS)[number])) {
       throw AdminErrors.business('invalid_param', {
         field: 'kind',
         reason: `must be one of ${REFERRAL_KINDS.join(', ')}`,
       });
     }
-    const query = parseListQuery(c.req.query(), ['id'], 'id');
+    const query = parseListQuery(queryObject(c), ['id'], 'id');
     const page = await deps.wallet.referralPayouts({
       kind: kind as (typeof REFERRAL_KINDS)[number],
       limit: query.limit,
@@ -60,5 +60,5 @@ export function referralRoutes(deps: ReferralRoutesDeps) {
     return c.json(listEnvelope(page.rows, page.total, query));
   });
 
-  return app;
+  return app.router;
 }

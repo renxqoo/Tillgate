@@ -5,18 +5,18 @@
  *   1. 公开白名单（探针/登录族——结构性端点,代码侧声明）→ 直接放行,不做会话；
  *   2. 其余端点先过会话（验签 + 属主回查注入授权面;401 短路）；
  *   3. 自身白名单（/v1/me 族 + logout）→ 有会话即放行,不做码判定；
- *   4. ACL 匹配:绑定表(method+path 模式,Hono ':param' 语法)查该端点挂的权限码
+ *   4. ACL 匹配:绑定表(method+path 模式,':param' 语法——与 keala/Hono 路由一致)查该端点挂的权限码
  *      ——未绑定 → fail-closed 403 endpoint_unbound（超管例外:isSuper 短路）;
  *      已绑定 → granted(grants, code) 判定,无权 403 insufficient_permission。
  *
  * 每请求一次绑定表查询（~百行小表,管理面 QPS 下无感;缓存挂账）。
  */
 
-import type { MiddlewareHandler } from 'hono';
 import { granted } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
-import type { SessionEnv, SessionValidator } from './session';
+import type { AdminContext, SessionValidator } from './session';
 import { sessionMiddleware } from './session';
+import type { Middleware } from '@tillgate/http';
 
 export interface EndpointBinding {
   readonly method: string;
@@ -43,7 +43,7 @@ export const SELF_PREFIXES: readonly string[] = ['/v1/me', '/v1/auth/logout'];
 
 function matchesPath(pattern: string, path: string): boolean {
   if (pattern === path) return true;
-  // Hono ':param' 段 → 任意非空段
+  // ':param' 段 → 任意非空段
   const patternParts = pattern.split('/');
   const pathParts = path.split('/');
   if (patternParts.length !== pathParts.length) return false;
@@ -72,11 +72,11 @@ export function matchBinding(
 export function createAclMiddleware(
   sessions: SessionValidator,
   resolve: BindingResolver,
-): MiddlewareHandler<SessionEnv> {
+): Middleware<AdminContext> {
   const session = sessionMiddleware(sessions);
   return async (c, next) => {
-    const method = c.req.method === 'HEAD' ? 'GET' : c.req.method;
-    const { path } = c.req;
+    const method = c.method === 'HEAD' ? 'GET' : c.method;
+    const { path } = c;
 
     // 只守护 /v1/* 管理面:其余前缀的未知路径放行走 404（不泄漏路由清单）
     if (!path.startsWith('/v1/')) {
@@ -93,7 +93,7 @@ export function createAclMiddleware(
         await next();
         return;
       }
-      const grants = c.get('grants');
+      const { grants } = c.state;
       // 超管短路（含未绑定端点——超管始终可进后台补配绑定,这是兜底恢复路径）
       if (grants?.isSuper) {
         await next();

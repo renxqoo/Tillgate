@@ -6,13 +6,12 @@
  * 消费面：settings 集成写入（PUT /v1/settings/integrations/:key）与
  * 2FA 邮箱开关（POST /v1/me/two-factor）。
  */
-import type { Context } from 'hono';
 import { isBusinessError } from '@tillgate/errors';
 import { socketAddressFromContext, trustedClientIp } from '@tillgate/http';
 import type { Identity } from '@tillgate/identity';
 import { AdminErrors } from './error-face';
 import type { AuthGuard } from './routes/auth';
-import type { SessionEnv } from './middleware/session';
+import type { AdminContext } from './middleware/session';
 
 export interface StepupVerifyDeps {
   readonly identity: Pick<Identity, 'mfa'>;
@@ -32,12 +31,12 @@ export interface StepupVerifyDeps {
  */
 export async function requireTotpStepup(
   deps: StepupVerifyDeps,
-  c: Context<SessionEnv>,
+  c: AdminContext,
   code: string,
 ): Promise<void> {
-  const adminId = c.get('adminId');
+  const { adminId } = c.state;
   const ip = trustedClientIp({
-    headers: c.req.raw.headers,
+    headers: c.raw.headers,
     trustedProxyHops: deps.trustedProxyHops,
     socketAddress: socketAddressFromContext(c),
   });

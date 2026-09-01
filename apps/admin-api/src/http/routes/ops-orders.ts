@@ -4,9 +4,9 @@
  * 关单失败（已付/已入账/已关/不存在）经 billing 目录 order_state_conflict
  * 渲染 409。
  */
-import { Hono } from 'hono';
+import { routes, queryObject } from '@tillgate/http';
 import type { PaymentAdminApi } from '@tillgate/billing';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { listEnvelope, parseListQuery } from '../contracts/common';
 import { ORDER_SORTS, requestIdParam } from '../contracts/billing-admin';
 import { toOrderWireRow } from '../presenters/ops';
@@ -18,10 +18,10 @@ export interface OpsOrdersRoutesDeps {
 }
 
 export function opsOrdersRoutes(deps: OpsOrdersRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
   app.get('/v1/payment-orders', async (c) => {
-    const query = parseListQuery(c.req.query(), ORDER_SORTS, 'createdAt');
+    const query = parseListQuery(queryObject(c), ORDER_SORTS, 'createdAt');
     const result = await deps.paymentAdmin.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
       sortBy: query.sortBy as 'id' | 'amount' | 'status' | 'createdAt',
@@ -34,9 +34,9 @@ export function opsOrdersRoutes(deps: OpsOrdersRoutesDeps) {
 
   app.post('/v1/payment-orders/:id/close', async (c) => {
     // uuid 形状守卫复用 billing 域参数面(同正则单一真相)
-    const orderId = requestIdParam(c.req.param('id'));
+    const orderId = requestIdParam((c.params?.['id'] ?? ''));
     return c.json(await deps.paymentAdmin.close({ orderId, reason: deps.orderCloseReason }));
   });
 
-  return app;
+  return app.router;
 }

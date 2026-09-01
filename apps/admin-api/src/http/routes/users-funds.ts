@@ -4,7 +4,6 @@
  * 资金审计与业务同事务（writeAudit 装配闭包,tx 由 operations 注入）。
  * 负数调账 = 扣款到外部世界镜像（allowCredit:true——授信地板内可负,地板由 wallet 守卫）。
  */
-import { Hono } from 'hono';
 import { AccountsErrors } from '@tillgate/accounts';
 import type { AccountUseCases } from '@tillgate/accounts';
 import {
@@ -14,10 +13,10 @@ import {
   type OperationRun,
   type WalletApi,
 } from '@tillgate/billing';
-import { jsonBody, operationId } from '@tillgate/http';
+import { jsonBody, operationId, routes, jsonBodyOf, queryObject } from '@tillgate/http';
 import type { Observability } from '@tillgate/observability';
 import type { ControlPlane } from '@tillgate/control-plane';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { debitFloorUpdateSchema, usersContracts } from '../contracts/users';
 import { toTransactionWireRow } from '../presenters/users';
@@ -75,7 +74,7 @@ interface FundsReceipt {
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
   async function assertUser(userId: number): Promise<void> {
     if (!(await deps.accounts.userExists(userId))) {
@@ -85,8 +84,8 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
 
   // eslint-disable-next-line max-lines-per-function -- 管理员调账(资金域):事务内双侧转账与回执构造语义连续,lint 清零期不动资金逻辑
   app.put('/v1/users/:id/debit-floor', jsonBody(debitFloorUpdateSchema), async (c) => {
-    const id = idParam(c.req.param('id'));
-    const body = c.req.valid('json');
+    const id = idParam((c.params?.['id'] ?? ''));
+    const body = jsonBodyOf(c, debitFloorUpdateSchema);
     await assertUser(id);
     const before = await deps.wallet.accounts(id);
     const prior = before.find((row) => row.kind === 'user')?.debitFloor ?? '0';
@@ -94,7 +93,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
     await deps
       .postAudit({
         actor: 'admin',
-        adminId: c.get('adminId'),
+        adminId: c.state.adminId,
         action: 'wallet.set_debit_floor',
         targetType: 'user',
         targetId: String(id),
@@ -110,7 +109,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
     await deps
       .postAudit({
         actor: 'admin',
-        adminId: c.get('adminId'),
+        adminId: c.state.adminId,
         action: 'wallet.apply_default_floor',
         targetType: 'system',
         targetId: 'wallet_accounts',
@@ -122,7 +121,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
 
   // eslint-disable-next-line max-lines-per-function -- 调账资金动词事务体:幂等键+双路径+审计平铺(同族既有惯例)
   app.post('/v1/users/:id/adjust', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = usersContracts.adjust.parse(await c.req.json());
     const opId = operationId(c);
     const remark =
@@ -131,7 +130,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
     const { receipt, replayed } = await deps.operations.run({
       operationId: opId,
       kind: 'admin.adjust',
-      payload: { userId: id, amount: body.amount, adminId: c.get('adminId'), remark },
+      payload: { userId: id, amount: body.amount, adminId: c.state.adminId, remark },
       execute: async (tx) => {
         let result: { balanceBefore: string; balanceAfter: string };
         if (body.amount.startsWith('-')) {
@@ -170,7 +169,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
         }
         await deps.writeAudit(tx, {
           actor: 'admin',
-          adminId: c.get('adminId'),
+          adminId: c.state.adminId,
           action: 'admin.adjust',
           targetType: 'user',
           targetId: String(id),
@@ -184,7 +183,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
   });
 
   app.post('/v1/users/:id/gift', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = usersContracts.gift.parse(await c.req.json());
     const opId = operationId(c);
     const remark = body.remark ?? '管理员赠送';
@@ -192,7 +191,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
     const { receipt, replayed } = await deps.operations.run({
       operationId: opId,
       kind: 'admin.gift',
-      payload: { userId: id, amount: body.amount, adminId: c.get('adminId'), remark },
+      payload: { userId: id, amount: body.amount, adminId: c.state.adminId, remark },
       execute: async (tx) => {
         const posted = await deps.wallet.credit({
           userId: id,
@@ -210,7 +209,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
         };
         await deps.writeAudit(tx, {
           actor: 'admin',
-          adminId: c.get('adminId'),
+          adminId: c.state.adminId,
           action: 'admin.gift',
           targetType: 'user',
           targetId: String(id),
@@ -224,10 +223,10 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
   });
 
   app.get('/v1/users/:id/transactions', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     // from/to 校验但忽略（日期过滤未启用;非法日期仍 400）
-    usersContracts.transactionsQuery.parse(c.req.query());
-    const query = parseListQuery(c.req.query(), ['id'], 'id');
+    usersContracts.transactionsQuery.parse(queryObject(c));
+    const query = parseListQuery(queryObject(c), ['id'], 'id');
     const items = await deps.wallet.statement({ userId: id, limit: query.limit });
     const rows = items.map((item) => toTransactionWireRow(id, item));
     // statement 无计数动词,total = offset + rows.length（末页精确）
@@ -235,8 +234,8 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
   });
 
   app.get('/v1/users/:id/audit-logs', async (c) => {
-    const id = idParam(c.req.param('id'));
-    const query = parseListQuery(c.req.query(), ['id', 'action', 'createdAt'], 'createdAt');
+    const id = idParam((c.params?.['id'] ?? ''));
+    const query = parseListQuery(queryObject(c), ['id', 'action', 'createdAt'], 'createdAt');
     const rows = await deps.audit.listByTarget({
       targetType: 'user',
       targetId: String(id),
@@ -246,5 +245,5 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
     return c.json(listEnvelope(rows.map(toAuditWireRow), query.offset + rows.length, query));
   });
 
-  return app;
+  return app.router;
 }

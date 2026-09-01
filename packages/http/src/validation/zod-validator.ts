@@ -79,3 +79,10 @@ export function queryString(c: Context, key: string): string | undefined {
   const value = c.query[key];
   return Array.isArray(value) ? value[0] : value;
 }
+
+/** 全量 query 对象读取（重复键折叠取首项——与旧 Hono c.req.query() 单值语义一致） */
+export function queryObject(c: Context): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(c.query)) out[k] = Array.isArray(v) ? (v[0] ?? '') : v;
+  return out;
+}

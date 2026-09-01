@@ -7,10 +7,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
-import { errorHandler } from '@tillgate/http';
+import { Keala } from 'keala';import { asMiddleware, errorHandling, withRequest } from '@tillgate/http';
 
-import type { SessionEnv } from '../src/http/middleware/session';
 import { createAclMiddleware, matchBinding } from '../src/http/middleware/acl';
 import { ADMIN_FACE_OVERRIDES, adminErrorCatalog } from '../src/http/error-face';
 import { ADMIN_ID } from './helpers';
@@ -61,38 +59,40 @@ function probeBinding(): { method: string; path: string; code: string } {
 }
 
 /** 非超管会话挂具：令牌 'tok' → 指定权限码（isSuper=false） */
-function appWithGrants(codes: string[], isSuper = false): Hono<SessionEnv> {
-  const app = new Hono<SessionEnv>();
+/** 非超管会话挂具：令牌 'tok' → 指定权限码（isSuper=false） */
+function appWithGrants(codes: string[], isSuper = false) {
+  const app = new Keala();
+  // 错误面与 createAdminApp 同装配（ACL 拒绝错误需要目录渲染才能出 403 信封）
+  app.use(errorHandling({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES }));
   app.use(
-    '*',
-    createAclMiddleware(
-      {
-        validate: async (token: string) =>
-          token === 'tok'
-            ? {
-                realm: 'admin',
-                sub: String(ADMIN_ID),
-                jti: 'j',
-                iss: 'i',
-                exp: Math.floor(Date.now() / 1000) + 3600,
-                iat: 1,
-              }
-            : null,
-        owner: async () => ({ status: 0, grants: { isSuper, codes } }),
-      },
-      async (method, path) => matchBinding([...seedBindings(), probeBinding()], method, path),
+    asMiddleware(
+      createAclMiddleware(
+        {
+          validate: async (token: string) =>
+            token === 'tok'
+              ? {
+                  realm: 'admin',
+                  sub: String(ADMIN_ID),
+                  jti: 'j',
+                  iss: 'i',
+                  exp: Math.floor(Date.now() / 1000) + 3600,
+                  iat: 1,
+                }
+              : null,
+          owner: async () => ({ status: 0, grants: { isSuper, codes } }),
+        },
+        async (method, path) => matchBinding([...seedBindings(), probeBinding()], method, path),
+      ),
     ),
   );
   // 目标路由形状与 settings.ts 相同（本测试只验 ACL 面，不触 control-plane）
   app.get('/v1/settings/integrations', (c) => c.json({ ok: true }));
-  app.put('/v1/settings/integrations/:key', (c) => c.json({ ok: true, key: c.req.param('key') }));
+  app.put('/v1/settings/integrations/:key', (c) =>
+    c.json({ ok: true, key: c.params?.['key'] }),
+  );
   app.post('/v1/settings/integrations/:key', (c) => c.json({ ok: true }));
   app.post('/v1/settings/integrations/smtp/test', (c) => c.json({ ok: true }));
-  // 错误面与 createAdminApp 同装配（ACL 拒绝错误需要目录渲染才能出 403 信封）
-  app.onError((error, c) =>
-    errorHandler({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES })(error, c),
-  );
-  return app;
+  return withRequest(app);
 }
 
 const AUTH = { authorization: 'Bearer tok' };

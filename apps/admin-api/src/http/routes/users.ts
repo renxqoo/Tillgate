@@ -4,13 +4,13 @@
  * set-password（管理员为本地账号重置密码——绑默认卡「标准」+ 全网会话下线）。
  * 响应体永不包括 passwordHash（服务列白名单,测试红线锁定）。
  */
-import { Hono } from 'hono';
+import { routes, queryObject } from '@tillgate/http';
 import type { AccountUseCases } from '@tillgate/accounts';
 import type { WalletApi } from '@tillgate/billing';
 import type { Identity } from '@tillgate/identity';
 import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { USER_SORTS, usersContracts } from '../contracts/users';
@@ -34,11 +34,11 @@ export interface UsersRoutesDeps {
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function usersRoutes(deps: UsersRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
   app.get('/v1/users', async (c) => {
-    const extra = usersContracts.listQueryExtra.parse(c.req.query());
-    const query = parseListQuery(c.req.query(), USER_SORTS, 'createdAt');
+    const extra = usersContracts.listQueryExtra.parse(queryObject(c));
+    const query = parseListQuery(queryObject(c), USER_SORTS, 'createdAt');
     const page = await deps.accounts.adminListUsers({
       ...(query.q !== undefined ? { q: query.q } : {}),
       ...(extra.status !== undefined ? { status: extra.status } : {}),
@@ -61,7 +61,7 @@ export function usersRoutes(deps: UsersRoutesDeps) {
   });
 
   app.get('/v1/users/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const profile = await deps.accounts.adminGetUser(id);
     return c.json(
       toUserWireRow(
@@ -73,13 +73,13 @@ export function usersRoutes(deps: UsersRoutesDeps) {
   });
 
   app.patch('/v1/users/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = usersContracts.patch.parse(await c.req.json());
     const { creditLimit, ...patch } = body;
     await deps.accounts.adminPatchUser({
       userId: id,
       patch,
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
     });
     if (creditLimit !== undefined) {
       await deps.wallet.setCreditLimit({ userId: id, amount: creditLimit });
@@ -88,7 +88,7 @@ export function usersRoutes(deps: UsersRoutesDeps) {
   });
 
   app.post('/v1/users/:id/set-password', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = authContracts.setPassword.parse(await c.req.json());
     const profile = await deps.accounts.adminGetUser(id);
     // 只能为本地账号设密：给 OIDC 身份挂本地密码 = 管理员接管
@@ -116,7 +116,7 @@ export function usersRoutes(deps: UsersRoutesDeps) {
         await deps.accounts.adminPatchUser({
           userId: id,
           patch: { rateCardId: standard.id },
-          adminId: c.get('adminId'),
+          adminId: c.state.adminId,
         });
       }
     }
@@ -128,7 +128,7 @@ export function usersRoutes(deps: UsersRoutesDeps) {
     });
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'user.set_password',
       targetType: 'user',
       targetId: id,
@@ -137,5 +137,5 @@ export function usersRoutes(deps: UsersRoutesDeps) {
     return c.json({ ok: true });
   });
 
-  return app;
+  return app.router;
 }

@@ -3,10 +3,10 @@
  * 导入价格必填（提交即确认——目录价只展示不自动带入;防 0 卖亏钱）。
  * /v1/vendor-catalog：协议 + 厂商档案词表（ai 根出口装配注入,单一事实源）。
  */
-import { Hono } from 'hono';
+import { routes, queryString } from '@tillgate/http';
 import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { catalogContracts, catalogSourceParam } from '../contracts/catalog';
 
@@ -20,14 +20,14 @@ export interface CatalogRoutesDeps {
 }
 
 export function catalogRoutes(deps: CatalogRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
   const { catalog } = deps.controlPlane;
 
   app.get('/v1/model-catalog/sources', (c) => c.json({ sources: catalog.listSources() }));
 
   /** 价格溯源：注册在 :sourceId 之前——否则字面段被参数路由吞掉。 */
   app.get('/v1/model-catalog/price-history', async (c) => {
-    const externalName = c.req.query('externalName');
+    const externalName = queryString(c, 'externalName');
     if (externalName === undefined || externalName === '' || externalName.length > 64) {
       throw AdminErrors.business('invalid_param', {
         field: 'externalName',
@@ -38,7 +38,7 @@ export function catalogRoutes(deps: CatalogRoutesDeps) {
   });
 
   app.get('/v1/model-catalog/:sourceId', async (c) => {
-    const sourceId = catalogSourceParam(c.req.param('sourceId'));
+    const sourceId = catalogSourceParam((c.params?.['sourceId'] ?? ''));
     return c.json(await catalog.comparison(sourceId));
   });
 
@@ -67,5 +67,5 @@ export function catalogRoutes(deps: CatalogRoutesDeps) {
     c.json({ protocols: deps.vendorCatalog.protocols, vendors: deps.vendorCatalog.vendors }),
   );
 
-  return app;
+  return app.router;
 }

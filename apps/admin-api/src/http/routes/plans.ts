@@ -3,12 +3,12 @@
  * strictObject 拒未知键）/删除（含历史订阅引用守卫 409 billing.plan_in_use）。
  * plans 域审计后置（提交后旁路——writeAudit 装配闭包）。
  */
-import { Hono } from 'hono';
+import { routes, queryObject } from '@tillgate/http';
 import type { PlansApi } from '@tillgate/billing';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { PLAN_SORTS, plansContracts } from '../contracts/billing-admin';
 import { toPlanWireRow } from '../presenters/billing';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import type { PostAudit } from './redeem';
 
 export interface PlansRoutesDeps {
@@ -19,10 +19,10 @@ export interface PlansRoutesDeps {
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function plansRoutes(deps: PlansRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
   app.get('/v1/plans', async (c) => {
-    const query = parseListQuery(c.req.query(), PLAN_SORTS, 'id');
+    const query = parseListQuery(queryObject(c), PLAN_SORTS, 'id');
     const page = await deps.plans.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
       sortBy: query.sortBy as 'id' | 'name' | 'status' | 'price' | 'sortOrder',
@@ -46,7 +46,7 @@ export function plansRoutes(deps: PlansRoutesDeps) {
     });
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'plan.create',
       targetType: 'plan',
       targetId: row.id,
@@ -56,12 +56,12 @@ export function plansRoutes(deps: PlansRoutesDeps) {
   });
 
   app.patch('/v1/plans/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = plansContracts.update.parse(await c.req.json());
     const row = await deps.plans.update({ planId: id, patch: body });
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'plan.update',
       targetType: 'plan',
       targetId: row.id,
@@ -71,11 +71,11 @@ export function plansRoutes(deps: PlansRoutesDeps) {
   });
 
   app.delete('/v1/plans/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const result = await deps.plans.remove({ planId: id });
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'plan.delete',
       targetType: 'plan',
       targetId: id,
@@ -84,5 +84,5 @@ export function plansRoutes(deps: PlansRoutesDeps) {
     return c.json(result);
   });
 
-  return app;
+  return app.router;
 }

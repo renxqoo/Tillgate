@@ -5,19 +5,16 @@
  * 2FA 开关为邮箱码自证：发码 → 验码开关,
  * 取消 TOTP 前置与 step-up;SMTP 可用性由发送路径 fail-closed。
  */
-import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
 import {
   jsonBody,
   socketAddressFromContext,
   trustedClientIp,
-  parseAcceptLanguage,
-} from '@tillgate/http';
+  parseAcceptLanguage, routes, jsonBodyOf } from '@tillgate/http';
 import type { ControlPlane, PermissionNode } from '@tillgate/control-plane';
 import { ENFORCED_CODES, granted } from '@tillgate/control-plane';
 import type { Identity } from '@tillgate/identity';
 import { AdminErrors } from '../error-face';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { authContracts } from '../contracts/auth';
 
 export interface MeRoutesDeps {
@@ -70,17 +67,17 @@ function menuTreeOf(
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function meRoutes(deps: MeRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
-  const clientIpOf = (c: Parameters<MiddlewareHandler<SessionEnv>>[0]) =>
+  const clientIpOf = (c: AdminContext) =>
     trustedClientIp({
-      headers: c.req.raw.headers,
+      headers: c.raw.headers,
       trustedProxyHops: deps.trustedProxyHops,
       socketAddress: socketAddressFromContext(c),
     });
 
   app.get('/v1/me', async (c) => {
-    const adminId = c.get('adminId');
+    const { adminId } = c.state;
     const me = await deps.admins.find(adminId);
     if (me == null) {
       // 会话有效但资料行缺失——一律 401,不泄漏状态
@@ -88,7 +85,7 @@ export function meRoutes(deps: MeRoutesDeps) {
     }
     const role = await deps.rbac.roles.find(me.roleId);
     const totp = await deps.identity.mfa.status({ userId: adminId });
-    const grants = c.get('grants');
+    const { grants } = c.state;
     return c.json({
       id: me.id,
       email: me.email,
@@ -109,7 +106,7 @@ export function meRoutes(deps: MeRoutesDeps) {
 
   // sidebar 数据源（自身域无码——所有有效会话可调;树按本人授权过滤后下发）
   app.get('/v1/me/menus', async (c) => {
-    const grants = c.get('grants') ?? { isSuper: false, codes: [] };
+    const grants = c.state.grants ?? { isSuper: false, codes: [] };
     const nodes = await deps.rbac.permissions.tree();
     return c.json({ groups: menuTreeOf(nodes, grants) });
   });
@@ -117,7 +114,7 @@ export function meRoutes(deps: MeRoutesDeps) {
   app.post('/v1/me/password', async (c) => {
     const body = authContracts.changePassword.parse(await c.req.json());
     await deps.identity.passwords.change({
-      userId: c.get('adminId'),
+      userId: c.state.adminId,
       realm: 'admin',
       currentPassword: body.oldPassword,
       newPassword: body.newPassword,
@@ -125,7 +122,7 @@ export function meRoutes(deps: MeRoutesDeps) {
     return c.json({
       token: await deps.identity.sessions.sign({
         realm: 'admin',
-        subjectId: c.get('adminId'),
+        subjectId: c.state.adminId,
         ttlSec: deps.sessionTtlSec,
       }),
     });
@@ -134,7 +131,7 @@ export function meRoutes(deps: MeRoutesDeps) {
   // 发码：向本人邮箱发确认码;60s 冷却/TTL/错次
   // 上限复用挑战层内建;SMTP 未生效在发送路径 fail-closed（undeliverable,503）。
   app.post('/v1/me/two-factor/code', async (c) => {
-    const adminId = c.get('adminId');
+    const { adminId } = c.state;
     const ip = clientIpOf(c);
     const { challengeId } = await deps.identity.challenges.begin({
       kind: 'admin_two_factor_code',
@@ -143,7 +140,7 @@ export function meRoutes(deps: MeRoutesDeps) {
       delivery: {
         ip: ip ?? 'unknown',
         locale:
-          parseAcceptLanguage(c.req.header('accept-language')) === 'zh'
+          parseAcceptLanguage(c.get('accept-language')) === 'zh'
             ? ('zh' as const)
             : ('en' as const),
         purpose: 'two_factor_toggle',
@@ -155,8 +152,8 @@ export function meRoutes(deps: MeRoutesDeps) {
   // 开关确认：邮箱码自证——expect 主体绑定（跨主体 challengeId
   // 按挑战无效拒）;验过即落库,成功审计恰好一次（后置旁路）。
   app.post('/v1/me/two-factor', jsonBody(authContracts.twoFactor), async (c) => {
-    const body = c.req.valid('json');
-    const adminId = c.get('adminId');
+    const body = jsonBodyOf(c, authContracts.twoFactor);
+    const { adminId } = c.state;
     const before = await deps.admins.find(adminId);
     await deps.identity.challenges.verify({
       challengeId: body.challengeId,
@@ -176,9 +173,9 @@ export function meRoutes(deps: MeRoutesDeps) {
 
   // TOTP 挂起注册:返回 base32 密钥 + otpauth URL(仅本次;扫码确认前不参与登录)
   app.post('/v1/me/totp/enroll', async (c) => {
-    const me = await deps.admins.find(c.get('adminId'));
+    const me = await deps.admins.find(c.state.adminId);
     const result = await deps.identity.mfa.enrollTotp({
-      userId: c.get('adminId'),
+      userId: c.state.adminId,
       label: me?.email,
     });
     return c.json(result);
@@ -186,9 +183,9 @@ export function meRoutes(deps: MeRoutesDeps) {
 
   // 确认绑定:验当前验证器码 → 生效 + 整组重签恢复码(仅此一次返回明文)
   app.post('/v1/me/totp/confirm', jsonBody(authContracts.totpCode), async (c) => {
-    const body = c.req.valid('json');
+    const body = jsonBodyOf(c, authContracts.totpCode);
     const result = await deps.identity.mfa.confirmTotp({
-      userId: c.get('adminId'),
+      userId: c.state.adminId,
       code: body.code,
     });
     return c.json(result);
@@ -196,9 +193,9 @@ export function meRoutes(deps: MeRoutesDeps) {
 
   // 解绑:必须持有效 TOTP/恢复码(防会话被偷后一键拆防线)
   app.post('/v1/me/totp/disable', jsonBody(authContracts.totpCode), async (c) => {
-    const body = c.req.valid('json');
+    const body = jsonBodyOf(c, authContracts.totpCode);
     const result = await deps.identity.mfa.disableTotp({
-      userId: c.get('adminId'),
+      userId: c.state.adminId,
       code: body.code,
     });
     if (!result.disabled) {
@@ -207,5 +204,5 @@ export function meRoutes(deps: MeRoutesDeps) {
     return c.json({ ok: true });
   });
 
-  return app;
+  return app.router;
 }

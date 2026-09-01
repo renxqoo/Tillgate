@@ -2,11 +2,10 @@
  * 渠道资金路由：流水列表/进货（凭证 data URL
  * 内联）/调账。幂等键透传（同键同参重放、异参 409——control-plane operations）。
  */
-import { Hono } from 'hono';
 import type { ControlPlane } from '@tillgate/control-plane';
 import { normalizeAmount } from '@tillgate/billing';
-import { operationId } from '@tillgate/http';
-import type { SessionEnv } from '../middleware/session';
+import { operationId, routes, queryObject } from '@tillgate/http';
+import type { AdminContext } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { listEnvelope, parseListQuery } from '../contracts/common';
 import { CHANNEL_FUNDS_SORTS, channelFundsContracts } from '../contracts/control-plane';
@@ -17,12 +16,12 @@ export interface ChannelFundsRoutesDeps {
 }
 
 export function channelFundsRoutes(deps: ChannelFundsRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
   const { channels } = deps.controlPlane;
 
   app.get('/v1/channel-funds', async (c) => {
-    const extra = channelFundsContracts.listQueryExtra.parse(c.req.query());
-    const query = parseListQuery(c.req.query(), CHANNEL_FUNDS_SORTS, 'createdAt');
+    const extra = channelFundsContracts.listQueryExtra.parse(queryObject(c));
+    const query = parseListQuery(queryObject(c), CHANNEL_FUNDS_SORTS, 'createdAt');
     const result = await channels.listRecharges({
       ...(extra.channelId !== undefined ? { channelId: extra.channelId } : {}),
       ...(extra.type !== undefined ? { type: extra.type } : {}),
@@ -62,5 +61,5 @@ export function channelFundsRoutes(deps: ChannelFundsRoutesDeps) {
     return c.json({ ...result, balanceAfter: normalizeAmount(result.balanceAfter) });
   });
 
-  return app;
+  return app.router;
 }

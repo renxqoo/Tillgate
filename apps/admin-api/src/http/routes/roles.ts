@@ -2,10 +2,10 @@
  * 角色管理路由（动态 RBAC;admins 域码守护）。
  * 审计:created/updated（detail 含 added/removed 授权 diff——安全取证主观察面）/deleted。
  */
-import { Hono } from 'hono';
+import { routes, queryObject } from '@tillgate/http';
 import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { rbacContracts } from '../contracts/rbac';
 import type { PostAudit } from './redeem';
@@ -20,10 +20,10 @@ export interface RolesRoutesDeps {
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function rolesRoutes(deps: RolesRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
   app.get('/v1/roles', async (c) => {
-    const query = parseListQuery(c.req.query(), ROLE_SORTS, 'id');
+    const query = parseListQuery(queryObject(c), ROLE_SORTS, 'id');
     const page = await deps.rbac.roles.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
       sortBy: query.sortBy as 'id' | 'code' | 'createdAt',
@@ -44,7 +44,7 @@ export function rolesRoutes(deps: RolesRoutesDeps) {
     });
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'role.created',
       targetType: 'role',
       targetId: role.id,
@@ -54,7 +54,7 @@ export function rolesRoutes(deps: RolesRoutesDeps) {
   });
 
   app.patch('/v1/roles/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = rbacContracts.patchRole.parse(await c.req.json());
     const result = await deps.rbac.roles.update({
       roleId: id,
@@ -68,7 +68,7 @@ export function rolesRoutes(deps: RolesRoutesDeps) {
     }
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'role.updated',
       targetType: 'role',
       targetId: id,
@@ -84,11 +84,11 @@ export function rolesRoutes(deps: RolesRoutesDeps) {
   });
 
   app.delete('/v1/roles/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     await deps.rbac.roles.remove(id);
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'role.deleted',
       targetType: 'role',
       targetId: id,
@@ -97,5 +97,5 @@ export function rolesRoutes(deps: RolesRoutesDeps) {
     return c.json({ ok: true });
   });
 
-  return app;
+  return app.router;
 }

@@ -2,6 +2,16 @@
  * 契约测试公共替身：fake facade + 有效会话令牌（app.request() 直连,无真实 IO）。
  * 断言口径 = wire 形状与错误码。
  */
+import { Keala, createBodyParser, type Router } from 'keala';
+import { errorHandling, withRequest, type App, type ErrorHandlerDeps } from '@tillgate/http';
+
+/** keala 路由组测试装置：错误信封 + body facade + app.request 糖（替代旧 Hono onError 形态） */
+export function harnessApp(router: Router, deps: ErrorHandlerDeps = {}): App {
+  const app = new Keala();
+  app.use(errorHandling(deps), createBodyParser());
+  app.mount('/', router);
+  return withRequest(app);
+}
 import type { AdminAppDeps } from '../src/app';
 import type { ControlPlane } from '@tillgate/control-plane';
 import type { Observability } from '@tillgate/observability';

@@ -34,6 +34,8 @@ export interface ErrorHandlerDeps {
   readonly sqlState?: (err: unknown) => string | null;
   /** 5xx 渲染时的服务端日志（缺省静默） */
   readonly logger?: ErrorLogger;
+  /** 错误前置翻译（如 app 层把 ZodError 翻成 validation_failed；返回原错误走常规分派） */
+  readonly preTranslate?: (error: unknown) => unknown;
 }
 
 export function errorHandling(deps: ErrorHandlerDeps = {}): Middleware {
@@ -47,7 +49,8 @@ export function errorHandling(deps: ErrorHandlerDeps = {}): Middleware {
 }
 
 /** 错误翻译主体（信封渲染的单一出口） */
-function translate(error: unknown, c: Context, deps: ErrorHandlerDeps): Response {
+function translate(rawError: unknown, c: Context, deps: ErrorHandlerDeps): Response {
+  const error = deps.preTranslate !== undefined ? deps.preTranslate(rawError) : rawError;
   const locale = localeFromContext(c);
   const render = (err: unknown, statusOverride?: number): Response =>
     respond(

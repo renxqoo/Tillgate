@@ -5,12 +5,10 @@
  *   - GET  /v1/routing/channels-overview 近窗渠道观测（调参依据——观测闭环）
  * 校验单一真相 = @tillgate/inference routingPolicySchema（网关读侧同 schema parse）。
  */
-import { Hono } from 'hono';
 import { defaultRoutingPolicy } from '@tillgate/inference';
 import type { ControlPlane } from '@tillgate/control-plane';
-import { jsonBody } from '@tillgate/http';
-import type { Context } from 'hono';
-import { controlContextOf, type SessionEnv } from '../middleware/session';
+import { jsonBody, routes, jsonBodyOf, queryString } from '@tillgate/http';
+import { controlContextOf, type AdminContext } from '../middleware/session';
 import { routingPolicyContracts, type SaveRoutingPolicyRequest } from '../contracts/routing-policy';
 
 export interface RoutingPolicyRoutesDeps {
@@ -20,7 +18,7 @@ export interface RoutingPolicyRoutesDeps {
 /** 保存处理器（模块级——路由函数行数预算外提）：note 边界校验 + 落库 + 假成功拒绝 */
 async function savePolicyHandler(
   routingPolicy: ControlPlane['routingPolicy'],
-  c: Context<SessionEnv>,
+  c: AdminContext,
   body: SaveRoutingPolicyRequest,
 ): Promise<Response> {
   const ctx = controlContextOf(c);
@@ -31,7 +29,7 @@ async function savePolicyHandler(
 }
 
 export function routingPolicyRoutes(deps: RoutingPolicyRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
   const { routingPolicy } = deps.controlPlane;
 
   app.get('/v1/routing-policy', async (c) => {
@@ -51,16 +49,16 @@ export function routingPolicyRoutes(deps: RoutingPolicyRoutesDeps) {
 
   // 契约：{policy, note?}——note 走 body（HTTP 头 latin-1 限制中文，且可边界校验）
   app.put('/v1/routing-policy', jsonBody(routingPolicyContracts.save), async (c) =>
-    savePolicyHandler(routingPolicy, c, c.req.valid('json')),
+    savePolicyHandler(routingPolicy, c, jsonBodyOf(c, routingPolicyContracts.save)),
   );
 
   app.get('/v1/routing/channels-overview', async (c) => {
-    const windowMs = Number(c.req.query('windowMs') ?? 3_600_000);
+    const windowMs = Number(queryString(c, 'windowMs') ?? 3_600_000);
     const rows = await routingPolicy.channelsOverview(
       Number.isFinite(windowMs) && windowMs > 0 && windowMs <= 86_400_000 ? windowMs : 3_600_000,
     );
     return c.json({ rows });
   });
 
-  return app;
+  return app.router;
 }

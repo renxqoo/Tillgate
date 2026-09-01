@@ -5,25 +5,25 @@
  * 机制语义本体在 identity/runtime 测试;此处锁 app 编排与 wire。
  */
 import { describe, expect, it, vi } from 'vitest';
-import { Hono } from 'hono';
-import { errorHandler } from '@tillgate/http';
+import { Keala, createBodyParser, type Router } from 'keala';import { asMiddleware, errorHandling, withRequest, type App } from '@tillgate/http';
 import { identityErrors } from '@tillgate/identity';
-import type { SessionEnv } from '../src/http/middleware/session';
 import { createAclMiddleware } from '../src/http/middleware/acl';
 import { ADMIN_FACE_OVERRIDES, adminErrorCatalog } from '../src/http/error-face';
 import { mfaStub } from './helpers';
 import { authRoutes, type AuthGuard, type AuthRoutesDeps } from '../src/http/routes/auth';
 import { meRoutes, type MeRoutesDeps } from '../src/http/routes/me';
 
-/** 错误面挂具:createAdminApp 的 errorHandler 同装配（独立路由测试复用同一目录渲染） */
-function withErrorFace(routes: Hono<SessionEnv>): Hono<SessionEnv> {
+/** 错误面挂具:createAdminApp 的 errorHandling 同装配（独立路由测试复用同一目录渲染） */
+function withErrorFace(routes: Router): App {
   // ACL 时代:会话注入在全局中间件——独立挂具包一层新 app 先挂 session 再挂路由
-  // (Hono 中间件须先于路由注册;令牌 'tok' → 超管授权面)
-  const app = new Hono<SessionEnv>();
+  // (keala 中间件须先于路由注册;令牌 'tok' → 超管授权面)
+  const app = new Keala();
+  app.use(errorHandling({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES }));
+  app.use(createBodyParser());
   // 生产形态复刻:全局 ACL 中间件(公开白名单内置;令牌 'tok' → 超管授权面直通)
   app.use(
-    '*',
-    createAclMiddleware(
+    asMiddleware(
+      createAclMiddleware(
       {
         validate: async (token: string) =>
           token === 'tok'
@@ -39,14 +39,12 @@ function withErrorFace(routes: Hono<SessionEnv>): Hono<SessionEnv> {
         owner: async () => ({ status: 0, grants: { isSuper: true, codes: [] } }),
       },
       // 挂具全绑定形态(isSuper 直通;具体绑定判定由专测覆盖)
-      async (method, path) => ({ method, path, code: 'users:read' }),
+        async (method, path) => ({ method, path, code: 'users:read' }),
+      ),
     ),
   );
-  app.route('/', routes);
-  app.onError((error, c) =>
-    errorHandler({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES })(error, c),
-  );
-  return app;
+  app.mount('/', routes);
+  return withRequest(app);
 }
 
 const json = { 'content-type': 'application/json' };
@@ -556,7 +554,7 @@ describe('POST /v1/auth/reset-password（邀请令牌消费,公开端点）', ()
     };
     return { app: withErrorFace(authRoutes(deps)), invites, resetSpy, exists };
   }
-  const post = (app: Hono<SessionEnv>, body: unknown) =>
+  const post = (app: App, body: unknown) =>
     app.request('/v1/auth/reset-password', {
       method: 'POST',
       headers: json,

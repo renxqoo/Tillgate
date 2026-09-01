@@ -2,9 +2,9 @@
  * 权限资源路由（动态 RBAC 权限树管理面;admins 域码）。
  * GET tree = 平铺节点（前端自组树）;custom 节点 CRUD,enforced 节点仅展示字段可改。
  */
-import { Hono } from 'hono';
+import { routes } from '@tillgate/http';
 import type { ControlPlane, PermissionNode } from '@tillgate/control-plane';
-import type { SessionEnv } from '../middleware/session';
+import type { AdminContext } from '../middleware/session';
 import { idParam } from '../contracts/common';
 import { rbacContracts } from '../contracts/rbac';
 import type { PostAudit } from './redeem';
@@ -34,7 +34,7 @@ function nodeWire(node: PermissionNode) {
 
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为既有语义
 export function permissionsRoutes(deps: PermissionsRoutesDeps) {
-  const app = new Hono<SessionEnv>();
+  const app = routes<AdminContext>();
 
   app.get('/v1/permissions/tree', async (c) => {
     const nodes = await deps.rbac.permissions.tree();
@@ -56,7 +56,7 @@ export function permissionsRoutes(deps: PermissionsRoutesDeps) {
     });
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'permission.created',
       targetType: 'permission',
       targetId: node.id,
@@ -66,7 +66,7 @@ export function permissionsRoutes(deps: PermissionsRoutesDeps) {
   });
 
   app.patch('/v1/permissions/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     const body = rbacContracts.patchPermission.parse(await c.req.json());
     const node = await deps.rbac.permissions.update({
       id,
@@ -84,7 +84,7 @@ export function permissionsRoutes(deps: PermissionsRoutesDeps) {
     });
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'permission.updated',
       targetType: 'permission',
       targetId: id,
@@ -94,11 +94,11 @@ export function permissionsRoutes(deps: PermissionsRoutesDeps) {
   });
 
   app.delete('/v1/permissions/:id', async (c) => {
-    const id = idParam(c.req.param('id'));
+    const id = idParam((c.params?.['id'] ?? ''));
     await deps.rbac.permissions.remove(id);
     await deps.postAudit({
       actor: 'admin',
-      adminId: c.get('adminId'),
+      adminId: c.state.adminId,
       action: 'permission.deleted',
       targetType: 'permission',
       targetId: id,
@@ -107,5 +107,5 @@ export function permissionsRoutes(deps: PermissionsRoutesDeps) {
     return c.json({ ok: true });
   });
 
-  return app;
+  return app.router;
 }
