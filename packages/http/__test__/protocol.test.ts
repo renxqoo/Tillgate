@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { Keala } from 'keala';
 import { withRequest, asMiddleware, type ContextWithBody } from '../src/framework/keala';
 import { errorHandling } from '../src/errors/handler';
-import { bodyParser, bodyParserLimit, corsPreflight, securityHeaders } from '../src/security/protocol';
+import {
+  bodyParser,
+  bodyParserLimit,
+  corsPreflight,
+  securityHeaders,
+} from '../src/security/protocol';
 
 /**
  * 协议安全三件套的行为锁：

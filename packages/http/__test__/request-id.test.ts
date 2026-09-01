@@ -14,7 +14,10 @@ type TestContext = ContextOf<{ requestId: string; userId: number }>;
 function app(): ReturnType<typeof withRequest> {
   const a = new Keala();
   a.use(asMiddleware(requestIdMiddleware()));
-  a.get('/id', asMiddleware((c: TestContext) => c.json({ requestId: c.state.requestId })));
+  a.get(
+    '/id',
+    asMiddleware((c: TestContext) => c.json({ requestId: c.state.requestId })),
+  );
   return withRequest(a);
 }
 

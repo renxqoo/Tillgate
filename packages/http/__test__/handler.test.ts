@@ -16,7 +16,10 @@ function app(deps: Parameters<typeof errorHandling>[0] = {}): ReturnType<typeof 
   a.get('/boom', () => {
     throw HttpErrors.business('not_found', { resource: 'org' });
   });
-  a.post('/echo', asMiddleware(async (c: ContextWithBody) => c.json(await c.req.json())));
+  a.post(
+    '/echo',
+    asMiddleware(async (c: ContextWithBody) => c.json(await c.req.json())),
+  );
   return withRequest(a);
 }
 

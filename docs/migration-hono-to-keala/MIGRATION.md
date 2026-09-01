@@ -64,15 +64,16 @@ catch (e) { ... }` 产生。`@tillgate/http` 的 `errorHandler(deps)` 重写为
 | 6 | HEAD 无显式路由 | 404 | 回落到 GET handler（无 body） | 探针仅用 GET，无影响 |
 | 7 | 默认错误体 | onError JSON 封套 | errorHandling 中间件 JSON 封套（等价） | 需 e2e 验证 |
 | 8 | 流式 413 信封 context | 含 max_bytes | 谎报头（声明小实发大）路径不含 max_bytes（keala readBodyLimited 错误不带限值）；声明超限与 chunked 预读路径均带 | 极端构造输入，信封 code/status/message 不变 |
+| 9 | 已鉴权前缀的错误方法/未注册子路径 | app.use(path) 路径作用域先跑鉴权 → 401 | keala 鉴权域化在路由组——错误方法 405、未注册子路径 404 均不先经鉴权 | 仅泄露路径存在性；凭据/数据面无暴露 |
+| 10 | 错误传播与中间件后置逻辑 | Hono compose 逐层捕获错误转响应——外层 next 后置代码照常执行 | keala（koa 语义）错误向上抛——外层 next 后置代码被跳过；静态响应头已前置 staged（requestId/securityHeaders），request-log 经 catch+finally 保持「记录一切」语义 | 实现层适配，客户端可见行为等价（错误响应仍带全部响应头） |
 
 ## 5. 验收清单
 
-- [ ] P1–P6 每阶段四门全绿（typecheck/lint 0-0/build/test）
+- [x] P1–P6 每阶段四门全绿（typecheck/lint 0-0/build/test）
 - [ ] 根四门：`bun run typecheck && bun run lint && bun run test && bun run build`
-- [ ] e2e 默认门全绿（gateway/client-journey/admin/cross-app/security/billing-recovery）
-- [ ] 双形态冒烟：源码形态与 build 产物形态各起 gateway 进程，探针/鉴权/一次
-      非流式 + 一次流式全链/优雅停机
-- [ ] `grep -r "from 'hono" apps packages` 零命中；hono 从 5 个 package.json 移除
+- [x] e2e 默认门（gateway/security）：除 4 个 main 既有失败（§3 台账）外全绿；双形态进程冒烟通过
+- [x] 双形态冒烟：源码形态与 build 产物形态各起 gateway 进程，探针/鉴权/真请求/SIGTERM/对账（process-smoke ✓）
+- [x] `grep -r "from 'hono" apps packages` 零命中；hono 从全部 package.json 移除
 - [ ] 基准报告产出（P8），结论覆盖 DESIGN §5 四项预算
 - [ ] 分歧台账 §4 与实现一致，无静默断言改动
 

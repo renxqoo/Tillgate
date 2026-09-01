@@ -50,25 +50,27 @@ export interface ReceiverAppDeps {
 const TRACE_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
 
 /** 令牌校验门:健康探针豁免;无令牌配置仅限开发内网(config fail-fast 保证) */
-const tokenGate = (deps: ReceiverAppDeps): Middleware => async (c, next) => {
-  // 健康探针豁免鉴权:/readyz /livez 只返回探活状态、无敏感数据——
-  // 若一并挡 401,compose/K8s healthcheck（不带 Bearer）会让容器永久 unhealthy
-  if (c.path === '/readyz' || c.path === '/livez') {
+const tokenGate =
+  (deps: ReceiverAppDeps): Middleware =>
+  async (c, next) => {
+    // 健康探针豁免鉴权:/readyz /livez 只返回探活状态、无敏感数据——
+    // 若一并挡 401,compose/K8s healthcheck（不带 Bearer）会让容器永久 unhealthy
+    if (c.path === '/readyz' || c.path === '/livez') {
+      await next();
+      return;
+    }
+    // 无令牌放行仅可达于显式 TRACE_RECEIVER_OPEN=true(config fail-fast 保证——
+    // 装配遗漏不会再走到这里;启动日志会打 auth: 'open(dev)')
+    if (deps.token === undefined) {
+      await next();
+      return;
+    }
+    const auth = c.get('authorization') ?? '';
+    if (!timingSafeTokenEqual(auth, `Bearer ${deps.token}`)) {
+      throw HttpErrors.business('unauthorized'); // → 401(自有码 status 修正)
+    }
     await next();
-    return;
-  }
-  // 无令牌放行仅可达于显式 TRACE_RECEIVER_OPEN=true(config fail-fast 保证——
-  // 装配遗漏不会再走到这里;启动日志会打 auth: 'open(dev)')
-  if (deps.token === undefined) {
-    await next();
-    return;
-  }
-  const auth = c.get('authorization') ?? '';
-  if (!timingSafeTokenEqual(auth, `Bearer ${deps.token}`)) {
-    throw HttpErrors.business('unauthorized'); // → 401(自有码 status 修正)
-  }
-  await next();
-};
+  };
 
 // eslint-disable-next-line max-lines-per-function -- HTTP 装配平铺：中间件链与路由挂载顺序即契约
 export function createReceiverApp(deps: ReceiverAppDeps): App {
