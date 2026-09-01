@@ -6,11 +6,10 @@
  * 爆破防护：IP 维 + client:{clientId} 维双锁（IP 可轮换，按 clientId 才能挡撞 secret）。
  * 失败 401 用 OAuth 标准错误形（invalid_client，非 OpenAI 信封）。
  */
-import { Hono } from 'hono';
-import type { Context } from 'hono';
+import type { GwContext } from '../middleware/api-key';
 import { SignJWT } from 'jose';
 import type { AuthFailureGuard } from '@tillgate/runtime';
-import { socketAddressFromContext, trustedClientIp } from '@tillgate/http';
+import { socketAddressFromContext, trustedClientIp, routes } from '@tillgate/http';
 
 export interface OAuthTokenDeps {
   /** apps 凭证校验（accounts facade 绑定；status=0 + 属主守卫在读模型内） */
@@ -28,20 +27,26 @@ export interface OAuthTokenDeps {
   trustedProxyHops: number;
 }
 
-const oauthError = (c: Context, status: 400 | 401, body: { error: string; description: string }) =>
+const oauthError = (c: GwContext, status: 400 | 401, body: { error: string; description: string }) =>
   c.json({ error: body.error, error_description: body.description }, status);
+
+/** 表单字段收窄（File 值不是合法凭证串——按缺失处理） */
+function formField(form: FormData, name: string): string | undefined {
+  const value = form.get(name);
+  return typeof value === 'string' ? value : undefined;
+}
 
 /** 凭证三形态提取（form / JSON；Basic 兜底另行解析） */
 async function extractCredentials(
-  c: Context,
+  c: GwContext,
 ): Promise<{ clientId?: string; clientSecret?: string; grantType?: string }> {
-  const contentType = c.req.header('content-type') ?? '';
+  const contentType = c.get('content-type') ?? '';
   if (contentType.includes('application/x-www-form-urlencoded')) {
-    const form = await c.req.parseBody();
+    const form = await c.req.formData();
     return {
-      clientId: form.client_id as string,
-      clientSecret: form.client_secret as string,
-      grantType: form.grant_type as string,
+      clientId: formField(form, 'client_id'),
+      clientSecret: formField(form, 'client_secret'),
+      grantType: formField(form, 'grant_type'),
     };
   }
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -97,9 +102,9 @@ async function recordGuardFailures(deps: OAuthTokenDeps, ip: string, guardKey: s
 }
 
 /** 客户端 IP（按装配的 trustedProxyHops 口径） */
-function clientIpOf(deps: OAuthTokenDeps, c: Context): string {
+function clientIpOf(deps: OAuthTokenDeps, c: GwContext): string {
   return trustedClientIp({
-    headers: c.req.raw.headers,
+    headers: c.raw.headers,
     trustedProxyHops: deps.trustedProxyHops,
     socketAddress: socketAddressFromContext(c),
   });
@@ -145,15 +150,16 @@ async function authenticateAgainstGuards(
   return { ok: true, app };
 }
 
-export function oauthTokenRoutes(deps: OAuthTokenDeps): Hono {
-  return new Hono().post('/', async (c) => {
+export function oauthTokenRoutes(deps: OAuthTokenDeps) {
+  const group = routes<GwContext>();
+  group.post('/', async (c) => {
     const ip = clientIpOf(deps, c);
     // 支持 form / JSON / Basic Auth 三种凭证传递；Basic 兜底仅在 form/JSON 缺凭证时整体改用
     const creds = await extractCredentials(c);
     const { grantType } = creds;
     const fromBasic =
       !creds.clientId || !creds.clientSecret
-        ? basicAuthCredentials(c.req.header('authorization') ?? '')
+        ? basicAuthCredentials(c.get('authorization') ?? '')
         : {};
     const clientId = fromBasic.clientId ?? creds.clientId;
     const clientSecret = fromBasic.clientSecret ?? creds.clientSecret;
@@ -188,4 +194,5 @@ export function oauthTokenRoutes(deps: OAuthTokenDeps): Hono {
     const token = await signAppJwt(deps, app);
     return c.json({ access_token: token, token_type: 'Bearer', expires_in: deps.tokenTtlSeconds });
   });
+  return group.router;
 }

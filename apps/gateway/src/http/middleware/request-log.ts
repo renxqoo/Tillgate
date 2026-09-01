@@ -2,11 +2,19 @@
  * 请求日志中间件（持久化归 @tillgate/observability）：
  * 挂 /v1/* 鉴权之前——401/429 也入日志（「记录一切 /v1 请求」语义）。
  * best-effort：写失败仅记日志不阻塞请求（排障日志不反压数据面）。
+ *
+ * keala 洋葱错误向上抛（Hono compose 逐层捕获继续走洋葱）——错误路径的
+ * 落日志在 catch 派生事实 + finally 落库 + 原样重抛；无 Response 可读时
+ * 状态码/错误码经 renderError 纯函数从错误身份派生。
  */
-import type { MiddlewareHandler } from 'hono';
-import { socketAddressFromContext, trustedClientIp } from '@tillgate/http';
+import {
+  renderError,
+  socketAddressFromContext,
+  trustedClientIp,
+  type Middleware,
+} from '@tillgate/http';
 import type { RequestLogStore } from '@tillgate/observability';
-import type { AuthEnv } from './api-key';
+import type { GwContext } from './api-key';
 
 export interface RequestLogDeps {
   store: RequestLogStore;
@@ -45,42 +53,50 @@ async function sniffErrorCode(res: Response | undefined): Promise<string | null>
   }
 }
 
-export function requestLogMiddleware(deps: RequestLogDeps): MiddlewareHandler<AuthEnv> {
+export function requestLogMiddleware(deps: RequestLogDeps): Middleware<GwContext> {
   return async (c, next) => {
     const startedAt = Date.now();
-    const requestId = c.get('requestId');
-    // 摘要不再经 raw.clone() 嗅探：@hono/node-server 的 clone 未实现 WHATWG tee
-    // 语义，先读 clone 分支会把原始 body 标记已读 → 路由 c.req.json() 抛
-    // "Body has already been read" → 高并发下大面积 400。
+    const { requestId } = c.state;
+    // 摘要不再经 raw.clone() 嗅探：clone 分支未实现 WHATWG tee 语义，先读
+    // clone 会把原始 body 标记已读 → 路由读取抛 "Body has already been read"。
     // 数据流反转：路由是唯一 body 消费者，解析后把摘要放 context，日志只取。
-    await next();
-    const auth = c.get('auth');
-    const errorCode = await sniffErrorCode(c.res);
-    const summary = c.get('requestLogSummary');
-    void deps.store
-      .insert({
-        requestId,
-        userId: auth?.userId ?? null,
-        apiKeyId: auth?.apiKeyId ?? null,
-        method: c.req.method,
-        path: c.req.path,
-        statusCode: c.res?.status ?? 0,
-        errorCode,
-        durationMs: Date.now() - startedAt,
-        attempts: c.get('inferenceAttempts') ?? 1,
-        channels: c.get('inferenceChannels') ?? null,
-        requestSummary: (summary ?? null) as unknown as Record<string, unknown> | null,
-        sourceIp: trustedClientIp({
-          headers: c.req.raw.headers,
-          trustedProxyHops: deps.trustedProxyHops,
-          socketAddress: socketAddressFromContext(c),
-        }),
-      })
-      .catch((error: unknown) => {
-        deps.logger?.error(
-          { err: String(error), requestId },
-          'request log write failed (best-effort)',
-        );
-      });
-  };
+    let failure: { status: number; code: string } | null = null;
+    try {
+      await next();
+    } catch (error) {
+      // 记录一切语义：错误路径也落一行（状态码/码从错误身份派生），再原样上抛
+      const rendered = renderError(error);
+      failure = { status: rendered.status, code: rendered.code };
+      throw error;
+    } finally {
+      const { auth } = c.state;
+      const errorCode = failure?.code ?? (await sniffErrorCode(c.res));
+      const summary = c.state.requestLogSummary;
+      void deps.store
+        .insert({
+          requestId,
+          userId: auth?.userId ?? null,
+          apiKeyId: auth?.apiKeyId ?? null,
+          method: c.method,
+          path: c.path,
+          statusCode: failure?.status ?? c.res?.status ?? 0,
+          errorCode,
+          durationMs: Date.now() - startedAt,
+          attempts: c.state.inferenceAttempts ?? 1,
+          channels: c.state.inferenceChannels ?? null,
+          requestSummary: (summary ?? null) as unknown as Record<string, unknown> | null,
+          sourceIp: trustedClientIp({
+            headers: c.raw.headers,
+            trustedProxyHops: deps.trustedProxyHops,
+            socketAddress: socketAddressFromContext(c),
+          }),
+        })
+        .catch((error: unknown) => {
+          deps.logger?.error(
+            { err: String(error), requestId },
+            'request log write failed (best-effort)',
+          );
+        });
+    };
+    }
 }

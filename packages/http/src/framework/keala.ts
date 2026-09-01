@@ -83,3 +83,20 @@ export function routes<C extends Context = Context>(prefix?: string): Routes<C> 
 /** 全局中间件注册适配（app.use 场景的收窄类型桥） */
 export const asMiddleware = <C extends Context>(middleware: Middleware<C>): KealaHandler =>
   middleware as unknown as KealaHandler;
+
+/**
+ * 前缀门控中间件（keala 无路径作用域 use）：命中前缀（路径本身或其子路径）才
+ * 执行 inner，其余直通。前缀表来自装配层，不在底层写死。
+ */
+export function pathPrefixGate<C extends Context>(
+  prefixes: readonly string[],
+  inner: Middleware<C>,
+): Middleware<C> {
+  return async (c, next) => {
+    if (prefixes.some((p) => c.path === p || c.path.startsWith(`${p}/`))) {
+      await inner(c, next);
+      return;
+    }
+    await next();
+  };
+}

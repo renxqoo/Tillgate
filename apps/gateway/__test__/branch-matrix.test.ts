@@ -3,12 +3,13 @@
  * 限流闸维度组合 × 拒绝形态 / otel 状态分支 / 信封可选分支 / catalog 渠道可选列 /
  * billing 桥可选字段透传 / request-log 嗅探防御分支。
  */
+import { Keala } from 'keala';
+import { asMiddleware, pathPrefixGate, withRequest } from '@tillgate/http';
 import { describe, expect, it } from 'vitest';
-import { Hono, type Context } from 'hono';
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
 import { admitRequest } from '../src/http/middleware/rate-limit';
 import { otelMiddleware } from '../src/http/middleware/otel';
-import type { AuthEnv, AuthContext } from '../src/http/middleware/api-key';
+import type { AuthContext, GwContext } from '../src/http/middleware/api-key';
 import { requestLogMiddleware } from '../src/http/middleware/request-log';
 import { createGatewayCatalog } from '../src/adapters/catalog-port';
 import { createGatewayBilling } from '../src/adapters/billing-port';
@@ -110,18 +111,18 @@ describe('限流闸维度矩阵', () => {
   });
 });
 
-function otelApp(handler: (c: Context<AuthEnv>) => Response | Promise<Response>) {
-  const app = new Hono<AuthEnv>();
-  app.use('*', otelMiddleware());
-  app.get('/v1/x', handler);
-  return app;
+function otelApp(handler: (c: GwContext) => Response | Promise<Response>) {
+  const app = new Keala();
+  app.use(asMiddleware(otelMiddleware()));
+  app.get('/v1/x', (c) => handler(c as GwContext));
+  return withRequest(app);
 }
 
 describe('otel 状态分支', () => {
   it('auth 属性挂载 + 5xx 置 ERROR；抛错路径不吞异常', async () => {
     const fiveHundred = otelApp((c) => {
-      c.set('auth', auth());
-      c.set('requestId', 'r');
+      c.state.auth = auth();
+      c.state.requestId = 'r';
       return new Response('err', { status: 500 });
     });
     expect((await fiveHundred.request('/v1/x')).status).toBe(500);
@@ -138,21 +139,26 @@ describe('otel 状态分支', () => {
 describe('request-log 嗅探防御', () => {
   it('JSON 响应坏体嗅探失败 → errorCode null 不阻塞；GET 无摘要', async () => {
     const rows: Array<Record<string, unknown>> = [];
-    const app = new Hono<AuthEnv>();
+    const app = new Keala();
     app.use(
-      '/v1/*',
-      requestLogMiddleware({
-        store: { insert: async (i: Record<string, unknown>) => rows.push(i) } as never,
-        trustedProxyHops: 0,
-      }),
+      asMiddleware(
+        pathPrefixGate(
+          ['/v1'],
+          requestLogMiddleware({
+            store: { insert: async (i: Record<string, unknown>) => rows.push(i) } as never,
+            trustedProxyHops: 0,
+          }),
+        ),
+      ),
     );
     app.get('/v1/list', (c) => c.text('not json'));
     app.post(
       '/v1/p',
       (_c) => new Response('broken', { headers: { 'content-type': 'application/json' } }),
     );
-    expect((await app.request('/v1/list')).status).toBe(200);
-    expect((await app.request('/v1/p', { method: 'POST', body: '{}' })).status).toBe(200);
+    const adapted = withRequest(app);
+    expect((await adapted.request('/v1/list')).status).toBe(200);
+    expect((await adapted.request('/v1/p', { method: 'POST', body: '{}' })).status).toBe(200);
     await new Promise((r) => {
       setTimeout(r, 10);
     });

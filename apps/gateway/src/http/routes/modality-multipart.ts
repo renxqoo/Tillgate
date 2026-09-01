@@ -3,14 +3,14 @@
  *   POST /v1/images/edits         multipart（image 文件 + prompt；units=张）
  *   POST /v1/audio/transcriptions multipart（audio 文件；units=音频秒）
  *   POST /v1/audio/translations   multipart（audio 文件；units=音频秒）
- * multipart 解析在网关：Hono parseBody → wrapper {model, n?, audioSeconds?, upstreamForm}
+ * multipart 解析在网关：formData → wrapper {model, n?, audioSeconds?, upstreamForm}
  * ——upstreamForm 为重组的上游 FormData（文件字节原样）；计量字段随 wrapper 进管线。
  * 文件类型白名单 + 单文件上界（与 bodyLimit 取 min——bodyLimit 先拦 413）。
  */
-import { Hono, type Context } from 'hono';
+import { routes } from '@tillgate/http';
 import type { Inference } from '@tillgate/inference';
 import { estimateAudioDurationSeconds } from '@tillgate/inference';
-import type { AuthEnv } from '../middleware/api-key';
+import type { GwContext } from '../middleware/api-key';
 import { requestSignalOf, toInferenceInput } from './inference-input';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { GatewayErrors } from '../openai-error-face';
@@ -36,7 +36,7 @@ export interface ModalityLimits {
   bodyLimitBytes?: number;
 }
 
-function badRequest(c: Context, message: string) {
+function badRequest(c: GwContext, message: string) {
   return c.json({ error: { code: GatewayErrors.code('invalid_body'), message } }, 400);
 }
 
@@ -70,17 +70,18 @@ interface MultipartWrapper {
   upstreamForm: FormData;
 }
 
+/** 表单读取经 body facade（协议栈 bodyParser 限值流式计数 + memo 缓存——直读 c.raw 会绕过预算） */
 async function buildMultipartWrapper(
-  request: Request,
+  readForm: () => Promise<FormData>,
   opts: { fileField: string } & FileConstraint,
 ): Promise<MultipartWrapper> {
-  const form = await request.formData();
+  const form = await readForm();
   const wrapper: Record<string, unknown> = {};
   const upstream = new FormData();
   let model: string | null = null;
   let primaryFile: File | null = null;
 
-  for (const [key, value] of form.entries()) {
+  for (const [key, value] of Array.from(form.entries()) as [string, File | string][]) {
     if (value instanceof File) {
       checkFile(value, opts);
       upstream.append(key, value, value.name);
@@ -112,7 +113,7 @@ async function buildMultipartWrapper(
 
 /** multipart 族出站编码（恒非流式三态：错误透传 / 原始字节 / JSON body） */
 function encodeMultipartResult(
-  c: Context<AuthEnv>,
+  c: GwContext,
   result: Awaited<ReturnType<Inference['chat']>>,
   requestId: string | undefined,
 ): Response {
@@ -148,16 +149,16 @@ function multipartRoute(
     audio: boolean;
     kind: 'images_edits' | 'audio_transcription' | 'audio_translation';
   },
-): (c: Context<AuthEnv>) => Promise<Response> {
+): (c: GwContext) => Promise<Response> {
   return async (c) => {
     let wrapper: MultipartWrapper;
     try {
-      wrapper = await buildMultipartWrapper(c.req.raw, { ...opts, maxFileBytes });
+      wrapper = await buildMultipartWrapper(() => c.req.formData(), { ...opts, maxFileBytes });
     } catch (error) {
       return badRequest(c, (error as Error).message);
     }
-    const auth = c.get('auth');
-    const requestId = c.get('requestId');
+    const { auth } = c.state;
+    const { requestId } = c.state;
     const body = wrapper as unknown as Record<string, unknown>;
     // multipart 族恒非流式。计价单位为张/秒（非 token）——TPM 维明确豁免：
     // 旧口径 JSON.stringify(FormData) 恒为几十字节（文件序列化为 "{}"），
@@ -176,7 +177,7 @@ function multipartRoute(
           auth,
           body,
           endpoint: opts.kind,
-          signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
+          signal: requestSignalOf(c.raw.signal, deps.drainSignal),
         }),
       );
       return encodeMultipartResult(c, result, requestId);
@@ -190,7 +191,7 @@ function multipartRoute(
 export function modalityMultipartRoutes(
   deps: { inference: Inference; rateLimit?: RateLimitGate; drainSignal?: AbortSignal },
   limits: ModalityLimits = {},
-): Hono<AuthEnv> {
+) {
   const imageMime = limits.imageMime ?? DEFAULT_IMAGE_MIME;
   const audioMime = limits.audioMime ?? DEFAULT_AUDIO_MIME;
   // 单文件上界取「本路由声明与全局 bodyLimit」的较小值（bodyLimit 先拦 413）
@@ -199,32 +200,33 @@ export function modalityMultipartRoutes(
     limits.bodyLimitBytes ?? 10 * 1024 * 1024,
   );
 
-  return new Hono<AuthEnv>()
-    .post(
-      '/v1/images/edits',
-      multipartRoute(deps, maxFileBytes, {
-        fileField: 'image',
-        allow: imageMime,
-        audio: false,
-        kind: 'images_edits',
-      }),
-    )
-    .post(
-      '/v1/audio/transcriptions',
-      multipartRoute(deps, maxFileBytes, {
-        fileField: 'file',
-        allow: audioMime,
-        audio: true,
-        kind: 'audio_transcription',
-      }),
-    )
-    .post(
-      '/v1/audio/translations',
-      multipartRoute(deps, maxFileBytes, {
-        fileField: 'file',
-        allow: audioMime,
-        audio: true,
-        kind: 'audio_translation',
-      }),
-    );
+  const app = routes<GwContext>();
+  app.post(
+    '/v1/images/edits',
+    multipartRoute(deps, maxFileBytes, {
+      fileField: 'image',
+      allow: imageMime,
+      audio: false,
+      kind: 'images_edits',
+    }),
+  );
+  app.post(
+    '/v1/audio/transcriptions',
+    multipartRoute(deps, maxFileBytes, {
+      fileField: 'file',
+      allow: audioMime,
+      audio: true,
+      kind: 'audio_transcription',
+    }),
+  );
+  app.post(
+    '/v1/audio/translations',
+    multipartRoute(deps, maxFileBytes, {
+      fileField: 'file',
+      allow: audioMime,
+      audio: true,
+      kind: 'audio_translation',
+    }),
+  );
+  return app.router;
 }

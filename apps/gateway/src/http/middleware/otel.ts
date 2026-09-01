@@ -10,9 +10,9 @@
  *   后台终态收尾（流式结算）经 TracePort.captureRoot() 挂根 span 并计入等待。
  * off 模式 no-op（observability initOtel 契约）。
  */
-import type { MiddlewareHandler } from 'hono';
 import { context, getTracer, trace, SpanStatusCode, type Span } from '@tillgate/observability';
-import type { AuthContext, AuthEnv } from './api-key';
+import type { AuthContext, GwContext } from './api-key';
+import type { Middleware } from '@tillgate/http';
 import {
   RequestTraceCoordinator,
   requestTraceStorage,
@@ -87,32 +87,34 @@ function relayBodyToEndSpan(
   });
 }
 
-export function otelMiddleware(): MiddlewareHandler<AuthEnv> {
+export function otelMiddleware(): Middleware<GwContext> {
   return async (c, next) => {
-    const { path } = c.req;
+    const { path } = c;
     if (SKIPPED.has(path)) {
       await next();
       return;
     }
-    const spanName = `${c.req.method} ${path}`;
+    const spanName = `${c.method} ${path}`;
     const span = getTracer('gateway').startSpan(spanName);
     const rootContext = trace.setSpan(context.active(), span);
     const coordinator = new RequestTraceCoordinator();
     const handler = async (): Promise<Response | undefined> => {
-      span.setAttribute('http.method', c.req.method);
+      span.setAttribute('http.method', c.method);
       span.setAttribute('http.target', path);
-      const requestId = c.get('requestId');
+      const { requestId } = c.state;
       if (requestId != null) span.setAttribute('request.id', requestId);
       let deferredByStream = false;
       try {
         await next();
-        observeResponse(span, c.get('auth'), c.res?.status ?? 0);
+        observeResponse(span, c.state.auth, c.res?.status ?? 0);
         // 仅 SSE 流式响应延后闭合（运行时所有 Response.body 都可能是流——按
         // content-type 判别，JSON 体不挂接力流：无人消费的体会让收口永不触发）
-        const contentType = c.res?.headers.get('content-type') ?? '';
-        if (c.res?.body instanceof ReadableStream && contentType.includes('text/event-stream')) {
+        const committed = c.res;
+        const contentType = committed?.headers.get('content-type') ?? '';
+        if (committed?.body instanceof ReadableStream && contentType.includes('text/event-stream')) {
           deferredByStream = true;
-          c.res = new Response(relayBodyToEndSpan(span, c.res.body, coordinator), c.res);
+          // keala 无 c.res setter：提交后写 c.body（Response 形态复制 status/headers/body）
+          c.body = new Response(relayBodyToEndSpan(span, committed.body, coordinator), committed);
           return c.res;
         }
         await coordinator.wait(TRACE_FINALIZE_BOUND_MS);

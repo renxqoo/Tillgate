@@ -14,13 +14,14 @@ import type { Middleware } from '../framework/keala';
 import { HttpErrors } from '../errors/catalog';
 import { errorBody, renderError } from '../errors/render';
 
-/** 安全响应头（无参数——固定策略；缓存语义对 SSE 流无害且防中间层缓存） */
+/** 安全响应头（无参数——固定策略；缓存语义对 SSE 流无害且防中间层缓存）。
+ * 前置 staged（keala 错误向上抛时 next 后置写会被跳过——错误响应同样要带安全头） */
 export const securityHeaders: Middleware = async (c, next) => {
-  await next();
   c.set('X-Content-Type-Options', 'nosniff');
   c.set('X-Frame-Options', 'DENY');
   c.set('Referrer-Policy', 'no-referrer');
   c.set('Cache-Control', 'no-store');
+  await next();
 };
 
 export interface CorsConfig {

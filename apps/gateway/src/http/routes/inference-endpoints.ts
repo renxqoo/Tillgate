@@ -3,14 +3,14 @@
  * schema 校验 → 限流准入（TPM 保守上界预占）→（codec 端点先 decode）→
  * inference.chat/stream → 信封三态出站。鉴权由 app 按路径挂载。
  */
-import { Hono, type Context } from 'hono';
+import { routes } from '@tillgate/http';
 import type { Inference } from '@tillgate/inference';
 import {
   admissionTokenUpperBound,
   defaultInferenceDefaults,
   type OutputCapConfig,
 } from '@tillgate/inference';
-import type { AuthEnv } from '../middleware/api-key';
+import type { GwContext } from '../middleware/api-key';
 import { requestSignalOf, toInferenceInput } from './inference-input';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { GatewayErrors } from '../openai-error-face';
@@ -94,10 +94,10 @@ function encodeOptionsOf(endpoint: InferenceEndpoint, model: string, requestId: 
 }
 
 /** onAttempts → hono context 写入器（request-log 中间件消费 attempts/channels 两列） */
-function contextAttemptsWriter(c: Context<AuthEnv>) {
+function contextAttemptsWriter(c: GwContext) {
   return (total: number, channelTrace: string[]) => {
-    c.set('inferenceAttempts', total);
-    c.set('inferenceChannels', channelTrace);
+    c.state.inferenceAttempts = total;
+    c.state.inferenceChannels = channelTrace;
   };
 }
 
@@ -105,16 +105,17 @@ function contextAttemptsWriter(c: Context<AuthEnv>) {
 export function inferenceRoutes(
   deps: InferenceRouteDeps,
   endpoint: InferenceEndpoint,
-): Hono<AuthEnv> {
-  return new Hono<AuthEnv>().post('/', async (c) => {
+) {
+  const app = routes<GwContext>();
+  app.post('/', async (c) => {
     const raw = (await c.req.json().catch(() => null)) as unknown;
-    const summary = requestSummaryOf(c.req.method, raw);
-    if (summary != null) c.set('requestLogSummary', summary);
+    const summary = requestSummaryOf(c.method, raw);
+    if (summary != null) c.state.requestLogSummary = summary;
     const parsed = endpoint.schema.safeParse(raw);
     if (!parsed.success) return invalidBody(c.json.bind(c), parsed.error.issues);
 
-    const auth = c.get('auth');
-    const requestId = c.get('requestId');
+    const { auth } = c.state;
+    const { requestId } = c.state;
     const externalModel = (parsed.data as { model: string }).model;
     const canonical = toCanonicalBody(endpoint, parsed.data, externalModel);
 
@@ -129,7 +130,7 @@ export function inferenceRoutes(
         auth,
         body: canonical,
         endpoint: endpoint.kind,
-        signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
+        signal: requestSignalOf(c.raw.signal, deps.drainSignal),
         onAttempts: contextAttemptsWriter(c),
       });
       const result =
@@ -149,6 +150,7 @@ export function inferenceRoutes(
       throw error;
     }
   });
+  return app.router;
 }
 
 /**
@@ -159,17 +161,18 @@ export function inferenceRoutes(
 export function enginesAliasRoutes(
   deps: InferenceRouteDeps,
   endpoint: InferenceEndpoint,
-): Hono<AuthEnv> {
-  return new Hono<AuthEnv>().post('/embeddings', async (c) => {
+) {
+  const app = routes<GwContext>();
+  app.post('/embeddings', async (c) => {
     const raw = (await c.req.json().catch(() => null)) as unknown;
-    const aliasSummary = requestSummaryOf(c.req.method, raw);
-    if (aliasSummary != null) c.set('requestLogSummary', aliasSummary);
-    const model = c.req.param('model');
+    const aliasSummary = requestSummaryOf(c.method, raw);
+    if (aliasSummary != null) c.state.requestLogSummary = aliasSummary;
+    const model = (c.params?.['model'] ?? '');
     const merged = { ...(raw as Record<string, unknown> | null), model };
     const parsed = endpoint.schema.safeParse(merged);
     if (!parsed.success) return invalidBody(c.json.bind(c), parsed.error.issues);
-    const auth = c.get('auth');
-    const requestId = c.get('requestId');
+    const { auth } = c.state;
+    const { requestId } = c.state;
     const canonical = { ...parsed.data, stream: false };
     const admit = await admitRequest(deps.rateLimit, {
       requestId,
@@ -183,7 +186,7 @@ export function enginesAliasRoutes(
           auth,
           body: canonical,
           endpoint: endpoint.kind,
-          signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
+          signal: requestSignalOf(c.raw.signal, deps.drainSignal),
           onAttempts: contextAttemptsWriter(c),
         }),
       );
@@ -197,4 +200,5 @@ export function enginesAliasRoutes(
       throw error;
     }
   });
+  return app.router;
 }

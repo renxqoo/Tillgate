@@ -5,20 +5,18 @@
  * 鉴权读模型与 guards 全替身（SQL/Redis 语义归各包 real 测试）。
  */
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
-import { errorHandler } from '@tillgate/http';
+import { Keala } from 'keala';
+import { asMiddleware, errorHandling, pathPrefixGate, withRequest, type App } from '@tillgate/http';
 import { GATEWAY_FACE_OVERRIDES, gatewayErrorCatalog } from '../src/http/openai-error-face';
 
-/** 测试壳挂生产同款错误面 */
-function withErrorFace<E extends AuthEnv>(hono: Hono<E>): Hono<E> {
-  hono.onError(errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
-  return hono;
+/** 生产同款错误面（keala：错误面必须先于业务链注册=最外层） */
+function errorFace(shell: Keala): void {
+  shell.use(errorHandling({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
 }
 import { createHash } from 'node:crypto';
 import { SignJWT } from 'jose';
 import {
   apiKeyMiddleware,
-  type AuthEnv,
   type AuthGuards,
   type AuthReadModel,
 } from '../src/http/middleware/api-key';
@@ -95,13 +93,14 @@ function makeGuards(keyFailLimit = 3, ipFailLimit = 5) {
 }
 
 function app(readerDeps: AuthReadModel, guards?: AuthGuards) {
-  const hono = withErrorFace(new Hono<AuthEnv>());
-  hono.use('/v1/*', apiKeyMiddleware(readerDeps, guards, JWT));
-  hono.get('/v1/whoami', (c) => c.json(c.get('auth') ?? null));
-  return hono;
+  const shell = new Keala();
+  errorFace(shell);
+  shell.use(asMiddleware(pathPrefixGate(['/v1'], apiKeyMiddleware(readerDeps, guards, JWT))));
+  shell.get('/v1/whoami', (c) => c.json(c.state.auth ?? null));
+  return withRequest(shell);
 }
 
-const get = (a: Hono<AuthEnv>, path: string, token?: string) =>
+const get = (a: App, path: string, token?: string) =>
   a.request(path, token != null ? { headers: { authorization: `Bearer ${token}` } } : {});
 
 const appJwt = (payload: Record<string, unknown>) =>

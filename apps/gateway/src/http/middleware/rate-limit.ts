@@ -8,11 +8,10 @@
  * TPM 预占与 key/user 维共用同一 requestId 预占哈希。
  */
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
-import type { MiddlewareHandler } from 'hono';
-import { socketAddressFromContext, trustedClientIp } from '@tillgate/http';
+import { socketAddressFromContext, trustedClientIp, type Middleware } from '@tillgate/http';
 import { getTracer, withAsyncSpan } from '@tillgate/observability';
 import { GatewayErrors } from '../openai-error-face';
-import type { AuthContext, AuthEnv } from './api-key';
+import type { AuthContext, GwContext } from './api-key';
 
 export interface RateLimitGate {
   limiter: SlidingWindowLimiter;
@@ -204,14 +203,14 @@ export function preauthIpRateLimitMiddleware(gate: {
   limiter: SlidingWindowLimiter;
   maxPerMinute: number;
   trustedProxyHops: number;
-}): MiddlewareHandler<AuthEnv> {
+}): Middleware<GwContext> {
   return async (c, next) => {
     const ip = trustedClientIp({
-      headers: c.req.raw.headers,
+      headers: c.raw.headers,
       trustedProxyHops: gate.trustedProxyHops,
       socketAddress: socketAddressFromContext(c),
     });
-    const requestId = c.get('requestId');
+    const { requestId } = c.state;
     const result = await gate.limiter.check(`preauth-ip:${ip}`, gate.maxPerMinute, requestId);
     if (!result.allowed) {
       throw GatewayErrors.business('rate_limit_exceeded', {

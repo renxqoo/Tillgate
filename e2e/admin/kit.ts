@@ -1,13 +1,13 @@
 /**
  * admin 旅程 e2e 装置。
  * 形态与 e2e/gateway/kit 同院：进程内全真装配（真实 PG 池 + 真实秘密键 + identity
- * 签发真 admin-realm 令牌）+ @hono/node-server 真监听——断言打真实 HTTP 面。
+ * 签发真 admin-realm 令牌）+ keala/node 真监听——断言打真实 HTTP 面。
  * 差异（vs app 包内 real 冒烟）：本 kit 只组装配与属主事实,旅程断言全在测试文件；
  * 依赖闭包经 apps/admin-api（含 identity——gateway 闭包没有）。
  * 数据卫生：旅程专属行以 e2e- 前缀命名并就地退役;e2e 专属用户经 accounts facade
  * provision（真实账本行保留,审计可追溯）。
  */
-import { serve, type ServerType } from '@hono/node-server';
+import { startNodeServer, type NodeServerHandle } from 'keala/node';
 import { asc } from 'drizzle-orm';
 import { admins, closeDb, createDb, ping } from '@tillgate/db';
 import { loadAdminApiConfig } from '../../apps/admin-api/src/config';
@@ -33,7 +33,7 @@ export interface E2EAdminWorld {
   base: string;
   token: string;
   adminId: number;
-  server: ServerType;
+  server: NodeServerHandle;
   assembly: AdminApiAssembly;
   /** 旅程专属用户（真实账本行,零真实用户污染） */
   provisionUser(): Promise<{ id: number; email: string }>;
@@ -154,8 +154,9 @@ export async function setupE2EAdmin(): Promise<E2EAdminWorld | null> {
 
   const app = createAdminApp(buildAdminAppOptions(assembly, config));
 
-  const server = serve({ fetch: app.fetch, port: 0 });
-  const port = (server.address() as { port: number } | null)?.port ?? 0;
+  const server = startNodeServer(app, { port: 0 });
+  await server.ready();
+  const port = server.port;
   const world: E2EAdminWorld = {
     base: `http://127.0.0.1:${port}`,
     token,
@@ -175,7 +176,7 @@ export async function setupE2EAdmin(): Promise<E2EAdminWorld | null> {
 
 export async function teardownE2EAdmin(world: E2EAdminWorld): Promise<void> {
   await new Promise<void>((resolve) => {
-    world.server.close(() => resolve());
+    world.server.stop(true);
   });
   await closeDb(world.assembly.db);
 }

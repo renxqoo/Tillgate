@@ -3,11 +3,17 @@
  * 与 TPM 释放路径）。
  */
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
-import { errorHandler } from '@tillgate/http';
+import { Keala, createBodyParser, type Router } from 'keala';
+import {
+  asMiddleware,
+  errorHandling,
+  pathPrefixGate,
+  withRequest,
+  type App,
+} from '@tillgate/http';
 import type { Inference } from '@tillgate/inference';
 import { GATEWAY_FACE_OVERRIDES, gatewayErrorCatalog } from '../src/http/openai-error-face';
-import type { AuthEnv, AuthReadModel } from '../src/http/middleware/api-key';
+import type { AuthReadModel } from '../src/http/middleware/api-key';
 import { apiKeyMiddleware } from '../src/http/middleware/api-key';
 import { geminiNativeRoutes } from '../src/http/routes/native-gemini';
 import { oauthTokenRoutes } from '../src/http/routes/oauth-token';
@@ -31,19 +37,29 @@ const READER: AuthReadModel = {
   resolveApp: async () => null,
 };
 
+/** 本文件测试壳：生产同款错误面 + body facade + /v1、/v1beta 前缀门控鉴权 */
+function gwShell(auth: boolean, ...routers: Router[]): App {
+  const shell = new Keala();
+  shell.use(errorHandling({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
+  shell.use(createBodyParser());
+  if (auth) {
+    shell.use(asMiddleware(pathPrefixGate(['/v1', '/v1beta'], apiKeyMiddleware(READER, undefined, JWT))));
+  }
+  for (const router of routers) shell.mount('/', router);
+  return withRequest(shell);
+}
+
 function mount(inference: Inference, extra: { rateLimit?: never } = {}) {
-  const app = new Hono<AuthEnv>();
-  app.onError(errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
-  app.use('/v1beta/*', apiKeyMiddleware(READER, undefined, JWT));
-  app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
-  app.route('/', geminiNativeRoutes({ inference, ...(extra.rateLimit != null ? {} : {}) }));
-  app.route('/', generationRoutes({ inference }));
-  app.route('/', modalityMultipartRoutes({ inference }));
-  return app;
+  return gwShell(
+    true,
+    geminiNativeRoutes({ inference, ...(extra.rateLimit != null ? {} : {}) }),
+    generationRoutes({ inference }),
+    modalityMultipartRoutes({ inference }),
+  );
 }
 
 // 全部调用点都不传自定义 headers（固定 sk_k 鉴权 + JSON 体），故不保留无人使用的第 4 参
-const post = (a: Hono<AuthEnv>, path: string, body: unknown) =>
+const post = (a: App, path: string, body: unknown) =>
   a.request(path, {
     method: 'POST',
     headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
@@ -100,8 +116,9 @@ describe('oauth 防御分支', () => {
       recordFailure: async () => ({ locked: false, retryAfterSec: 0 }),
       recordSuccess: async () => {},
     };
-    const app = new Hono();
-    app.route(
+    const app = new Keala();
+    app.use(createBodyParser());
+    app.mount(
       '/oauth/token',
       oauthTokenRoutes({
         verifyAppClient: async ({ clientId }) =>
@@ -114,7 +131,7 @@ describe('oauth 防御分支', () => {
         trustedProxyHops: 0,
       }),
     );
-    return app;
+    return withRequest(app);
   }
   const body = { grant_type: 'client_credentials', client_id: 'ci', client_secret: 's' };
 
@@ -151,8 +168,9 @@ describe('oauth 防御分支', () => {
 
 describe('oauth 表单/缺口分支', () => {
   it('仅 form 传递（无 JSON 分支）+ 缺 client_secret 401', async () => {
-    const app = new Hono();
-    app.route(
+    const app = new Keala();
+    app.use(createBodyParser());
+    app.mount(
       '/oauth/token',
       oauthTokenRoutes({
         verifyAppClient: async () => null,
@@ -163,7 +181,8 @@ describe('oauth 表单/缺口分支', () => {
         trustedProxyHops: 0,
       }),
     );
-    const form = await app.request('/oauth/token', {
+    const adapted = withRequest(app);
+    const form = await adapted.request('/oauth/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: 'grant_type=client_credentials&client_id=x',
@@ -281,12 +300,7 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
       health: {} as never,
       close: () => {},
     } as unknown as Inference;
-    const app = new Hono<AuthEnv>();
-    app.onError(
-      errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }),
-    );
-    app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
-    app.route('/', generationRoutes({ inference }));
+    const app = gwShell(true, generationRoutes({ inference }));
     const res = await post(app, '/v1/music/generations', { model: 'm', prompt: 'p' });
     expect(res.status).toBe(402);
     expect(await res.json()).toMatchObject({ error: { code: 'billing.insufficient_balance' } });
@@ -314,25 +328,29 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
       health: {} as never,
       close: () => {},
     } as unknown as Inference;
-    const app = new Hono<AuthEnv>();
-    app.onError(
-      errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }),
+    const shell = new Keala();
+    shell.use(errorHandling({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
+    shell.use(createBodyParser());
+    shell.use(
+      asMiddleware(
+        pathPrefixGate(['/v1'], async (c, next) => {
+          c.state.requestId = 'rel-1';
+          c.state.auth = {
+            userId: 1,
+            apiKeyId: 1,
+            appId: null,
+            allowedModels: null,
+            rpmLimit: 1,
+            tpmLimit: 1,
+            userRpmLimit: null,
+            userTpmLimit: null,
+          };
+          await next();
+        }),
+      ),
     );
-    app.use('/v1/*', async (c, next) => {
-      c.set('requestId', 'rel-1');
-      c.set('auth', {
-        userId: 1,
-        apiKeyId: 1,
-        appId: null,
-        allowedModels: null,
-        rpmLimit: 1,
-        tpmLimit: 1,
-        userRpmLimit: null,
-        userTpmLimit: null,
-      });
-      await next();
-    });
-    app.route('/', generationRoutes({ inference, rateLimit: gate(released) }));
+    shell.mount('/', generationRoutes({ inference, rateLimit: gate(released) }));
+    const app = withRequest(shell);
     const res = await post(app, '/v1/video/generations', { model: 'm', prompt: 'p' });
     expect(res.status).toBe(404);
     await new Promise((r) => {
@@ -378,12 +396,7 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
       health: {} as never,
       close: () => {},
     } as unknown as Inference;
-    const app = new Hono<AuthEnv>();
-    app.onError(
-      errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }),
-    );
-    app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
-    app.route('/', generationRoutes({ inference }));
+    const app = gwShell(true, generationRoutes({ inference }));
 
     const bad = await app.request('/v1/videos/v', {
       headers: { authorization: 'Bearer sk_k' },
@@ -402,13 +415,17 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
     const music = (await musicRes.json()) as Record<string, unknown>;
     expect(music).toMatchObject({ audio_url: null, fail_reason: 'upstream' });
 
-    const gemini = new Hono<AuthEnv>();
-    gemini.onError(
-      errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }),
+    const gemini = new Keala();
+    gemini.use(
+      errorHandling({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }),
+      createBodyParser(),
     );
-    gemini.use('/v1beta/*', apiKeyMiddleware(READER, undefined, JWT));
-    gemini.route('/', geminiNativeRoutes({ inference }));
-    const badBody = await gemini.request('/v1beta/models/g:generateContent', {
+    gemini.use(
+      asMiddleware(pathPrefixGate(['/v1beta'], apiKeyMiddleware(READER, undefined, JWT))),
+    );
+    gemini.mount('/', geminiNativeRoutes({ inference }));
+    const geminiApp = withRequest(gemini);
+    const badBody = await geminiApp.request('/v1beta/models/g:generateContent', {
       method: 'POST',
       headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
       body: 'not-json',

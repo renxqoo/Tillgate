@@ -3,10 +3,9 @@
  * 数据源 = control-plane 只读目录（listEnabledMappings）；白名单过滤（App JWT scope）；
  * 三协议形状（anthropic-version / x-goog-api-key 头探测）；404 不泄漏目录。
  */
-import { Hono } from 'hono';
-import { HttpErrors } from '@tillgate/http';
+import { HttpErrors, routes } from '@tillgate/http';
 import type { EnabledModelRow } from '@tillgate/control-plane';
-import type { AuthEnv } from '../middleware/api-key';
+import type { GwContext } from '../middleware/api-key';
 
 export interface ModelsReader {
   listEnabledMappings(): Promise<EnabledModelRow[]>;
@@ -56,29 +55,29 @@ function openAiListModel(visible: EnabledModelRow[]) {
   };
 }
 
-export function modelsRoutes(reader: ModelsReader): Hono<AuthEnv> {
-  const app = new Hono<AuthEnv>();
+export function modelsRoutes(reader: ModelsReader) {
+  const app = routes<GwContext>();
 
   app.get('/', async (c) => {
-    const auth = c.get('auth');
+    const { auth } = c.state;
     const all = await reader.listEnabledMappings();
     const allowed = auth?.allowedModels ?? null;
     const visible = all.filter((m) => allowed == null || allowed.includes(m.externalName));
     const names = visible.map((m) => m.externalName);
     // 协议形状：Anthropic SDK（anthropic-version 头）/ Gemini SDK（x-goog-api-key 头）
     // 各自的原生列表形——OpenAI 形为缺省
-    if (c.req.header('anthropic-version')) {
+    if (c.get('anthropic-version')) {
       return c.json(anthropicListModel(names));
     }
-    if (c.req.header('x-goog-api-key')) {
+    if (c.get('x-goog-api-key')) {
       return c.json(geminiListModel(names));
     }
     return c.json(openAiListModel(visible));
   });
 
   app.get('/:model', async (c) => {
-    const model = c.req.param('model').replace(/^models\//, ''); // Gemini 风格前缀剥离
-    const auth = c.get('auth');
+    const model = (c.params?.['model'] ?? '').replace(/^models\//, ''); // Gemini 风格前缀剥离
+    const { auth } = c.state;
     const all = await reader.listEnabledMappings();
     const found = all.find((m) => m.externalName === model);
     if (!found || (auth?.allowedModels != null && !auth.allowedModels.includes(model))) {
@@ -93,5 +92,5 @@ export function modelsRoutes(reader: ModelsReader): Hono<AuthEnv> {
     });
   });
 
-  return app;
+  return app.router;
 }

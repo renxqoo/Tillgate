@@ -4,13 +4,12 @@
  *   GET  /v1/videos/:id | /v1/musics/:id —— 归属查询（他人/异类/不存在一律 404）
  * id = 提交响应的 id（= billing requestId = generation_tasks 主键）。
  */
-import { Hono, type Context } from 'hono';
-import { HttpErrors } from '@tillgate/http';
+import { HttpErrors, routes } from '@tillgate/http';
 import type { GenerationSubmitOutcome, Inference } from '@tillgate/inference';
 import { conservativeInputTokenUpperBound } from '@tillgate/inference';
 import { videoSchema, musicSchema } from '../contracts/generation';
 import { requestSummaryOf } from '../middleware/request-log.js';
-import type { AuthEnv } from '../middleware/api-key';
+import type { GwContext } from '../middleware/api-key';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { requestSignalOf } from './inference-input';
 import { GatewayErrors } from '../openai-error-face';
@@ -57,7 +56,7 @@ function taskResponse(task: {
 
 /** 提交出站编码：透传错误（402/403/404/429）或 new-api 形状受理 201 */
 function submitResponse(
-  c: Context<AuthEnv>,
+  c: GwContext,
   outcome: { result: GenerationSubmitOutcome; kind: 'video' | 'music'; model: string },
 ): Response {
   const { result, kind, model } = outcome;
@@ -77,14 +76,14 @@ function submitHandler(
   kind: 'video' | 'music',
   schema: typeof videoSchema | typeof musicSchema,
 ) {
-  return async (c: Context<AuthEnv>) => {
+  return async (c: GwContext) => {
     const raw = await c.req.json().catch(() => null);
-    const genSummary = requestSummaryOf(c.req.method, raw);
-    if (genSummary != null) c.set('requestLogSummary', genSummary);
+    const genSummary = requestSummaryOf(c.method, raw);
+    if (genSummary != null) c.state.requestLogSummary = genSummary;
     const parsed = schema.safeParse(raw);
     if (!parsed.success) return invalidBody(c.json.bind(c), parsed.error.issues);
-    const auth = c.get('auth');
-    const requestId = c.get('requestId');
+    const { auth } = c.state;
+    const { requestId } = c.state;
     const admit = await admitRequest(deps.rateLimit, {
       requestId,
       auth,
@@ -101,7 +100,7 @@ function submitHandler(
         },
         kind,
         body: parsed.data,
-        signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
+        signal: requestSignalOf(c.raw.signal, deps.drainSignal),
       });
       return submitResponse(c, {
         result,
@@ -119,16 +118,16 @@ export function generationRoutes(deps: {
   inference: Inference;
   rateLimit?: RateLimitGate;
   drainSignal?: AbortSignal;
-}): Hono<AuthEnv> {
-  const app = new Hono<AuthEnv>();
+}) {
+  const app = routes<GwContext>();
 
   app.post('/v1/video/generations', submitHandler(deps, 'video', videoSchema));
   app.post('/v1/music/generations', submitHandler(deps, 'music', musicSchema));
 
   /** 归属查询（他人任务或异类任务一律 404——不泄露存在性） */
-  const query = (kind: 'video' | 'music') => async (c: Context<AuthEnv>) => {
-    const auth = c.get('auth');
-    const task = await deps.inference.generation.query(auth.userId, String(c.req.param('id')));
+  const query = (kind: 'video' | 'music') => async (c: GwContext) => {
+    const { auth } = c.state;
+    const task = await deps.inference.generation.query(auth.userId, String((c.params?.['id'] ?? '')));
     if (!task || task.kind !== kind) {
       throw HttpErrors.business('not_found', { detail: 'Task not found' });
     }
@@ -138,5 +137,5 @@ export function generationRoutes(deps: {
   app.get('/v1/videos/:id', query('video'));
   app.get('/v1/musics/:id', query('music'));
 
-  return app;
+  return app.router;
 }

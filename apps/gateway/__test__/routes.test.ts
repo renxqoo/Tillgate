@@ -5,21 +5,26 @@
  * inference 为可编程替身（真管线语义在 @tillgate/inference 测试）。
  */
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
-import { errorHandler } from '@tillgate/http';
+import { Keala, createBodyParser } from 'keala';
+import {
+  asMiddleware,
+  errorHandling,
+  pathPrefixGate,
+  withRequest,
+  type App,
+} from '@tillgate/http';
 import { GATEWAY_FACE_OVERRIDES, gatewayErrorCatalog } from '../src/http/openai-error-face';
 
-/** 测试壳挂生产同款错误面 */
-function withErrorFace<E extends AuthEnv>(app: Hono<E>): Hono<E> {
-  app.onError(errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
-  return app;
+/** 测试壳挂生产同款错误面 + body facade（keala：错误面为最外层中间件） */
+function withErrorFace(app: Keala): App {
+  app.use(errorHandling({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
+  app.use(createBodyParser());
+  return withRequest(app);
 }
 import { ServerDrainAbort, asServerDrainAbort } from '@tillgate/ai';
 import type { Inference, ChatDelivered } from '@tillgate/inference';
-import type { MiddlewareHandler } from 'hono';
 import {
   apiKeyMiddleware,
-  type AuthEnv,
   type AuthReadModel,
   type AuthContext,
 } from '../src/http/middleware/api-key';
@@ -91,9 +96,9 @@ function recordingGuard(lockedKeys: Set<string>): {
 }
 
 function oauthApp(guard: AuthFailureGuard) {
-  return withErrorFace(
-    new Hono<AuthEnv>().route(
-      '/oauth/token',
+  const shell = new Keala();
+  shell.mount(
+    '/oauth/token',
       oauthTokenRoutes({
         verifyAppClient: async ({ clientId, clientSecret }) =>
           clientId === 'app_0123456789abcdef' && clientSecret === 's'
@@ -106,8 +111,8 @@ function oauthApp(guard: AuthFailureGuard) {
         ipGuard: guard,
         trustedProxyHops: 0,
       }),
-    ),
   );
+  return withErrorFace(shell);
 }
 
 /** 记录型限流闸（RPM 放行；TPM 预占入参全记录） */
@@ -135,24 +140,26 @@ function recordingGate() {
 }
 
 function harness(inference: Inference, opts: { drainSignal?: AbortSignal } = {}) {
-  const app = withErrorFace(new Hono<AuthEnv>());
-  app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
-  app.use('/v1beta/*', apiKeyMiddleware(READER, undefined, JWT));
+  const shell = new Keala();
+  // 鉴权按 /v1 /v1beta 前缀门控（旧 Hono 路径作用域 use 的等价形态；oauth 挂载不带）
+  shell.use(
+    asMiddleware(pathPrefixGate(['/v1', '/v1beta'], apiKeyMiddleware(READER, undefined, JWT))),
+  );
   const routeDeps = {
     inference,
     ...(opts.drainSignal != null ? { drainSignal: opts.drainSignal } : {}),
   };
   for (const ep of inferenceEndpoints) {
-    app.route(ep.path, inferenceRoutes(routeDeps, ep));
+    shell.mount(ep.path, inferenceRoutes(routeDeps, ep));
   }
   const embeddings = defined(
     inferenceEndpoints.find((e) => e.path === '/v1/embeddings'),
     'embeddings endpoint',
   );
-  app.route('/v1/engines/:model', enginesAliasRoutes(routeDeps, embeddings));
-  app.route('/', geminiNativeRoutes(routeDeps));
-  app.route('/', generationRoutes(routeDeps));
-  app.route(
+  shell.mount('/v1/engines/:model', enginesAliasRoutes(routeDeps, embeddings));
+  shell.mount('/', geminiNativeRoutes(routeDeps));
+  shell.mount('/', generationRoutes(routeDeps));
+  shell.mount(
     '/oauth/token',
     oauthTokenRoutes({
       verifyAppClient: async ({ clientId, clientSecret }) =>
@@ -166,11 +173,11 @@ function harness(inference: Inference, opts: { drainSignal?: AbortSignal } = {})
       trustedProxyHops: 0,
     }),
   );
-  return app;
+  return withErrorFace(shell);
 }
 
 // 全部调用点都不传自定义 token（固定 sk_k），故不保留无人使用的第 4 参
-const post = (a: Hono<AuthEnv>, path: string, body: unknown) =>
+const post = (a: App, path: string, body: unknown) =>
   a.request(path, {
     method: 'POST',
     headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
@@ -314,7 +321,7 @@ describe('模型目录（三协议形状 + 白名单过滤 + 404 不泄漏）', 
     ],
   };
   function modelsApp(auth?: { allowedModels: string[] | null }) {
-    const app = withErrorFace(new Hono<AuthEnv>());
+    const shell = new Keala();
     if (auth != null) {
       const seed: AuthContext = {
         userId: 1,
@@ -326,13 +333,17 @@ describe('模型目录（三协议形状 + 白名单过滤 + 404 不泄漏）', 
         userRpmLimit: null,
         userTpmLimit: null,
       };
-      app.use('/v1/*', ((c, next) => {
-        c.set('auth', seed);
-        return next();
-      }) as MiddlewareHandler<AuthEnv>);
+      shell.use(
+        asMiddleware(
+          pathPrefixGate(['/v1'], (c, next) => {
+            c.state.auth = seed;
+            return next();
+          }),
+        ),
+      );
     }
-    app.route('/v1/models', modelsRoutes(reader));
-    return app;
+    shell.mount('/v1/models', modelsRoutes(reader));
+    return withErrorFace(shell);
   }
 
   it('OpenAI 形缺省 / anthropic-version / x-goog-api-key 三形状', async () => {
@@ -447,15 +458,18 @@ describe('oauth token（三形态 + 闭环）', () => {
       }),
     );
     // 替身 reader 只认 key——为闭环补 JWT reader
-    const jwtApp = withErrorFace(new Hono<AuthEnv>());
+    const jwtShell = new Keala();
+    const jwtApp = withErrorFace(jwtShell);
     const readerWithApp: AuthReadModel = {
       resolveKeyByHash: READER.resolveKeyByHash,
       resolveApp: async (appId) =>
         appId === 'app-1' ? { id: 5, userId: 42, scope: { rpm: 10 } } : null,
     };
-    jwtApp.use('/v1/*', apiKeyMiddleware(readerWithApp, undefined, JWT));
+    jwtShell.use(
+      asMiddleware(pathPrefixGate(['/v1'], apiKeyMiddleware(readerWithApp, undefined, JWT))),
+    );
     const chatEndpoint = defined(inferenceEndpoints[0], 'inferenceEndpoints[0]');
-    jwtApp.route(
+    jwtShell.mount(
       chatEndpoint.path,
       inferenceRoutes(
         {
@@ -533,9 +547,10 @@ describe('客户端取消信号贯通（c.req.raw.signal → ChatInput.signal）
         return { ok: true, status: 200, body: {} };
       },
     });
-    const app = withErrorFace(new Hono<AuthEnv>());
-    app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
-    app.route('/', modalityMultipartRoutes({ inference }, { bodyLimitBytes: 10 * 1024 * 1024 }));
+    const shell = new Keala();
+    shell.use(asMiddleware(pathPrefixGate(['/v1'], apiKeyMiddleware(READER, undefined, JWT))));
+    shell.mount('/', modalityMultipartRoutes({ inference }, { bodyLimitBytes: 10 * 1024 * 1024 }));
+    const app = withErrorFace(shell);
     const controller = new AbortController();
     const form = new FormData();
     form.append('model', 'img-x');
@@ -630,13 +645,16 @@ describe('TPM 预占口径（B8：含输出上界；B7：模态族豁免）', ()
 
   it('chat 端点预占 = 输入字节 + min(max_tokens×n, cap)（与 billing 敞口同式）', async () => {
     const { gate, calls } = recordingGate();
-    const app = withErrorFace(new Hono<AuthEnv>());
-    app.use('/v1/*', apiKeyMiddleware(LIMITED_READER, undefined, JWT));
+    const shell = new Keala();
+    shell.use(
+      asMiddleware(pathPrefixGate(['/v1'], apiKeyMiddleware(LIMITED_READER, undefined, JWT))),
+    );
+    const app = withErrorFace(shell);
     const chatEndpoint = defined(
       inferenceEndpoints.find((e) => e.path === '/v1/chat/completions'),
       'chat endpoint',
     );
-    app.route(
+    shell.mount(
       chatEndpoint.path,
       inferenceRoutes({ inference: stubInference(), rateLimit: gate }, chatEndpoint),
     );
@@ -652,9 +670,12 @@ describe('TPM 预占口径（B8：含输出上界；B7：模态族豁免）', ()
 
   it('multipart 模态族：RPM 照查、TPM 维豁免（按张/按秒计价——预占恒 0 的假口径移除）', async () => {
     const { gate, calls } = recordingGate();
-    const app = withErrorFace(new Hono<AuthEnv>());
-    app.use('/v1/*', apiKeyMiddleware(LIMITED_READER, undefined, JWT));
-    app.route('/', modalityMultipartRoutes({ inference: stubInference(), rateLimit: gate }));
+    const shell = new Keala();
+    shell.use(
+      asMiddleware(pathPrefixGate(['/v1'], apiKeyMiddleware(LIMITED_READER, undefined, JWT))),
+    );
+    shell.mount('/', modalityMultipartRoutes({ inference: stubInference(), rateLimit: gate }));
+    const app = withErrorFace(shell);
     const form = new FormData();
     form.append('model', 'img-x');
     form.append('prompt', 'a cat');
@@ -720,9 +741,10 @@ describe('multipart 族', () => {
         return { ok: true, status: 200, body: {} };
       },
     });
-    const app = withErrorFace(new Hono<AuthEnv>());
-    app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
-    app.route('/', modalityMultipartRoutes({ inference }, { bodyLimitBytes: 10 * 1024 * 1024 }));
+    const shell = new Keala();
+    shell.use(asMiddleware(pathPrefixGate(['/v1'], apiKeyMiddleware(READER, undefined, JWT))));
+    shell.mount('/', modalityMultipartRoutes({ inference }, { bodyLimitBytes: 10 * 1024 * 1024 }));
+    const app = withErrorFace(shell);
 
     const missing = await app.request('/v1/images/edits', {
       method: 'POST',

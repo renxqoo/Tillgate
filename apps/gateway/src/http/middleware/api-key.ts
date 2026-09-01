@@ -15,8 +15,14 @@ import type { RequestSummary } from './request-log.js';
  */
 import { createHash } from 'node:crypto';
 import { jwtVerify } from 'jose';
-import type { MiddlewareHandler } from 'hono';
-import { socketAddressFromContext, trustedClientIp, HttpErrors } from '@tillgate/http';
+import {
+  HttpErrors,
+  socketAddressFromContext,
+  trustedClientIp,
+  type ContextOf,
+  type ContextWithBody,
+  type Middleware,
+} from '@tillgate/http';
 import { getTracer, withAsyncSpan } from '@tillgate/observability';
 import type { AuthFailureGuard, GuardCheck, KeyBruteForceGuard } from '@tillgate/runtime';
 
@@ -36,18 +42,20 @@ export interface AuthContext {
   userTpmLimit: number | null;
 }
 
-export interface AuthEnv {
-  Variables: {
-    auth: AuthContext;
-    requestId: string;
-    /** 路由解析 body 后放入的请求摘要（request-log 消费——日志面不读 body） */
-    requestLogSummary?: RequestSummary;
-    /** 推理实际尝试次数（inference onAttempts 回调写入；request-log 落 attempts 列） */
-    inferenceAttempts?: number;
-    /** 尝试渠道轨迹（评估序渠道名，含被门拒绝的渠道；request-log 落 channels 列） */
-    inferenceChannels?: string[];
-  };
+/** 请求级变量（旧 Hono AuthEnv.Variables；requestId 由协议栈先置） */
+export interface GwState {
+  auth: AuthContext;
+  requestId: string;
+  /** 路由解析 body 后放入的请求摘要（request-log 消费——日志面不读 body） */
+  requestLogSummary?: RequestSummary;
+  /** 推理实际尝试次数（inference onAttempts 回调写入；request-log 落 attempts 列） */
+  inferenceAttempts?: number;
+  /** 尝试渠道轨迹（评估序渠道名，含被门拒绝的渠道；request-log 落 channels 列） */
+  inferenceChannels?: string[];
 }
+
+/** 网关统一上下文（对应旧 Hono AuthEnv）：协议栈已装 bodyParser——c.req facade 可用 */
+export type GwContext = ContextOf<GwState> & ContextWithBody;
 
 export interface AuthGuards {
   keyGuard: KeyBruteForceGuard;
@@ -87,7 +95,7 @@ interface GatewayJwtPayload {
   scope?: { rpm?: number; tpm?: number; models?: string[] };
 }
 
-type Context = Parameters<MiddlewareHandler<AuthEnv>>[0];
+
 
 const UNLOCKED: GuardCheck = { locked: false, retryAfterSec: 0 };
 
@@ -129,9 +137,9 @@ interface ApiKeyAuth {
   jwt: { secret: string; issuer: string; audience: string; keyPrefix: string };
 }
 
-function sourceIpOf(guards: AuthGuards, c: Context): string {
+function sourceIpOf(guards: AuthGuards, c: GwContext): string {
   return trustedClientIp({
-    headers: c.req.raw.headers,
+    headers: c.raw.headers,
     trustedProxyHops: guards.trustedProxyHops,
     socketAddress: socketAddressFromContext(c),
   });
@@ -218,15 +226,15 @@ export function apiKeyMiddleware(
   reader: AuthReadModel,
   guards: AuthGuards | undefined,
   jwt: { secret: string; issuer: string; audience: string; keyPrefix: string },
-): MiddlewareHandler<AuthEnv> {
+): Middleware<GwContext> {
   const deps: ApiKeyAuth = { reader, guards: guards ?? PASS_THROUGH_GUARDS, jwt };
   return async (c, next) => {
-    const header = c.req.header('authorization') ?? '';
+    const header = c.get('authorization') ?? '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
     // 分派：keyPrefix 打头 → 静态 Key；其余（含缺头空 token）→ JWT 形态判定。
     // 鉴权整段包 auth.api_key span（401 = ERROR + 异常记录，观察不吞错）
     const byKey = token.startsWith(jwt.keyPrefix);
-    const requestId = c.get('requestId');
+    const { requestId } = c.state;
     const auth = await withAsyncSpan(
       getTracer('gateway'),
       'auth.api_key',
@@ -239,7 +247,7 @@ export function apiKeyMiddleware(
           ? authByKey(deps, token, sourceIpOf(deps.guards, c))
           : authByJwt(deps, token, sourceIpOf(deps.guards, c)),
     );
-    c.set('auth', auth);
+    c.state.auth = auth;
     await next();
   };
 }

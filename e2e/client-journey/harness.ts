@@ -6,7 +6,7 @@
 import { createServer, type Server } from 'node:http';
 import { get } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { serve } from '@hono/node-server';
+import { startNodeServer } from 'keala/node';
 // e2e 非 workspace 成员——包名导入不可解析，统一相对源码导入
 //（app/packages 自身的 @tillgate/* 导入按其文件位置解析，不受影响）
 import { sql } from 'drizzle-orm';
@@ -349,7 +349,8 @@ export async function bootHarness(options: {
   await assembly.integrationReader.resolve().catch(() => {});
   const app = createClientApiApp(assembly.deps);
   await new Promise<void>((resolve) => {
-    serve({ fetch: app.fetch, port: options.appPort, hostname: '127.0.0.1' }, () => resolve());
+    startNodeServer(app, { port: options.appPort, hostname: '127.0.0.1' });
+    resolve();
   });
   return {
     app,

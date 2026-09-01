@@ -3,10 +3,9 @@
  * otel 中间件 no-op 安全性（off 模式不破坏请求链）。
  */
 import { describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
-import { createGatewayShutdown } from '../src/shutdown';
+import { Keala } from 'keala';
+import { asMiddleware, withRequest } from '@tillgate/http';import { createGatewayShutdown } from '../src/shutdown';
 import { otelMiddleware } from '../src/http/middleware/otel';
-import type { AuthEnv } from '../src/http/middleware/api-key';
 
 describe('createGatewayShutdown（gateway 绑定形状）', () => {
   it('宽限耗尽透传 drain 钩子（server_draining 生产者的停机侧接线）', async () => {
@@ -119,11 +118,12 @@ describe('otelMiddleware（off 模式 no-op）', () => {
   });
 
   it('请求链不破坏；探针路径直通', async () => {
-    const app = new Hono<AuthEnv>();
-    app.use('*', otelMiddleware());
+    const app = new Keala();
+    app.use(asMiddleware(otelMiddleware()));
     app.get('/healthz', (c) => c.json({ ok: true }));
     app.get('/v1/x', (c) => c.json({ ok: true }));
-    expect((await app.request('/healthz')).status).toBe(200);
-    expect((await app.request('/v1/x')).status).toBe(200);
+    const adapted = withRequest(app);
+    expect((await adapted.request('/healthz')).status).toBe(200);
+    expect((await adapted.request('/v1/x')).status).toBe(200);
   });
 });

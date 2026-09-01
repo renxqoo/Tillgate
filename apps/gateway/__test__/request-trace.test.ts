@@ -9,8 +9,8 @@
  *    客户端取消收口但不置 ERROR；流错误透传并置 ERROR。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
-import {
+import { Keala } from 'keala';
+import { asMiddleware, withRequest } from '@tillgate/http';import {
   context,
   getTracer,
   initOtel,
@@ -21,7 +21,6 @@ import {
 import { RequestTraceCoordinator, requestTraceStorage } from '../src/http/middleware/request-trace';
 import { otelMiddleware } from '../src/http/middleware/otel';
 import { otelTracePort } from '../src/adapters/trace-port';
-import type { AuthEnv } from '../src/http/middleware/api-key';
 import { defined } from './defined';
 
 let otel: ReturnType<typeof initOtel>;
@@ -92,10 +91,10 @@ async function probeBackgroundSettle(): Promise<void> {
 }
 
 function sseApp(handler: () => Response) {
-  const app = new Hono<AuthEnv>();
-  app.use('*', otelMiddleware());
+  const app = new Keala();
+  app.use(asMiddleware(otelMiddleware()));
   app.get('/v1/stream', () => handler());
-  return app;
+  return withRequest(app);
 }
 
 /** 带门闩收尾的 SSE 装配：体两块后关流，后台结算由 gate 控制放行 */

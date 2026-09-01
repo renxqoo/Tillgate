@@ -9,6 +9,7 @@ export {
   withRequest,
   routes,
   asMiddleware,
+  pathPrefixGate,
   type App,
   type Context,
   type ContextOf,

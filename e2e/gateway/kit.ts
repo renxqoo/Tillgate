@@ -13,7 +13,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
-import { serve, type ServerType } from '@hono/node-server';
+import { startNodeServer, type NodeServerHandle } from 'keala/node';
 import { sql } from 'drizzle-orm';
 import { closeDb, createDb, systemConfigs, type Db } from '@tillgate/db';
 import { createCipher } from '@tillgate/runtime';
@@ -231,7 +231,7 @@ export async function retargetUpstream(
 export interface E2EGateway {
   baseUrl: string;
   assembly: GatewayAssembly;
-  server: ServerType;
+  server: NodeServerHandle;
   stop(): Promise<void>;
 }
 
@@ -301,12 +301,9 @@ export async function startE2EGateway(
   });
   const assembly = await assembleGateway(config);
   const app = createGatewayApp(buildGatewayAppOptions(assembly, config));
-  const server = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });
-  await new Promise<void>((resolve) => {
-    server.once('listening', resolve);
-  });
-  const address = server.address();
-  const baseUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
+  const server = startNodeServer(app, { port: 0, hostname: '127.0.0.1' });
+  await server.ready();
+  const baseUrl = `http://127.0.0.1:${server.port}`;
   await awaitRedisReady(assembly.redis);
   return {
     baseUrl,
@@ -317,11 +314,8 @@ export async function startE2EGateway(
   };
 }
 
-async function stopE2EGateway(server: ServerType, assembly: GatewayAssembly): Promise<void> {
-  (server as unknown as { closeAllConnections?: () => void }).closeAllConnections?.();
-  await new Promise<void>((resolve) => {
-    server.close(() => resolve());
-  });
+async function stopE2EGateway(server: NodeServerHandle, assembly: GatewayAssembly): Promise<void> {
+  server.stop(true);
   // 乱序会在 quit 后触发在途写入（"Stream isn't writeable" 噪声）
   assembly.inference.close();
   await assembly.settleWake.close();

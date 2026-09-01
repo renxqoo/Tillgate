@@ -6,7 +6,7 @@
  * 产物可按 request.id 清理（dev 库只多 9 行诊断 span）。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { serve, type ServerType } from '@hono/node-server';
+import { startNodeServer, type NodeServerHandle } from 'keala/node';
 import { createDb, closeDb, ping } from '@tillgate/db';
 import { createObservability } from '@tillgate/observability';
 import { loadTraceReceiverConfig } from '../../apps/trace-receiver/src/config';
@@ -66,7 +66,7 @@ const externalUp = await fetch(`${RECEIVER}/readyz`, { signal: AbortSignal.timeo
   .then((r) => r.ok)
   .catch(() => false);
 
-let selfHosted: { server: ServerType; assembly: ReceiverAssembly } | undefined;
+let selfHosted: { server: NodeServerHandle; assembly: ReceiverAssembly } | undefined;
 if (!externalUp && process.env.DATABASE_URL != null) {
   const config = loadTraceReceiverConfig({
     DATABASE_URL: process.env.DATABASE_URL,
@@ -82,12 +82,9 @@ if (!externalUp && process.env.DATABASE_URL != null) {
     batcher: receiverAssembly.batcher,
   });
   receiverAssembly.batcher.start();
-  const server = serve({ fetch: receiverApp.fetch, port: 0, hostname: '127.0.0.1' });
-  await new Promise<void>((resolve) => {
-    server.once('listening', resolve);
-  });
-  const address = server.address();
-  const port = typeof address === 'object' && address ? address.port : 0;
+  const server = startNodeServer(receiverApp, { port: 0, hostname: '127.0.0.1' });
+  await server.ready();
+  const port = server.port;
   RECEIVER = `http://127.0.0.1:${port}`;
   selfHosted = { server, assembly: receiverAssembly };
 }
@@ -121,9 +118,7 @@ afterAll(async () => {
   await world.teardown();
   await closeDb(devDb);
   if (selfHosted != null) {
-    await new Promise<void>((resolve) => {
-      selfHosted?.server.close(() => resolve());
-    });
+    selfHosted.server.stop(true);
     await selfHosted.assembly.batcher.close();
     await selfHosted.assembly.otel.shutdown().catch(() => {});
     await closeDb(selfHosted.assembly.db);

@@ -5,8 +5,7 @@ import { requestSummaryOf } from '../middleware/request-log.js';
  * 翻译函数来自 @tillgate/ai gemini-chat 协议模块（与出站共用一套真相）；译为规范形
  * 后走 chat 管线（鉴权/白名单/计费/限流与所有端点完全一致）。
  */
-import { Hono, type Context } from 'hono';
-import { HttpErrors } from '@tillgate/http';
+import { HttpErrors, routes } from '@tillgate/http';
 import type { Inference } from '@tillgate/inference';
 import {
   admissionTokenUpperBound,
@@ -16,7 +15,7 @@ import {
   geminiRequestToChat,
   type OutputCapConfig,
 } from '@tillgate/inference';
-import type { AuthEnv } from '../middleware/api-key';
+import type { GwContext } from '../middleware/api-key';
 import { requestSignalOf, toInferenceInput } from './inference-input';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { encodeDelivered, sseResponse } from '../openai-envelope';
@@ -48,17 +47,17 @@ function canonicalGeminiBody(
 
 /** 入站解析（路径参数 + JSON 体 + 日志摘要）；不合法形态直接抛业务错 */
 async function readGeminiRequest(
-  c: Context<AuthEnv>,
+  c: GwContext,
 ): Promise<{ model: string; stream: boolean; raw: Record<string, unknown> }> {
-  const parsed = parseModelAction(c.req.param('modelAction'));
+  const parsed = parseModelAction((c.params?.['modelAction'] ?? ''));
   if (parsed == null) {
     throw HttpErrors.business('not_found', {
       detail: 'Path not found (supported: :generateContent / :streamGenerateContent)',
     });
   }
   const raw = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
-  const summary = requestSummaryOf(c.req.method, raw);
-  if (summary != null) c.set('requestLogSummary', summary);
+  const summary = requestSummaryOf(c.method, raw);
+  if (summary != null) c.state.requestLogSummary = summary;
   if (!raw) {
     throw GatewayErrors.business('invalid_body', {
       detail: 'Request body must be a JSON object',
@@ -87,12 +86,13 @@ export function geminiNativeRoutes(deps: {
   outputCap?: OutputCapConfig;
   /** 服务端 drain 信号（与客户端断连信号合成） */
   drainSignal?: AbortSignal;
-}): Hono<AuthEnv> {
-  return new Hono<AuthEnv>().post('/v1beta/models/:modelAction', async (c) => {
+}) {
+  const app = routes<GwContext>();
+  app.post('/v1beta/models/:modelAction', async (c) => {
     const { model, stream, raw } = await readGeminiRequest(c);
 
-    const auth = c.get('auth');
-    const requestId = c.get('requestId');
+    const { auth } = c.state;
+    const { requestId } = c.state;
     const canonical = canonicalGeminiBody(raw, model, stream);
 
     const admit = await admitRequest(deps.rateLimit, {
@@ -106,7 +106,7 @@ export function geminiNativeRoutes(deps: {
         auth,
         body: canonical,
         endpoint: 'chat',
-        signal: requestSignalOf(c.req.raw.signal, deps.drainSignal),
+        signal: requestSignalOf(c.raw.signal, deps.drainSignal),
       });
       const result = stream ? await deps.inference.stream(input) : await deps.inference.chat(input);
       if ('stream' in result && result.ok && result.status === 200) {
@@ -122,4 +122,5 @@ export function geminiNativeRoutes(deps: {
       throw error;
     }
   });
+  return app.router;
 }

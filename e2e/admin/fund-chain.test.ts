@@ -16,7 +16,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { serve, type ServerType } from '@hono/node-server';
+import { startNodeServer, type NodeServerHandle } from 'keala/node';
 import { sql } from 'drizzle-orm';
 import { closeDb } from '@tillgate/db';
 import { Decimal } from '@tillgate/billing';
@@ -131,12 +131,9 @@ describe.skipIf(!hasEnv)(
         ttlSec: 600,
       });
       const adminApp = createAdminApp(buildAdminAppOptions(adminAssembly, config));
-      adminServer = serve({ fetch: adminApp.fetch, port: 0, hostname: '127.0.0.1' });
-      await new Promise<void>((resolve) => {
-        adminServer?.once('listening', resolve);
-      });
-      const address = adminServer.address();
-      adminBase = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
+      adminServer = startNodeServer(adminApp, { port: 0, hostname: '127.0.0.1' });
+      await adminServer.ready();
+      adminBase = `http://127.0.0.1:${adminServer.port}`;
 
       const adminCall = async (
         path: string,
@@ -251,11 +248,7 @@ describe.skipIf(!hasEnv)(
     }, 180_000);
 
     afterAll(async () => {
-      if (adminServer != null) {
-        await new Promise<void>((resolve) => {
-          adminServer?.close(() => resolve());
-        });
-      }
+      adminServer?.stop(true);
       if (adminAssembly) await closeDb(adminAssembly.db);
       if (gateway) await gateway.stop();
       if (world) await world.teardown();

@@ -2,17 +2,26 @@
  * HTTP app（协议适配层）：错误信封收口 + 请求链 + 路由挂载。
  * 业务一律来自能力 facade——本层零业务规则（错误 face 映射是协议契约，不是规则）。
  * app 非 assembly 代码不引用 Db/DbTx/composition（架构测试机器锁定）。
+ *
+ * keala 无路径作用域 use：鉴权经各路由组 router.use 挂载域化；预认证链
+ * （/v1 /v1beta /oauth/token）经 pathGated 全局件按装配前缀表门控。
  */
-import { Hono } from 'hono';
+import { Keala, type Router } from 'keala';
 import {
+  asMiddleware,
+  pathPrefixGate,
+  bodyParser,
   bodyParserLimit,
   corsPreflight,
   dbBudgetMiddleware,
-  errorHandler,
-  securityHeaders,
+  errorHandling,
+  notFoundResponse,
   requestIdMiddleware,
-  HttpErrors,
+  securityHeaders,
+  withRequest,
+  type App,
   type DbBudgetOptions,
+  type Middleware,
 } from '@tillgate/http';
 import type { Inference } from '@tillgate/inference';
 import type { OutputCapConfig } from '@tillgate/inference';
@@ -21,9 +30,9 @@ import { otelMiddleware } from './http/middleware/otel';
 import { requestLogMiddleware } from './http/middleware/request-log';
 import {
   apiKeyMiddleware,
-  type AuthEnv,
   type AuthGuards,
   type AuthReadModel,
+  type GwContext,
 } from './http/middleware/api-key';
 import { preauthIpRateLimitMiddleware, type RateLimitGate } from './http/middleware/rate-limit';
 import { inferenceEndpoints } from './http/contracts/inference-endpoints';
@@ -41,9 +50,7 @@ export interface GatewayAppDeps {
   reader: AuthReadModel;
   models: ModelsReader;
   /** OAuth client_credentials 凭证校验（accounts verifyAppClient 装配绑定） */
-  verifyAppClient: Parameters<ReturnType<typeof oauthTokenRoutes>['post']>[0] extends never
-    ? never
-    : OAuthTokenDeps['verifyAppClient'];
+  verifyAppClient: OAuthTokenDeps['verifyAppClient'];
   requestLogs: RequestLogStore;
   /** Redis 探针（/readyz；缺省只探 db） */
   redisProbe?: { ping(): Promise<unknown> };
@@ -78,67 +85,42 @@ export interface GatewayAppDeps {
   logger?: { error(obj: unknown, msg: string): void };
 }
 
-/**
- * 预认证链挂载（顺序即契约）：
- * 1. per-IP 硬限——未认证洪水不经过任何鉴权维度限流，且每发都写 request_logs（写放大），
- *    故本闸挂日志之前：超限 429 直接出站、不写日志；/v1 与 /v1beta 双入口同一 IP 桶。
- * 2. requestLog——鉴权之前，401/429 也入日志（「记录一切 /v1 与 /v1beta 请求」语义）。
- */
-function mountPreauthChain(app: Hono<AuthEnv>, deps: GatewayAppDeps): void {
-  const gate = deps.rateLimit;
-  if (gate != null && gate.preauthIpRpm != null) {
-    const preauth = preauthIpRateLimitMiddleware({
-      limiter: gate.limiter,
-      maxPerMinute: gate.preauthIpRpm,
-      trustedProxyHops: deps.trustedProxyHops,
-    });
-    app.use('/v1/*', preauth);
-    app.use('/v1beta/*', preauth);
-    // /oauth/token 是第三个公网入口（不在 /v1 前缀下）：未认证洪水在 ipGuard 锁定
-    // 前每发都是一次 verifyAppClient DB 读 + 2 个 Redis 写——同闸覆盖
-    app.use('/oauth/token', preauth);
-  }
-  const requestLog = requestLogMiddleware({
-    store: deps.requestLogs,
-    ...(deps.logger != null ? { logger: deps.logger } : {}),
-    trustedProxyHops: deps.trustedProxyHops,
-  });
-  app.use('/v1/*', requestLog);
-  app.use('/v1beta/*', requestLog);
-}
-
-/** 推理路由族共用依赖束（装配字段条件展开收口一处） */
-function inferenceRouteDepsOf(deps: GatewayAppDeps) {
-  return {
-    inference: deps.inference,
-    ...(deps.rateLimit != null ? { rateLimit: deps.rateLimit } : {}),
-    ...(deps.outputCap != null ? { outputCap: deps.outputCap } : {}),
-    ...(deps.drainSignal != null ? { drainSignal: deps.drainSignal } : {}),
-  };
+/** 路由组挂载 + 鉴权域化（router.use 在该挂载域内先于 handler） */
+function mountAuthed(
+  app: Keala,
+  entry: { path: string; router: Router; auth: Middleware<GwContext> },
+): void {
+  entry.router.use(asMiddleware(entry.auth));
+  app.mount(entry.path, entry.router);
 }
 
 // eslint-disable-next-line max-lines-per-function -- HTTP 装配平铺：中间件链与路由挂载顺序即契约
-export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
-  const app = new Hono<AuthEnv>();
+export function createGatewayApp(deps: GatewayAppDeps): App {
+  const app = new Keala();
 
-  app.onError(
-    errorHandler({
+  // 错误响应由最外层中间件产生（keala onError 是日志监听器）——必须第一个注册
+  app.use(
+    errorHandling({
       catalog: gatewayErrorCatalog(),
       overrides: GATEWAY_FACE_OVERRIDES,
       ...(deps.logger != null ? { logger: deps.logger } : {}),
     }),
   );
 
-  app.notFound((c) => {
-    // /v1/ 前缀文案区分；统一 http.not_found 目录码
-    throw HttpErrors.business('not_found', {
-      path: c.req.path,
-      detail: c.req.path.startsWith('/v1/') ? 'path not found' : 'not found',
-    });
-  });
+  app.notFound((c) =>
+    // /v1/ 前缀文案区分；统一 http.not_found 目录码（keala notFound 在链外——直出信封）
+    notFoundResponse(
+      c,
+      { catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES },
+      {
+        path: c.path,
+        detail: c.path.startsWith('/v1/') ? 'path not found' : 'not found',
+      },
+    ),
+  );
 
+  const bodyLimitBytes = deps.bodyLimitBytes ?? 10 * 1024 * 1024;
   app.use(
-    '*',
     corsPreflight({
       origins: deps.corsOrigins ?? [],
       methods: ['GET', 'POST', 'OPTIONS'],
@@ -146,12 +128,13 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
       maxAgeSeconds: 86_400,
     }),
   );
-  app.use('*', securityHeaders);
-  app.use('*', bodyParserLimit(deps.bodyLimitBytes ?? 10 * 1024 * 1024));
-  if (deps.dbBudget != null) app.use('*', dbBudgetMiddleware(deps.dbBudget));
-  app.use('*', requestIdMiddleware());
+  app.use(securityHeaders);
+  app.use(bodyParserLimit(bodyLimitBytes));
+  app.use(bodyParser(bodyLimitBytes));
+  if (deps.dbBudget != null) app.use(dbBudgetMiddleware(deps.dbBudget));
+  app.use(asMiddleware(requestIdMiddleware()));
   // requestId 之后挂载：span 属性 request.id 依赖它；off 模式为 no-op
-  app.use('*', otelMiddleware());
+  app.use(asMiddleware(otelMiddleware()));
 
   app.get('/healthz', async (c) => {
     await deps.pingDb();
@@ -164,7 +147,53 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
     return c.json({ ok: true });
   });
 
-  mountPreauthChain(app, deps);
+  /**
+   * 预认证链挂载（顺序即契约；经 pathGated 门控——keala 全局件 + 装配前缀表）：
+   * 1. per-IP 硬限——未认证洪水不经过任何鉴权维度限流，且每发都写 request_logs（写放大），
+   *    故本闸挂日志之前：超限 429 直接出站、不写日志；/v1 与 /v1beta 双入口同一 IP 桶。
+   * 2. requestLog——鉴权之前，401/429 也入日志（「记录一切 /v1 与 /v1beta 请求」语义）。
+   */
+  const gate = deps.rateLimit;
+  if (gate != null && gate.preauthIpRpm != null) {
+    app.use(
+      asMiddleware(
+        pathPrefixGate(
+          ['/v1', '/v1beta'],
+          preauthIpRateLimitMiddleware({
+            limiter: gate.limiter,
+            maxPerMinute: gate.preauthIpRpm,
+            trustedProxyHops: deps.trustedProxyHops,
+          }),
+        ),
+      ),
+    );
+    // /oauth/token 是第三个公网入口（不在 /v1 前缀下）：未认证洪水在 ipGuard 锁定
+    // 前每发都是一次 verifyAppClient DB 读 + 2 个 Redis 写——同闸覆盖（精确路径门）
+    app.use(
+      asMiddleware(
+        pathPrefixGate(
+          ['/oauth/token'],
+          preauthIpRateLimitMiddleware({
+            limiter: gate.limiter,
+            maxPerMinute: gate.preauthIpRpm,
+            trustedProxyHops: deps.trustedProxyHops,
+          }),
+        ),
+      ),
+    );
+  }
+  app.use(
+    asMiddleware(
+      pathPrefixGate(
+        ['/v1', '/v1beta'],
+        requestLogMiddleware({
+          store: deps.requestLogs,
+          ...(deps.logger != null ? { logger: deps.logger } : {}),
+          trustedProxyHops: deps.trustedProxyHops,
+        }),
+      ),
+    ),
+  );
 
   const authMiddleware = () =>
     apiKeyMiddleware(deps.reader, deps.authGuards, {
@@ -174,16 +203,21 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
       keyPrefix: deps.oauth.keyPrefix,
     });
 
-  // 鉴权按已注册端点挂载（未注册路径 404 而非 401）
-  for (const path of ['/v1/models', '/v1/models/*']) {
-    app.use(path, authMiddleware());
-  }
-  app.route('/v1/models', modelsRoutes(deps.models));
+  // 鉴权按已注册端点挂载（router.use 域化＝旧路径作用域；未注册路径 404 而非 401）
+  mountAuthed(app, { path: '/v1/models', router: modelsRoutes(deps.models), auth: authMiddleware() });
 
-  const routeDeps = inferenceRouteDepsOf(deps);
+  const routeDeps = {
+    inference: deps.inference,
+    ...(deps.rateLimit != null ? { rateLimit: deps.rateLimit } : {}),
+    ...(deps.outputCap != null ? { outputCap: deps.outputCap } : {}),
+    ...(deps.drainSignal != null ? { drainSignal: deps.drainSignal } : {}),
+  };
   for (const endpoint of inferenceEndpoints) {
-    app.use(endpoint.path, authMiddleware());
-    app.route(endpoint.path, inferenceRoutes(routeDeps, endpoint));
+    mountAuthed(app, {
+      path: endpoint.path,
+      router: inferenceRoutes(routeDeps, endpoint),
+      auth: authMiddleware(),
+    });
   }
   // OpenAI legacy 引擎别名（pre-1.0 SDK 走 /v1/engines/:model/embeddings）
   const embeddings = inferenceEndpoints.find((e) => e.path === '/v1/embeddings');
@@ -191,18 +225,13 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
     // 端点注册表为冻结形状（architecture 快照锁定）；缺失即注册表漂移，启动 fail-fast
     throw new Error('inference endpoint registry missing /v1/embeddings');
   }
-  app.use('/v1/engines/:model/embeddings', authMiddleware());
-  app.route('/v1/engines/:model', enginesAliasRoutes(routeDeps, embeddings));
+  mountAuthed(app, { path: '/v1/engines/:model', router: enginesAliasRoutes(routeDeps, embeddings), auth: authMiddleware() });
   // Gemini 原生入口（/v1beta/models/:model:generateContent|streamGenerateContent）
-  app.use('/v1beta/models/:modelAction', authMiddleware());
-  app.route('/', geminiNativeRoutes(routeDeps));
+  mountAuthed(app, { path: '/', router: geminiNativeRoutes(routeDeps), auth: authMiddleware() });
   // 模态 multipart 族（同鉴权）
-  for (const path of ['/v1/images/edits', '/v1/audio/transcriptions', '/v1/audio/translations']) {
-    app.use(path, authMiddleware());
-  }
-  app.route(
-    '/',
-    modalityMultipartRoutes(routeDeps, {
+  mountAuthed(app, {
+    path: '/',
+    router: modalityMultipartRoutes(routeDeps, {
       ...(deps.uploadLimits != null
         ? {
             imageMime: deps.uploadLimits.imageMime,
@@ -210,22 +239,15 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
             maxFileBytes: deps.uploadLimits.maxFileBytes,
           }
         : {}),
-      bodyLimitBytes: deps.bodyLimitBytes ?? 10 * 1024 * 1024,
+      bodyLimitBytes,
     }),
-  );
+    auth: authMiddleware(),
+  });
   // 异步生成任务族（提交 + 查询，同鉴权）
-  for (const path of [
-    '/v1/video/generations',
-    '/v1/music/generations',
-    '/v1/videos/*',
-    '/v1/musics/*',
-  ]) {
-    app.use(path, authMiddleware());
-  }
-  app.route('/', generationRoutes(routeDeps));
+  mountAuthed(app, { path: '/', router: generationRoutes(routeDeps), auth: authMiddleware() });
 
   // /oauth/token（无鉴权——本身是取令牌端点；ipGuard 爆破锁定装配注入）
-  app.route(
+  app.mount(
     '/oauth/token',
     oauthTokenRoutes({
       verifyAppClient: deps.verifyAppClient,
@@ -238,5 +260,5 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
     }),
   );
 
-  return app;
+  return withRequest(app);
 }

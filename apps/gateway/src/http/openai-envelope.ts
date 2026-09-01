@@ -6,10 +6,9 @@
  *   ChatDelivered body+status     → JSON（codec 端点 200 时先编码回外部线格式）
  *   PassthroughDelivered          → {status, code, message} 原样出站（上游 4xx 透传，
  *                                  inference 已按线协议翻译）
- * x-request-id 显式带：raw Response 不走 Hono 的 c.header 合并路径，缺它则流式客户端
+ * x-request-id 显式带：raw Response 不经上下文头合并路径，缺它则流式客户端
  * 无法把账单/日志与本响应对齐（非流式 c.json 自动带）。
  */
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { ChatDelivered, PassthroughDelivered, StreamDelivered } from '@tillgate/inference';
 
 export type InferenceDelivered = ChatDelivered | StreamDelivered | PassthroughDelivered;
@@ -38,7 +37,7 @@ export interface EncodeDeps {
 }
 
 export async function encodeDelivered(
-  json: (body: unknown, status?: ContentfulStatusCode) => Response,
+  json: (body: unknown, status?: number) => Response,
   result: InferenceDelivered,
   deps: EncodeDeps,
 ): Promise<Response> {
@@ -60,14 +59,14 @@ export async function encodeDelivered(
     // 上游 4xx 原码 + 已翻译/脱敏的消息出站；code 走信封 message 位（线协议已由 inference 保持）
     return json(
       { error: { code: result.code, message: result.message ?? result.code } },
-      result.status as ContentfulStatusCode,
+      result.status as number,
     );
   }
   if ('body' in result) {
     if (deps.encodeResponse != null && result.status === 200) {
       return json(deps.encodeResponse(result.body) as Record<string, unknown>);
     }
-    return json(result.body, result.status as ContentfulStatusCode);
+    return json(result.body, result.status as number);
   }
   return json(
     { error: { code: 'gateway.invalid_body', message: 'unrecognized delivery shape' } },

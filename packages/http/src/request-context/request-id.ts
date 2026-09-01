@@ -14,7 +14,9 @@ import type { ContextOf, Middleware } from '../framework/keala';
 export function requestIdMiddleware(): Middleware<ContextOf<{ requestId: string }>> {
   return async (c, next) => {
     c.state.requestId = randomUUID();
-    await next();
+    // 响应头前置 staged：keala 洋葱错误向上抛（Hono compose 会转响应继续走洋葱），
+    // next 后置写在错误路径被跳过——staged 头随 finalize 合并进一切提交响应（含错误面）
     c.set('x-request-id', c.state.requestId);
+    await next();
   };
 }
