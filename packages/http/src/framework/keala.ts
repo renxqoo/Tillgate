@@ -10,14 +10,12 @@ import {
   type Application,
   type Context,
   type Middleware as KealaHandler,
+  type Next,
   type RequestBodyFacade,
 } from 'keala';
 
-/** keala Context 再导出（本仓库统一 import 路径） */
-export type { Context } from 'keala';
-
-/** 洋葱 next（与 keala 内部签名一致；keala 根入口未单列导出） */
-export type Next = () => Promise<void>;
+/** keala Context/Next 再导出（本仓库统一 import 路径；Next 自 0.6.1 起根导出） */
+export type { Context, Next } from 'keala';
 
 /** 中间件/处理器形态：(c, next)，返回 Response 即提交，void 透传洋葱 */
 export type Middleware<C extends Context = Context> = (
@@ -43,7 +41,8 @@ export function withRequest(app: Application): App {
       input instanceof Request
         ? input
         : new Request(new URL(String(input), 'http://localhost').toString(), init);
-    return Promise.resolve(app.handle(request));
+    // keala 0.6.0 起 handle() 恒 Promise<Response> 且不 reject
+    return app.handle(request);
   };
   return adapted;
 }

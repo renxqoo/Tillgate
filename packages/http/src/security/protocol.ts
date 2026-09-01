@@ -81,7 +81,10 @@ export function bodyParserLimit(maxBytes: number): Middleware {
       try {
         await readBodyLimited(c, maxBytes);
       } catch (error) {
-        if (isHttpError(error) && error.status === 413) throw payloadTooLargeError(maxBytes);
+        // 0.6.1 起 readBodyLimited 超限错误带 code=payload_too_large（DOGFOOD-R2 C4）
+        if (isHttpError(error) && error.code === 'payload_too_large') {
+          throw payloadTooLargeError(maxBytes);
+        }
         throw error;
       }
     }

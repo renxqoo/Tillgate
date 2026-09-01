@@ -34,7 +34,7 @@
     "@tillgate/observability": "workspace:*",
     "@tillgate/runtime": "workspace:*",
     "ioredis": "^6.0.0",
-    "keala": "^0.5.1",
+    "keala": "^0.6.1",
     "nodemailer": "^9.0.5",
     "zod": "^4.4.3"
   },

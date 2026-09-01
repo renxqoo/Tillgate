@@ -23,7 +23,7 @@
     "@tillgate/http": "workspace:*",
     "@tillgate/observability": "workspace:*",
     "@tillgate/runtime": "workspace:*",
-    "keala": "^0.5.1",
+    "keala": "^0.6.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -1,7 +1,7 @@
 # MIGRATION — Hono → keala API 对照与验收
 
 状态：**已核销**（2026-09-01）。行为规格基线 = main 分支既有测试（1541+ 用例）。
-基准结论：docs/benchmark-2026-09-01-hono-vs-keala.md。
+基准结论：docs/benchmark-2026-09-01-hono-vs-keala.md。升级 0.5.1 → 0.6.1 见 §7。
 
 ## 1. API 新旧对照表
 
@@ -71,7 +71,8 @@ catch (e) { ... }` 产生。`@tillgate/http` 的 `errorHandler(deps)` 重写为
 ## 5. 验收清单
 
 - [x] P1–P6 每阶段四门全绿（typecheck/lint 0-0/build/test）
-- [ ] 根四门：`bun run typecheck && bun run lint && bun run test && bun run build`
+- [x] 根四门：`bun run typecheck && bun run lint && bun run test && bun run build`
+      （0.5.1 迁移收口与 0.6.1 升级后各一轮全绿）
 - [x] e2e 默认门（gateway/security）：除 4 个 main 既有失败（§3 台账）外全绿；双形态进程冒烟通过
 - [x] 双形态冒烟：源码形态与 build 产物形态各起 gateway 进程，探针/鉴权/真请求/SIGTERM/对账（process-smoke ✓）
 - [x] `grep -r "from 'hono" apps packages` 零命中；hono 从全部 package.json 移除
@@ -85,3 +86,21 @@ catch (e) { ... }` 产生。`@tillgate/http` 的 `errorHandler(deps)` 重写为
 |---|---|
 | keala `validator`/`cors`/`etag`/`compress`/`sink`/`ws` 等未采用能力 | 不移植（D4）；后续单独评估 |
 | 重复 query 键数组形态 | 接受（§4-4）；如前端出现依赖单值语义的用例再收窄 |
+
+## 7. 升级记录：keala 0.5.1 → 0.6.1（2026-09-01）
+
+上游 0.6.x 消化了迁移复盘的部分发现（keala 仓 docs/DOGFOOD-R2.md 为裁决记录）。
+本仓适配面（全部生产路径无行为变化，仅错误判别从 message 正则改为机器可读 code）：
+
+| 上游变更 | 本仓动作 |
+|---|---|
+| `handle()` 恒 `Promise<Response>` 且不 reject（0.6.0，breaking） | `withRequest` 去掉冗余 `Promise.resolve` 包装；serve-app/e2e 装置签名本就兼容 |
+| `Next`/`RouteHandler` 根导出（0.6.1） | 适配层 `Next` 改为再导出 keala 定义（形状同为 `() => Promise<void>`），消除自有副本漂移风险 |
+| `HttpError.code` 字段 + body 错误带 `invalid_json`/`payload_too_large`（0.6.1） | `frameworkErrorResponse` 弃用 `/JSON/i` message 正则，改 `error.code` 匹配；`bodyParserLimit` 的 413 判别同步改 code；handler.test 合成错误用例改走 code 分支 |
+| `readBodyLimited` declared 长度快路径原生 `arrayBuffer()` 单发读（0.6.1） | 无代码动作；性能收益由基准复测确认（见基准报告 0.6.1 增量节） |
+| dev 链停滞警告（0.6.0 全局位 + 0.6.1 路由级位） | 无代码动作；开发环境中间件漏调 `next()` 的静默 404 陷阱（P0-1）自此有告警，生产/测试链路字节级不变 |
+| 提交后改写响应体剥离旧 content-length 等体描述头（r8 修复，随 0.6.1 发布） | 无代码动作；otel SSE 接力（`c.body = new Response(relay, committed)`）的 wire 一致性自此由框架保证 |
+
+上游否决/挂账项（与本仓分歧台账关系）：「json() 委托 raw.json()」被否决（拆 413
+预算）——§4-8 及微基准差距按此维持；路径作用域 `use(pattern, mw)`（§4-9）、请求流
+拦截点、注册面泛型、层数/内存平台 profile 均挂账上游，未落地前本仓适配层不变。

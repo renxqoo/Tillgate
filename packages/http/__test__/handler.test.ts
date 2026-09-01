@@ -114,11 +114,14 @@ describe('errorHandling：keala HttpError 4xx 保留状态码（不兜 500）', 
     );
   });
 
-  it('HttpError(400, Malformed JSON) → 走 invalid_json 分支', async () => {
+  it('HttpError(400, code=invalid_json) → 走 invalid_json 分支（0.6.1 机器可读 code 契约）', async () => {
     const a = new Keala();
     a.use(errorHandling());
     a.get('/x', () => {
-      throw createError(400, 'Malformed JSON in request body');
+      throw createError(400, 'request body is not valid JSON', {
+        expose: true,
+        code: 'invalid_json',
+      });
     });
     const res = await withRequest(a).request('/x');
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe(

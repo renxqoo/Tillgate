@@ -86,9 +86,10 @@ function translate(rawError: unknown, c: Context, deps: ErrorHandlerDeps): Respo
 }
 
 /**
- * 框架层 4xx 翻译：坏 JSON（createBodyParser facade 400 / 手写 JSON.parse 的
- * SyntaxError）→ invalid_json；其余 keala 4xx（body 预算 413 等）保留原状态码
- * 翻成统一信封，不兜 500。
+ * 框架层 4xx 翻译：坏 JSON（手写 JSON.parse 的 SyntaxError / keala body 错误的
+ * code=invalid_json）→ invalid_json；其余 keala 4xx（body 预算 413 等）保留原
+ * 状态码翻成统一信封，不兜 500。code 匹配是 keala 0.6.1 契约（DOGFOOD-R2 C4，
+ * 取代 message 正则）。
  */
 function frameworkErrorResponse(
   error: unknown,
@@ -96,9 +97,7 @@ function frameworkErrorResponse(
 ): Response | undefined {
   if (error instanceof SyntaxError) return render(HttpErrors.business('invalid_json'));
   if (!isHttpError(error) || error.status < 400 || error.status >= 500) return undefined;
-  if (error.status === 400 && /JSON/i.test(error.message)) {
-    return render(HttpErrors.business('invalid_json'));
-  }
+  if (error.code === 'invalid_json') return render(HttpErrors.business('invalid_json'));
   return render(
     HttpErrors.business(error.status === 413 ? 'payload_too_large' : 'invalid_request'),
     error.status,
