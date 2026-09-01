@@ -1,6 +1,7 @@
 # MIGRATION — Hono → keala API 对照与验收
 
-状态：**实施中**（2026-09-01）。行为规格基线 = main 分支既有测试（1541+ 用例）。
+状态：**已核销**（2026-09-01）。行为规格基线 = main 分支既有测试（1541+ 用例）。
+基准结论：docs/benchmark-2026-09-01-hono-vs-keala.md。
 
 ## 1. API 新旧对照表
 
@@ -74,7 +75,8 @@ catch (e) { ... }` 产生。`@tillgate/http` 的 `errorHandler(deps)` 重写为
 - [x] e2e 默认门（gateway/security）：除 4 个 main 既有失败（§3 台账）外全绿；双形态进程冒烟通过
 - [x] 双形态冒烟：源码形态与 build 产物形态各起 gateway 进程，探针/鉴权/真请求/SIGTERM/对账（process-smoke ✓）
 - [x] `grep -r "from 'hono" apps packages` 零命中；hono 从全部 package.json 移除
-- [ ] 基准报告产出（P8），结论覆盖 DESIGN §5 四项预算
+- [x] 基准报告产出（P8）：docs/benchmark-2026-09-01-hono-vs-keala.md（业务路径 +2.7% 平价偏优；
+      探针 −10%、body facade 微基准 −51.6% 已归因至 keala 上游可一行修复；饱和内存收敛平台 887MB）
 - [ ] 分歧台账 §4 与实现一致，无静默断言改动
 
 ## 6. 挂账
