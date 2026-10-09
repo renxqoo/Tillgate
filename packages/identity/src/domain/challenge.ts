@@ -1,6 +1,7 @@
 /**
  * 统一挑战纯函数层:码哈希(HMAC-SHA256 pepper)、码生成、参数覆盖界、payload 界、
- * 投递通道映射。一个抽象多种业务(登录码/注册验证/找回),机制对所有 kind 通用。
+ * 投递通道映射、投递失败诊断投影。一个抽象多种业务(登录码/注册验证/找回),
+ * 机制对所有 kind 通用。
  */
 import { createHmac, randomInt, randomUUID } from 'node:crypto';
 import { identityErrors } from './errors.js';
@@ -59,6 +60,29 @@ export function boundedOverride(
   }
   return value;
 }
+
+/**
+ * 投递异常诊断投影:投递失败对外统一收敛为 delivery_failed(不泄露通道细节),
+ * 但根因必须可运维排查——ETIMEDOUT(出网不可达)/EAUTH(凭据被拒)/
+ * 550(EENVELOPE,发件方被拒)三类的处置完全不同,只看 502 无法区分。
+ *
+ * 白名单逐字段取而非整包 dump:投递适配器的异常对象可能携带 auth 配置,
+ * 整包记录即等于把凭据写进日志。未知异常对象只回 message。
+ */
+export function deliveryErrorDetail(error: unknown): Record<string, unknown> {
+  if (typeof error !== 'object' || error == null) return { message: String(error) };
+  const src = error as Record<string, unknown>;
+  const detail: Record<string, unknown> = {};
+  for (const field of DELIVERY_ERROR_FIELDS) {
+    const value = src[field];
+    // 逐字段收窄为 string|number:异常对象由外部适配器构造,不得带对象/函数进日志
+    if (typeof value === 'string' || typeof value === 'number') detail[field] = value;
+  }
+  return detail;
+}
+
+/** 诊断投影白名单:传输层根因字段(不含任何凭据/信封收件人字段) */
+const DELIVERY_ERROR_FIELDS = ['code', 'responseCode', 'command', 'message'] as const;
 
 export const CHALLENGE_BOUNDS = {
   ttlMs: [1_000, 86_400_000],
