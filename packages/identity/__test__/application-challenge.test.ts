@@ -173,6 +173,90 @@ describe('challenges.begin 发码与投递', () => {
     ).rejects.toMatchObject({ code: 'identity.delivery_failed' });
     expect(warn).toHaveBeenCalled();
   });
+
+  it('投递失败改码前落日志:传输层根因(code/responseCode/message)可见,challengeId 定位', async () => {
+    // 回归:投递失败曾被裸吞改码成 delivery_failed——线上只剩无信息量的 502,
+    // 出网不可达(ETIMEDOUT)/凭据被拒(EAUTH)/发件方被拒(550)无从区分
+    const h = harness();
+    const warn = vi.fn();
+    const smtpError = Object.assign(new Error('Connection timed out'), {
+      code: 'ETIMEDOUT',
+      responseCode: 421,
+      command: 'CONN',
+    });
+    const api = createIdentity({
+      db: h.ctx.db,
+      txRetry: h.ctx.txRetry,
+      clock: h.ctx.clock,
+      logger: { warn },
+      config: TEST_CONFIG,
+      store: h.store,
+      mailer: {
+        sendLoginCode: async () => {
+          throw smtpError;
+        },
+        sendPasswordResetLink: async () => {
+          throw smtpError;
+        },
+        sendAdminInviteLink: async () => {
+          throw smtpError;
+        },
+      },
+    });
+    await expect(
+      api.challenges.begin({ kind: KIND, target: TARGET(8), delivery: { ip: 'ip' } }),
+    ).rejects.toMatchObject({ code: 'identity.delivery_failed' });
+    const delivery = warn.mock.calls.find((call) =>
+      String(call[1]).includes('challenge delivery failed'),
+    );
+    expect(delivery, '投递失败必须落一条 warn').toBeDefined();
+    const obj = delivery?.[0] as { err?: Record<string, unknown>; challengeId?: string };
+    expect(obj.err).toMatchObject({
+      code: 'ETIMEDOUT',
+      responseCode: 421,
+      command: 'CONN',
+      message: 'Connection timed out',
+    });
+    expect(obj.challengeId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('投递失败日志不带凭据:异常对象上的 auth/凭据字段不得进日志', async () => {
+    const h = harness();
+    const warn = vi.fn();
+    const leaky = Object.assign(new Error('smtp rejected'), {
+      code: 'EAUTH',
+      // 投递适配器异常可能挂着 auth 配置——白名单投影而非整包 dump
+      auth: { user: 'tillgate@163.com', pass: 'super-secret' },
+      command: 'AUTH',
+    });
+    const api = createIdentity({
+      db: h.ctx.db,
+      txRetry: h.ctx.txRetry,
+      clock: h.ctx.clock,
+      logger: { warn },
+      config: TEST_CONFIG,
+      store: h.store,
+      mailer: {
+        sendLoginCode: async () => {
+          throw leaky;
+        },
+        sendPasswordResetLink: async () => {
+          throw leaky;
+        },
+        sendAdminInviteLink: async () => {
+          throw leaky;
+        },
+      },
+    });
+    await expect(
+      api.challenges.begin({ kind: KIND, target: TARGET(9), delivery: { ip: 'ip' } }),
+    ).rejects.toMatchObject({ code: 'identity.delivery_failed' });
+    const serialized = JSON.stringify(warn.mock.calls);
+    expect(serialized).not.toContain('super-secret');
+    expect(serialized).not.toContain('auth');
+    // 根因仍在——白名单只排除凭据,不连诊断信息一起丢
+    expect(serialized).toContain('EAUTH');
+  });
 });
 
 describe('challenges.begin 目标寻址与 fail-closed', () => {

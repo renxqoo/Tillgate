@@ -15,6 +15,7 @@ import {
   randomCode,
   serializePayload,
   boundedOverride,
+  deliveryErrorDetail,
   CHALLENGE_BOUNDS,
   type DeliveryChannel,
 } from '../domain/challenge.js';
@@ -229,6 +230,14 @@ async function deliverLoginCode(
     // mailer 抛出的业务错误原样透传(undeliverable_challenge = fail-closed「未配置」
     // 信号,unavailable 类别出网 503)——裸吞改码成 delivery_failed 会把「未配置」
     // 漂移成「渠道坏流 502」(wire 契约分级,动态 mailer 路径回归)
+    //
+    // 传输层根因(ETIMEDOUT 出网不可达 / EAUTH 凭据被拒 / 550 发件方被拒)三类处置
+    // 完全不同,而改码后的 502 对运维不携带任何信息——投递失败必须在改码前落日志,
+    // 否则线上只剩一个无法定位的 502
+    ctx.logger.warn(
+      { err: deliveryErrorDetail(error), challengeId: args.challengeId, channel: args.channel },
+      'challenge delivery failed; challenge aborted and delivery_failed raised',
+    );
     if (isBusinessError(error)) throw error;
     throw identityErrors.business('delivery_failed', { kind: args.kind, channel: args.channel });
   }
