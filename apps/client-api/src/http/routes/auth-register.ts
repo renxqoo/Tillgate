@@ -21,6 +21,24 @@ interface RegisterPayload {
   pwd: string;
 }
 
+/**
+ * 邮件通道可用性闸（fail-closed）。
+ *
+ * 注册恒两步制，必发码。SMTP 未生效时不建挑战——identity 会在
+ * resolveDeliveryTarget 抛 undeliverable_challenge，但那发生在密码策略/邮箱占用
+ * 闸之后：弱密码先得 400 weak_password，已占邮箱走哑口径，用户看到的都不是
+ * 「邮件通道坏了」，真因不可见。此处前置为 two_factor_unavailable 让部署故障即时
+ * 可见，而不是让人静默走进收不到邮件的死胡同。
+ *
+ * 安全口径：SMTP 是否生效是**部署态**，与任何邮箱/用户无关；已占与未占邮箱得同款
+ * 响应，不构成注册状态枚举信号（0736ba8 的防枚举口径不因此开口）。
+ */
+function assertMailChannelReady(deps: AuthDeps): void {
+  if (!deps.smtpReady()) {
+    throw clientErrors.business('two_factor_unavailable');
+  }
+}
+
 // eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器平铺
 export function registerRoutes(deps: AuthDeps) {
   const app = new Hono<SessionEnv>();
@@ -31,6 +49,7 @@ export function registerRoutes(deps: AuthDeps) {
     if (!deps.capabilities().registerEnabled) {
       throw clientErrors.business('register_disabled');
     }
+    assertMailChannelReady(deps);
     let hits: number;
     try {
       hits = await deps.registerLimiter.hit(`register:${ip}`, deps.registerWindowSeconds);

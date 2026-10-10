@@ -104,7 +104,10 @@ function registerDepsOf(reader: IntegrationSettingsReader, captchaEnabled: boole
       ),
       emailCodeRequired: false,
     }),
-    smtpReady: () => false,
+    // 邮件通道就位：注册必发码，SMTP 未生效会被前置的 two_factor_unavailable 闸拦下。
+    // 本套件验证的是 captcha 停用闸（siteKey null → 闸门关闭），SMTP 闸不在关注面，
+    // 但必须为真否则前置闸先于 captcha 判定生效，断言测不到本意。
+    smtpReady: () => true,
     passwordPolicy: { minLength: 10, maxLength: 128 },
     sealer: {
       seal: (plain: string) => `sealed:${plain}`,
