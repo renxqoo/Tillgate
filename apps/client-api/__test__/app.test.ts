@@ -21,6 +21,8 @@ interface TestState {
   sentLinks: Array<{ to: string; url: string; ip: string }>;
   limiterHits: Map<string, number>;
   forceRegisterLimit: boolean;
+  /** SMTP 未生效旋钮（部署态——注册必发码，无邮件通道即不可服务） */
+  smtpDown: boolean;
   takenEmails: Set<string>;
   challenges: Map<string, Record<string, unknown>>;
   provisioned: Array<{ id: number; email: string | null }>;
@@ -51,6 +53,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
     registerHits: 0,
     limiterHits: new Map<string, number>(),
     forceRegisterLimit: false,
+    smtpDown: false,
     locked: { emailIp: false, ip: false },
     takenEmails: new Set(['taken@x.com']),
     usersByEmail: new Map<string, { id: number; status: number }>([
@@ -97,7 +100,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
     auth: {
       // 函数求值代理到可变状态——用例旋钮无需突变 readonly deps（capabilities 每请求求值）
       capabilities: () => state.capabilities,
-      smtpReady: () => true,
+      smtpReady: () => !state.smtpDown,
       passwordPolicy: { minLength: 10, maxLength: 128 },
       sealer: {
         seal: (p) => `sealed:${p}`,
@@ -988,6 +991,62 @@ describe('auth 两步制', () => {
     expect(res.status).toBe(403);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
       'client.register_disabled',
+    );
+  });
+
+  it('SMTP 未生效 503 two_factor_unavailable：邮件通道故障即时可见，不静默进验证码死胡同', async () => {
+    // 回归：SMTP 未生效时旧路径要等密码策略/邮箱占用闸之后才由 identity 抛
+    // undeliverable_challenge——用户看到的是密码错误或邮箱占用，真因不可见；
+    // 弱密码路径甚至会先得 400 weak_password。此闸前置为部署态错误。
+    const { app, state } = build();
+    state.smtpDown = true;
+    const res = await app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'a@x.com', password: 'password123' }),
+    });
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'client.two_factor_unavailable',
+    );
+    // 不建挑战（恒两步制下无邮件可发，建挑战即让出冷却位）
+    expect(state.challenges.size).toBe(0);
+  });
+
+  it('SMTP 未生效闸优先于密码策略：弱密码不得泄露为 400（否则弱密码探测面被开）', async () => {
+    // 闸序契约：邮件通道在前——避免「部署坏 + 弱密码」组合下用户看到的是密码
+    // 提示而非通道故障，且 SMTP 状态与密码强度相互独立不构成枚举信号。
+    const { app, state } = build();
+    state.smtpDown = true;
+    const res = await app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'a@x.com', password: 'short' }),
+    });
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'client.two_factor_unavailable',
+    );
+  });
+
+  it('SMTP 未生效闸不泄漏邮箱占用状态：已占与未占邮箱同款 503（不构成枚举信号）', async () => {
+    // taken@x.com 在 takenEmails 中（已占），a@x.com 未占——两者响应必须一致，
+    // 否则「503 / 非 503」即可区分注册状态，防枚举口径回退。
+    const { app, state } = build();
+    state.smtpDown = true;
+    const taken = await app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'taken@x.com', password: 'password123' }),
+    });
+    const free = await app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'a@x.com', password: 'password123' }),
+    });
+    expect(taken.status).toBe(free.status);
+    expect(((await taken.json()) as { error: { code: string } }).error.code).toBe(
+      ((await free.json()) as { error: { code: string } }).error.code,
     );
   });
 
