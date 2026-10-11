@@ -6,6 +6,19 @@ import { availableToSpend } from '../../../domain/wallet/exposure.js';
 import { overCollectCeiling } from './over-collect.js';
 import { Decimal } from '../../../domain/money.js';
 import { BILLING_REF_TYPE } from '../../wallet/authorize.js';
+import { DefectError } from '@tillgate/errors';
+
+/**
+ * #over 守卫失败家族：conditionalReserve 输家的 gate_unclassified /
+ * 可用不足类业务错——并发占用的可期形态（F1）。结构不变量（account_missing
+ * 等）与连接错误不算——那些上抛走失败处置。
+ */
+function isOverageGuardFailure(error: unknown): boolean {
+  if (error instanceof DefectError) {
+    return error.message.includes('gate_unclassified') || error.code === 'billing.wallet_invariant' && error.message.includes('authorize.');
+  }
+  return error instanceof Error && /insufficient|available/i.test(error.message);
+}
 import type { WalletStore, WalletTx } from '../../../ports/wallet-store.js';
 import type { WalletApi } from '../../wallet/wallet.js';
 import type {

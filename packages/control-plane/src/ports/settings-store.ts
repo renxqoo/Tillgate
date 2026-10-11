@@ -41,6 +41,14 @@ export interface SettingsStore {
     input: { limit: string; adminId: number | null },
   ): Promise<void>;
 
+  /** 校准配置读（未配置/值域异常 = null，消费方回落保守缺省关闭） */
+  readBillingCalibration(db: DbLike): Promise<import('@tillgate/billing').CalibrationConfig | null>;
+  /** 校准配置写（upsert system_configs['billing_calibration']） */
+  updateBillingCalibration(
+    db: DbLike,
+    input: { config: import('@tillgate/billing').CalibrationConfig; adminId: number | null },
+  ): Promise<void>;
+
   /** 平台币种读（未配置/值域异常 = null，消费方回落缺省 CNY） */
   readPlatformCurrency(db: DbLike): Promise<string | null>;
   /** 平台币种写（upsert system_configs['platform_currency']；写一次守卫在用例） */

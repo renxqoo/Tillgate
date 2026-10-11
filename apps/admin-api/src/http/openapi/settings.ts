@@ -37,6 +37,12 @@ const keyPathParam: OpenApiParam = {
 };
 
 const debitFloorDefaultSchema = z.object({ floor: z.string() });
+const billingCalibrationSchema = z.object({
+  enabled: z.boolean(),
+  windowMs: z.number(),
+  cacheRatio: z.number(),
+  userSide: z.boolean(),
+});
 const billingReservationSchema = z.object({
   mode: z.enum(['full', 'fixed']),
   amount: z.string().optional(),
@@ -111,6 +117,23 @@ export const settingsEndpoints = [
     summary: '单笔预估敞口上限写（预估超限即 402 reservation_limit_exceeded;正金额）',
     body: settingsContracts.billingReservationLimitUpdate,
     response: { schema: billingReservationLimitSchema },
+    errors: [400, 401, 403],
+  },
+  {
+    method: 'get',
+    path: '/v1/settings/billing-calibration',
+    tag: 'settings',
+    summary: '收据校准配置读（未配置 = 关闭;docs/calibrated-exposure-estimate.md §3.3）',
+    response: { schema: billingCalibrationSchema },
+    errors: [401, 403],
+  },
+  {
+    method: 'put',
+    path: '/v1/settings/billing-calibration',
+    tag: 'settings',
+    summary: '收据校准配置写（PUT 整替换;网关 TTL 拾取;user_side 需 enabled）',
+    body: settingsContracts.billingCalibrationUpdate,
+    response: { schema: billingCalibrationSchema },
     errors: [400, 401, 403],
   },
   {

@@ -7,10 +7,12 @@
 import { eq } from 'drizzle-orm';
 import { systemConfigs } from '@tillgate/db';
 import {
+  BILLING_CALIBRATION_KEY,
   BILLING_RESERVATION_LIMIT_KEY,
   BILLING_RESERVATION_POLICY_KEY,
   DEBIT_FLOOR_DEFAULT_KEY,
   PLATFORM_CURRENCY_KEY,
+  parseCalibrationSetting,
   parseDebitFloorDefault,
   parsePlatformCurrencySetting,
   parseReservationLimitSetting,
@@ -84,6 +86,15 @@ export const postgresSettingsStore: SettingsStore = {
     return parseReservationPolicySetting(row?.value);
   },
 
+  async readBillingCalibration(db) {
+    const row = await db.query.systemConfigs.findFirst({
+      where: eq(systemConfigs.key, BILLING_CALIBRATION_KEY),
+      columns: { value: true },
+    });
+    // 值域校验复用 billing 单一实现（垃圾 = 未配置语义回落关闭）
+    return parseCalibrationSetting(row?.value);
+  },
+
   async readBillingReservationLimit(db) {
     const row = await db.query.systemConfigs.findFirst({
       where: eq(systemConfigs.key, BILLING_RESERVATION_LIMIT_KEY),
@@ -130,6 +141,35 @@ export const postgresSettingsStore: SettingsStore = {
         target: systemConfigs.key,
         set: {
           value: { currency: input.currency },
+          updatedAt: new Date(),
+          updatedByAdminId: input.adminId,
+        },
+      });
+  },
+
+  async updateBillingCalibration(db, input) {
+    await db
+      .insert(systemConfigs)
+      .values({
+        key: BILLING_CALIBRATION_KEY,
+        // KV 值形态 = 蛇形四参数（与解析器单一真相对齐）
+        value: {
+          enabled: input.config.enabled,
+          window_ms: input.config.windowMs,
+          cache_ratio: input.config.cacheRatio,
+          user_side: input.config.userSide,
+        },
+        updatedByAdminId: input.adminId,
+      })
+      .onConflictDoUpdate({
+        target: systemConfigs.key,
+        set: {
+          value: {
+            enabled: input.config.enabled,
+            window_ms: input.config.windowMs,
+            cache_ratio: input.config.cacheRatio,
+            user_side: input.config.userSide,
+          },
           updatedAt: new Date(),
           updatedByAdminId: input.adminId,
         },

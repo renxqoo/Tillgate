@@ -307,6 +307,13 @@ export interface ControlPlane {
       read(): Promise<{ limit: string }>;
       update(input: UpdateBillingReservationLimitInput): Promise<{ limit: string }>;
     };
+    /** 收据校准配置（system_configs['billing_calibration']；docs/calibrated-exposure-estimate.md §3.3） */
+    billingCalibration: {
+      read(): Promise<{ config: import('@tillgate/billing').CalibrationConfig }>;
+      update(
+        input: import('./application/settings/update-billing-calibration').UpdateBillingCalibrationInput,
+      ): Promise<{ config: import('@tillgate/billing').CalibrationConfig }>;
+    };
     /** 平台币种（写一次——处女系统才可改；各 app 启动读） */
     platformCurrency: {
       read(): Promise<{ currency: string }>;
