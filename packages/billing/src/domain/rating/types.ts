@@ -188,10 +188,10 @@ export interface BillingQuote {
   calibration?: {
     mappingId: number;
     prefixHash: string;
-    channelId: number;
-    inputTokens: number;
+    channelId: number | null;
+    inputTokens: number | null;
     messagesLen: number;
     prefixBytes: number;
-    cacheRatio: number;
+    cacheRatio: number | null;
   };
 }

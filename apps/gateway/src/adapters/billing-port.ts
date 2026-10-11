@@ -97,6 +97,10 @@ function toQuoteCandidate(c: QuoteCandidate, inputTokenUpperBound: number): Bill
     ...(c.unitPrice != null ? { unitPrice: c.unitPrice } : {}),
     coefficient: c.coefficient,
     inputTokenUpperBound,
+    // 校准界透传（user_side 冻结收缩用；B2 不消费——I0）
+    ...(c.calibratedInputTokenUpperBound != null
+      ? { calibratedInputTokenUpperBound: c.calibratedInputTokenUpperBound }
+      : {}),
     pricingUnit: c.pricingUnit,
     unitUpperBound: c.unitUpperBound,
     billingPolicyFingerprint: c.billingPolicyFingerprint,
@@ -109,11 +113,13 @@ function toQuote(input: {
   maxOutputTokens: number;
   inputTokenUpperBound: number;
   candidates: readonly QuoteCandidate[];
+  calibration?: Parameters<BillingPort['authorize']>[0]['calibration'];
 }): BillingQuote {
   return {
     maxOutputTokens: input.maxOutputTokens,
     candidates: input.candidates.map((c) => toQuoteCandidate(c, input.inputTokenUpperBound)),
     ...(input.candidates.every(allPricesZero) ? { explicitlyFree: true } : {}),
+    ...(input.calibration != null ? { calibration: input.calibration } : {}),
   };
 }
 
@@ -210,6 +216,13 @@ function calibratedExposureOf(
 ): string | null {
   const { calibration, candidate: c } = input;
   if (calibration == null) return null;
+  if (
+    calibration.channelId == null ||
+    calibration.inputTokens == null ||
+    calibration.cacheRatio == null
+  ) {
+    return null; // 前缀事实-only 快照（未命中）→ 保守
+  }
   if (input.channelId !== calibration.channelId) return null; // 渠道不匹配 → 保守
   const bound = c.calibratedInputTokenUpperBound;
   if (bound == null) return null; // 候选未盖章（未命中/非主候选）→ 保守

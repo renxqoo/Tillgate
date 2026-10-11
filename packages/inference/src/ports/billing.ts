@@ -23,6 +23,8 @@ export interface BillingPort {
     inputTokenUpperBound: number;
     maxOutputTokens: number;
     authorizationTtlMs: number;
+    /** 校准快照（前缀事实随 quote 落库——结算写入消费；命中值读侧消费） */
+    calibration?: QuoteCalibrationSnapshot;
   }): Promise<void>;
 
   /**

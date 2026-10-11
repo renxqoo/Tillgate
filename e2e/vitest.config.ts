@@ -16,6 +16,9 @@ export default defineConfig({
 
     root: __dirname,
     include: ['gateway/*.test.ts', 'security/*.test.ts'],
+    // workspace 依赖（@tillgate/billing 等）经 development 条件直连源码——
+    // 测试不经构建产物（apps/gateway 单测同款；否则 dist 陈旧导致行为漂移）
+    resolve: { conditions: ['development'] },
     // *.real.test.ts（真上游，花钱）不进默认门禁——显式 -c vitest.real.config.ts 运行
     exclude: ['**/node_modules/**', '**/*.real.test.ts'],
     environment: 'node',

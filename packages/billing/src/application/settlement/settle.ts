@@ -93,9 +93,9 @@ function invariant(code: string): DefectError {
 
 /**
  * 结算侧组装校准写入输入（docs §3.1 写侧 + §2.2 C7）：
- * quote.calibration（授权快照）+ 收据实测 inputTokens/channelId/usage 键。
- * C7b 物理下限（seen ≥ prefixBytes/4）在 inference 纯函数判定——billing 侧
- * 不重复推导，仅采集事实经 port 判定（单一真相在 inference/calibration.ts）。
+ * quote.calibration 的**前缀事实**（守卫通过即携带——冷启动闭环：写入不依赖
+ * 本请求命中）+ 收据实测 inputTokens/channelId。C7b 物理下限（seen ≥
+ * prefixBytes/4）镜像判定（语义单源注释互指 inference/calibration.ts）。
  * 返回 null = 不写（非 chat 族/估算收据/零钳制失败均在上游已排除）。
  */
 function calibrationWriteOf(
@@ -111,6 +111,8 @@ function calibrationWriteOf(
     messagesLen?: unknown;
     prefixBytes?: unknown;
   };
+  // 写入键 = 前缀事实（messagesLen=本请求全链长、hash=本请求全链哈希）——
+  // 下一笔同前缀在此处匹配；C7b 用同前缀字节。
   const { channelId = null } = receipt;
   const { inputTokens } = receipt.usage;
   if (

@@ -113,9 +113,10 @@ describe('quote 校准集成（读侧）', () => {
       mappingId: 13,
       channelId: 8,
       inputTokens: 40_000,
-      messagesLen: 2,
       cacheRatio: 0.9,
     });
+    // 前缀事实 = 本请求全链（messagesLen=4——结算写入键；命中匹配在记录 messagesLen=2 处）
+    expect(p.calibrationSnapshot!.messagesLen).toBe(4);
     expect(typeof p.calibrationSnapshot!.prefixHash).toBe('string');
     expect(p.calibrationSnapshot!.prefixHash.length).toBe(64);
   });
@@ -188,6 +189,7 @@ describe('quote 校准集成（读侧）', () => {
       calibration: { lookup: lookupWith([recordForTurn1()]), config: CONFIG },
     });
     expect(p.calibration).toEqual({ hit: false, missReason: 'no_record' });
+    expect(p.calibrationSnapshot).not.toBeNull(); // 前缀事实保留（结算写入键）
     for (const c of p.candidates) {
       expect(c.calibratedInputTokenUpperBound).toBeUndefined();
     }
@@ -225,7 +227,13 @@ describe('quote 校准集成（读侧）', () => {
       },
     });
     expect(p.calibration).toEqual({ hit: false, missReason: 'no_record' });
-    expect(p.calibrationSnapshot).toBeNull();
+    // 前缀事实保留（冷启动闭环：写入不依赖读成功）；命中值空
+    expect(p.calibrationSnapshot).toMatchObject({
+      mappingId: 13,
+      channelId: null,
+      inputTokens: null,
+      cacheRatio: null,
+    });
   });
 
   it('fallback 候选不盖章（仅 mappingId 匹配的主候选）', async () => {

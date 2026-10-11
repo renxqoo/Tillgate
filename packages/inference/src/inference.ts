@@ -148,7 +148,18 @@ async function prepareWithSpan(
         ...(args.input.endpoint != null ? { endpoint: args.input.endpoint } : {}),
         ...(calibration != null ? { calibration } : {}),
       });
-      span.setAttributes({ 'quote.candidates': p.candidates.length });
+      span.setAttributes({
+        'quote.candidates': p.candidates.length,
+        // 校准观测（docs §3.4）：命中/seen/授权时 miss 原因
+        ...(p.calibration != null
+          ? p.calibration.hit
+            ? { 'calibration.hit': true, 'calibration.seen': p.calibration.seen }
+            : {
+                'calibration.hit': false,
+                'calibration.authz_miss_reason': p.calibration.missReason,
+              }
+          : {}),
+      });
       return p;
     },
   );
@@ -177,6 +188,9 @@ async function authorizeWithSpan(
         inputTokenUpperBound: args.prepared.inputUpperBound,
         maxOutputTokens: args.prepared.outputCap,
         authorizationTtlMs: deps.defaults.authorization.ttlMs,
+        ...(args.prepared.calibrationSnapshot != null
+          ? { calibration: args.prepared.calibrationSnapshot }
+          : {}),
       }),
   );
 }

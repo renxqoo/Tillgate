@@ -53,11 +53,19 @@ export function createBillingCalibrationReader(
   };
 }
 
-/** 校准记录查询桥（billing facade → inference CalibrationLookup 端口形状） */
-export function createCalibrationLookup(store: CalibrationStore): CalibrationLookup {
+/** 读句柄（postgres billing store 的 read 面——与 billingFacade 读路径同款） */
+export interface CalibrationReadHandle {
+  read<T>(fn: (conn: unknown) => Promise<T>): Promise<T>;
+}
+
+/** 校准记录查询桥（billing store → inference CalibrationLookup 端口形状） */
+export function createCalibrationLookup(
+  handle: CalibrationReadHandle,
+  store: CalibrationStore,
+): CalibrationLookup {
   return {
     async findRecent(input) {
-      const rows = await store.findRecent(undefined as never, input);
+      const rows = await handle.read((conn) => store.findRecent(conn as never, input));
       return rows.map((r) => ({
         prefixHash: r.prefixHash,
         channelId: r.channelId,

@@ -51,18 +51,24 @@ export interface PreparedRequest {
   calibrationSnapshot: QuoteCalibrationSnapshot | null;
 }
 
-/** quote.calibration 快照（docs §3.2a——授权/预留/结算三处消费同一快照） */
+/**
+ * quote.calibration 快照（docs §3.2a——授权/预留/结算三处消费同一快照）。
+ * 冷启动闭环修正：前缀事实（hash/len/bytes）在守卫通过时**始终**携带——
+ * 结算写入不依赖「本请求命中」（否则无人命中→无人写记录→永远无人命中）；
+ * channelId/inputTokens/cacheRatio 仅命中时有值（读侧消费）。
+ */
 export interface QuoteCalibrationSnapshot {
   mappingId: number;
   prefixHash: string;
-  channelId: number;
-  /** 上一笔实测 inputTokens（seen） */
-  inputTokens: number;
+  /** 命中才有：校准记录渠道（金额分段与 B4 二级上界的渠道匹配键） */
+  channelId: number | null;
+  /** 命中才有：上一笔实测 inputTokens（seen） */
+  inputTokens: number | null;
   messagesLen: number;
   /** C7b 写入守卫基准（前缀规范化字节长） */
   prefixBytes: number;
-  /** 生效值快照（v3-R5：授权/预留/结算同值） */
-  cacheRatio: number;
+  /** 命中才有：生效值快照（v3-R5：授权/预留/结算同值） */
+  cacheRatio: number | null;
 }
 
 export async function prepareChatRequest(env: {
@@ -170,13 +176,20 @@ async function resolveQuoteCalibration(
     return { candidates: input.candidates, resolution: { hit: false, missReason: 'disabled' }, snapshot: null };
   }
   const chain = buildMessageHashChain({ body: input.body });
-  if (chain == null) {
-    return { candidates: input.candidates, resolution: { hit: false, missReason: 'guard' }, snapshot: null };
-  }
   const primary = input.candidates[0];
-  if (primary == null) {
+  if (chain == null || primary == null) {
     return { candidates: input.candidates, resolution: { hit: false, missReason: 'guard' }, snapshot: null };
   }
+  // 前缀事实（冷启动闭环：无论命中与否都携带——结算写入的输入）
+  const baseSnapshot: QuoteCalibrationSnapshot = {
+    mappingId: primary.mappingId,
+    prefixHash: chain.chainAt(chain.messageHashes.length),
+    channelId: null,
+    inputTokens: null,
+    messagesLen: chain.messageHashes.length,
+    prefixBytes: prefixBytesOf(input.body),
+    cacheRatio: null,
+  };
   let records;
   try {
     records = await calibration.lookup.findRecent({
@@ -185,8 +198,12 @@ async function resolveQuoteCalibration(
       limit: calibration.config.recentLimit,
     });
   } catch {
-    // 存储抖动：回落保守（安全方向）——不阻断请求
-    return { candidates: input.candidates, resolution: { hit: false, missReason: 'no_record' }, snapshot: null };
+    // 存储抖动：回落保守（安全方向）——不阻断请求（前缀事实保留：写入不受读失败影响）
+    return {
+      candidates: input.candidates,
+      resolution: { hit: false, missReason: 'no_record' },
+      snapshot: baseSnapshot,
+    };
   }
   const resolution = resolveCalibration({
     config: {
@@ -199,7 +216,7 @@ async function resolveQuoteCalibration(
     now: input.now,
   });
   if (!resolution.hit) {
-    return { candidates: input.candidates, resolution, snapshot: null };
+    return { candidates: input.candidates, resolution, snapshot: baseSnapshot };
   }
   // 尾部字节界：只对新增尾部消息算保守界（已见部分用实测 seen）
   const tailTokens = tailUpperBound(input.body, resolution.messagesLen);
@@ -207,17 +224,13 @@ async function resolveQuoteCalibration(
   const stamped = input.candidates.map((c) =>
     c.mappingId === primary.mappingId ? { ...c, calibratedInputTokenUpperBound: calibratedBound } : c,
   );
-  const prefixBytes = prefixBytesOf(input.body);
   return {
     candidates: stamped,
     resolution,
     snapshot: {
-      mappingId: primary.mappingId,
-      prefixHash: resolution.prefixHash,
+      ...baseSnapshot,
       channelId: resolution.channelId,
       inputTokens: resolution.seen,
-      messagesLen: resolution.messagesLen,
-      prefixBytes,
       cacheRatio: calibration.config.cacheRatio,
     },
   };

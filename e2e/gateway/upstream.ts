@@ -15,6 +15,7 @@ export type UpstreamScript =
   | 'auto' // 缺省：按请求体 stream 字段分流（并发混合负载用——无共享可变脚本竞态）
   | 'nonstream-usage' // JSON 200 + usage{10,5}（n>1 时回 n choices）
   | 'nonstream-huge-usage' // usage{1000,100000}——fixed 超额补扣向量
+  | 'nonstream-calibration' // usage 由校准 e2e 用例设置（usageOverride 旋钮——命中/超额/超保守三向量共用）
   | 'nonstream-reject' // 400 错误体——上游拒绝向量（网关出 502）
   | 'nonstream-slow-body' // 响应头先到、体分片慢发——非流式断连向量（⑦）
   | 'stream-usage' // SSE：增量帧（累计 usage）+ 终帧 + DONE
@@ -49,6 +50,8 @@ export interface MockUpstream {
   frameGapMs: number;
   /** rate-limit 脚本的 Retry-After 秒数（0 = 不发头——冷却时长完全由策略参数决定的观测向量） */
   rateLimitRetryAfterSec: number;
+  /** nonstream-calibration 脚本的 usage 覆盖（prompt/completion token——缺省 {50593,185}） */
+  calibrationUsage: { promptTokens: number; completionTokens: number };
   recorded: RecordedRequest[];
   /** 鉴权被拒的 Bearer 明文序列（401 请求不进 recorded——死凭据向量的渠道命中计数） */
   rejectedAuth: string[];
@@ -281,6 +284,11 @@ function runScript(script: Exclude<UpstreamScript, 'auto'>, ctx: RespondContext)
       ctx.res.end(nonstreamBody('x', 1, USAGE_HUGE));
       return;
     }
+    case 'nonstream-calibration': {
+      ctx.res.writeHead(200, { 'content-type': 'application/json' });
+      ctx.res.end(nonstreamBody('ok', 1, ctx.state.calibrationUsage));
+      return;
+    }
     case 'nonstream-reject': {
       ctx.res.writeHead(400, { 'content-type': 'application/json' });
       ctx.res.end(
@@ -391,6 +399,7 @@ export function startMockUpstream(): MockUpstream {
   const state: MockUpstream = {
     url: '',
     script: 'auto',
+    calibrationUsage: { promptTokens: 50_593, completionTokens: 185 },
     delayMs: 0,
     frameGapMs: 0,
     rateLimitRetryAfterSec: 3,

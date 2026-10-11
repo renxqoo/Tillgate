@@ -256,7 +256,7 @@ export async function assembleGateway(config: GatewayConfig): Promise<GatewayAss
     calibration: () =>
       resolveCalibrationContext({
         reader: calibrationReader,
-        lookup: createCalibrationLookup(billingStore.calibrationStore),
+        lookup: createCalibrationLookup(billingStore, billingStore.calibrationStore),
       }),
     stickyStore: createRedisStickyStore(redis),
     catalog: createPostgresGatewayCatalog(db, {
