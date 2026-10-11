@@ -14,9 +14,12 @@ import { Decimal } from '@tillgate/billing';
 import { createCipher } from '@tillgate/runtime';
 import {
   defined,
+  E2E_CACHE_INPUT_PRICE,
   E2E_ENCRYPTION_KEY,
   E2EKeys,
+  E2E_INPUT_PRICE,
   E2E_MODEL,
+  E2E_OUTPUT_PRICE,
   E2E_REAL_MODEL,
   e2ePost,
   setupE2EWorld,
@@ -151,8 +154,9 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
       input_tokens: string;
       amount: string;
       real_model: string;
+      upstream_cost: string;
     }>(
-      sql`select input_tokens::text, amount::text, real_model from usage_logs where user_id = ${userId}`,
+      sql`select input_tokens::text, amount::text, real_model, upstream_cost::text from usage_logs where user_id = ${userId}`,
     );
     expect(usage.length).toBe(1); // worker 写的计量行
     expect(defined(usage[0], 'usage row').real_model).toBe(E2E_REAL_MODEL);
@@ -166,7 +170,9 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
     ).toBe(true);
     expect(new Decimal(walletState.inFlight).eq('0')).toBe(true);
 
-    // 渠道进货额度被 worker 的结算扣减（upstreamCost 口径）
+    // 渠道进货额度被 worker 的结算扣减（upstreamCost 口径）。
+    // 成本轴口径：delta 必须等于落账 upstream_cost（种子已配成本轴，见 kit.ts），
+    // 且严格小于用户实扣（转售比 < 1，两条账轴可判别）。
     await waitFor(
       async () => {
         const budgetAfter = await world.db.execute<{ budget: string }>(
@@ -174,11 +180,79 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
         );
         const budgetBeforeRow = defined(budgetBefore[0], 'budget before');
         const budgetAfterRow = defined(budgetAfter[0], 'budget after');
-        return new Decimal(budgetBeforeRow.budget).gt(budgetAfterRow.budget);
+        const delta = new Decimal(budgetBeforeRow.budget).minus(budgetAfterRow.budget);
+        return delta.gt(0) && delta.eq(defined(usage[0], 'usage row').upstream_cost);
       },
       10_000,
       '渠道预算扣减',
     );
+    expect(
+      new Decimal(defined(usage[0], 'usage row').upstream_cost).lt(
+        new Decimal(defined(usage[0], 'usage row').amount),
+      ),
+    ).toBe(true); // 成本轴 < 用户价轴（零成本口径/继承用户价口径都会让这条失去判别力）
+  }, 60_000);
+
+  it('⑯a-负例：绑定未配成本轴 → upstream_cost 落 0、渠道预算不动（未配置=零成本语义锁）', async () => {
+    const { world, gateway, worker, keys } = w();
+    const FUND = '1';
+    const { raw, userId } = await keys.issue(FUND);
+    const stamp = Date.now().toString(36);
+    // 同价用户轴、零成本轴（不 insert cost_* 列）的独立绑定——不污染主种子
+    const provider = await world.db.execute<{ id: number }>(sql`
+      insert into providers (name, base_url, protocol, vendor)
+      values (${`e2e-br-nc-${stamp}`}, ${world.upstream.url}, 'openai-compatible', 'openai') returning id`);
+    const mapping = await world.db.execute<{ id: number; external_name: string }>(sql`
+      insert into model_mappings (external_name, real_model, input_price, output_price, cache_input_price)
+      values (${`e2e-br-ncm-${stamp}`}, ${E2E_REAL_MODEL}, ${E2E_INPUT_PRICE}, ${E2E_OUTPUT_PRICE}, ${E2E_CACHE_INPUT_PRICE})
+      returning id, external_name`);
+    const channel = await world.db.execute<{ id: number }>(sql`
+      insert into channels (provider_id, name, api_key_enc, rpm_limit, upstream_budget)
+      values (${provider[0]!.id}, ${`e2e-nc-ch-${stamp}`}, 'placeholder', 10000, '1000') returning id`);
+    // 主种子渠道的密钥已加密落库——新渠道复用同一密文（同一 mock 上游）
+    const seedKey = await world.db.execute<{ key: string }>(
+      sql`select api_key_enc as key from channels where id = ${world.seed.channelId}`,
+    );
+    await world.db.execute(sql`
+      update channels set api_key_enc = ${defined(seedKey[0], 'seed key').key} where id = ${channel[0]!.id}`);
+    await world.db.execute(sql`
+      insert into model_channels (mapping_id, channel_id, upstream_model)
+      values (${mapping[0]!.id}, ${channel[0]!.id}, ${E2E_REAL_MODEL})`);
+    const budgetBefore = await world.db.execute<{ budget: string }>(
+      sql`select upstream_budget::text as budget from channels where id = ${channel[0]!.id}`,
+    );
+
+    const res = await e2ePost(gateway.baseUrl, raw, {
+      model: defined(mapping[0], 'mapping row').external_name,
+      max_tokens: 150,
+      messages: [{ role: 'user', content: '只回复：好' }],
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    await waitFor(
+      async () => {
+        await defined(worker.runners.settle, 'runners.settle')();
+        return (await billStatusOf(userId)) === 'settled';
+      },
+      15_000,
+      'worker 结算',
+    );
+    const usage = await world.db.execute<{ amount: string; upstream_cost: string; channel_id: number }>(
+      sql`select amount::text, upstream_cost::text, channel_id from usage_logs where user_id = ${userId} order by created_at desc limit 1`,
+    );
+    const row = defined(usage[0], 'usage row');
+    expect(new Decimal(row.amount).gt(0)).toBe(true); // 用户账照实扣（用户价轴独立）
+    expect(new Decimal(row.upstream_cost).eq('0')).toBe(true); // 未配成本轴 → 零成本落账
+    expect(row.channel_id).toBe(channel[0]!.id); // 确认走的是新绑定（不是主种子渠道）
+    const budgetAfter = await world.db.execute<{ budget: string }>(
+      sql`select upstream_budget::text as budget from channels where id = ${channel[0]!.id}`,
+    );
+    expect(
+      new Decimal(defined(budgetAfter[0], 'budget after').budget).eq(
+        new Decimal(defined(budgetBefore[0], 'budget before').budget),
+      ),
+    ).toBe(true); // 预算分毫不动——「未配置=零成本」的语义锁（回退到继承用户价会让预算被扣而红）
   }, 60_000);
 
   it('⑯b 生成环：mock 视频上游 → 网关提交 201 → worker 轮询终态 → 结算实扣', async () => {

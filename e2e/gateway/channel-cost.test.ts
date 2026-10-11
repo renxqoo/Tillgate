@@ -109,17 +109,22 @@ beforeAll(async () => {
   dear = startMockUpstream();
   await dear.ready;
 
-  // 免费渠道：微额进货预算 + cost_is_free 标记（价格列留空继承——用户裁决：业务判定走标记，
-  // 目录解析物化全 0；旧口径官方价敞口 ≈ 数元 → budget_exhausted 503；标记免费 → 放行）
+  // 免费渠道：微额进货预算 + 成本五轴全 0（0111 后免费 = 价格取值而非标记列：
+  // 绑定成本配 0 → 物化全 0 成本轴、进货记 0；旧口径官方价敞口 ≈ 数元 → budget_exhausted 503；
+  // 成本配 0 → 放行。cost_is_free 列已随 0111 删除，不再可用）
   const freeId = await addChannel({
     name: 'cc-free',
     baseUrl: free.url,
     priority: 30,
     budget: '0.01',
+    cost: {
+      inputPrice: '0',
+      outputPrice: '0',
+      cacheInputPrice: '0',
+      cacheWritePrice: '0',
+      unitPrice: '0',
+    },
   });
-  await world.db.execute(
-    sql`update model_channels set cost_is_free = true where channel_id = ${freeId}`,
-  );
   await addChannel({
     name: 'cc-discount',
     baseUrl: discount.url,
