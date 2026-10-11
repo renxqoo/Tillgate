@@ -203,6 +203,37 @@ describe('端点 schema 拒绝矩阵（v1 同语义）', () => {
   });
 });
 
+describe('条数/长度不设上限（资源防线是 bodyLimit）', () => {
+  const app = harness(stubInference());
+
+  it.each([
+    ['/v1/chat/completions', { model: 'm', messages: Array.from({ length: 1200 }, () => ({})) }],
+    [
+      '/v1/messages',
+      {
+        model: 'm',
+        max_tokens: 8,
+        messages: Array.from({ length: 1200 }, () => ({ role: 'user', content: 'hi' })),
+      },
+    ],
+    ['/v1/embeddings', { model: 'm', input: Array.from({ length: 2100 }, () => 'x') }],
+    ['/v1/responses', { model: 'm', input: Array.from({ length: 1200 }, () => 'x') }],
+    ['/v1/rerank', { model: 'm', query: 'q', documents: Array.from({ length: 2100 }, () => 'd') }],
+  ])('%s 大数组过 schema（不再 400 Too big）', async (path, body) => {
+    const res = await post(app, path, body);
+    expect(res.status).toBe(200);
+  });
+
+  it.each([
+    ['/v1/images/generations', { model: 'm', prompt: 'p'.repeat(40000), n: 1 }],
+    ['/v1/audio/speech', { model: 'm', input: 'x'.repeat(9000), voice: 'v'.repeat(80) }],
+    ['/v1/rerank', { model: 'm', query: 'q'.repeat(40000), documents: ['d'] }],
+  ])('%s 超长文本过 schema（不再 400 Too big）', async (path, body) => {
+    const res = await post(app, path, body);
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('端点分发（inference 输入形状）', () => {
   it('chat 规范形直传；模态 JSON 族强制非流式（stream 剥除）', async () => {
     const seen: unknown[] = [];
@@ -381,11 +412,27 @@ describe('generation 提交与查询', () => {
     );
   });
 
-  it('非法参数 400（duration 越界 / prompt 超长）', async () => {
+  it('非法参数 400（duration 越界）', async () => {
     const app = harness(stubInference());
     expect(
       (await post(app, '/v1/video/generations', { model: 'm', prompt: 'x', duration: 99 })).status,
     ).toBe(400);
+  });
+
+  it('video/music prompt 不设长度上限（资源防线是 bodyLimit，不是字数）', async () => {
+    const app = harness(stubInference());
+    expect(
+      (
+        await post(app, '/v1/video/generations', {
+          model: 'm',
+          prompt: 'p'.repeat(9000),
+          duration: 6,
+        })
+      ).status,
+    ).toBe(201);
+    expect(
+      (await post(app, '/v1/music/generations', { model: 'm', prompt: 'p'.repeat(9000) })).status,
+    ).toBe(201);
   });
 });
 

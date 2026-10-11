@@ -49,7 +49,7 @@ export const modelField = z
 const chatSchema = z
   .object({
     model: modelField,
-    messages: z.array(z.unknown()).min(1).max(1000),
+    messages: z.array(z.unknown()).min(1),
     stream: z.boolean().optional(),
     /** 输出预算参数校验（负数/非整数不得流向上游与预扣口径） */
     max_tokens: z.number().int().positive().max(1_000_000).optional(),
@@ -61,7 +61,7 @@ const chatSchema = z
 const embedSchema = z
   .object({
     model: modelField,
-    input: z.union([z.string(), z.array(z.unknown()).max(2048)]),
+    input: z.union([z.string(), z.array(z.unknown())]),
   })
   .passthrough();
 
@@ -166,7 +166,7 @@ function rejectUnsupportedTextFormat(v: Record<string, unknown>, ctx: RefineCtx)
 const responsesSchema = z
   .object({
     model: modelField,
-    input: z.union([z.string(), z.array(z.unknown()).max(1000)]).optional(),
+    input: z.union([z.string(), z.array(z.unknown())]).optional(),
     instructions: z.string().optional(),
     stream: z.boolean().optional(),
     max_output_tokens: z.number().int().positive().optional(),
@@ -182,7 +182,7 @@ const responsesSchema = z
 const claudeMessagesSchema = z
   .object({
     model: modelField,
-    messages: z.array(z.unknown()).min(1).max(1000),
+    messages: z.array(z.unknown()).min(1),
     max_tokens: z.number().int().positive().optional(),
     stream: z.boolean().optional(),
   })
@@ -191,25 +191,25 @@ const claudeMessagesSchema = z
 const imagesSchema = z
   .object({
     model: modelField,
-    prompt: z.string().min(1).max(32000),
+    prompt: z.string().min(1),
     n: z.number().int().positive().max(16).optional(),
-    size: z.string().max(32).optional(),
+    size: z.string().optional(),
   })
   .passthrough();
 
 const audioSpeechSchema = z
   .object({
     model: modelField,
-    input: z.string().min(1).max(8192),
-    voice: z.string().min(1).max(64),
+    input: z.string().min(1),
+    voice: z.string().min(1),
   })
   .passthrough();
 
 const rerankSchema = z
   .object({
     model: modelField,
-    query: z.string().min(1).max(32000),
-    documents: z.array(z.unknown()).min(1).max(2048),
+    query: z.string().min(1),
+    documents: z.array(z.unknown()).min(1),
   })
   .passthrough();
 
