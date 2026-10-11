@@ -69,7 +69,7 @@ Tillgate 是一个可自托管的 **LLM API 网关**：用统一的 OpenAI 兼�
 
 **工程化**
 
-- 可执行架构：包边界（依赖白名单、显式 exports、无环）由 `scripts/check-package-boundaries.ts` 在 CI 强制执行，每个能力包带架构契约测试，根级四门（`typecheck` / `lint` / `test` / `build`）。
+- 可执行架构：包导入边界由本地 oxlint `boundaries` 插件在 CI 强制执行（禁深导入——`@tillgate/*` 必须命中显式 package exports；禁越出 workspace 的相对导入），每个能力包带架构契约测试，根级四门（`typecheck` / `lint` / `test` / `build`）。
 
 ## 快速开始
 
