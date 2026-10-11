@@ -36,6 +36,10 @@ function makeDeps(stored: FundingReservationPolicy | null, log: StoreLog = { wri
       return null;
     },
     async updatePlatformCurrency() {},
+    async readBillingCalibration() {
+      return null;
+    },
+    async updateBillingCalibration() {},
     async readBillingReservationPolicy() {
       return stored;
     },

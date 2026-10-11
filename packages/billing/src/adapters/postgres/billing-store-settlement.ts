@@ -18,6 +18,7 @@ const REQUEST_COLUMNS = {
   apiKeyId: billingRequests.apiKeyId,
   channelId: billingRequests.channelId,
   channelReservedAmount: billingRequests.channelReservedAmount,
+  conservativeChannelAmount: billingRequests.conservativeChannelAmount,
   planReservedAmount: billingRequests.planReservedAmount,
   subscriptionId: billingRequests.subscriptionId,
   estimatedExposureAmount: billingRequests.estimatedExposureAmount,

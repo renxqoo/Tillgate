@@ -64,6 +64,7 @@ const EXPECTED_TABLES = new Set([
   'identity_session_anchors',
   'integration_settings',
   'routing_policies',
+  'prefix_calibrations',
 ]);
 
 function tableNames(namespace: object): Set<string> {
@@ -75,7 +76,7 @@ function tableNames(namespace: object): Set<string> {
 }
 
 describe('schema 表清单', () => {
-  it('物理表集合与基线一致(51 张,封闭词表;identity 七表 = 迁移 0076;permissions/roles/role_permissions = 0082 动态 RBAC)', () => {
+  it('物理表集合与基线一致(52 张,封闭词表;prefix_calibrations = 迁移 0113 收据校准;identity 七表 = 迁移 0076;permissions/roles/role_permissions = 0082 动态 RBAC)', () => {
     expect(tableNames(schema)).toEqual(EXPECTED_TABLES);
   });
 

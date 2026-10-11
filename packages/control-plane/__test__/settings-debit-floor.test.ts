@@ -43,6 +43,10 @@ function makeDeps(stored: string | null, log: StoreLog = { reads: 0, writes: [] 
       return null;
     },
     async updatePlatformCurrency() {},
+    async readBillingCalibration() {
+      return null;
+    },
+    async updateBillingCalibration() {},
   };
   const audit = createMemoryAudit();
   const deps = {

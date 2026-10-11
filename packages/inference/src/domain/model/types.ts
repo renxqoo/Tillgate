@@ -54,6 +54,12 @@ export interface QuoteCandidate {
   unitUpperBound: number;
   coefficient: string;
   billingPolicyFingerprint: string | null;
+  /**
+   * 校准界（docs/calibrated-exposure-estimate.md §2.3 双界，可选）：
+   * = seen + 尾部字节界，仅命中候选携带。经济性消费面专用（冻结额/敞口收缩）；
+   * B2 验收钳制/缺陷熔断/死信阈值永不消费（I0 安全分离），缺省字节界。
+   */
+  calibratedInputTokenUpperBound?: number;
   /** 模型维限流（候选级准入维度；见 ModelMappingSnapshot.rpmLimit） */
   rpmLimit?: number | null;
   tpmLimit?: number | null;

@@ -23,9 +23,11 @@ import type {
 import type { SubscriptionQuotaStore } from '../../ports/funding-ports.js';
 import type { AccountContextStore } from '../../ports/account-context.js';
 import type { ChannelExposureStore } from '../../ports/funding-ports.js';
+import type { CalibrationStore } from '../../ports/calibration-store.js';
 import type { WalletConn, WalletTx } from '../../ports/wallet-store.js';
 import { createSubscriptionQuotaStore } from './subscription-quota-store.js';
 import { createChannelExposureStore } from './channel-exposure-store.js';
+import { createCalibrationStore } from './calibration-store.js';
 import { createAccountContextStore } from './account-context-store.js';
 import { subscriptionLifecycleMethods } from './billing-store-subscriptions.js';
 import { adminMethods } from './billing-store-admin.js';
@@ -33,6 +35,7 @@ import { settlementMethods } from './billing-store-settlement.js';
 
 export { createSubscriptionQuotaStore } from './subscription-quota-store.js';
 export { createChannelExposureStore } from './channel-exposure-store.js';
+export { createCalibrationStore } from './calibration-store.js';
 export { createAccountContextStore } from './account-context-store.js';
 
 export interface PostgresBillingStoreOptions {
@@ -63,6 +66,7 @@ const REQUEST_COLUMNS = {
   apiKeyId: billingRequests.apiKeyId,
   channelId: billingRequests.channelId,
   channelReservedAmount: billingRequests.channelReservedAmount,
+  conservativeChannelAmount: billingRequests.conservativeChannelAmount,
   planReservedAmount: billingRequests.planReservedAmount,
   subscriptionId: billingRequests.subscriptionId,
   estimatedExposureAmount: billingRequests.estimatedExposureAmount,
@@ -93,6 +97,7 @@ export function createPostgresBillingStore(
 ): BillingStore & {
   quotaStore: SubscriptionQuotaStore;
   channelStore: ChannelExposureStore;
+  calibrationStore: CalibrationStore;
   accountContext: AccountContextStore;
 } {
   const { retry } = options;
@@ -206,6 +211,9 @@ export function createPostgresBillingStore(
         .set({
           channelId: input.channelId,
           channelReservedAmount: input.channelReservedAmount,
+          ...(input.conservativeChannelAmount !== undefined
+            ? { conservativeChannelAmount: input.conservativeChannelAmount }
+            : {}),
           revision: sql`${billingRequests.revision} + 1`,
           updatedAt: input.now,
         })
@@ -352,8 +360,9 @@ export function createPostgresBillingStore(
   const quotaStore: SubscriptionQuotaStore = createSubscriptionQuotaStore(db);
 
   const channelStore: ChannelExposureStore = createChannelExposureStore(db);
+  const calibrationStore: CalibrationStore = createCalibrationStore(db);
 
   const accountContext = createAccountContextStore(db);
 
-  return { ...store, quotaStore, channelStore, accountContext };
+  return { ...store, quotaStore, channelStore, calibrationStore, accountContext };
 }

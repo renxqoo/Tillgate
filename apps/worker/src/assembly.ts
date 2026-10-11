@@ -68,6 +68,7 @@ import { createReconcileJob } from './jobs/reconcile';
 import { createReferralJob } from './jobs/referral';
 import { createRecoveryJob } from './jobs/recovery';
 import { createSettlementDispatch } from './queue/settlement-dispatch';
+import { calibrationRetention } from './calibration-retention';
 import type { createSettlementQueue } from './queue/settlement-queue';
 import { createSettleWakeListener } from './wakeup/postgres-notify';
 import type { SettleWakeListener } from './wakeup/postgres-notify';
@@ -278,6 +279,7 @@ export async function assembleWorker(
     walletStore,
     fundingRegistry,
     channels: billingStore.channelStore,
+    calibrations: billingStore.calibrationStore,
     usageDefectBreaker: config.usageDefectBreaker,
     failurePolicy: config.settle.failurePolicy,
     clock,
@@ -285,6 +287,19 @@ export async function assembleWorker(
     outbox: outboxPort,
     onSettled: (data) => {
       void balanceLowCheck(data).catch(() => {});
+      // 校准容错区间命中（docs §4.2 ②）：观测计数 + 批后保留策略清理（幂等）
+      if (data.calibratedOverExposure) {
+        // reason 标签随日志（v5 二值——§9 步骤 2 中止条件观察数据源，
+        // metrics 管道装配可换计数器，日志保底）
+        logger.warn(
+          { requestId: data.requestId, reason: data.calibrationReason ?? 'unknown' },
+          'calibration over exposure settled',
+        );
+      }
+      void calibrationRetention(
+        billingStore.calibrationStore,
+        data.receipt as { userId?: unknown },
+      ).catch(() => {});
     },
     onUsageDefect: (data) => {
       logger.error({ ...data }, 'usage evidence violation — invoice clamped');

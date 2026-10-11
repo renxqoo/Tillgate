@@ -14,6 +14,13 @@ import { gateChannel, othersAllCoolingFor } from '../routing/gates';
 import { pickPrimaryChannel, rankChannels } from '../routing/ranker';
 import { recordSticky, resolveStickyContext } from '../routing/sticky';
 import type { PreparedRequest } from './quote';
+import type { CalibrationLookup, CalibrationLookupConfig } from '../ports/calibration';
+
+/** 校准读侧上下文形状（quote 消费） */
+export interface CalibrationContext {
+  lookup: CalibrationLookup;
+  config: CalibrationLookupConfig;
+}
 
 /**
  * 候选 × 渠道双层循环（组件化形态）：
@@ -50,6 +57,8 @@ export interface ExecutionDeps {
   memory: RoutingMemory;
   /** 路由策略（热配置——排序/重试/惩罚/等待全部参数面；缺省 = 编译期缺省） */
   policy: RoutingPolicyReader;
+  /** 校准读侧上下文（quote 准备消费；未装配 = 不解析） */
+  calibration?: () => Promise<CalibrationContext | null>;
   /** cache 亲和粘滞键存储（未装配 = 无亲和） */
   sticky?: StickyStore;
   admitChannel?: ChannelAdmission;

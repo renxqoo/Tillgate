@@ -105,6 +105,8 @@ async function authorizeGenerationSubmit(
     outputCap: 0,
     inputUpperBound: 0,
     inputEstimate: 0,
+    calibration: null, // generation 族无 messages 前缀语义（§2.0' 守卫结构性排除）
+    calibrationSnapshot: null,
     candidates,
   };
   const authorizationTtlMs =

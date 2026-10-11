@@ -57,8 +57,15 @@ export function calculateRequired(quote: BillingQuote, reservationLimit: string)
     if (prices.some((price) => !price.isFinite() || price.lt(0))) {
       throw BillingErrors.business('invalid_quote');
     }
+    // user_side（docs §4.3/裁决 D8）：候选携带校准界时冻结额消费校准界
+    //（经济性收缩；超冻结走 #over + debit_floor 兜底）；价格口径不变
+    //（estimateMaxCost 内部仍取 max(输入,读,写)——保守价配收缩界）。
+    const inputBound =
+      candidate.calibratedInputTokenUpperBound != null
+        ? Math.min(candidate.calibratedInputTokenUpperBound, candidate.inputTokenUpperBound)
+        : candidate.inputTokenUpperBound;
     const estimate = estimateMaxCost({
-      estimatedInputTokens: candidate.inputTokenUpperBound,
+      estimatedInputTokens: inputBound,
       maxOutputTokens: quote.maxOutputTokens,
       inputPrice: candidate.inputPrice,
       cacheInputPrice: candidate.cacheInputPrice,

@@ -21,6 +21,15 @@ export { InferenceErrors } from './domain/errors';
 
 // ---- 配置（装配可覆写缺省）----
 export { inferenceDefaultsSchema, defaultInferenceDefaults } from './config';
+// ---- 收据校准（docs/calibrated-exposure-estimate.md——gateway 装配与消费面） ----
+export { calibratedChannelAmount, calibrationGuard } from './application/calibration.js';
+export type {
+  CalibrationResolution,
+  CalibrationMissReason,
+  MessageHashChain,
+} from './application/calibration.js';
+export type { QuoteCalibrationSnapshot } from './application/quote.js';
+export type { CalibrationLookup, CalibrationLookupConfig } from './ports/calibration.js';
 export type { InferenceDefaults, InferenceDefaultsInput } from './config';
 
 // ---- 端口契约（装配注入实现）----

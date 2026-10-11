@@ -12,6 +12,7 @@ import type {
   BillingStore,
 } from '../ports/billing-store.js';
 import type { AccountContextStore } from '../ports/account-context.js';
+import type { CalibrationRow, CalibrationStore } from '../ports/calibration-store.js';
 import type {
   ChannelExposureStore,
   FundingSourceResolver,
@@ -63,6 +64,8 @@ export interface InMemoryBillingWorld {
   billing: BillingStore;
   quota: SubscriptionQuotaStore;
   channels: ChannelExposureStore;
+  /** 校准记录内存实现（docs/calibrated-exposure-estimate.md §3.1——upsert/findRecent/cleanup） */
+  calibrations: CalibrationStore;
   resolver: FundingSourceResolver;
   /** 直接操作测试夹具数据 */
   readonly fixtures: {
@@ -77,6 +80,8 @@ export interface InMemoryBillingWorld {
       at: Date;
     }>;
     usageLogs: Map<string, Record<string, unknown>>;
+    /** 校准记录行（key = user\0mapping\0hash——PK 同款复合键） */
+    calibrations: Map<string, CalibrationRow>;
     plans: Map<number, InMemoryPlanRow>;
     knownUsers: Set<number>;
     enterpriseUsers: Set<number>;
@@ -116,6 +121,7 @@ export interface BillingWorldSnapshot {
   subscriptions: Array<[number, InMemorySubscriptionRow]>;
   channels: Array<[number, InMemoryChannelRow]>;
   settledSpend: InMemoryBillingWorld['fixtures']['settledSpend'];
+  calibrations: Array<[string, CalibrationRow]>;
   usageLogs: Array<[string, Record<string, unknown>]>;
   plans: Array<[number, InMemoryPlanRow]>;
   operations: Array<
@@ -142,6 +148,8 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
   const channelsMap = new Map<number, InMemoryChannelRow>();
   const settledSpend: InMemoryBillingWorld['fixtures']['settledSpend'] = [];
   const usageLogsRows = new Map<string, Record<string, unknown>>();
+  // 校准记录（docs §3.1）：PK 复合键字符串化；settled_at 倒序 findRecent
+  const calibrationRows = new Map<string, CalibrationRow>();
   const plansCatalog = new Map<
     number,
     {
@@ -272,6 +280,9 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
       }
       row.channelId = input.channelId;
       row.channelReservedAmount = input.channelReservedAmount;
+      if (input.conservativeChannelAmount !== undefined) {
+        row.conservativeChannelAmount = input.conservativeChannelAmount;
+      }
       row.revision += 1;
       return Promise.resolve(true);
     },
@@ -855,10 +866,44 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
     },
   };
 
+  const calibrations: CalibrationStore = {
+    findRecent: (_conn, input) => {
+      const rows = [...calibrationRows.values()]
+        .filter((r) => r.userId === input.userId && r.mappingId === input.mappingId)
+        .toSorted((a, b) => b.settledAt.getTime() - a.settledAt.getTime())
+        .slice(0, input.limit);
+      return Promise.resolve(rows.map((r) => ({ ...r })));
+    },
+    upsert: (_tx, input) => {
+      calibrationRows.set(`${input.userId}\0${input.mappingId}\0${input.prefixHash}`, {
+        userId: input.userId,
+        mappingId: input.mappingId,
+        prefixHash: input.prefixHash,
+        channelId: input.channelId,
+        inputTokens: input.inputTokens,
+        messagesLen: input.messagesLen,
+        settledAt: input.now,
+      });
+      return Promise.resolve();
+    },
+    cleanup: (_conn, input) => {
+      const rows = [...calibrationRows.entries()]
+        .filter(([, r]) => r.userId === input.userId && r.mappingId === input.mappingId)
+        .toSorted((a, b) => b[1].settledAt.getTime() - a[1].settledAt.getTime());
+      let evicted = 0;
+      for (const [key] of rows.slice(input.keep)) {
+        calibrationRows.delete(key);
+        evicted += 1;
+      }
+      return Promise.resolve(evicted);
+    },
+  };
+
   return {
     billing,
     quota,
     channels: channelStore,
+    calibrations,
     resolver,
     accountContext,
     memberLimitsOverride,
@@ -867,6 +912,7 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
       channelsMap,
       requests,
       settledSpend,
+      calibrations: calibrationRows,
       usageLogs: usageLogsRows,
       plans: plansCatalog,
       operations: operationsArchive,
@@ -887,6 +933,7 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
         subscriptions: structuredClone([...subscriptions.entries()]),
         channels: structuredClone([...channelsMap.entries()]),
         settledSpend: structuredClone(settledSpend),
+        calibrations: structuredClone([...calibrationRows.entries()]),
         usageLogs: structuredClone([...usageLogsRows.entries()]),
         plans: structuredClone([...plansCatalog.entries()]),
         operations: structuredClone([...operationsArchive.entries()]),
@@ -903,6 +950,8 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
       for (const [key, row] of snapshot.channels) channelsMap.set(key, row);
       settledSpend.length = 0;
       settledSpend.push(...snapshot.settledSpend);
+      calibrationRows.clear();
+      for (const [key, row] of snapshot.calibrations) calibrationRows.set(key, row);
       usageLogsRows.clear();
       for (const [key, row] of snapshot.usageLogs) usageLogsRows.set(key, row);
       plansCatalog.clear();

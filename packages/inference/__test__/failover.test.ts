@@ -41,6 +41,8 @@ function preparedOf(candidates: PreparedRequest['candidates']): PreparedRequest 
     outputCap: 100,
     inputUpperBound: 500,
     inputEstimate: 300,
+    calibration: null,
+    calibrationSnapshot: null,
     candidates,
   };
 }
