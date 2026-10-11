@@ -40,6 +40,7 @@ describe('① src 文件集合快照（目标树机器锁死）', () => {
     expect(files.map((f) => f.path)).toEqual([
       'assembly.ts',
       'bridge-mappers.ts',
+      'calibration-retention.ts',
       'config.ts',
       'health.ts',
       'index.ts',

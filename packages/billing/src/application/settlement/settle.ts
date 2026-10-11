@@ -50,6 +50,8 @@ export interface SettleEnv {
     receipt: Record<string, unknown>;
     amount: string;
     waived?: string;
+    /** 校准容错区间命中（B4 ②——docs §4.2）：观测计数由装配接 */
+    calibratedOverExposure?: boolean;
   }) => void;
   /** 验收门钳制观察钩子（提交后 best-effort——装配接日志/审计；异常不反杀结算） */
   onUsageDefect?: (data: {
@@ -401,14 +403,14 @@ function fireOnUsageDefect(
 
 export function createSettleClaimUseCase(env: SettleEnv) {
   return async function settleClaim(claim: SettlementClaim): Promise<SettleClaimResult> {
-    const { result, settledUserId, usageDefect } = await env.store.transaction(async (tx) =>
-      settleOneInTx(env, tx, claim),
-    );
+    const { result, settledUserId, calibratedOverExposure, usageDefect } =
+      await env.store.transaction(async (tx) => settleOneInTx(env, tx, claim));
     if (usageDefect != null) fireOnUsageDefect(env, usageDefect);
     if (result.outcome === 'settled' && settledUserId != null) {
       fireOnSettled(env, {
         requestId: claim.requestId,
         userId: settledUserId,
+        ...(calibratedOverExposure ? { calibratedOverExposure: true } : {}),
         receipt: claim.receipt ?? {},
         amount: result.amount,
         waived: result.waived,
