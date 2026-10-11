@@ -307,8 +307,9 @@ describe.skipIf(!hasEnv)('E2E', () => {
         billed_by: string;
         duration_ms: string;
         units: string;
+        upstream_cost: string;
       }>(
-        sql`select request_id, input_tokens::text, cached_input_tokens::text, output_tokens::text, amount::text, input_price::text, output_price::text, cache_input_price::text, real_model, external_model, estimated, billed_by, duration_ms::text, units::text from usage_logs where user_id = ${userId}`,
+        sql`select request_id, input_tokens::text, cached_input_tokens::text, output_tokens::text, amount::text, input_price::text, output_price::text, cache_input_price::text, real_model, external_model, estimated, billed_by, duration_ms::text, units::text, upstream_cost::text from usage_logs where user_id = ${userId}`,
       );
       expect(usage.length).toBe(3);
       for (const bill of bills) {
@@ -413,14 +414,21 @@ describe.skipIf(!hasEnv)('E2E', () => {
         expect(rl?.method).toBe('POST');
       }
 
-      // ---- 渠道预算：delta == Σ上游成本（系数 1 → upstream_cost == amount）----
+      // ---- 渠道预算：delta == Σ upstream_cost（成本轴口径——落账事实对照，不猜公式）----
       const after = await world.db.execute<{ budget: string }>(
         sql`select upstream_budget::text as budget from channels where id = ${world.seed.channelId}`,
       );
       const delta = new Decimal(defined(before[0], 'budget before').budget).minus(
         defined(after[0], 'budget after').budget,
       );
-      expect(delta.eq(charged)).toBe(true); // 渠道进货扣减精确等于用户成本（系数 1 口径）
+      // 成本轴独立于用户价轴（未配成本=0 是 7d97aba 后的语义；种子已配成本轴）。
+      // 预算 delta 必须等于 usage_logs 落账的 upstream_cost 合计，而不是用户实扣。
+      const upstreamTotal = usage.reduce(
+        (sum, row) => sum.plus(new Decimal(defined(row, 'usage row').upstream_cost)),
+        new Decimal(0),
+      );
+      expect(delta.gt(0)).toBe(true); // 成本轴已配置 → 预算实际被扣（零成本口径会让这里变 0）
+      expect(delta.eq(upstreamTotal)).toBe(true); // 渠道进货扣减 == 落账上游成本合计
 
       console.log(
         `⑫ 审计通过：3 笔 Σ实扣 ${charged.toString()}，流水 ${legs.length} 腿连续，预算 delta ${delta.toString()}`,

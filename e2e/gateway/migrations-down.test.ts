@@ -1,5 +1,5 @@
 /**
- * migration 0113/0114 down 可执行性验证（docs §11 契约级——路 C#6）：
+ * migration 0114/0115 down 可执行性验证（docs §11 契约级——路 C#6）：
  * 真实 PG 上 up（已随 schema 回放）→ down → 再 up，断言表/列/ACL 行恢复。
  * down 是回滚阶梯的终点动作（§9 步骤 5）——纯声明的对称性不算验证。
  */
@@ -22,18 +22,18 @@ function statements(file: string): string[] {
     .filter((s) => s.length > 0);
 }
 
-describe.skipIf(!hasEnv)('migration 0113/0114 down 双向可执行', () => {
+describe.skipIf(!hasEnv)('migration 0114/0115 down 双向可执行', () => {
   it('up → down → up 循环：表/列/ACL 行完整恢复', async () => {
     const world: E2EWorld = await setupE2EWorld();
     const db = world.db;
     const migrationsDir = join(import.meta.dirname, '../../packages/db/migrations');
-    const down0113 = readFileSync(join(migrationsDir, '0113_prefix_calibrations.down.sql'), 'utf8');
+    const down0113 = readFileSync(join(migrationsDir, '0114_prefix_calibrations.down.sql'), 'utf8');
     const down0114 = readFileSync(
-      join(migrationsDir, '0114_billing_calibration_admin.down.sql'),
+      join(migrationsDir, '0115_billing_calibration_admin.down.sql'),
       'utf8',
     );
-    const up0113 = readFileSync(join(migrationsDir, '0113_prefix_calibrations.sql'), 'utf8');
-    const up0114 = readFileSync(join(migrationsDir, '0114_billing_calibration_admin.sql'), 'utf8');
+    const up0113 = readFileSync(join(migrationsDir, '0114_prefix_calibrations.sql'), 'utf8');
+    const up0114 = readFileSync(join(migrationsDir, '0115_billing_calibration_admin.sql'), 'utf8');
 
     // 前置：schema 回放后 0113/0114 已 up（表存在）
     const hasTable = async () =>

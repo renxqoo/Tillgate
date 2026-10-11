@@ -4,7 +4,6 @@ import {
   bigint,
   bigserial,
   check,
-  foreignKey,
   index,
   integer,
   pgTable,
@@ -15,17 +14,13 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
-import { users } from './users.js';
 
 /**
  * 身份内核七表（DDL 单一真相在本包——迁移 0076）：
- * 业务无关（userId 由消费方 accounts 分配，本包不解释用户语义），
- * 但 user_id 与 users.id 建 FK（迁移 0112）——与 api_keys/apps/payments 等
- * 既有子表同口径。理由：无 FK 时 userId 指向不存在用户不会被拒绝，孤儿行也
- * 无回收路径；而 register 的 emailTaken() 以凭据表为权威，孤儿凭据会让该
- * 邮箱永久命中「已占用」，叠加防枚举哑口径后表现为「注册进验证码步却永
- * 不到邮件」——服务端无报错，纯静默失效。包边界独立由导入方向保证，不依赖
- * 「不建 FK」。
+ * 业务无关（userId 由消费方 accounts 分配，本包不解释用户语义）。
+ * user_id 是 user/admin 双 realm 共用的扁平主键：管理员凭据挂 admins 表 id
+ * （≥1e9 段分配，与 users.id 互斥错开），故本包对 users 不建外键
+ * （0112 曾建 FK + 孤儿清理误删存量管理员凭据，0113 撤销——事故详情见两迁移头注）。
  *
  *   identity_credentials      标识 ↔ userId（谁是谁）：UNIQUE(kind, value) = 一个标识一个账号
  *   identity_passwords        密码哈希（用户知道什么）：一人一行，与标识解耦
@@ -54,30 +49,15 @@ export const identityCredentials = pgTable(
       'identity_credentials_kind_ck',
       sql`${t.identifierKind} in ('email', 'phone', 'username')`,
     ),
-    foreignKey({
-      columns: [t.userId],
-      foreignColumns: [users.id],
-      name: 'identity_credentials_user_id_users_id_fk',
-    }).onDelete('cascade'),
   ],
 );
 
-export const identityPasswords = pgTable(
-  'identity_passwords',
-  {
-    userId: bigint('user_id', { mode: 'number' }).primaryKey(),
-    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    foreignKey({
-      columns: [t.userId],
-      foreignColumns: [users.id],
-      name: 'identity_passwords_user_id_users_id_fk',
-    }).onDelete('cascade'),
-  ],
-);
+export const identityPasswords = pgTable('identity_passwords', {
+  userId: bigint('user_id', { mode: 'number' }).primaryKey(),
+  passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const identityOauthLinks = pgTable(
   'identity_oauth_links',
@@ -93,11 +73,6 @@ export const identityOauthLinks = pgTable(
     uniqueIndex('identity_oauth_links_provider_subject_uq').on(t.provider, t.subject),
     uniqueIndex('identity_oauth_links_user_provider_uq').on(t.userId, t.provider),
     index('identity_oauth_links_user_idx').on(t.userId),
-    foreignKey({
-      columns: [t.userId],
-      foreignColumns: [users.id],
-      name: 'identity_oauth_links_user_id_users_id_fk',
-    }).onDelete('cascade'),
   ],
 );
 
@@ -147,35 +122,20 @@ export const identityChallenges = pgTable(
       .on(t.kind, t.userId)
       .where(sql`consumed_at is null and aborted_at is null and user_id is not null`),
     index('identity_challenges_expires_idx').on(t.expiresAt),
-    foreignKey({
-      columns: [t.userId],
-      foreignColumns: [users.id],
-      name: 'identity_challenges_user_id_users_id_fk',
-    }).onDelete('cascade'),
   ],
 );
 
-export const identityTotp = pgTable(
-  'identity_totp',
-  {
-    userId: bigint('user_id', { mode: 'number' }).primaryKey(),
-    /** base32 密钥或 SecretCipher 密文 */
-    secret: text('secret').notNull(),
-    /** NULL = 挂起注册（enroll 未 confirm）；confirm 前不参与 MFA */
-    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
-    /** 已消费的最大步号（单调；同码/旧码重放被 CAS 拒绝） */
-    lastUsedStep: bigint('last_used_step', { mode: 'number' }).notNull().default(-1),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    foreignKey({
-      columns: [t.userId],
-      foreignColumns: [users.id],
-      name: 'identity_totp_user_id_users_id_fk',
-    }).onDelete('cascade'),
-  ],
-);
+export const identityTotp = pgTable('identity_totp', {
+  userId: bigint('user_id', { mode: 'number' }).primaryKey(),
+  /** base32 密钥或 SecretCipher 密文 */
+  secret: text('secret').notNull(),
+  /** NULL = 挂起注册（enroll 未 confirm）；confirm 前不参与 MFA */
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  /** 已消费的最大步号（单调；同码/旧码重放被 CAS 拒绝） */
+  lastUsedStep: bigint('last_used_step', { mode: 'number' }).notNull().default(-1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const identityRecoveryCodes = pgTable(
   'identity_recovery_codes',
@@ -189,11 +149,6 @@ export const identityRecoveryCodes = pgTable(
   (t) => [
     uniqueIndex('identity_recovery_codes_hash_uq').on(t.userId, t.codeHash),
     index('identity_recovery_codes_user_idx').on(t.userId),
-    foreignKey({
-      columns: [t.userId],
-      foreignColumns: [users.id],
-      name: 'identity_recovery_codes_user_id_users_id_fk',
-    }).onDelete('cascade'),
   ],
 );
 
@@ -209,10 +164,5 @@ export const identitySessionAnchors = pgTable(
   (t) => [
     check('identity_session_anchors_realm_ck', sql`${t.realm} ~ '^[a-z][a-z0-9_-]{1,31}$'`),
     primaryKey({ columns: [t.realm, t.userId] }),
-    foreignKey({
-      columns: [t.userId],
-      foreignColumns: [users.id],
-      name: 'identity_session_anchors_user_id_users_id_fk',
-    }).onDelete('cascade'),
   ],
 );
