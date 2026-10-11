@@ -15,10 +15,10 @@
 -- 层）保证，与 identity 包「不解释用户语义」的边界一致。
 --
 -- 已应用 0112 的库跑本迁移即恢复；未应用 0112 的 lagging 库（staging/灾备/未追平
--- 开发库）追平链时：0112 的孤儿清理 DELETE 段已被改写为 no-op（改写仅对 lagging
--- 库生效——migrator 按 journal 时间戳判重放不校验哈希），FK 两步建立后随即撤销，
--- 管理员身份数据不再经历任何删除窗口。生产数据恢复（重发管理员密码/重绑 TOTP）
--- 是运维动作，不在迁移内。
+-- 开发库）追平链时：0112 已被整体改写为 no-op（migrator 按 journal 时间戳判重放
+-- 不校验哈希——改写仅对 lagging 库生效），本迁移对其等价零操作，一步到达零 FK
+-- 终态，管理员身份数据不经历任何删除或约束校验窗口。生产数据恢复（重发管理员
+-- 密码/重绑 TOTP）是运维动作，不在迁移内。
 
 ALTER TABLE identity_recovery_codes
   DROP CONSTRAINT IF EXISTS identity_recovery_codes_user_id_users_id_fk;

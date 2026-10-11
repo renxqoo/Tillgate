@@ -1,10 +1,19 @@
--- ⚠️ 本迁移的事故与撤销：见 0113 头注——identity_user_id 是 user/admin 双 realm 共用的
--- 扁平主键，管理员 id（≥1e9 段，ADMIN_ID_SEGMENT_FLOOR）按设计不在 users 表。本迁移
--- 的孤儿清理在已应用的库上误删了全部存量管理员凭据/密码/TOTP 行（不可恢复），FK 则
--- 拦截一切管理员身份写入（23503）。0113 已撤销 FK；本文件下方 DELETE 段已被改写为
--- no-op——drizzle migrator 按 journal 时间戳判重放、不校验文件哈希，已应用库不受
--- 本改写影响；lagging 库（journal 未到本条）追平将执行改写后的 no-op 版本，不再
--- 重演数据删除。原始 DELETE 语句的语义记录见本注释与 0113。
+-- ⚠️ 本迁移已被整体 no-op 化（0112→0113 事故的善后，见 0113 头注）。
+--
+-- 事故经过：identity_user_id 是 user/admin 双 realm 共用的扁平主键，管理员 id
+-- （≥1e9 段，admin-store ADMIN_ID_SEGMENT_FLOOR）按设计不在 users 表。本迁移原本的
+-- 两段——①孤儿清理 DELETE（把 NOT EXISTS users 的行当孤儿删除）、②七条 FK
+-- ADD CONSTRAINT REFERENCES users(id)——在已应用的库上造成生产事故：
+--   - ①删光了全部存量管理员凭据/密码/TOTP 行（不可恢复），全部管理员随即
+--     Invalid credentials 登录失效；
+--   - ②拦截此后一切管理员身份写入（TOTP 绑定/确认、邀请设密、2FA 发码、
+--     锚点推进）——23503「引用的资源不存在」。
+-- 0113 已撤销 FK；本文件随即被改写为 no-op：drizzle migrator 按 journal 时间戳
+-- 判重放、不校验文件哈希，已应用本迁移的库（生产）不受改写影响；lagging 库
+-- （journal 未到本条）追平时执行改写后的 no-op——既不删数据，也不建立会被
+-- 存量 1e9 段行当场 23503 拒绝的约束（普通 ADD CONSTRAINT 全表校验存量行，
+-- 这是本改写保留语句会引入的新断裂点，故整体清空而非仅清 DELETE 段），
+-- 直接到达 0113 的零 FK 终态。
 --
 -- 原始动机（保留历史，其判断错误之处已订正）：identity_credentials 允许写入指向
 -- 不存在 users 行的 user_id，孤儿凭据行不会被任何清理路径回收。register 的
@@ -12,35 +21,11 @@
 -- 0736ba8 的防枚举哑口径（已占邮箱同款 code_required 但不建挑战不发码），用户表现
 -- 为「注册跳到验证码步却永远收不到邮件」。原断言「存量孤儿指向 1000000000/
 -- 1000000001 两个无来源虚构 id、无真实用户数据牵连」是错的——1e9 正是 admin id
--- 段分配下限（admin-store ADMIN_ID_SEGMENT_FLOOR），被删的就是真实管理员凭据。
+-- 段分配下限，被删的就是真实管理员凭据。
 --
--- 本迁移现在只保留 ADD CONSTRAINT 段（对 lagging 库照常执行，随后的 0113 会将其
--- 撤销——两步对零身份数据的库是等价 no-op；已应用 0112 的库本段已生效、由 0113 撤）。
---
--- 清理顺序（原 DELETE 段的引用顺序，仅存档）：
---   recovery_codes/totp/passwords/credentials → session_anchors → oauth_links → challenges
-
--- （原孤儿清理 DELETE 段已被 0113 后续改写为 no-op——理由见文件头；do-nothing 语句
---  保持文件可追溯，不执行任何删除）
-
-ALTER TABLE identity_recovery_codes
-  ADD CONSTRAINT identity_recovery_codes_user_id_users_id_fk
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE identity_totp
-  ADD CONSTRAINT identity_totp_user_id_users_id_fk
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE identity_passwords
-  ADD CONSTRAINT identity_passwords_user_id_users_id_fk
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE identity_credentials
-  ADD CONSTRAINT identity_credentials_user_id_users_id_fk
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE identity_session_anchors
-  ADD CONSTRAINT identity_session_anchors_user_id_users_id_fk
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE identity_oauth_links
-  ADD CONSTRAINT identity_oauth_links_user_id_users_id_fk
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE identity_challenges
-  ADD CONSTRAINT identity_challenges_user_id_users_id_fk
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+-- 原语句语义存档（不再执行）：
+--   清理顺序：recovery_codes/totp/passwords/credentials → session_anchors →
+--   oauth_links → challenges（均 WHERE NOT EXISTS (SELECT 1 FROM users u
+--   WHERE u.id = <表>.user_id)；challenges 另有 user_id IS NOT NULL 前置）；
+--   约束：七表各 ADD CONSTRAINT <表>_user_id_users_id_fk FOREIGN KEY (user_id)
+--   REFERENCES users(id) ON DELETE CASCADE。
