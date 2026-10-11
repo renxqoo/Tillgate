@@ -11,22 +11,27 @@
  * 0112 形态下 enroll 即红；0113 撤 FK 后全绿。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import {
   admins,
   identityCredentials,
   identityPasswords,
+  identityRecoveryCodes,
+  identitySessionAnchors,
   identityTotp,
   roles as rolesTable,
 } from '@tillgate/db';
-import { base32Decode, matchingTotpStep, totpAt } from '../../packages/identity/src/domain/totp';
+import {
+  base32Decode,
+  matchingTotpStep,
+  totpAt,
+} from '../../packages/identity/src/domain/totp.js';
 import { jsonHeaders, setupE2EAdmin, teardownE2EAdmin, type E2EAdminWorld } from './kit';
 
 let world: E2EAdminWorld | null = null;
 
 /** 旅程专属管理员（真实 1e9 段 id——admin-store 分配段;清理面） */
 const journeyAdminIds: number[] = [];
-const journeyEmails: string[] = [];
 
 beforeAll(async () => {
   world = await setupE2EAdmin();
@@ -35,7 +40,19 @@ beforeAll(async () => {
 afterAll(async () => {
   if (world === null) return;
   if (journeyAdminIds.length > 0) {
-    // 0113 后 identity 表无 FK——身份行显式删净，不留跨旅程残留
+    // 0113 后 identity 表无 FK——身份行按写入面逐表删净（含 confirm 重签的恢复码与
+    // reset 推进的 admin 锚点），不留跨旅程孤儿行
+    await world.assembly.db
+      .delete(identityRecoveryCodes)
+      .where(inArray(identityRecoveryCodes.userId, journeyAdminIds));
+    await world.assembly.db
+      .delete(identitySessionAnchors)
+      .where(
+        and(
+          eq(identitySessionAnchors.realm, 'admin'),
+          inArray(identitySessionAnchors.userId, journeyAdminIds),
+        ),
+      );
     await world.assembly.db
       .delete(identityTotp)
       .where(inArray(identityTotp.userId, journeyAdminIds));
@@ -84,7 +101,6 @@ async function journeyAdmin(): Promise<{ id: number; token: string; email: strin
     displayName: 'e2e-totp-admin-realm',
   });
   journeyAdminIds.push(created.id);
-  journeyEmails.push(email);
   const token = await w().assembly.identity.sessions.sign({
     realm: 'admin',
     subjectId: created.id,
