@@ -16,6 +16,7 @@ export * from './usage.js';
 export * from './transactions.js';
 export * from './billing-requests.js';
 export * from './billing-reservations.js';
+export * from './prefix-calibrations.js';
 export * from './redeem.js';
 export * from './logs.js';
 export * from './plans.js';

@@ -6,6 +6,7 @@
  */
 import type { BillingStore } from '../../ports/billing-store.js';
 import type { ChannelExposureStore } from '../../ports/funding-ports.js';
+import type { CalibrationStore } from '../../ports/calibration-store.js';
 import type { NotificationOutboxPort } from '../../ports/notification-outbox.js';
 import type { WalletStore } from '../../ports/wallet-store.js';
 import type { FundingRegistry } from '../billing/funding/registry.js';
@@ -42,6 +43,8 @@ export interface SettlementDeps {
   walletStore: WalletStore;
   fundingRegistry: FundingRegistry;
   channels?: ChannelExposureStore;
+  /** 校准记录 store（写面：结算事务末尾 upsert，docs/calibrated-exposure-estimate.md §4.2） */
+  calibrations?: CalibrationStore;
   /** 用量证据缺陷熔断阈值（装配必填——零写死） */
   usageDefectBreaker: number;
   /** 失败策略参数（装配必填） */
@@ -118,6 +121,7 @@ export function createSettlementApi(deps: SettlementDeps): SettlementApi {
     store: deps.store,
     fundingRegistry: deps.fundingRegistry,
     channels: deps.channels,
+    calibrations: deps.calibrations,
     usageDefectBreaker: deps.usageDefectBreaker,
     clock: deps.clock,
     onSettled: deps.onSettled,
@@ -127,6 +131,7 @@ export function createSettlementApi(deps: SettlementDeps): SettlementApi {
     store: deps.store,
     fundingRegistry: deps.fundingRegistry,
     channels: deps.channels,
+    calibrations: deps.calibrations,
     usageDefectBreaker: deps.usageDefectBreaker,
     clock: deps.clock,
     onSettled: deps.onSettled,

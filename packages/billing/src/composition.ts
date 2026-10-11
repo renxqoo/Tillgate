@@ -20,6 +20,8 @@ export {
   createPostgresBillingStore,
   type PostgresBillingStoreOptions,
 } from './adapters/postgres/billing-store.js';
+export { createCalibrationStore } from './adapters/postgres/calibration-store.js';
+export type { CalibrationStore, CalibrationRow } from './ports/calibration-store.js';
 export {
   createPostgresPaymentOrderStore,
   createPostgresRedeemCodeStore,

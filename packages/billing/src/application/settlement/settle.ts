@@ -24,6 +24,7 @@ import { isAttributedEstimate, type UsageReceipt } from '../../domain/rating/typ
 import { Decimal, normalizeAmount } from '../../domain/money.js';
 import type { BillingStore } from '../../ports/billing-store.js';
 import type { ChannelExposureStore } from '../../ports/funding-ports.js';
+import type { CalibrationStore } from '../../ports/calibration-store.js';
 import type { FundingRegistry } from '../billing/funding/registry.js';
 import type { SourceReservation } from '../billing/funding/source.js';
 import { usageLogProjection } from './usage-projection.js';
@@ -33,6 +34,8 @@ export interface SettleEnv {
   store: BillingStore;
   fundingRegistry: FundingRegistry;
   channels?: ChannelExposureStore;
+  /** 校准记录（docs/calibrated-exposure-estimate.md §4.2）：结算事务末尾 upsert；缺省不写 */
+  calibrations?: CalibrationStore;
   /** 用量证据缺陷熔断阈值（验收门钳制计数 ≥ 阈值 → 渠道熔断；装配必填——零写死） */
   usageDefectBreaker: number;
   /** 时钟（装配必填——零写死；DB 时钟权威路径不在此） */
@@ -86,6 +89,52 @@ function invariant(code: string): DefectError {
   return new DefectError(code, 'billing.billing_invariant', { code });
 }
 
+/**
+ * 结算侧组装校准写入输入（docs §3.1 写侧 + §2.2 C7）：
+ * quote.calibration（授权快照）+ 收据实测 inputTokens/channelId/usage 键。
+ * C7b 物理下限（seen ≥ prefixBytes/4）在 inference 纯函数判定——billing 侧
+ * 不重复推导，仅采集事实经 port 判定（单一真相在 inference/calibration.ts）。
+ * 返回 null = 不写（非 chat 族/估算收据/零钳制失败均在上游已排除）。
+ */
+function calibrationWriteOf(
+  billing: { userId: number; quote: Record<string, unknown> },
+  receipt: UsageReceipt,
+  now: Date,
+): Parameters<CalibrationStore['upsert']>[1] | null {
+  const calib = billing.quote.calibration as Record<string, unknown> | undefined;
+  if (calib == null || typeof calib !== 'object') return null;
+  const { mappingId, prefixHash, messagesLen, prefixBytes } = calib as {
+    mappingId?: unknown;
+    prefixHash?: unknown;
+    messagesLen?: unknown;
+    prefixBytes?: unknown;
+  };
+  const { channelId = null } = receipt;
+  const { inputTokens } = receipt.usage;
+  if (
+    typeof mappingId !== 'number' ||
+    typeof prefixHash !== 'string' ||
+    typeof messagesLen !== 'number' ||
+    typeof prefixBytes !== 'number' ||
+    channelId == null
+  ) {
+    return null;
+  }
+  // C7b/7c 守卫（inference 纯函数镜像判定——billing 不依赖 inference，语义单源注释互指）
+  if (!Number.isSafeInteger(inputTokens) || inputTokens <= 0) return null;
+  if (inputTokens < Math.ceil(prefixBytes / 4)) return null;
+  return {
+    userId: billing.userId,
+    mappingId,
+    prefixHash,
+    channelId,
+    inputTokens,
+    messagesLen,
+    requestId: receipt.requestId,
+    now,
+  };
+}
+
 /** 单张账单的事务体（共享 tx）——结果与收单用户一起返回（无外层闭包可变状态） */
 // eslint-disable-next-line complexity, max-lines-per-function, max-statements -- 结算状态机事务体:投影校验→分配→逐源核销,拆分需共享 tx 与计数器
 async function settleOneInTx(
@@ -95,6 +144,8 @@ async function settleOneInTx(
 ): Promise<{
   result: SettleClaimResult;
   settledUserId: number | null;
+  /** B4 ② 容错区间命中（观测面计数；false = 未触发/非校准） */
+  calibratedOverExposure: boolean;
   usageDefect: Parameters<NonNullable<SettleEnv['onUsageDefect']>>[0] | null;
 }> {
   const { store, clock } = env;
@@ -121,6 +172,7 @@ async function settleOneInTx(
           channelCircuitBroken: false,
         },
         settledUserId: null,
+        calibratedOverExposure: false,
         usageDefect: null,
       };
     }
@@ -133,6 +185,7 @@ async function settleOneInTx(
         channelCircuitBroken: false,
       },
       settledUserId: null,
+      calibratedOverExposure: false,
       usageDefect: null,
     };
   }
@@ -146,20 +199,32 @@ async function settleOneInTx(
   // 三本账（用户扣费/渠道扣减/平台收入）同源消费同一验收值；钳制事实走缺陷通道。
   const { receipt, clamps } = acceptTrustedUsage({ receipt: decoded, quote: billing.quote });
   const { calculatedAmount, upstreamCost } = computeAmounts(receipt);
+  /** 校准容错区间标记（B4 ②）——onSettled 观测面消费，不阻断结算 */
+  let calibratedOverExposure = false;
   // 估算 usage 只允许归属「用户取消 ∪ 完成缺 usage」
   if (receipt.usage.estimated && !isAttributedEstimate(receipt)) {
     throw invariant('settle_estimated_usage');
   }
-  // B4 经济闭合（钳后应为定理：预留 = 物理最坏 Case ≥ 钳定用量官方成本）——
-  // 违反即内部不一致（价格快照漂移/投影脱节），红灯死信不入账
+  // B4 经济闭合（docs/calibrated-exposure-estimate.md §4.2 三分支）：
+  //   ① conservative_channel_amount 为 NULL（保守预留）→ 违反即内部不一致
+  //      （价格快照漂移/投影脱节），红灯死信不入账（原语义不动）；
+  //   ② 非空且 upstreamCost ≤ 保守金额 → 校准容错区间：放行到超额扣减
+  //      （deductBudgetAndMaybeBreak 按实际成本扣，预算可负穿）+ 指标；
+  //   ③ 非空但超保守金额 → 保守口径都罩不住 = 与 ① 同源的内部不一致，红灯。
+  // 探测器对价格漂移严格保留：reserve 时点的保守快照在，调价必被 ③ 抓住。
   if (
     billing.channelReservedAmount != null &&
     new Decimal(upstreamCost).gt(new Decimal(billing.channelReservedAmount))
   ) {
-    throw new DefectError(
-      `upstreamCost ${upstreamCost} > reserved ${billing.channelReservedAmount} (request ${claim.requestId})`,
-      'billing.usage_economic_bound',
-    );
+    const conservative = billing.conservativeChannelAmount ?? null;
+    if (conservative == null || new Decimal(upstreamCost).gt(new Decimal(conservative))) {
+      throw new DefectError(
+        `upstreamCost ${upstreamCost} > bound ${conservative ?? billing.channelReservedAmount} (request ${claim.requestId})`,
+        'billing.usage_economic_bound',
+      );
+    }
+    // ② 容错区间：标记进 onSettled 观测面（计数器由装配接）——不阻断结算
+    calibratedOverExposure = true;
   }
   // 渠道维度单一事实：收据渠道与账单预留渠道不一致 = 网关回归 → 死信
   if (
@@ -270,6 +335,21 @@ async function settleOneInTx(
     channelCircuitBroken = channelCircuitBroken || budgetBroken;
   }
 
+  // 结算事务末尾：写校准记录（docs/calibrated-exposure-estimate.md §3.1/§4.2）。
+  // 仅 trusted 零钳制收据且 quote 带前缀信息时写；C7b 物理下限在写入前判定。
+  // 写在 wallet/channel 腿之后（v3-R4：不新增跨表加锁序死锁向量）；失败不反杀
+  // 结算（记录是可重建派生事实，I0 安全分离——宁可丢记录也不丢资金事务）。
+  if (env.calibrations != null && clamps.length === 0 && !receipt.usage.estimated) {
+    const calib = calibrationWriteOf(billing, receipt, now);
+    if (calib != null) {
+      try {
+        await env.calibrations.upsert(tx, calib);
+      } catch {
+        // 派生事实写入失败：丢弃（下一笔回落保守，非资损）
+      }
+    }
+  }
+
   // 结算成功事实不入通知 outbox：notifications 词表无
   // 「结算成功」成员——无告警消费场景；可观测走 usage_logs 投影与 onSettled
   // 钩子（best-effort）。可靠入箱只有死信路径（failure 用例，billing_dead）。
@@ -282,6 +362,7 @@ async function settleOneInTx(
       channelCircuitBroken,
     },
     settledUserId: billing.userId,
+    calibratedOverExposure,
     usageDefect:
       clamps.length > 0
         ? {

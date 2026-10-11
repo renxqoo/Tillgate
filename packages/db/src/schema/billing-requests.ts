@@ -52,6 +52,17 @@ export const billingRequests = pgTable(
     /** 实际冻结金额：full=风险预估，fixed=显式门槛。 */
     reservedAmount: numeric('reserved_amount', { precision: 38, scale: 18 }).notNull(),
     /**
+     * B4 二级上界（docs/calibrated-exposure-estimate.md §3.2c）：reserve 时与
+     * 校准金额同调用、同价格快照、字节界口径的保守金额。非空 = 本请求按校准
+     * 口径预留（B4 对 (校准预留, 此列] 区间走超额扣减）；NULL = 保守预留（B4 原路径）。
+     * 换渠时随 channel_reserved_amount 同语句重写。upstreamCost 超此列 = 价格
+     * 漂移/投影脱节 → 死信（探测器，与原 B4 检测目标严格一致）。
+     */
+    conservativeChannelAmount: numeric('conservative_channel_amount', {
+      precision: 38,
+      scale: 18,
+    }),
+    /**
      * 超收放弃额（元）：结算时 actual > 预留且可用额不足，超出可收部分被放弃
      * （charged = actual − waived）。常态为 0；>0 = 上游 usage 虚高/余额耗尽的
      * 运营信号（对账与告警口径），结算不因此死信。
