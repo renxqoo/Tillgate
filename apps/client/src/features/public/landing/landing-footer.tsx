@@ -1,7 +1,6 @@
 import Link from 'next/link';
 
 import { GithubMarkIcon } from '@/features/auth/github-mark-icon';
-
 import { APP_CONFIG } from '@/config/app-config';
 
 import { LogoMark } from './logo-mark';

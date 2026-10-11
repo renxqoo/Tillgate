@@ -160,7 +160,7 @@ export default async function Landing() {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
             >
-              <GithubMarkIcon className="size-4" />
+              <GithubMarkIcon />
               <span>GitHub</span>
             </a>
             <span>{t('footerLicense')}</span>
