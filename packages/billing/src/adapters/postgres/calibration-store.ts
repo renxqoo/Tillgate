@@ -5,10 +5,7 @@
  */
 import { and, desc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { prefixCalibrations, type Db, type DbTx } from '@tillgate/db';
-import type {
-  CalibrationStore,
-  CalibrationUpsertInput,
-} from '../../ports/calibration-store.js';
+import type { CalibrationStore, CalibrationUpsertInput } from '../../ports/calibration-store.js';
 import type { WalletConn } from '../../ports/wallet-store.js';
 
 /**

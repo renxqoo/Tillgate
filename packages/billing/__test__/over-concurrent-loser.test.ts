@@ -80,7 +80,12 @@ function receiptOf(input: {
     realModel: 'm',
     channelId: input.channelId,
     channelKey: 'ch',
-    usage: { inputTokens: input.inputTokens, cachedInputTokens: 0, outputTokens: 0, estimated: false },
+    usage: {
+      inputTokens: input.inputTokens,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      estimated: false,
+    },
     inputPrice: '2',
     outputPrice: '0',
     cacheInputPrice: '0',
@@ -190,10 +195,16 @@ describe('F1：#over 并发败者不死信（先红后绿）', () => {
     const h = harness('0');
     const userId = nextUser();
     const a = await pendingOverRequest(h, {
-      userId, frozen: '0.2', receiptTokens: 2_000_000, balance: '1',
+      userId,
+      frozen: '0.2',
+      receiptTokens: 2_000_000,
+      balance: '1',
     });
     const b = await pendingOverRequest(h, {
-      userId, frozen: '0.2', receiptTokens: 2_000_000, balance: '1',
+      userId,
+      frozen: '0.2',
+      receiptTokens: 2_000_000,
+      balance: '1',
     });
     const claims = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
     expect(claims).toHaveLength(2);
@@ -214,20 +225,107 @@ describe('F1：#over 并发败者不死信（先红后绿）', () => {
     // payg-source 不导出 isOverageGuardFailure（模块私有）——经 settleOverage 行为验证：
     // 构造 wallet 抛连接错误（非 gate），断言上抛而非 waived
     const wallet = {
-      authorize: async () => { throw new Error('connection unavailable (pool exhausted)'); },
-      settle: async () => { throw new Error('unreachable'); },
+      authorize: async () => {
+        throw new Error('connection unavailable (pool exhausted)');
+      },
+      settle: async () => {
+        throw new Error('unreachable');
+      },
     };
     const walletStore = {
-      userAccountSummaries: async () => [{ id: 1, kind: 'user', currency: 'CNY', balance: '10', inFlight: '0', creditLimit: '0', debitFloor: '0', status: 'active' }],
+      userAccountSummaries: async () => [
+        {
+          id: 1,
+          kind: 'user',
+          currency: 'CNY',
+          balance: '10',
+          inFlight: '0',
+          creditLimit: '0',
+          debitFloor: '0',
+          status: 'active',
+        },
+      ],
     };
     // settleOverage 也模块私有——经 createPaygSource().settle 驱动
-    const source = mod.createPaygSource({ wallet: wallet as never, walletStore: walletStore as never });
+    const source = mod.createPaygSource({
+      wallet: wallet as never,
+      walletStore: walletStore as never,
+    });
     await expect(
       source.settle(undefined as never, {
-        userId: 1, requestId: 'r-conn', reservation: { billingRequestId: 'r-conn', sourceType: 'payg', sourceRefId: null, amount: '0.2' },
-        consume: '0.2', over: '3.8', now: new Date(),
+        userId: 1,
+        requestId: 'r-conn',
+        reservation: {
+          billingRequestId: 'r-conn',
+          sourceType: 'payg',
+          sourceRefId: null,
+          amount: '0.2',
+        },
+        consume: '0.2',
+        over: '3.8',
+        now: new Date(),
       }),
     ).rejects.toThrow('connection unavailable');
+  });
+
+  it('F1#1：两次守卫失败 → collectOver 归零、waived=全额（不虚收）', async () => {
+    // 直接单元驱动 settleOverage 行为：wallet 连续输守卫，实收 0、waived=over 全额
+    const mod = await import('../src/application/billing/funding/payg-source.js');
+    let authorizeCalls = 0;
+    const wallet = {
+      authorize: async () => {
+        authorizeCalls += 1;
+        const { DefectError } = await import('@tillgate/errors');
+        throw new DefectError('authorize.gate_unclassified', 'billing.wallet_invariant');
+      },
+      // consume 腿（#over 前）正常走；over 段的 settle 若被调用说明守卫失败没拦住
+      settle: async (input: { refId?: string }) => {
+        if ((input?.refId ?? '').includes('#over')) {
+          throw new Error('over settle must not be reached');
+        }
+        return {
+          authorizationId: 'a',
+          settledAmount: '0.2',
+          balanceAfter: '9.8',
+          releasedRemainder: '0',
+          replayed: false,
+        };
+      },
+    };
+    const walletStore = {
+      userAccountSummaries: async () => [
+        {
+          id: 1,
+          kind: 'user',
+          currency: 'CNY',
+          balance: '10',
+          inFlight: '0',
+          creditLimit: '0',
+          debitFloor: '0',
+          status: 'active',
+        },
+      ],
+    };
+    const source = mod.createPaygSource({
+      wallet: wallet as never,
+      walletStore: walletStore as never,
+    });
+    const settled = await source.settle(undefined as never, {
+      userId: 1,
+      requestId: 'r-twice',
+      reservation: {
+        billingRequestId: 'r-twice',
+        sourceType: 'payg',
+        sourceRefId: null,
+        amount: '0.2',
+      },
+      consume: '0.2',
+      over: '3.8',
+      now: new Date(),
+    });
+    // 修后：waived = 3.8（实收 0 全额放弃）；修前缺陷：waived = 0（虚收 3.8）
+    expect(settled.waived).toBe('3.8');
+    expect(authorizeCalls).toBe(2); // 首试 + 一次重试
   });
 
   it('可用+地板不足的 over 差额 waived_amount 落账（单笔口径）', async () => {

@@ -35,7 +35,10 @@ function harness() {
   return { wallet, world, api };
 }
 
-function calibratedQuote(calibration: NonNullable<BillingQuote['calibration']>): BillingQuote {
+function calibratedQuote(
+  calibration: NonNullable<BillingQuote['calibration']>,
+  calibratedBound = 45_000,
+): BillingQuote {
   return {
     maxOutputTokens: 0,
     candidates: [
@@ -48,7 +51,7 @@ function calibratedQuote(calibration: NonNullable<BillingQuote['calibration']>):
         cacheInputPrice: '0',
         coefficient: '1',
         inputTokenUpperBound: 1_000_000,
-        calibratedInputTokenUpperBound: 45_000,
+        calibratedInputTokenUpperBound: calibratedBound,
         billingPolicyFingerprint: null,
       },
     ],
@@ -108,7 +111,7 @@ describe('指纹排除 calibration（v3-R3）', () => {
     expect(replay.replayed).toBe(true);
   });
 
-  it('P4：候选 calibratedInputTokenUpperBound 漂移 → 幂等重放（seen 的函数非命令身份）', async () => {
+  it('P4：候选 calibratedInputTokenUpperBound 漂移 → 幂等重放（含 estimatedAmount 衍生量）', async () => {
     const { wallet, api } = harness();
     const userId = nextUser();
     await wallet.credit({ userId, amount: '10', refType: 'topup', refId: 'c3' });
@@ -117,36 +120,68 @@ describe('指纹排除 calibration（v3-R3）', () => {
       requestId,
       userId,
       stream: false,
-      quote: calibratedQuote({
-        mappingId: 13,
-        prefixHash: 'aaa',
-        channelId: 8,
-        inputTokens: 50_000,
-        messagesLen: 2,
-        prefixBytes: 180_000,
-        cacheRatio: 0.9,
-      }),
+      quote: calibratedQuote(
+        {
+          mappingId: 13,
+          prefixHash: 'aaa',
+          channelId: 8,
+          inputTokens: 50_000,
+          messagesLen: 2,
+          prefixBytes: 180_000,
+          cacheRatio: 0.9,
+        },
+        45_000,
+      ),
       reservationLimit: '10',
       authorizationTtlMs: 60_000,
     });
-    // 重放时 seen 被并发结算覆盖 → 校准界漂移——指纹必须不变
+    // 重放时校准界真实漂移（45_000 → 43_500——estimatedAmount 随之变）：
+    // 指纹必须不变（时变实测值及其衍生量都不是命令身份）
     const replay = await api.authorize({
       requestId,
       userId,
       stream: false,
-      quote: calibratedQuote({
-        mappingId: 13,
-        prefixHash: 'aaa',
-        channelId: 8,
-        inputTokens: 48_500,
-        messagesLen: 2,
-        prefixBytes: 180_000,
-        cacheRatio: 0.9,
-      }),
+      quote: calibratedQuote(
+        {
+          mappingId: 13,
+          prefixHash: 'aaa',
+          channelId: 8,
+          inputTokens: 43_500,
+          messagesLen: 2,
+          prefixBytes: 180_000,
+          cacheRatio: 0.9,
+        },
+        43_500,
+      ),
       reservationLimit: '10',
       authorizationTtlMs: 60_000,
     });
     expect(replay.replayed).toBe(true);
+  });
+
+  it('双口径（限额面）：fingerprint 口径 = 字节界口径预估——校准不收缩限额入参', async () => {
+    const { calculateRequired } = await import('../src/domain/rating/calculate.js');
+    const calibrated = calibratedQuote(
+      {
+        mappingId: 13,
+        prefixHash: 'aaa',
+        channelId: 8,
+        inputTokens: 45_000,
+        messagesLen: 2,
+        prefixBytes: 180_000,
+        cacheRatio: 0.9,
+      },
+      45_000,
+    );
+    const withoutCalib: BillingQuote = JSON.parse(JSON.stringify(calibrated));
+    delete (withoutCalib as { calibration?: unknown }).calibration;
+    for (const c of withoutCalib.candidates) {
+      delete (c as { calibratedInputTokenUpperBound?: number }).calibratedInputTokenUpperBound;
+    }
+    // 限额面（fingerprint 口径）= 保守字节界（1M×2/M = 2），非校准界（45000×2/M = 0.09）
+    expect(calculateRequired(withoutCalib, '10').toString()).toBe('2');
+    // 经济面（授权冻结）按校准界收缩
+    expect(calculateRequired(calibrated, '10').toString()).toBe('0.09');
   });
 
   it('quote 其它字段变化（价格）仍拒绝（排除面只限 calibration）', async () => {

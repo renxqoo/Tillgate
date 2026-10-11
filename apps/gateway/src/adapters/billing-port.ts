@@ -222,33 +222,45 @@ function channelExposureAmounts(input: {
   return { amount: conservative, conservativeChannelAmount: null };
 }
 
-/** 分段公式消费（渠道匹配 + 候选校准界齐备才启用；否则 null = 保守） */
+/** 分段适用性前置（不适用 → null = 保守口径） */
+function segmentationApplicable(
+  input: Parameters<typeof channelExposureAmounts>[0],
+  cost: NonNullable<QuoteCandidateCostPrices>,
+): { channelId: number; seen: number; cacheRatio: number; bound: number } | null {
+  const { calibration } = input;
+  if (calibration == null) return null;
+  const { channelId, inputTokens: seen, cacheRatio } = calibration;
+  if (channelId == null || seen == null || cacheRatio == null) {
+    return null; // 前缀事实-only 快照（未命中）→ 保守
+  }
+  if (input.channelId !== channelId) return null; // 渠道不匹配 → 保守
+  const bound = input.candidate.calibratedInputTokenUpperBound;
+  if (bound == null) return null; // 候选未盖章（未命中/非主候选/user_side 关）→ 保守
+  // P9 + 路 A#4：非纯 token 计价（pricingUnit 非 token 或 unitPrice>0）与
+  // 无缓存定价（读价 ≤0 且无写价）都不分段——分段公式只有 token 段，unit 轴
+  // 会整体丢失（amount='0' → 敞口闸失效）/cacheSeg 按 0 价塌陷；回保守口径。
+  if (input.candidate.pricingUnit !== 'token') return null;
+  const unitPrice = new Decimal(cost.unitPrice ?? '0');
+  if (unitPrice.gt(0)) return null;
+  const readPrice = new Decimal(cost.cacheInputPrice);
+  const writePrice = cost.cacheWritePrice != null ? new Decimal(cost.cacheWritePrice) : null;
+  if (readPrice.lte(0) && (writePrice == null || writePrice.lte(0))) return null;
+  return { channelId, seen, cacheRatio, bound };
+}
+
+/** 分段公式消费（前置齐备才启用；否则 null = 保守） */
 function calibratedExposureOf(
   input: Parameters<typeof channelExposureAmounts>[0],
   cost: NonNullable<QuoteCandidateCostPrices>,
 ): string | null {
-  const { calibration } = input;
-  if (calibration == null) return null;
-  if (
-    calibration.channelId == null ||
-    calibration.inputTokens == null ||
-    calibration.cacheRatio == null
-  ) {
-    return null; // 前缀事实-only 快照（未命中）→ 保守
-  }
-  if (input.channelId !== calibration.channelId) return null; // 渠道不匹配 → 保守
-  const bound = input.candidate.calibratedInputTokenUpperBound;
-  if (bound == null) return null; // 候选未盖章（未命中/非主候选/user_side 关）→ 保守
-  // P9：无缓存定价（读价 ≤ 0 且无写价）不分段——cacheSeg 会按 0 价塌陷
-  // （≈免费），该渠道每笔进 over_exposure 容错区间；回保守口径。
-  const readPrice = new Decimal(cost.cacheInputPrice);
-  const writePrice = cost.cacheWritePrice != null ? new Decimal(cost.cacheWritePrice) : null;
-  if (readPrice.lte(0) && (writePrice == null || writePrice.lte(0))) return null;
-  const tailTokens = Math.max(bound - calibration.inputTokens, 0);
+  const applicable = segmentationApplicable(input, cost);
+  if (applicable == null) return null;
+  const { seen, cacheRatio, bound } = applicable;
+  const tailTokens = Math.max(bound - seen, 0);
   const segmented = calibratedChannelAmount({
-    seen: calibration.inputTokens,
+    seen,
     tailTokens,
-    cacheRatio: calibration.cacheRatio,
+    cacheRatio,
     inputPrice: cost.inputPrice,
     cacheInputPrice: cost.cacheInputPrice,
     cacheWritePrice: cost.cacheWritePrice,

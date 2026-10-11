@@ -1,4 +1,13 @@
-import { bigint, index, integer, pgTable, text, timestamp, uuid, primaryKey } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  primaryKey,
+} from 'drizzle-orm/pg-core';
 import { users } from './users.js';
 
 /**

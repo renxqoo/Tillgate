@@ -84,7 +84,12 @@ function receiptOf(input: {
     realModel: 'm',
     channelId: input.channelId,
     channelKey: 'ch',
-    usage: { inputTokens: input.inputTokens, cachedInputTokens: 0, outputTokens: 0, estimated: false },
+    usage: {
+      inputTokens: input.inputTokens,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      estimated: false,
+    },
     inputPrice: '2',
     outputPrice: '0',
     cacheInputPrice: '0',
@@ -168,9 +173,7 @@ async function toPendingClaimed(
     expectedReserved: null,
     channelId,
     channelReservedAmount: input.reserved,
-    ...(input.conservative !== undefined
-      ? { conservativeChannelAmount: input.conservative }
-      : {}),
+    ...(input.conservative !== undefined ? { conservativeChannelAmount: input.conservative } : {}),
     now,
   });
   // reserveChannel 的 channels 敞口腿（结算 tryDecreaseReserved 的对称面）
@@ -395,9 +398,7 @@ describe('校准 store 契约（in-memory = postgres 同款语义）', () => {
       requestId: 'r-new',
       now: new Date(Date.UTC(2026, 9, 2)),
     });
-    let rows = [...h.world.fixtures.calibrations.values()].filter(
-      (r) => r.prefixHash === 'dup',
-    );
+    let rows = [...h.world.fixtures.calibrations.values()].filter((r) => r.prefixHash === 'dup');
     expect(rows).toHaveLength(1);
     expect(defined(rows[0]).inputTokens).toBe(222); // 后写覆盖
 
@@ -421,7 +422,14 @@ describe('校准 store 契约（in-memory = postgres 同款语义）', () => {
     expect(evicted).toBe(2);
     rows = [...h.world.fixtures.calibrations.values()].filter((r) => r.userId === 7003);
     expect(rows.map((r) => r.prefixHash).toSorted()).toEqual([
-      'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8', 'h9',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+      'h7',
+      'h8',
+      'h9',
     ]);
   });
 });

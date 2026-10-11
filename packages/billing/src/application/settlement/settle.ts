@@ -94,7 +94,6 @@ function invariant(code: string): DefectError {
   return new DefectError(code, 'billing.billing_invariant', { code });
 }
 
-
 /** 单张账单的事务体（共享 tx）——结果与收单用户一起返回（无外层闭包可变状态） */
 // eslint-disable-next-line complexity, max-lines-per-function, max-statements -- 结算状态机事务体:投影校验→分配→逐源核销,拆分需共享 tx 与计数器
 async function settleOneInTx(
@@ -177,7 +176,8 @@ async function settleOneInTx(
     throw invariant('settle_estimated_usage');
   }
   const calibSnapshot = billing.quote.calibration as { channelId?: unknown } | undefined;
-  const calibChannelId = typeof calibSnapshot?.channelId === 'number' ? calibSnapshot.channelId : null;
+  const calibChannelId =
+    typeof calibSnapshot?.channelId === 'number' ? calibSnapshot.channelId : null;
   // B4 经济闭合（docs/calibrated-exposure-estimate.md §4.2 三分支）：
   //   ① conservative_channel_amount 为 NULL（保守预留）→ 违反即内部不一致
   //      （价格快照漂移/投影脱节），红灯死信不入账（原语义不动）；
@@ -312,21 +312,6 @@ async function settleOneInTx(
     channelCircuitBroken = channelCircuitBroken || budgetBroken;
   }
 
-  // 结算事务末尾：写校准记录（docs/calibrated-exposure-estimate.md §3.1/§4.2）。
-  // 仅 trusted 零钳制收据且 quote 带前缀信息时写；C7b 物理下限在写入前判定。
-  // 写在 wallet/channel 腿之后（v3-R4：不新增跨表加锁序死锁向量）；失败不反杀
-  // 结算（记录是可重建派生事实，I0 安全分离——宁可丢记录也不丢资金事务）。
-  if (env.calibrations != null && clamps.length === 0 && !receipt.usage.estimated) {
-    const calib = calibrationWriteOf(billing, receipt, now);
-    if (calib != null) {
-      try {
-        await env.calibrations.upsert(tx, calib);
-      } catch {
-        // 派生事实写入失败：丢弃（下一笔回落保守，非资损）
-      }
-    }
-  }
-
   // 结算成功事实不入通知 outbox：notifications 词表无
   // 「结算成功」成员——无告警消费场景；可观测走 usage_logs 投影与 onSettled
   // 钩子（best-effort）。可靠入箱只有死信路径（failure 用例，billing_dead）。
@@ -387,8 +372,14 @@ function fireOnUsageDefect(
 
 export function createSettleClaimUseCase(env: SettleEnv) {
   return async function settleClaim(claim: SettlementClaim): Promise<SettleClaimResult> {
-    const { result, settledUserId, calibratedOverExposure, calibrationReason, calibWrite, usageDefect } =
-      await env.store.transaction(async (tx) => settleOneInTx(env, tx, claim));
+    const {
+      result,
+      settledUserId,
+      calibratedOverExposure,
+      calibrationReason,
+      calibWrite,
+      usageDefect,
+    } = await env.store.transaction(async (tx) => settleOneInTx(env, tx, claim));
     if (calibWrite != null) await writeCalibrationRecord(env, calibWrite);
     if (usageDefect != null) fireOnUsageDefect(env, usageDefect);
     if (result.outcome === 'settled' && settledUserId != null) {
@@ -424,6 +415,9 @@ export function createSettleClaimsBatchUseCase(env: SettleEnv) {
       const out: {
         result: SettleClaimResult;
         settledUserId: number | null;
+        calibratedOverExposure: boolean;
+        calibrationReason: 'channel_switch' | 'cache_ttl' | 'calibration_gap' | undefined;
+        calibWrite: Parameters<CalibrationStore['upsert']>[1] | null;
         usageDefect: Parameters<NonNullable<SettleEnv['onUsageDefect']>>[0] | null;
         claim: SettlementClaim;
       }[] = [];
@@ -433,10 +427,20 @@ export function createSettleClaimsBatchUseCase(env: SettleEnv) {
       return out;
     });
     for (const row of settled) {
+      // P10：提交后独立写校准记录（批量主路径——worker settleBatchSize 缺省 20）
+      if (row.calibWrite != null) await writeCalibrationRecord(env, row.calibWrite);
       if (row.result.outcome === 'settled' && row.settledUserId != null) {
         fireOnSettled(env, {
           requestId: row.claim.requestId,
           userId: row.settledUserId,
+          ...(row.calibratedOverExposure
+            ? {
+                calibratedOverExposure: true,
+                ...(row.calibrationReason != null
+                  ? { calibrationReason: row.calibrationReason }
+                  : {}),
+              }
+            : {}),
           receipt: row.claim.receipt ?? {},
           amount: row.result.amount,
           waived: row.result.waived,

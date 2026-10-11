@@ -43,7 +43,12 @@ async function settleOverage(
       // 守卫失败（gate 家族）→ 钳到当前可收额重试；非守卫错误原样上抛
       if (!isOverageGuardFailure(error)) throw error;
       const retryCeiling = await overCollectCeiling(deps.walletStore, tx, input.userId);
-      if (retries >= 1) break; // 只重试一次：剩余 waived（并发窗口内的恢复/入账竞态不回死信）
+      if (retries >= 1) {
+        // 第二次仍守卫失败：本轮 authorize 未收任何款——collectOver 必须归零
+        // （路 A#1：否则「打算收但没收到」被当已收扣减，waived 少记、账面虚收）
+        collectOver = new Decimal(0);
+        break;
+      }
       collectOver = Decimal.min(collectOver, retryCeiling);
       retries += 1;
     }

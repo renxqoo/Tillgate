@@ -28,13 +28,8 @@ export type {
   CalibrationMissReason,
   MessageHashChain,
 } from './application/calibration.js';
-export type {
-  QuoteCalibrationSnapshot,
-} from './application/quote.js';
-export type {
-  CalibrationLookup,
-  CalibrationLookupConfig,
-} from './ports/calibration.js';
+export type { QuoteCalibrationSnapshot } from './application/quote.js';
+export type { CalibrationLookup, CalibrationLookupConfig } from './ports/calibration.js';
 export type { InferenceDefaults, InferenceDefaultsInput } from './config';
 
 // ---- 端口契约（装配注入实现）----

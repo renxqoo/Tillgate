@@ -234,7 +234,11 @@ function stampCalibrated(input: StampInput): {
 } {
   const [primary] = input.candidates;
   if (primary == null) {
-    return { candidates: input.candidates, resolution: input.resolution, snapshot: input.baseSnapshot };
+    return {
+      candidates: input.candidates,
+      resolution: input.resolution,
+      snapshot: input.baseSnapshot,
+    };
   }
   // 尾部字节界：只对新增尾部消息算保守界（已见部分用实测 seen）
   const tailTokens = tailUpperBound(input.body, input.resolution.messagesLen);
@@ -362,7 +366,11 @@ function tailUpperBound(body: { messages?: unknown }, from: number): number {
 function prefixBytesOf(body: { system?: unknown; tools?: unknown; messages?: unknown }): number {
   try {
     return Buffer.byteLength(
-      JSON.stringify({ system: body.system ?? null, tools: body.tools ?? null, messages: body.messages ?? [] }),
+      JSON.stringify({
+        system: body.system ?? null,
+        tools: body.tools ?? null,
+        messages: body.messages ?? [],
+      }),
       'utf8',
     );
   } catch {

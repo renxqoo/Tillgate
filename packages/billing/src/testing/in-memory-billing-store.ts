@@ -866,7 +866,6 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
     },
   };
 
-
   const calibrations: CalibrationStore = {
     findRecent: (_conn, input) => {
       const rows = [...calibrationRows.values()]

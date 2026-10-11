@@ -312,9 +312,7 @@ export interface ControlPlane {
     /** 收据校准配置（system_configs['billing_calibration']；docs/calibrated-exposure-estimate.md §3.3） */
     billingCalibration: {
       read(): Promise<{ config: CalibrationConfig }>;
-      update(
-        input: UpdateBillingCalibrationInput,
-      ): Promise<{ config: CalibrationConfig }>;
+      update(input: UpdateBillingCalibrationInput): Promise<{ config: CalibrationConfig }>;
     };
     /** 平台币种（写一次——处女系统才可改；各 app 启动读） */
     platformCurrency: {

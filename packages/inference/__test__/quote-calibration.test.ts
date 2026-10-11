@@ -57,11 +57,27 @@ const TURN1 = {
 };
 const TURN2 = {
   ...TURN1,
-  messages: [...TURN1.messages, { role: 'assistant', content: 'ok' }, { role: 'user', content: 'next' }],
+  messages: [
+    ...TURN1.messages,
+    { role: 'assistant', content: 'ok' },
+    { role: 'user', content: 'next' },
+  ],
 };
 
-function lookupWith(records: Array<{ prefixHash: string; channelId: number; inputTokens: number; messagesLen: number; settledAt: Date }>): CalibrationLookup {
-  return { async findRecent() { return records; } };
+function lookupWith(
+  records: Array<{
+    prefixHash: string;
+    channelId: number;
+    inputTokens: number;
+    messagesLen: number;
+    settledAt: Date;
+  }>,
+): CalibrationLookup {
+  return {
+    async findRecent() {
+      return records;
+    },
+  };
 }
 
 const CONFIG: CalibrationLookupConfig = {
@@ -74,7 +90,9 @@ const CONFIG: CalibrationLookupConfig = {
 
 const NOW = new Date('2026-10-12T00:00:00Z');
 
-function recordForTurn1(over: Partial<{ channelId: number; inputTokens: number; settledAt: Date }> = {}) {
+function recordForTurn1(
+  over: Partial<{ channelId: number; inputTokens: number; settledAt: Date }> = {},
+) {
   const built = buildMessageHashChain({ body: TURN1 as unknown as Record<string, unknown> });
   if (built == null) throw new Error('TURN1 must have messages');
   return {
@@ -108,9 +126,7 @@ describe('quote 校准集成（读侧）', () => {
     // 校准界 = seen(40000) + 尾部字节界（尾部字节 > 字节数的 1/4 → 界 > 40000）
     expect(primary.calibratedInputTokenUpperBound ?? -1).toBe(40_000 + tailBytes);
     // 字节界不动（保守底，B2 唯一口径）
-    expect(p.inputUpperBound).toBe(
-      Buffer.byteLength(JSON.stringify(TURN2), 'utf8'),
-    );
+    expect(p.inputUpperBound).toBe(Buffer.byteLength(JSON.stringify(TURN2), 'utf8'));
     expect(p.calibration).toMatchObject({ hit: true, seen: 40_000, channelId: 8 });
     expect(p.calibrationSnapshot).toMatchObject({
       mappingId: 13,
@@ -256,7 +272,10 @@ describe('quote 校准集成（读侧）', () => {
       auth: AUTH,
       body: TURN2 as unknown as Record<string, unknown>,
       now: NOW,
-      calibration: { lookup: lookupWith([recordForTurn1()]), config: { ...CONFIG, userSide: false } },
+      calibration: {
+        lookup: lookupWith([recordForTurn1()]),
+        config: { ...CONFIG, userSide: false },
+      },
     });
     expect(p.calibration).toMatchObject({ hit: true });
     // 盖章恒随 enabled（P2 重设计：渠道金额不经 billing quote；user_side 只门 gateway 透传）

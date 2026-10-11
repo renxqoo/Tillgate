@@ -10,7 +10,10 @@ import type { BillingPort, QuoteCandidate } from '@tillgate/inference';
 import type { QuoteCalibrationSnapshot } from '@tillgate/inference';
 
 type GatewayReserveInput = Parameters<BillingPort['reserveChannel']>[0];
-interface Captured { amount: string; conservativeChannelAmount?: string | null }
+interface Captured {
+  amount: string;
+  conservativeChannelAmount?: string | null;
+}
 
 function fakeDb(results: Array<Record<string, unknown> | null>) {
   let reads = 0;
@@ -30,7 +33,12 @@ function fakeDb(results: Array<Record<string, unknown> | null>) {
 describe('parseCalibrationSetting（值域——billing 单一真相）', () => {
   it('合法形状全参数通过', () => {
     expect(
-      parseCalibrationSetting({ enabled: true, window_ms: 300_000, cache_ratio: 0.9, user_side: false }),
+      parseCalibrationSetting({
+        enabled: true,
+        window_ms: 300_000,
+        cache_ratio: 0.9,
+        user_side: false,
+      }),
     ).toEqual({ enabled: true, windowMs: 300_000, cacheRatio: 0.9, userSide: false });
   });
 
@@ -41,7 +49,10 @@ describe('parseCalibrationSetting（值域——billing 单一真相）', () => 
     ['cache_ratio 0', { enabled: true, window_ms: 1, cache_ratio: 0, user_side: false }],
     ['cache_ratio > 1', { enabled: true, window_ms: 1, cache_ratio: 1.5, user_side: false }],
     ['window_ms 0', { enabled: true, window_ms: 0, cache_ratio: 0.9, user_side: false }],
-    ['window_ms 超 1h', { enabled: true, window_ms: 3_600_001, cache_ratio: 0.9, user_side: false }],
+    [
+      'window_ms 超 1h',
+      { enabled: true, window_ms: 3_600_001, cache_ratio: 0.9, user_side: false },
+    ],
     ['window_ms 非整数', { enabled: true, window_ms: 1.5, cache_ratio: 0.9, user_side: false }],
     ['矛盾：关用户侧开', { enabled: false, window_ms: 1, cache_ratio: 0.9, user_side: true }],
   ])('拒绝 %s', (_name, raw) => {
@@ -49,13 +60,27 @@ describe('parseCalibrationSetting（值域——billing 单一真相）', () => 
   });
 
   it('边界：ratio=1 / window=1h / 关且用户侧关 → 合法', () => {
-    expect(parseCalibrationSetting({ enabled: true, window_ms: 3_600_000, cache_ratio: 1, user_side: true })).toEqual({
+    expect(
+      parseCalibrationSetting({
+        enabled: true,
+        window_ms: 3_600_000,
+        cache_ratio: 1,
+        user_side: true,
+      }),
+    ).toEqual({
       enabled: true,
       windowMs: 3_600_000,
       cacheRatio: 1,
       userSide: true,
     });
-    expect(parseCalibrationSetting({ enabled: false, window_ms: 1_000, cache_ratio: 0.5, user_side: false })).toEqual({
+    expect(
+      parseCalibrationSetting({
+        enabled: false,
+        window_ms: 1_000,
+        cache_ratio: 0.5,
+        user_side: false,
+      }),
+    ).toEqual({
       enabled: false,
       windowMs: 1_000,
       cacheRatio: 0.5,
@@ -66,21 +91,41 @@ describe('parseCalibrationSetting（值域——billing 单一真相）', () => 
 
 describe('calibration reader（TTL 缓存 + 值域回落 + fail-loud）', () => {
   it('KV 命中取值；TTL 内不重复查；缺失/垃圾回落保守缺省', async () => {
-    const db = fakeDb([{ value: { enabled: true, window_ms: 300_000, cache_ratio: 0.9, user_side: false } }]);
+    const db = fakeDb([
+      { value: { enabled: true, window_ms: 300_000, cache_ratio: 0.9, user_side: false } },
+    ]);
     const read = createBillingCalibrationReader({ db: db as never, ttlMs: 60_000 });
-    expect(await read()).toEqual({ enabled: true, windowMs: 300_000, cacheRatio: 0.9, userSide: false });
-    expect(await read()).toEqual((await read()));
+    expect(await read()).toEqual({
+      enabled: true,
+      windowMs: 300_000,
+      cacheRatio: 0.9,
+      userSide: false,
+    });
+    expect(await read()).toEqual(await read());
     expect(db.reads()).toBe(1); // TTL 内缓存
 
-    for (const raw of [null, { value: { enabled: 'yes' } }, { value: { enabled: true, cache_ratio: 2 } }]) {
-      const fallback = createBillingCalibrationReader({ db: fakeDb([raw]) as never, ttlMs: 60_000 });
+    for (const raw of [
+      null,
+      { value: { enabled: 'yes' } },
+      { value: { enabled: true, cache_ratio: 2 } },
+    ]) {
+      const fallback = createBillingCalibrationReader({
+        db: fakeDb([raw]) as never,
+        ttlMs: 60_000,
+      });
       expect(await fallback()).toEqual(DEFAULT_CALIBRATION_CONFIG); // 保守缺省
     }
   });
 
   it('KV 读失败抛错（fail-loud——校准事故不静默错档）', async () => {
     const db = {
-      query: { systemConfigs: { findFirst: async () => { throw new Error('db down'); } } },
+      query: {
+        systemConfigs: {
+          findFirst: async () => {
+            throw new Error('db down');
+          },
+        },
+      },
     };
     const read = createBillingCalibrationReader({ db: db as never, ttlMs: 60_000 });
     await expect(read()).rejects.toThrow('db down');
@@ -94,7 +139,9 @@ describe('calibration reader（TTL 缓存 + 值域回落 + fail-loud）', () => 
     const read = createBillingCalibrationReader({ db: db as never, ttlMs: 1 });
     const first = await read();
     expect(first != null && first.enabled).toBe(false);
-    await new Promise((r) => { setTimeout(r, 3); });
+    await new Promise((r) => {
+      setTimeout(r, 3);
+    });
     const second = await read();
     expect(second != null && second.enabled).toBe(true);
     expect(db.reads()).toBe(2);
@@ -159,7 +206,10 @@ async function captureReserveAmounts(input: ReturnType<typeof reserveInput>): Pr
     const api = {
       authorize: async () => {},
       signal: async () => {},
-      reserveChannel: async (req: { amount: string; conservativeChannelAmount?: string | null }) => {
+      reserveChannel: async (req: {
+        amount: string;
+        conservativeChannelAmount?: string | null;
+      }) => {
         resolve({
           amount: req.amount,
           conservativeChannelAmount: req.conservativeChannelAmount,
@@ -245,11 +295,25 @@ describe('channelExposureAmounts 双金额（docs §4.1）', () => {
 
   it('候选未盖章（calibratedBound 缺失）→ 保守', async () => {
     const candidate: QuoteCandidate = { ...CANDIDATE };
-    delete (candidate as { calibratedInputTokenUpperBound?: number }).calibratedInputTokenUpperBound;
+    delete (candidate as { calibratedInputTokenUpperBound?: number })
+      .calibratedInputTokenUpperBound;
     const captured = await captureReserveAmounts(reserveInput({ candidate }));
     expect(captured.amount).toBe('2.1344064');
     expect(captured.conservativeChannelAmount).toBeNull();
     expect(captured.conservativeChannelAmount).toBeNull();
+  });
+
+  it('路A#4：unit 计价（pricingUnit=request）命中校准 → 回保守（unit 轴不丢）', async () => {
+    const unitCandidate: QuoteCandidate = {
+      ...CANDIDATE,
+      pricingUnit: 'request',
+      unitPrice: '0.5',
+    };
+    const captured = await captureReserveAmounts(reserveInput({ candidate: unitCandidate }));
+    // 保守口径（含 unit 轴：1M 界×2.1/M + 4096×8.4/M——unitUpperBound=0 故 unit 段 0；
+    // 关键是不走分段公式返回 '0'）
+    expect(captured.amount).not.toBe('0');
+    expect(captured.amount).toBe('2.1344064');
   });
 
   it('costPrices 缺失 → 金额 0 口径（现行免费/未配置语义不变）', async () => {

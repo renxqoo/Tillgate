@@ -3,7 +3,11 @@
  * 值域由 billing 解析单一实现兜底（路由契约 zod 之外的二道防线——
  * ratio 值域/window 上限/矛盾态在此拒绝）。
  */
-import { BILLING_CALIBRATION_KEY, parseCalibrationSetting, type CalibrationConfig } from '@tillgate/billing';
+import {
+  BILLING_CALIBRATION_KEY,
+  parseCalibrationSetting,
+  type CalibrationConfig,
+} from '@tillgate/billing';
 import { controlPlaneErrors } from '../../errors';
 import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
@@ -26,12 +30,14 @@ export async function updateBillingCalibration(
   deps: UpdateBillingCalibrationDeps,
   input: UpdateBillingCalibrationInput,
 ): Promise<{ config: CalibrationConfig }> {
-  if (parseCalibrationSetting({
-    enabled: input.config.enabled,
-    window_ms: input.config.windowMs,
-    cache_ratio: input.config.cacheRatio,
-    user_side: input.config.userSide,
-  }) === null) {
+  if (
+    parseCalibrationSetting({
+      enabled: input.config.enabled,
+      window_ms: input.config.windowMs,
+      cache_ratio: input.config.cacheRatio,
+      user_side: input.config.userSide,
+    }) === null
+  ) {
     throw controlPlaneErrors.business('invalid_calibration_config', {
       config: JSON.stringify(input.config),
     });

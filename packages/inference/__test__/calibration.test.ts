@@ -3,7 +3,6 @@ import {
   buildMessageHashChain,
   calibratedChannelAmount,
   calibrationGuard,
-  calibrationWriteGuard,
   resolveCalibration,
   type CalibrationRecord,
 } from '../src/application/calibration.js';
@@ -88,10 +87,20 @@ describe('buildMessageHashChain（哈希链稳定性）', () => {
 
   it('多模态内容参与哈希：不同图同长度 → 哈希不同（内容哈希，非长度占位）', () => {
     const imgA = chainOf({
-      messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }] }],
+      messages: [
+        {
+          role: 'user',
+          content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }],
+        },
+      ],
     });
     const imgB = chainOf({
-      messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,BBBB' } }] }],
+      messages: [
+        {
+          role: 'user',
+          content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,BBBB' } }],
+        },
+      ],
     });
     expect(imgA.chainAt(1)).not.toBe(imgB.chainAt(1));
   });
@@ -175,38 +184,6 @@ describe('resolveCalibration（C1-C6 匹配）', () => {
   });
 });
 
-describe('calibrationWriteGuard（C7 写入守卫）', () => {
-  const prefixBytes = 200_000; // 5 万 token 前缀 ≈ 20 万字节 → 下限 5 万
-  const base = { userId: 2, mappingId: 13, channelId: 8, messagesLen: 2, prefixBytes };
-
-  it('正常收据 → 通过', () => {
-    expect(calibrationWriteGuard({ ...base, inputTokens: 50_000, clamped: false })).toBe(true);
-  });
-
-  it('C7a 钳制收据 → 拒写', () => {
-    expect(calibrationWriteGuard({ ...base, inputTokens: 50_000, clamped: true })).toBe(false);
-  });
-
-  it.each([
-    ['prompt_tokens:0', 0],
-    ['极小值', 100],
-    ['口径排除型（Anthropic 排除 cached）', 3_000],
-  ])('C7b 低报 %s → 拒写', (_name, inputTokens) => {
-    expect(calibrationWriteGuard({ ...base, inputTokens, clamped: false })).toBe(false);
-  });
-
-  it('C7b 边界：恰在 bytes/4 下限 → 通过', () => {
-    expect(calibrationWriteGuard({ ...base, inputTokens: 50_000, clamped: false })).toBe(true);
-  });
-
-  it('C7c 结构垃圾（负数/小数/NaN）→ 拒写', () => {
-    expect(calibrationWriteGuard({ ...base, inputTokens: -1, clamped: false })).toBe(false);
-    expect(calibrationWriteGuard({ ...base, inputTokens: 1.5, clamped: false })).toBe(false);
-    expect(calibrationWriteGuard({ ...base, inputTokens: Number.NaN, clamped: false })).toBe(false);
-    expect(calibrationWriteGuard({ ...base, messagesLen: 0, inputTokens: 50_000, clamped: false })).toBe(false);
-  });
-});
-
 describe('calibratedChannelAmount（分段公式）', () => {
   const prices = {
     inputPrice: '2.1',
@@ -256,8 +233,24 @@ describe('calibratedChannelAmount（分段公式）', () => {
   });
 
   it('ratio 值域外（>1 / ≤0）→ null（防御读侧）', () => {
-    expect(calibratedChannelAmount({ ...prices, seen: 100, tailTokens: 0, cacheRatio: 1.5, maxOutputTokens: 0 })).toBeNull();
-    expect(calibratedChannelAmount({ ...prices, seen: 100, tailTokens: 0, cacheRatio: 0, maxOutputTokens: 0 })).toBeNull();
+    expect(
+      calibratedChannelAmount({
+        ...prices,
+        seen: 100,
+        tailTokens: 0,
+        cacheRatio: 1.5,
+        maxOutputTokens: 0,
+      }),
+    ).toBeNull();
+    expect(
+      calibratedChannelAmount({
+        ...prices,
+        seen: 100,
+        tailTokens: 0,
+        cacheRatio: 0,
+        maxOutputTokens: 0,
+      }),
+    ).toBeNull();
   });
 
   it('tail 超 seen 巨大 → rest 为正段（无负段）', () => {

@@ -5,11 +5,7 @@
  */
 export interface CalibrationLookup {
   /** (user, mapping) top-N 现读（空数组安全回落保守——读失败安全方向） */
-  findRecent(input: {
-    userId: number;
-    mappingId: number;
-    limit: number;
-  }): Promise<
+  findRecent(input: { userId: number; mappingId: number; limit: number }): Promise<
     ReadonlyArray<{
       prefixHash: string;
       channelId: number;

@@ -55,8 +55,9 @@ export type CalibrationMissReason =
   | 'no_record' // 无匹配记录
   | 'prefix' // C2：前缀不匹配（改写/收缩）
   | 'window' // C4：超窗（含 margin）
-  | 'no_cache_price' // P9：无缓存折价（读/写价 ≤0）——金额侧不分段回保守（gateway 判定）
   | 'disabled'; // 读侧开关关闭（enabled=false 时 quote 跳过查询）
+// 注：无缓存折价/非 token 计价的回落发生在 gateway 金额面（不经 quote 数据
+// 流），本枚举不设 no_cache_price——docs §3.4 的该成员已在 v5 修订移除
 
 export interface CalibrationReadConfig {
   enabled: boolean;
@@ -92,7 +93,10 @@ function sha256Hex(input: string): string {
 }
 
 /** §2.0' 适用域守卫（C6，读写双侧同款）：chat 族且 messages 为非空数组 */
-export function calibrationGuard(input: { endpoint: string; body: Record<string, unknown> }): boolean {
+export function calibrationGuard(input: {
+  endpoint: string;
+  body: Record<string, unknown>;
+}): boolean {
   if (input.endpoint !== 'chat') return false;
   const { messages } = input.body;
   return Array.isArray(messages) && messages.length > 0;
@@ -159,23 +163,6 @@ export function resolveCalibration(input: {
     };
   }
   return { hit: false, missReason: sawRecord ? 'window' : 'no_record' };
-}
-
-/**
- * C7 写入守卫（§2.2）：结算写记录前的全部判定。
- * - C7a 零钳制：被 B2 钳过的收据计数器不可信，不得成链路锚点；
- * - C7b 物理下限：文本 bytes/token ≤ 4 恒成立（GPT 系最宽 ~4B/token），
- *   seen < prefixBytes/4 说明计数器低报（口径排除/清零 bug）——拒写；
- * - C7c 结构：有限正整数。
- */
-export function calibrationWriteGuard(input: CalibrationWriteInput): boolean {
-  const { inputTokens, messagesLen, prefixBytes, clamped } = input;
-  if (clamped) return false; // C7a
-  if (!Number.isSafeInteger(inputTokens) || inputTokens <= 0) return false; // C7c
-  if (!Number.isSafeInteger(messagesLen) || messagesLen <= 0) return false;
-  if (!Number.isSafeInteger(prefixBytes) || prefixBytes <= 0) return false;
-  const floorTokens = Math.ceil(prefixBytes / 4); // C7b（媒体段只增不减）
-  return inputTokens >= floorTokens;
 }
 
 /**

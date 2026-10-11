@@ -69,4 +69,3 @@ export async function writeCalibrationRecord(
     // 派生事实：丢弃（下一笔回落保守，非资损）
   }
 }
-
