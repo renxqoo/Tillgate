@@ -50,7 +50,7 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
         cost_cache_input_price = ${'0.42'}, cost_cache_write_price = '0'
       where mapping_id = ${world.seed.mappingId}`);
     // 校准开启（渠道侧；窗口 5min；ratio 0.9；TTL 15s 内拾取）
-    const value = { enabled: true, window_ms: 300_000, cache_ratio: 0.9, user_side: false };
+    const value = { enabled: true, window_ms: 300_000, cache_ratio: 0.9, user_side: true };
     await world.db
       .insert(systemConfigs)
       .values({ key: 'billing_calibration', value })
@@ -101,7 +101,8 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
 
     // 第二笔：只追加 → 命中（quote.calibration + 分段闭式 + conservative 非空）
     const m2 = [...m1, { role: 'assistant', content: 'a1' }, { role: 'user', content: 'q2' }];
-    const r2 = await chat(m2);
+    const m2Body = { model: E2E_MODEL, messages: m2, max_tokens: 1_000, stream: false };
+    const r2 = await e2ePost(gateway.baseUrl, raw, m2Body);
     expect(r2.status).toBe(200);
     const rows = await world.db
       .select({
@@ -123,13 +124,6 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
       };
       candidates: Array<{ calibratedInputTokenUpperBound?: number }>;
     };
-    console.log('J1_HIT', JSON.stringify({
-      calibInQuote: quote.calibration,
-      pgTypes: (await world.db.execute(sql`select pg_typeof(settled_at) as t, settled_at::text as s from prefix_calibrations limit 1`)),
-      records: (await world.db.execute(
-        sql`select prefix_hash, input_tokens, messages_len, settled_at from prefix_calibrations where user_id = ${issued.userId}`,
-      )).slice(0, 300),
-    }).slice(0, 500));
     expect(quote.calibration).toBeDefined();
     expect(quote.calibration).toMatchObject({
       inputTokens: 56_000,
@@ -145,7 +139,14 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
       .plus(new Decimal(bound - 50_400).times(E2E_INPUT_PRICE).div(1_000_000))
       .plus(new Decimal(1_000).times(E2E_OUTPUT_PRICE).div(1_000_000));
     expect(new Decimal(defined(row.reserved)).eq(expected)).toBe(true);
-    expect(row.conservative).not.toBeNull();
+    // conservative 闭式（P12c）：保守口径 = 全请求体字节界×2.1/M + 1000×8.4/M
+    // （estimateMaxCost 的 estimatedInputTokens——不是校准界 bound）
+    const bodyBytes = Buffer.byteLength(JSON.stringify(m2Body), 'utf8');
+    const conservativeExpected = new Decimal(bodyBytes)
+      .times(E2E_INPUT_PRICE)
+      .div(1_000_000)
+      .plus(new Decimal(1_000).times(E2E_OUTPUT_PRICE).div(1_000_000));
+    expect(new Decimal(defined(row.conservative)).eq(conservativeExpected)).toBe(true);
     await keys.settleAll(issued.userId);
     await keys.assertReconciled(issued.userId, '100');
 
@@ -201,6 +202,31 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
     world.upstream.calibrationUsage = { promptTokens: 90_000, completionTokens: 100 };
     const r2 = await chat(small2);
     expect(r2.status).toBe(200);
+    // ② 触发证据（P12：不能只断 settled——miss 也会 settled）：
+    // 预留=分段闭式（cacheSeg=floor(60000×0.9)=54000×0.42/M + rest×2.1/M + 100×8.4/M）
+    // 且 conservative 非空（B4 ② 判定列在）
+    const calibRows = await world.db
+      .select({
+        reserved: billingRequests.channelReservedAmount,
+        conservative: billingRequests.conservativeChannelAmount,
+        quote: billingRequests.quote,
+      })
+      .from(billingRequests)
+      .where(eq(billingRequests.userId, issued.userId))
+      .orderBy(sql`created_at desc`)
+      .limit(1);
+    const calibRow = defined(calibRows[0]);
+    const calibBound = defined(
+      (calibRow.quote as { candidates: Array<{ calibratedInputTokenUpperBound?: number }> })
+        .candidates[0]?.calibratedInputTokenUpperBound,
+    );
+    const segExpected = new Decimal(54_000)
+      .times('0.42')
+      .div(1_000_000)
+      .plus(new Decimal(calibBound - 54_000).times('2.1').div(1_000_000))
+      .plus(new Decimal(1_000).times('8.4').div(1_000_000));
+    expect(new Decimal(defined(calibRow.reserved)).lt(segExpected.plus('0.001'))).toBe(true);
+    expect(calibRow.conservative).not.toBeNull();
     await keys.settleAll(issued.userId);
 
     const final = await world.db
@@ -213,6 +239,10 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
     await keys.assertReconciled(issued.userId, '100');
   });
 
+  // 旅程三说明（P12b）：方案原定「超保守 → 死信」在 e2e 世界不可构造——
+  // mock 收据价与 costPrices 同源（无价格漂移自由度），钳定后成本恒 ≤ 保守。
+  // ③ 死信分支由 packages/billing calibration-settlement.test 分支③ 表驱动锁定；
+  // e2e 本旅程锁 B2 钳制绿灯（校准值不进钳制的 I0 端到端证据）。
   it('旅程三：B2 钳制边界绿灯（发票超字节界 → 钳定结算照常完成）', async () => {
     const issued = await keys.issue('100');
     raw = issued.raw;

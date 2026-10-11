@@ -27,4 +27,9 @@ export interface CalibrationLookupConfig {
   cacheRatio: number;
   /** 读请求的 top-N 上限（保留策略对齐，缺省 8） */
   recentLimit: number;
+  /**
+   * 用户侧开关（docs §2.3 表/§9 步骤 3）：false 时候选不盖 calibrated
+   * InputTokenUpperBound（冻结额走字节界）——分步放量门；渠道侧金额不受此开关影响。
+   */
+  userSide: boolean;
 }

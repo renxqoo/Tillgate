@@ -274,6 +274,8 @@ export async function assembleGateway(config: GatewayConfig): Promise<GatewayAss
         db,
         ttlMs: config.reservationPolicyTtlMs,
       }),
+      // 校准 user_side 动态读（authorize 候选透传门——TTL 缓存与 quote 侧共享）
+      resolveCalibration: () => resolveCalibrationContext({ reader: calibrationReader, lookup: createCalibrationLookup(billingStore, billingStore.calibrationStore) }),
       assertCapacity,
       // TPM 预占收尾（结算信号面回填/释放——预占不再靠分钟桶滚动硬等）
       limiter: rateLimit.limiter,

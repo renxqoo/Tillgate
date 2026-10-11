@@ -13,6 +13,7 @@ import type { DbLike } from '@tillgate/db';
 import { systemConfigs } from '@tillgate/db';
 import {
   BILLING_CALIBRATION_KEY,
+  CALIBRATION_RECORD_KEEP,
   parseCalibrationSetting,
   DEFAULT_CALIBRATION_CONFIG,
   type CalibrationStore,
@@ -90,7 +91,8 @@ export async function resolveCalibrationContext(input: {
       enabled: parsed.enabled,
       windowMs: parsed.windowMs,
       cacheRatio: parsed.cacheRatio,
-      recentLimit: 8, // 保留策略对齐（docs §3.1 缺省 N=8）
+      recentLimit: CALIBRATION_RECORD_KEEP, // 单一真相（billing 导出）
+      userSide: parsed.userSide,
     },
   };
 }

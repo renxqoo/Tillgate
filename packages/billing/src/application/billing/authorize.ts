@@ -29,14 +29,21 @@ import { planFunding } from './funding/plan.js';
 import type { WalletApi } from '../wallet/wallet.js';
 
 /**
- * 指纹载荷的 calibration 剔除（浅拷贝，不动原 quote）：值时变（收据实测），
- * 不是命令身份的一部分——同命令重放必须同指纹（幂等语义）。quote 本体
- * （含 calibration）照常落库，仅指纹计算排除。
+ * 指纹载荷的时变字段剔除（浅+候选级，不动原 quote）：
+ *   quote.calibration（收据实测值）与 candidates[].calibratedInputToken
+ * UpperBound（= seen + tail，seen 的函数——同 requestId 重放时随并发结算漂移）
+ * 都不是命令身份的一部分（P4：v3-R3 的论证对候选字段逐字成立）。
+ * quote 本体（含全部字段）照常落库，仅指纹计算排除。
  */
 function withoutCalibration(quote: BillingQuote): Omit<BillingQuote, 'calibration'> {
-  if (quote.calibration === undefined) return quote;
+  const candidates = quote.candidates.map((c) => {
+    if (c.calibratedInputTokenUpperBound === undefined) return c;
+    const { calibratedInputTokenUpperBound: _bound, ...rest } = c;
+    return rest;
+  });
+  if (quote.calibration === undefined) return { ...quote, candidates };
   const { calibration: _excluded, ...rest } = quote;
-  return rest;
+  return { ...rest, candidates };
 }
 
 export interface BillingEnv {

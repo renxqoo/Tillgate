@@ -69,6 +69,7 @@ const CONFIG: CalibrationLookupConfig = {
   windowMs: 300_000,
   cacheRatio: 0.9,
   recentLimit: 8,
+  userSide: true,
 };
 
 const NOW = new Date('2026-10-12T00:00:00Z');
@@ -173,7 +174,16 @@ describe('quote 校准集成（读侧）', () => {
       },
     });
     expect(p.calibration).toEqual({ hit: false, missReason: 'disabled' });
-    expect(p.calibrationSnapshot).toBeNull();
+    // P3：前缀事实仍携带（写侧不受读侧开关影响——冷启动积累）
+    expect(p.calibrationSnapshot).toMatchObject({
+      mappingId: 13,
+      channelId: null,
+      inputTokens: null,
+      cacheRatio: null,
+    });
+    for (const c of p.candidates) {
+      expect(c.calibratedInputTokenUpperBound).toBeUndefined();
+    }
   });
 
   it('前缀不匹配（改写早期消息）→ no_record 回落，候选不盖章', async () => {
@@ -235,6 +245,26 @@ describe('quote 校准集成（读侧）', () => {
       channelId: null,
       inputTokens: null,
       cacheRatio: null,
+    });
+  });
+
+  it('user_side=false：盖章仍在（渠道侧金额消费）；用户冻结面由 gateway 透传门控', async () => {
+    const p = await prepareChatRequest({
+      catalog: catalogFixture(),
+      defaults: DEFAULTS,
+      requestId: 'r9',
+      auth: AUTH,
+      body: TURN2 as unknown as Record<string, unknown>,
+      now: NOW,
+      calibration: { lookup: lookupWith([recordForTurn1()]), config: { ...CONFIG, userSide: false } },
+    });
+    expect(p.calibration).toMatchObject({ hit: true });
+    // 盖章恒随 enabled（P2 重设计：渠道金额不经 billing quote；user_side 只门 gateway 透传）
+    expect(p.candidates[0]?.calibratedInputTokenUpperBound).toBeDefined();
+    expect(p.calibrationSnapshot).toMatchObject({
+      channelId: 8,
+      inputTokens: 40_000,
+      cacheRatio: 0.9,
     });
   });
 

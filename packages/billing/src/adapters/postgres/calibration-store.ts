@@ -11,16 +11,24 @@ import type {
 } from '../../ports/calibration-store.js';
 import type { WalletConn } from '../../ports/wallet-store.js';
 
-function tx(conn: WalletConn): DbTx {
-  return conn as unknown as DbTx;
+/**
+ * 连接解析：外部 conn 优先（事务/读路径注入）；缺省回落 store 自持 db
+ * （P5：worker retention 等无事务上下文的调用方——undefined conn 在
+ * postgres 适配器上会 TypeError 且被 best-effort 链静默吞掉）。
+ */
+function connOf(db: Db, conn: WalletConn | undefined): DbTx {
+  if (conn != null) return conn as unknown as DbTx;
+  return db as unknown as DbTx;
 }
 
 /** (user, mapping) 组内 recent top-limit 的 prefix_hash 集（cleanup 保留谓词） */
+/** 内部查询的 conn 形状（解析后） */
 async function keepHashes(
-  conn: WalletConn,
+  db: Db,
+  conn: WalletConn | undefined,
   input: { userId: number; mappingId: number; limit: number },
 ): Promise<string[]> {
-  const rows = await tx(conn)
+  const rows = await connOf(db, conn)
     .select({ hash: prefixCalibrations.prefixHash })
     .from(prefixCalibrations)
     .where(
@@ -36,10 +44,11 @@ async function keepHashes(
 
 /** 保留窗最早行（settled_at 并列驱逐兜底的截止时刻） */
 async function earliestKeptAt(
-  conn: WalletConn,
+  db: Db,
+  conn: WalletConn | undefined,
   input: { userId: number; mappingId: number; hashes: string[] },
 ): Promise<Date | null> {
-  const rows = await tx(conn)
+  const rows = await connOf(db, conn)
     .select({ settledAt: prefixCalibrations.settledAt })
     .from(prefixCalibrations)
     .where(
@@ -56,10 +65,11 @@ async function earliestKeptAt(
 
 /** 驱逐不在保留集且不晚于截止时刻的旧行，返回驱逐数（幂等） */
 async function evictOlder(
-  conn: WalletConn,
+  db: Db,
+  conn: WalletConn | undefined,
   input: { userId: number; mappingId: number; hashes: string[]; cutoff: Date },
 ): Promise<number> {
-  const evicted = await tx(conn)
+  const evicted = await connOf(db, conn)
     .delete(prefixCalibrations)
     .where(
       and(
@@ -74,10 +84,10 @@ async function evictOlder(
 }
 
 // eslint-disable-next-line max-lines-per-function -- 三个动词的 SQL 平铺（select/insert/驱逐已拆出）
-export function createCalibrationStore(_db: Db): CalibrationStore {
+export function createCalibrationStore(db: Db): CalibrationStore {
   return {
     async findRecent(conn, input) {
-      return tx(conn)
+      return connOf(db, conn)
         .select({
           userId: prefixCalibrations.userId,
           mappingId: prefixCalibrations.mappingId,
@@ -99,7 +109,7 @@ export function createCalibrationStore(_db: Db): CalibrationStore {
     },
 
     async upsert(conn, input: CalibrationUpsertInput) {
-      await tx(conn)
+      await connOf(db, conn)
         .insert(prefixCalibrations)
         .values({
           userId: input.userId,
@@ -128,12 +138,12 @@ export function createCalibrationStore(_db: Db): CalibrationStore {
     },
 
     async cleanup(conn, input) {
-      const hashes = await keepHashes(conn, { ...input, limit: input.keep });
+      const hashes = await keepHashes(db, conn, { ...input, limit: input.keep });
       if (hashes.length < input.keep) return 0; // 未超保留数：零变更
       // 双条件驱逐：不在保留集 + 不晚于保留窗最早行（settled_at 并列时 hash 集兜底）
-      const cutoff = await earliestKeptAt(conn, { ...input, hashes });
+      const cutoff = await earliestKeptAt(db, conn, { ...input, hashes });
       if (cutoff == null) return 0;
-      return evictOlder(conn, { ...input, hashes, cutoff });
+      return evictOlder(db, conn, { ...input, hashes, cutoff });
     },
   };
 }

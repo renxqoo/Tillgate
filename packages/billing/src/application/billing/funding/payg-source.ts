@@ -6,7 +6,7 @@ import { availableToSpend } from '../../../domain/wallet/exposure.js';
 import { overCollectCeiling } from './over-collect.js';
 import { Decimal } from '../../../domain/money.js';
 import { BILLING_REF_TYPE } from '../../wallet/authorize.js';
-import { DefectError } from '@tillgate/errors';
+import { BusinessError, DefectError } from '@tillgate/errors';
 
 /**
  * 超收段（F1——docs §4.3）：钳天花板补充授权 + 结算；并发败者重读钳制，
@@ -20,6 +20,7 @@ async function settleOverage(
   const over = new Decimal(input.over);
   if (!over.gt(0)) return new Decimal(0);
   let collectOver = Decimal.min(over, await overCollectCeiling(deps.walletStore, tx, input.userId));
+  let retries = 0;
   while (collectOver.gt(0)) {
     try {
       await deps.wallet.authorize({
@@ -39,28 +40,30 @@ async function settleOverage(
       });
       break;
     } catch (error) {
-      // 守卫失败（gate 家族）→ 钳到当前可收额重试一次；非守卫错误原样上抛
+      // 守卫失败（gate 家族）→ 钳到当前可收额重试；非守卫错误原样上抛
       if (!isOverageGuardFailure(error)) throw error;
       const retryCeiling = await overCollectCeiling(deps.walletStore, tx, input.userId);
-      if (retryCeiling.gte(collectOver)) throw error; // 非并发占用——真异常
-      collectOver = Decimal.min(over, retryCeiling);
+      if (retries >= 1) break; // 只重试一次：剩余 waived（并发窗口内的恢复/入账竞态不回死信）
+      collectOver = Decimal.min(collectOver, retryCeiling);
+      retries += 1;
     }
   }
   return over.minus(collectOver);
 }
 
 /**
- * #over 守卫失败家族：conditionalReserve 输家的 gate_unclassified /
- * 可用不足类业务错——并发占用的可期形态（F1）。结构不变量（account_missing
- * 等）与连接错误不算——那些上抛走失败处置。
+ * #over 守卫失败家族（P11 收窄）：仅精确的 authorize.gate_unclassified
+ * （conditionalReserve 并发输家）与 billing 业务错（available/insufficient
+ * 业务码族）。结构不变量（account_missing 等 DefectError）与连接/驱动错误
+ * （"connection unavailable" 等含 available 字样）不算——上抛走失败处置。
  */
 function isOverageGuardFailure(error: unknown): boolean {
   if (error instanceof DefectError) {
-    const gateLoss = error.message.includes('gate_unclassified');
-    const authorizeGate = error.code === 'billing.wallet_invariant' && error.message.includes('authorize.');
-    return gateLoss || authorizeGate;
+    return error.message === 'authorize.gate_unclassified';
   }
-  if (error instanceof Error) return /insufficient|available/i.test(error.message);
+  if (error instanceof BusinessError) {
+    return /insufficient|available/i.test(error.code);
+  }
   return false;
 }
 import type { WalletStore, WalletTx } from '../../../ports/wallet-store.js';

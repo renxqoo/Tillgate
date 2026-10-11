@@ -172,6 +172,54 @@ async function captureReserveAmounts(input: ReturnType<typeof reserveInput>): Pr
   });
 }
 
+/** authorize 面的 billing quote 捕获器（Promise 化） */
+async function captureAuthorizeQuote(input: {
+  userSide: boolean;
+}): Promise<{ candidates: Array<{ calibratedInputTokenUpperBound?: number }> }> {
+  const { createGatewayBilling } = await import('../src/adapters/billing-port.js');
+  return await new Promise((resolve, reject) => {
+    const api = {
+      authorize: async (req: { quote: unknown }) => {
+        resolve(req.quote as { candidates: Array<{ calibratedInputTokenUpperBound?: number }> });
+      },
+      signal: async () => {},
+      reserveChannel: async () => ({ allowed: true, remaining: '1', switched: false }),
+    };
+    const port = createGatewayBilling(api as never, {
+      resolveReservationPolicy: async () => ({ mode: 'full' }),
+      resolveReservationLimit: async () => '1000',
+      resolveCalibration: async () => ({ config: { userSide: input.userSide } }),
+    });
+    port
+      .authorize({
+        requestId: 'r',
+        userId: 1,
+        apiKeyId: null,
+        appId: null,
+        stream: false,
+        candidates: [CANDIDATE],
+        inputTokenUpperBound: 1_000_000,
+        maxOutputTokens: 100,
+        authorizationTtlMs: 60_000,
+      })
+      .catch(reject);
+  });
+}
+
+describe('user_side 透传门（docs §2.3 表/§9 步骤 3——P2 重设计）', () => {
+  it('user_side=false：authorize 的 billing quote 候选不带校准界（冻结走字节界）', async () => {
+    const captured = await captureAuthorizeQuote({ userSide: false });
+    expect(captured.candidates[0]).toBeDefined();
+    expect(captured.candidates[0]?.calibratedInputTokenUpperBound).toBeUndefined();
+  });
+
+  it('user_side=true：billing quote 候选携带校准界（冻结额收缩）', async () => {
+    const captured = await captureAuthorizeQuote({ userSide: true });
+    if (captured.candidates[0] == null) throw new Error('no candidate captured');
+    expect(captured.candidates[0].calibratedInputTokenUpperBound).toBe(50_600);
+  });
+});
+
 describe('channelExposureAmounts 双金额（docs §4.1）', () => {
   it('渠道匹配 + 候选盖章 → amount = 分段闭式；conservative = 字节界保守闭式', async () => {
     const captured = await captureReserveAmounts(reserveInput());
@@ -184,13 +232,15 @@ describe('channelExposureAmounts 双金额（docs §4.1）', () => {
   it('渠道不匹配（failover 冷渠道）→ 双双保守：amount=conservative 且 conservative 列不落', async () => {
     const captured = await captureReserveAmounts(reserveInput({ channelId: 9 }));
     expect(captured.amount).toBe('2.1344064'); // 保守（含输出段）
-    expect(captured.conservativeChannelAmount).toBeUndefined(); // 非校准预留（B4 走原路径）
+    // P1：显式 null（清列）——换渠残留会让 B4 ② 对价格漂移失明
+    expect(captured.conservativeChannelAmount).toBeNull();
   });
 
   it('无校准快照（未命中）→ 现状行为：amount=保守，无 conservative', async () => {
     const captured = await captureReserveAmounts(reserveInput({ calibration: undefined }));
     expect(captured.amount).toBe('2.1344064');
-    expect(captured.conservativeChannelAmount).toBeUndefined();
+    expect(captured.conservativeChannelAmount).toBeNull(); // P1：恒携带（null=清列）
+    expect(captured.conservativeChannelAmount).toBeNull();
   });
 
   it('候选未盖章（calibratedBound 缺失）→ 保守', async () => {
@@ -198,12 +248,13 @@ describe('channelExposureAmounts 双金额（docs §4.1）', () => {
     delete (candidate as { calibratedInputTokenUpperBound?: number }).calibratedInputTokenUpperBound;
     const captured = await captureReserveAmounts(reserveInput({ candidate }));
     expect(captured.amount).toBe('2.1344064');
-    expect(captured.conservativeChannelAmount).toBeUndefined();
+    expect(captured.conservativeChannelAmount).toBeNull();
+    expect(captured.conservativeChannelAmount).toBeNull();
   });
 
   it('costPrices 缺失 → 金额 0 口径（现行免费/未配置语义不变）', async () => {
     const captured = await captureReserveAmounts(reserveInput({ costPrices: undefined }));
     expect(captured.amount).toBe('0');
-    expect(captured.conservativeChannelAmount).toBeUndefined();
+    expect(captured.conservativeChannelAmount).toBeNull();
   });
 });

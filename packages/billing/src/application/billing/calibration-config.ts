@@ -9,6 +9,9 @@
  */
 export const BILLING_CALIBRATION_KEY = 'billing_calibration';
 
+/** 读侧 top-N 与写侧保留条数（docs §3.1 缺省 8——单一真相，两侧共用） */
+export const CALIBRATION_RECORD_KEEP = 8;
+
 /** KV 缺省（保守方向：关闭、短窗、高 ratio、用户侧不启用——docs §3.3 表） */
 export const DEFAULT_CALIBRATION_CONFIG: CalibrationConfig = {
   enabled: false,

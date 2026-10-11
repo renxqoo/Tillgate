@@ -289,7 +289,12 @@ export async function assembleWorker(
       void balanceLowCheck(data).catch(() => {});
       // 校准容错区间命中（docs §4.2 ②）：观测计数 + 批后保留策略清理（幂等）
       if (data.calibratedOverExposure) {
-        logger.warn({ requestId: data.requestId }, 'calibration over exposure settled');
+        // P13：reason 标签随日志（§9 步骤 2 中止条件的观察数据源——
+        // metrics 管道装配可换计数器，日志保底）
+        logger.warn(
+          { requestId: data.requestId, reason: data.calibrationReason ?? 'unknown' },
+          'calibration over exposure settled',
+        );
       }
       void calibrationRetention(
         billingStore.calibrationStore,

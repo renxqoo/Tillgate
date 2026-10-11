@@ -30,6 +30,8 @@ export interface GatewayBillingConfig {
   resolveReservationLimit: () => Promise<string>;
   /** 预扣策略解析（每次 authorize 现读——TTL 缓存的 system_configs KV，admin 动态调整） */
   resolveReservationPolicy: () => Promise<FundingReservationPolicy>;
+  /** 校准上下文解析（可选——user_side 门控 billing quote 候选透传，§9 步骤 3） */
+  resolveCalibration?: () => Promise<{ config: { userSide: boolean } } | null>;
   /** 结算积压准入（bridge 级调用：authorize 前置闸；requestId 恒服务端生成，
    *  HTTP 面无客户端重放路径，桥级 admission 不破坏 billing 内部的重放免疫） */
   assertCapacity?: () => Promise<void>;
@@ -60,8 +62,8 @@ export interface GatewayBillingApi {
     requestId: string;
     channelId: number;
     amount: string;
-    /** B4 二级上界（docs §3.2c）：非空随 casClaimChannel 落列；null = 保守预留 */
-    conservativeChannelAmount?: string | null;
+    /** B4 二级上界（docs §3.2c）：非空=校准预留落列；null=保守预留清列（换渠防残留） */
+    conservativeChannelAmount: string | null;
   }): Promise<{ allowed: boolean; remaining: string; switched: boolean }>;
 }
 
@@ -84,8 +86,16 @@ const allPricesZero = (c: QuoteCandidate): boolean =>
     }
   });
 
-/** inference 候选 → billing 报价候选（字段同源；inputUpperBound 逐候选盖章） */
-function toQuoteCandidate(c: QuoteCandidate, inputTokenUpperBound: number): BillingQuoteCandidate {
+/**
+ * inference 候选 → billing 报价候选（字段同源；inputUpperBound 逐候选盖章）。
+ * user_side 门（P2/§2.3 表）：false 时校准界不透传——billing 用户冻结额走
+ * 字节界（§9 步骤 2 渠道侧试点的独立开关）；渠道金额面不经此函数。
+ */
+function toQuoteCandidate(
+  c: QuoteCandidate,
+  inputTokenUpperBound: number,
+  userSide: boolean,
+): BillingQuoteCandidate {
   return {
     mappingId: c.mappingId,
     externalModel: c.externalModel,
@@ -97,8 +107,8 @@ function toQuoteCandidate(c: QuoteCandidate, inputTokenUpperBound: number): Bill
     ...(c.unitPrice != null ? { unitPrice: c.unitPrice } : {}),
     coefficient: c.coefficient,
     inputTokenUpperBound,
-    // 校准界透传（user_side 冻结收缩用；B2 不消费——I0）
-    ...(c.calibratedInputTokenUpperBound != null
+    // 校准界透传（user_side=true 才进 billing quote——冻结额收缩开关；B2 不消费 I0）
+    ...(userSide && c.calibratedInputTokenUpperBound != null
       ? { calibratedInputTokenUpperBound: c.calibratedInputTokenUpperBound }
       : {}),
     pricingUnit: c.pricingUnit,
@@ -114,10 +124,13 @@ function toQuote(input: {
   inputTokenUpperBound: number;
   candidates: readonly QuoteCandidate[];
   calibration?: Parameters<BillingPort['authorize']>[0]['calibration'];
+  userSide: boolean;
 }): BillingQuote {
   return {
     maxOutputTokens: input.maxOutputTokens,
-    candidates: input.candidates.map((c) => toQuoteCandidate(c, input.inputTokenUpperBound)),
+    candidates: input.candidates.map((c) =>
+      toQuoteCandidate(c, input.inputTokenUpperBound, input.userSide),
+    ),
     ...(input.candidates.every(allPricesZero) ? { explicitlyFree: true } : {}),
     ...(input.calibration != null ? { calibration: input.calibration } : {}),
   };
@@ -225,7 +238,12 @@ function calibratedExposureOf(
   }
   if (input.channelId !== calibration.channelId) return null; // 渠道不匹配 → 保守
   const bound = input.candidate.calibratedInputTokenUpperBound;
-  if (bound == null) return null; // 候选未盖章（未命中/非主候选）→ 保守
+  if (bound == null) return null; // 候选未盖章（未命中/非主候选/user_side 关）→ 保守
+  // P9：无缓存定价（读价 ≤ 0 且无写价）不分段——cacheSeg 会按 0 价塌陷
+  // （≈免费），该渠道每笔进 over_exposure 容错区间；回保守口径。
+  const readPrice = new Decimal(cost.cacheInputPrice);
+  const writePrice = cost.cacheWritePrice != null ? new Decimal(cost.cacheWritePrice) : null;
+  if (readPrice.lte(0) && (writePrice == null || writePrice.lte(0))) return null;
   const tailTokens = Math.max(bound - calibration.inputTokens, 0);
   const segmented = calibratedChannelAmount({
     seen: calibration.inputTokens,
@@ -279,16 +297,17 @@ async function finalizeTpmReservation(
   }
 }
 
-/** authorize 体检出：动态风控值（策略/上限）现读 + 形状收窄后透传 */
+/** authorize 体检出：动态风控值（策略/上限/校准 user_side）现读 + 形状收窄后透传 */
 async function authorizeWithDynamicRisk(
   api: GatewayBillingApi,
   config: GatewayBillingConfig,
   input: Parameters<BillingPort['authorize']>[0],
 ): Promise<void> {
   if (config.assertCapacity != null) await config.assertCapacity();
-  const [policy, reservationLimit] = await Promise.all([
+  const [policy, reservationLimit, calibration] = await Promise.all([
     config.resolveReservationPolicy(),
     config.resolveReservationLimit(),
+    config.resolveCalibration != null ? config.resolveCalibration() : Promise.resolve(null),
   ]);
   await api.authorize({
     requestId: input.requestId,
@@ -296,7 +315,7 @@ async function authorizeWithDynamicRisk(
     apiKeyId: input.apiKeyId,
     appId: input.appId,
     stream: input.stream,
-    quote: toQuote(input),
+    quote: toQuote({ ...input, userSide: calibration?.config.userSide ?? false }),
     reservationLimit,
     ...(policy.mode === 'fixed'
       ? { reservationPolicy: { mode: 'fixed', amount: policy.amount } }
@@ -330,7 +349,9 @@ export function createGatewayBilling(
         requestId: input.requestId,
         channelId: input.channelId,
         amount,
-        ...(conservativeChannelAmount != null ? { conservativeChannelAmount } : {}),
+        // 显式携带（含 null = 非校准预留——换渠路径清列，P1：残留会让 B4 ②
+        // 对价格漂移请求失明；undefined 仅测试桩用）
+        conservativeChannelAmount,
       });
       // switched/remaining 透传（routing gates 消费进 trace——换渠转移的可观测事实）
       if (!result.allowed) return { allowed: false } as const;

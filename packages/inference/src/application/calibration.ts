@@ -55,6 +55,7 @@ export type CalibrationMissReason =
   | 'no_record' // 无匹配记录
   | 'prefix' // C2：前缀不匹配（改写/收缩）
   | 'window' // C4：超窗（含 margin）
+  | 'no_cache_price' // P9：无缓存折价（读/写价 ≤0）——金额侧不分段回保守（gateway 判定）
   | 'disabled'; // 读侧开关关闭（enabled=false 时 quote 跳过查询）
 
 export interface CalibrationReadConfig {

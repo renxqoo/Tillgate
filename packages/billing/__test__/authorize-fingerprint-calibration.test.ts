@@ -108,6 +108,47 @@ describe('指纹排除 calibration（v3-R3）', () => {
     expect(replay.replayed).toBe(true);
   });
 
+  it('P4：候选 calibratedInputTokenUpperBound 漂移 → 幂等重放（seen 的函数非命令身份）', async () => {
+    const { wallet, api } = harness();
+    const userId = nextUser();
+    await wallet.credit({ userId, amount: '10', refType: 'topup', refId: 'c3' });
+    const requestId = nextRequestId();
+    await api.authorize({
+      requestId,
+      userId,
+      stream: false,
+      quote: calibratedQuote({
+        mappingId: 13,
+        prefixHash: 'aaa',
+        channelId: 8,
+        inputTokens: 50_000,
+        messagesLen: 2,
+        prefixBytes: 180_000,
+        cacheRatio: 0.9,
+      }),
+      reservationLimit: '10',
+      authorizationTtlMs: 60_000,
+    });
+    // 重放时 seen 被并发结算覆盖 → 校准界漂移——指纹必须不变
+    const replay = await api.authorize({
+      requestId,
+      userId,
+      stream: false,
+      quote: calibratedQuote({
+        mappingId: 13,
+        prefixHash: 'aaa',
+        channelId: 8,
+        inputTokens: 48_500,
+        messagesLen: 2,
+        prefixBytes: 180_000,
+        cacheRatio: 0.9,
+      }),
+      reservationLimit: '10',
+      authorizationTtlMs: 60_000,
+    });
+    expect(replay.replayed).toBe(true);
+  });
+
   it('quote 其它字段变化（价格）仍拒绝（排除面只限 calibration）', async () => {
     const { wallet, api } = harness();
     const userId = nextUser();
