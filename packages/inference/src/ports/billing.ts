@@ -1,4 +1,5 @@
 import type { ChannelCandidate, QuoteCandidate } from '../domain/model/types';
+import type { QuoteCalibrationSnapshot } from '../application/quote';
 import type { UsageReceipt } from '../domain/usage/receipt';
 
 /**
@@ -36,6 +37,11 @@ export interface BillingPort {
     costPrices?: ChannelCandidate['costPrices'];
     estimatedInputTokens: number;
     maxOutputTokens: number;
+    /**
+     * 校准授权快照（docs §3.2a，可选）：非空且渠道匹配时 gateway 侧用分段
+     * 公式收缩敞口金额，并产出 conservative_channel_amount（B4 二级上界）。
+     */
+    calibration?: QuoteCalibrationSnapshot;
   }): Promise<{ allowed: true; switched?: boolean; remaining?: string } | { allowed: false }>;
 
   /** 请求生命周期信号（lease 语义归 billing 状态机） */

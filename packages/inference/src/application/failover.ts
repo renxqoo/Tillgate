@@ -50,6 +50,11 @@ export interface ExecutionDeps {
   memory: RoutingMemory;
   /** 路由策略（热配置——排序/重试/惩罚/等待全部参数面；缺省 = 编译期缺省） */
   policy: RoutingPolicyReader;
+  /** 校准读侧上下文（quote 准备消费；未装配 = 不解析） */
+  calibration?: () => Promise<{
+    lookup: import('../ports/calibration').CalibrationLookup;
+    config: import('../ports/calibration').CalibrationLookupConfig;
+  } | null>;
   /** cache 亲和粘滞键存储（未装配 = 无亲和） */
   sticky?: StickyStore;
   admitChannel?: ChannelAdmission;

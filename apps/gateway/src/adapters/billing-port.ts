@@ -5,7 +5,8 @@
  *     explicitlyFree = 候选链全免费）；reservationLimit/Policy 由 gateway config 持有；
  *   signal：蛇形词表 → billing 点分词表 + 收据字段结构对齐；
  *   reserveChannel：官方价口径（coefficient=1）estimateMaxCost 自算 amount（进货
- *     额度闸的预估敞口，与用户计价系数无关）。
+ *     额度闸的预估敞口，与用户计价系数无关）。校准命中且渠道匹配时用分段公式
+ *     收缩（docs §4.1），同时产出 conservativeChannelAmount（B4 二级上界）。
  * 零金额运算实现——公式全部在 billing 域（单一真相）。
  */
 import {
@@ -17,6 +18,7 @@ import {
   type FundingReservationPolicy,
 } from '@tillgate/billing';
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
+import { calibratedChannelAmount } from '@tillgate/inference';
 import type { BillingPort, BillingSignal, QuoteCandidate, UsageReceipt } from '@tillgate/inference';
 import type { ChannelCandidate } from '@tillgate/inference';
 
@@ -58,6 +60,8 @@ export interface GatewayBillingApi {
     requestId: string;
     channelId: number;
     amount: string;
+    /** B4 二级上界（docs §3.2c）：非空随 casClaimChannel 落列；null = 保守预留 */
+    conservativeChannelAmount?: string | null;
   }): Promise<{ allowed: boolean; remaining: string; switched: boolean }>;
 }
 
@@ -173,6 +177,56 @@ function channelCostAmount(input: {
   }).toString();
 }
 
+/**
+ * 渠道敞口双金额（docs §4.1）：
+ *   amount = 校准命中且渠道匹配（reserve 时 channel == calibration.channelId）
+ *           且候选带校准界时按分段公式；否则保守口径（与现状一致）。
+ *   conservativeChannelAmount = 保守口径金额（B4 二级上界——reserve 时点
+ *           同价格快照字节界算出，价格漂移探测器基准）。
+ * 渠道不匹配（failover 到冷渠道）不进打折：tokenizer/缓存双保险（v3-R1/R2）。
+ */
+function channelExposureAmounts(input: {
+  candidate: QuoteCandidate;
+  costPrices?: QuoteCandidateCostPrices;
+  estimatedInputTokens: number;
+  maxOutputTokens: number;
+  channelId: number;
+  calibration?: Parameters<BillingPort['reserveChannel']>[0]['calibration'];
+}): { amount: string; conservativeChannelAmount: string | null } {
+  const { candidate: c, costPrices: cost, calibration } = input;
+  if (cost == null) return { amount: '0', conservativeChannelAmount: null };
+  const conservative = channelCostAmount(input);
+  const calibrated = calibratedExposureOf(input, cost);
+  if (calibrated != null) {
+    return { amount: calibrated, conservativeChannelAmount: conservative };
+  }
+  return { amount: conservative, conservativeChannelAmount: null };
+}
+
+/** 分段公式消费（渠道匹配 + 候选校准界齐备才启用；否则 null = 保守） */
+function calibratedExposureOf(
+  input: Parameters<typeof channelExposureAmounts>[0],
+  cost: NonNullable<QuoteCandidateCostPrices>,
+): string | null {
+  const { calibration, candidate: c } = input;
+  if (calibration == null) return null;
+  if (input.channelId !== calibration.channelId) return null; // 渠道不匹配 → 保守
+  const bound = c.calibratedInputTokenUpperBound;
+  if (bound == null) return null; // 候选未盖章（未命中/非主候选）→ 保守
+  const tailTokens = Math.max(bound - calibration.inputTokens, 0);
+  const segmented = calibratedChannelAmount({
+    seen: calibration.inputTokens,
+    tailTokens,
+    cacheRatio: calibration.cacheRatio,
+    inputPrice: cost.inputPrice,
+    cacheInputPrice: cost.cacheInputPrice,
+    cacheWritePrice: cost.cacheWritePrice,
+    outputPrice: cost.outputPrice,
+    maxOutputTokens: input.maxOutputTokens,
+  });
+  return segmented?.amount ?? null;
+}
+
 /** TPM actual 维度（与 admitRequest/tryModelAdmission/tryChannelAdmission 的维度串同源） */
 function tpmDimensionsOf(receipt: UsageReceipt): string[] {
   const dims: string[] = [];
@@ -258,11 +312,12 @@ export function createGatewayBilling(
     },
 
     async reserveChannel(input) {
-      const amount = channelCostAmount(input);
+      const { amount, conservativeChannelAmount } = channelExposureAmounts(input);
       const result = await api.reserveChannel({
         requestId: input.requestId,
         channelId: input.channelId,
         amount,
+        ...(conservativeChannelAmount != null ? { conservativeChannelAmount } : {}),
       });
       // switched/remaining 透传（routing gates 消费进 trace——换渠转移的可观测事实）
       if (!result.allowed) return { allowed: false } as const;

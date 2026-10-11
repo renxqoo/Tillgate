@@ -134,6 +134,8 @@ describe('公共出口封闭（§5.3：根入口导出面快照）', () => {
       'USER_SIDE_CANCELS',
       'admissionTokenUpperBound',
       'buildCandidateChain',
+      'calibratedChannelAmount',
+      'calibrationGuard',
       'canonicalStreamToClaudeStream',
       'canonicalStreamToCompletionsStream',
       'canonicalStreamToGeminiStream',

@@ -16,8 +16,14 @@ import type { ChannelExposureStore } from '../../ports/funding-ports.js';
 export interface ReserveChannelInput {
   requestId: string;
   channelId: number;
-  /** 本次上游成本预估（官方价口径，系数=1） */
+  /** 本次上游成本预估（官方价口径，系数=1）；校准命中时为分段收缩值 */
   amount: string;
+  /**
+   * B4 二级上界（docs §3.2c，可选）：reserve 时点的保守口径金额——与 amount
+   * 同调用同价格快照；非空随 casClaimChannel 落列，结算 B4 分支的唯一判定与
+   * 数值来源。缺省 null = 保守预留（B4 走原路径）。
+   */
+  conservativeChannelAmount?: string | null;
 }
 
 export interface ChannelReservationResult {
@@ -95,6 +101,9 @@ export function createReserveChannelUseCase(env: {
           expectedReserved: br.channelReservedAmount,
           channelId: input.channelId,
           channelReservedAmount: amount.toString(),
+          ...(input.conservativeChannelAmount !== undefined
+            ? { conservativeChannelAmount: input.conservativeChannelAmount }
+            : {}),
           now,
         });
         if (!claimed) {
@@ -150,6 +159,9 @@ export function createReserveChannelUseCase(env: {
         expectedReserved: br.channelReservedAmount,
         channelId: input.channelId,
         channelReservedAmount: amount.toString(),
+        ...(input.conservativeChannelAmount !== undefined
+          ? { conservativeChannelAmount: input.conservativeChannelAmount }
+          : {}),
         now,
       });
       if (!claimed) {

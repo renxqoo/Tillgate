@@ -41,6 +41,11 @@ import {
   createBillingReservationLimitReader,
   createBillingReservationPolicyReader,
 } from './adapters/reservation-policy';
+import {
+  createBillingCalibrationReader,
+  createCalibrationLookup,
+  resolveCalibrationContext,
+} from './adapters/calibration-policy';
 import { createSettleWakeProducer } from './adapters/settle-wake';
 import { otelTracePort } from './adapters/trace-port';
 import {
@@ -160,6 +165,7 @@ export async function assembleGateway(config: GatewayConfig): Promise<GatewayAss
       store: billingStore,
       quota: billingStore.quotaStore,
       channels: billingStore.channelStore,
+      calibrations: billingStore.calibrationStore,
       accounts: billingStore.accountContext,
     },
     {
@@ -240,9 +246,18 @@ export async function assembleGateway(config: GatewayConfig): Promise<GatewayAss
   });
   const routingPolicyStop = routingPolicySource.start();
 
+  const calibrationReader = createBillingCalibrationReader({
+    db,
+    ttlMs: config.calibrationTtlMs,
+  });
   const inference = createInference({
     ai,
     policy: routingPolicySource.reader,
+    calibration: () =>
+      resolveCalibrationContext({
+        reader: calibrationReader,
+        lookup: createCalibrationLookup(billingStore.calibrationStore),
+      }),
     stickyStore: createRedisStickyStore(redis),
     catalog: createPostgresGatewayCatalog(db, {
       ttlMs: config.billingTimezoneTtlMs,
