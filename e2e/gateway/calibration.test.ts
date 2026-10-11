@@ -170,7 +170,10 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
     const fcalib = (f.quote as { calibration?: { channelId: unknown; inputTokens: unknown } })
       .calibration;
     expect(fcalib).toMatchObject({ channelId: null, inputTokens: null });
-    expect(f.conservative).toBeNull();
+    // 路 B#1：非校准预留也落保守值（列恒 = reserve 时点保守口径——topup/covered
+    // 重入时 B4 ①③ 数值等价）；金额 = 保守口径（分段不适用）
+    expect(f.conservative).not.toBeNull();
+    expect(new Decimal(defined(f.reserved)).eq(new Decimal(defined(f.conservative)))).toBe(true);
     await keys.settleAll(issued.userId);
     await keys.assertReconciled(issued.userId, '100');
   });

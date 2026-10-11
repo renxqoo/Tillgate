@@ -216,10 +216,10 @@ function channelExposureAmounts(input: {
   if (cost == null) return { amount: '0', conservativeChannelAmount: null };
   const conservative = channelCostAmount(input);
   const calibrated = calibratedExposureOf(input, cost);
-  if (calibrated != null) {
-    return { amount: calibrated, conservativeChannelAmount: conservative };
-  }
-  return { amount: conservative, conservativeChannelAmount: null };
+  // 路 B#1：列恒 = reserve 时点保守口径（非校准预留也落保守值，而非 null）——
+  // topup/covered 重入时 B4 ①③ 数值等价（无保守列 = 无上界的死信窗口消除），
+  // 换渠残留失明（原 P1）同样不存在（列恒随本次 reserve 刷新）。
+  return { amount: calibrated ?? conservative, conservativeChannelAmount: conservative };
 }
 
 /** 分段适用性前置（不适用 → null = 保守口径） */

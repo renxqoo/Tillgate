@@ -208,6 +208,67 @@ async function settle(h: Harness, requestId: string): Promise<string> {
   return await h.settlement.processClaim(defined(claim));
 }
 
+describe('路 B#2：estimated_exposure_amount 落库保守口径（订阅限额 exposure 面）', () => {
+  it('校准命中 authorize → exposure 列 = 字节界保守值（非校准收缩值）', async () => {
+    const h = harness();
+    const userId = nextUser();
+    const requestId = nextRequestId();
+    await h.walletApi.credit({ userId, amount: '100', refType: 'topup', refId: `c-${requestId}` });
+    await h.walletApi.authorize({
+      userId,
+      amount: '2', // 保守口径冻结（user_side 计算链外——直驱）
+      currency: 'CNY',
+      refType: 'billing',
+      refId: requestId,
+      memo: `b2 ${requestId}`,
+    });
+    await h.world.billing.insertAuthorized(undefined as never, {
+      requestId,
+      userId,
+      apiKeyId: null,
+      estimatedExposureAmount: '2', // 保守（1M×2/M）；校准收缩值会是 0.09
+      reservedAmount: '2',
+      planReservedAmount: null,
+      subscriptionId: null,
+      stream: false,
+      quote: {
+        maxOutputTokens: 0,
+        candidates: [
+          {
+            mappingId: 13,
+            externalModel: 'm',
+            realModel: 'm',
+            inputPrice: '2',
+            outputPrice: '0',
+            cacheInputPrice: '0',
+            coefficient: '1',
+            inputTokenUpperBound: 1_000_000,
+            calibratedInputTokenUpperBound: 45_000,
+            billingPolicyFingerprint: null,
+          },
+        ],
+        calibration: {
+          mappingId: 13,
+          prefixHash: 'b2',
+          channelId: h.channelId,
+          inputTokens: 45_000,
+          messagesLen: 2,
+          prefixBytes: 180_000,
+          cacheRatio: 0.9,
+        },
+      },
+      authorizationFingerprint: `fp-${requestId}`,
+      traceParent: null,
+      leaseExpiresAt: new Date(Date.now() + 60_000),
+      nextSettlementAt: new Date(),
+      createdAt: new Date(),
+    });
+    const row = h.world.fixtures.requests.get(requestId);
+    expect(row).toBeDefined();
+    expect((row as { estimatedExposureAmount: string }).estimatedExposureAmount).toBe('2');
+  });
+});
+
 describe('B4 三分支（docs §4.2）', () => {
   // 收据 2M token × 2 元/M = 4 元 upstreamCost（全价输入）
   it('分支①：conservative 为 NULL（保守预留）+ 超界 → 死信（原语义不动）', async () => {

@@ -211,7 +211,10 @@ export function createAuthorizeUseCase(env: BillingEnv) {
         requestId: input.requestId,
         userId: input.userId,
         apiKeyId: input.apiKeyId ?? null,
-        estimatedExposureAmount: estimatedAmount,
+        // 路 B#2/I0 安全面：exposure 落库用保守口径（订阅成员日限额/月配额经
+        // sumExposure 消费本列——校准收缩值会让成员限额 probe 失锚；user/key
+        // 限额已用 fingerprintEstimatedAmount，本列与之同源统一口径）
+        estimatedExposureAmount: fingerprintEstimatedAmount,
         reservedAmount: fundedAmount,
         planReservedAmount: plan.planReservedAmount,
         subscriptionId: source.subscriptionId,

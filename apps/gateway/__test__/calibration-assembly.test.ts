@@ -256,6 +256,43 @@ async function captureAuthorizeQuote(input: {
   });
 }
 
+describe('路 B#1：topup/covered 重入的列语义（校准首留 → 同渠道换候选）', () => {
+  it('fallback 候选保守 > 校准收缩首留 → topup：金额抬升且 conservative 恒保守（不清列）', async () => {
+    // 审查者复现场景 T2：校准命中首留 amount=0.065/con=2.13 → failover 同渠道
+    // fallback（保守 1.5）→ topup。修后：amount=1.5 + conservative=1.5（非 null）——
+    // B4 对 (1.5, 1.5] 空窗 + >1.5 死信 ③（原实现列被清 → 死信 ① 无上界）
+    const { createGatewayBilling } = await import('../src/adapters/billing-port.js');
+    const fallbackCandidate: QuoteCandidate = {
+      ...CANDIDATE,
+      mappingId: 99,
+      inputPrice: '0.5',
+    };
+    delete (fallbackCandidate as { calibratedInputTokenUpperBound?: number })
+      .calibratedInputTokenUpperBound;
+    const captured = await new Promise<{
+      amount: string;
+      conservativeChannelAmount: string | null;
+    }>((resolve, reject) => {
+      const api = {
+        authorize: async () => {},
+        signal: async () => {},
+        reserveChannel: async (req: {
+          amount: string;
+          conservativeChannelAmount: string | null;
+        }) => {
+          resolve({ amount: req.amount, conservativeChannelAmount: req.conservativeChannelAmount });
+          return { allowed: true, remaining: '1', switched: false };
+        },
+      };
+      const port = createGatewayBilling(api as never, {} as never);
+      port.reserveChannel(reserveInput({ candidate: fallbackCandidate })).catch(reject);
+    });
+    // fallback 保守（costPrices 渠道级口径：1M×2.1/M + 4096×8.4/M——候选价不参与成本面）
+    expect(captured.amount).toBe('2.1344064');
+    expect(captured.conservativeChannelAmount).toBe('2.1344064'); // 关键：恒保守不清列
+  });
+});
+
 describe('user_side 透传门（docs §2.3 表/§9 步骤 3——P2 重设计）', () => {
   it('user_side=false：authorize 的 billing quote 候选不带校准界（冻结走字节界）', async () => {
     const captured = await captureAuthorizeQuote({ userSide: false });
@@ -282,15 +319,15 @@ describe('channelExposureAmounts 双金额（docs §4.1）', () => {
   it('渠道不匹配（failover 冷渠道）→ 双双保守：amount=conservative 且 conservative 列不落', async () => {
     const captured = await captureReserveAmounts(reserveInput({ channelId: 9 }));
     expect(captured.amount).toBe('2.1344064'); // 保守（含输出段）
-    // P1：显式 null（清列）——换渠残留会让 B4 ② 对价格漂移失明
-    expect(captured.conservativeChannelAmount).toBeNull();
+    // 路 B#1：非校准预留落保守值（列恒=reserve 时点保守口径——topup/covered
+    // 重入时 B4 ①③ 数值等价；换渠残留失明同样消除）
+    expect(captured.conservativeChannelAmount).toBe('2.1344064');
   });
 
   it('无校准快照（未命中）→ 现状行为：amount=保守，无 conservative', async () => {
     const captured = await captureReserveAmounts(reserveInput({ calibration: undefined }));
     expect(captured.amount).toBe('2.1344064');
-    expect(captured.conservativeChannelAmount).toBeNull(); // P1：恒携带（null=清列）
-    expect(captured.conservativeChannelAmount).toBeNull();
+    expect(captured.conservativeChannelAmount).toBe('2.1344064'); // 路 B#1：恒保守
   });
 
   it('候选未盖章（calibratedBound 缺失）→ 保守', async () => {
@@ -299,8 +336,7 @@ describe('channelExposureAmounts 双金额（docs §4.1）', () => {
       .calibratedInputTokenUpperBound;
     const captured = await captureReserveAmounts(reserveInput({ candidate }));
     expect(captured.amount).toBe('2.1344064');
-    expect(captured.conservativeChannelAmount).toBeNull();
-    expect(captured.conservativeChannelAmount).toBeNull();
+    expect(captured.conservativeChannelAmount).toBe('2.1344064'); // 路 B#1：恒保守
   });
 
   it('路C#4：校准界 > 字节界（referenced-media 收据）→ 回保守（区间不倒置）', async () => {
@@ -311,7 +347,7 @@ describe('channelExposureAmounts 双金额（docs §4.1）', () => {
     );
     // 保守口径（10000×2.1/M + 4096×8.4/M = 0.021 + 0.0344064），非分段
     expect(captured.amount).toBe('0.0554064');
-    expect(captured.conservativeChannelAmount).toBeNull(); // 保守预留（B4 原路径）
+    expect(captured.conservativeChannelAmount).toBe('0.0554064'); // 路 B#1：恒保守
   });
 
   it('路A#4：unit 计价（pricingUnit=request）命中校准 → 回保守（unit 轴不丢）', async () => {
@@ -330,6 +366,6 @@ describe('channelExposureAmounts 双金额（docs §4.1）', () => {
   it('costPrices 缺失 → 金额 0 口径（现行免费/未配置语义不变）', async () => {
     const captured = await captureReserveAmounts(reserveInput({ costPrices: undefined }));
     expect(captured.amount).toBe('0');
-    expect(captured.conservativeChannelAmount).toBeNull();
+    expect(captured.conservativeChannelAmount).toBeNull(); // 成本面缺失（'0' 口径）——无保守金额可落
   });
 });
