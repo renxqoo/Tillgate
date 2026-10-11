@@ -1,11 +1,18 @@
 # 收据校准的双口径预估方案（calibrated exposure estimate）
 
-状态：**草稿 v4**（三轮对抗审查 34 项全部处置；待 delta 复审后定稿）
+状态：**已实施（代码全量合入 feat/calibrated-exposure-estimate；四轮对抗审查
+41 项全部处置：方案轮 34 + 实现轮 P1-P14 + 复审收口）**
 
 级别：大（借件——交付物是新能力叠加在既有计费不变量基线上，非行为等价重构；
 借迁移方法论的文档结构，流程按 feature-dev-v2 走）
 
 修订记录：
+- v5（2026-10-12）：实现轮对抗审查 14 项处置——P1 conservative 换渠清列 /
+  P2 user_side 真实门控（盖章恒随 enabled、billing quote 透传门）/ P3 写侧
+  解耦 enabled / P4 指纹排除候选校准界 / P5 store 自持 db / P6 批量信号 /
+  P7 mappingId 记实际 / P8 prefixBytes 含 system+tools / P9 no_cache_price /
+  P10 写入事务外 / P11 F1 收敛与精确化 / P12 e2e 闭式补强 / P13 reason 标签
+  （admin UI 与 waived 日聚合**降级**为后续工单——§12 调整）/ P14 常量单源。
 - v4（2026-10-12）：资金安全审查处置——**安全性/经济性分离重构**（B2 钳制
   与死信阈值只消费字节界/保守金额，校准界永不进入安全消费面——I1 从安全
   定理降级为经济启发式，P1/P1a 家族结构性消除）；写入守卫 C7（零钳制收据 +
@@ -445,7 +452,9 @@ billing 零新增核心计价逻辑（B4 分支、store、conservative_channel_a
 - 死信分支断言 error code 非文本。
 
 ## 12. 验收清单
-- [ ] 契约 §3 逐条（表/列/KV/ACL/UI/观测）
+- [x] 契约 §3 逐条（表/列/KV/ACL/观测）——admin 前端校准卡降级为后续工单（P13）
+- [x] 四门 + 覆盖率数字如实报告（typecheck/lint/build/test 全 34 任务绿；
+      e2e 校准三旅程 3/3 真实 PG 绿）
 - [ ] 边界清单 §11 逐条
 - [ ] 并发/一致性预算 §6 逐条
 - [ ] 资金安全断言 §11 全绿（I0 分离 + B4 三分支 + F1 并发 + 按轴对账）
