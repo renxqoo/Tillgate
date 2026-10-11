@@ -7,10 +7,10 @@ import { describe, expect, it } from 'vitest';
 import { createBillingCalibrationReader } from '../src/adapters/calibration-policy.js';
 import { DEFAULT_CALIBRATION_CONFIG, parseCalibrationSetting } from '@tillgate/billing';
 import type { BillingPort, QuoteCandidate } from '@tillgate/inference';
-import type { GatewayBillingApi } from '../src/adapters/billing-port.js';
 import type { QuoteCalibrationSnapshot } from '@tillgate/inference';
 
 type GatewayReserveInput = Parameters<BillingPort['reserveChannel']>[0];
+interface Captured { amount: string; conservativeChannelAmount?: string | null }
 
 function fakeDb(results: Array<Record<string, unknown> | null>) {
   let reads = 0;
@@ -92,9 +92,11 @@ describe('calibration reader（TTL 缓存 + 值域回落 + fail-loud）', () => 
       { value: { enabled: true, window_ms: 600_000, cache_ratio: 0.8, user_side: false } },
     ]);
     const read = createBillingCalibrationReader({ db: db as never, ttlMs: 1 });
-    expect((await read())!.enabled).toBe(false);
+    const first = await read();
+    expect(first != null && first.enabled).toBe(false);
     await new Promise((r) => { setTimeout(r, 3); });
-    expect((await read())!.enabled).toBe(true);
+    const second = await read();
+    expect(second != null && second.enabled).toBe(true);
     expect(db.reads()).toBe(2);
   });
 });
@@ -151,20 +153,23 @@ function reserveInput(over: Partial<GatewayReserveInput> = {}) {
 }
 
 /** 直接驱动 gateway reserveChannel 的 api 捕获器（双金额断言不经私有函数） */
-async function captureReserveAmounts(input: ReturnType<typeof reserveInput>) {
+async function captureReserveAmounts(input: ReturnType<typeof reserveInput>): Promise<Captured> {
   const { createGatewayBilling } = await import('../src/adapters/billing-port.js');
-  let captured: { amount: string; conservativeChannelAmount?: string | null } | null = null;
-  const api = {
-    authorize: async () => {},
-    signal: async () => {},
-    reserveChannel: async (req: { amount: string; conservativeChannelAmount?: string | null }) => {
-      captured = { amount: req.amount, conservativeChannelAmount: req.conservativeChannelAmount };
-      return { allowed: true, remaining: '1', switched: false };
-    },
-  };
-  const port = createGatewayBilling(api as never, {} as never);
-  await port.reserveChannel(input);
-  return captured!;
+  return await new Promise<Captured>((resolve, reject) => {
+    const api = {
+      authorize: async () => {},
+      signal: async () => {},
+      reserveChannel: async (req: { amount: string; conservativeChannelAmount?: string | null }) => {
+        resolve({
+          amount: req.amount,
+          conservativeChannelAmount: req.conservativeChannelAmount,
+        });
+        return { allowed: true, remaining: '1', switched: false };
+      },
+    };
+    const port = createGatewayBilling(api as never, {} as never);
+    port.reserveChannel(input).catch(reject);
+  });
 }
 
 describe('channelExposureAmounts 双金额（docs §4.1）', () => {

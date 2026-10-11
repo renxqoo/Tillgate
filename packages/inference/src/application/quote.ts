@@ -16,6 +16,7 @@ import {
   buildMessageHashChain,
   calibrationGuard,
   resolveCalibration,
+  type CalibrationRecord,
   type CalibrationResolution,
 } from './calibration';
 
@@ -71,6 +72,32 @@ export interface QuoteCalibrationSnapshot {
   cacheRatio: number | null;
 }
 
+/** 白名单 + 目录解析 + 候选链（prepareChatRequest 的模型解析段） */
+async function resolveModelChain(env: {
+  catalog: CatalogPort;
+  auth: RequestAuth;
+  body: Record<string, unknown>;
+  now: Date;
+}): Promise<{
+  externalModel: string;
+  candidates: QuoteCandidate[];
+  mapping: NonNullable<Awaited<ReturnType<CatalogPort['findMapping']>>>;
+}> {
+  // 模型白名单（凭证 scope）：预扣前拒绝——受限凭证调未授权模型的越权计费
+  const externalModel = typeof env.body.model === 'string' ? env.body.model : '';
+  if (env.auth.allowedModels != null && !env.auth.allowedModels.includes(externalModel)) {
+    throw InferenceErrors.business('model_not_allowed', { model: externalModel });
+  }
+  const pricing = { userId: env.auth.userId, body: env.body, now: env.now };
+  const mapping = await env.catalog.findMapping(externalModel, pricing);
+  if (mapping == null) {
+    throw InferenceErrors.business('model_not_found', { model: externalModel });
+  }
+  const candidates = await buildCandidateChain(mapping, (m) => env.catalog.findMapping(m, pricing));
+  if (mapping == null) throw InferenceErrors.business('model_not_found', { model: externalModel });
+  return { externalModel, candidates, mapping };
+}
+
 export async function prepareChatRequest(env: {
   catalog: CatalogPort;
   defaults: InferenceDefaults;
@@ -86,33 +113,15 @@ export async function prepareChatRequest(env: {
     config: CalibrationLookupConfig;
   };
 }): Promise<PreparedRequest> {
-  // 模型白名单（凭证 scope）：预扣前拒绝——受限凭证调未授权模型的越权计费
-  const externalModel = typeof env.body.model === 'string' ? env.body.model : '';
-  if (env.auth.allowedModels != null && !env.auth.allowedModels.includes(externalModel)) {
-    throw InferenceErrors.business('model_not_allowed', { model: externalModel });
-  }
-  const pricing = { userId: env.auth.userId, body: env.body, now: env.now };
-  const mapping = await env.catalog.findMapping(externalModel, pricing);
-  if (mapping == null) {
-    throw InferenceErrors.business('model_not_found', { model: externalModel });
-  }
-  const candidates = await buildCandidateChain(mapping, (m) => env.catalog.findMapping(m, pricing));
+  const { externalModel, candidates, mapping } = await resolveModelChain(env);
 
   const endpoint = env.endpoint ?? 'chat';
-  let kind: 'chat' | 'embeddings' | 'modality' = 'modality';
-  if (endpoint === 'chat') kind = 'chat';
-  else if (endpoint === 'embeddings') kind = 'embeddings';
-  const outputCap = maxOutputTokensFor(kind, env.body, {
-    defaultMax: env.defaults.output.defaultMaxOutputTokens,
-    exposureCap: env.defaults.output.exposureCap,
+  const { effectiveOutputCap, inputUpperBound, upstreamBody } = outputCapsOf({
+    endpoint,
+    body: env.body,
+    defaults: env.defaults,
+    contextLength: mapping.contextLength,
   });
-  const inputUpperBound = conservativeInputTokenUpperBound(env.body);
-  const effectiveOutputCap = clampOutputCapByContext(
-    outputCap,
-    mapping.contextLength,
-    inputUpperBound,
-  );
-  const upstreamBody = clampForwardedOutputLimit(env.body, effectiveOutputCap);
 
   const resolved = await resolveQuoteCalibration(env, {
     userId: env.auth.userId,
@@ -144,6 +153,7 @@ export async function prepareChatRequest(env: {
  * ——仅命中候选，链上其余保字节界（tokenizer 漂移安全，D3/D12）。
  * 读失败（存储抖动）按未装配处理：回落保守（安全方向），不阻断请求。
  */
+// eslint-disable-next-line max-lines-per-function -- 读侧五段（守卫/事实/现读/匹配/盖章拆分后剩余编排）
 async function resolveQuoteCalibration(
   env: {
     auth: RequestAuth;
@@ -168,36 +178,13 @@ async function resolveQuoteCalibration(
   if (calibration == null) {
     return { candidates: input.candidates, resolution: null, snapshot: null };
   }
-  // C6 守卫（§2.0'：读写双侧同款——非 chat 族/空 messages 不参与）
-  if (!calibrationGuard({ endpoint: input.endpoint, body: input.body })) {
-    return { candidates: input.candidates, resolution: { hit: false, missReason: 'guard' }, snapshot: null };
+  const passed = calibrationGatePass(calibration, input);
+  if (passed.early != null) {
+    return { candidates: input.candidates, resolution: passed.early, snapshot: null };
   }
-  if (!calibration.config.enabled) {
-    return { candidates: input.candidates, resolution: { hit: false, missReason: 'disabled' }, snapshot: null };
-  }
-  const chain = buildMessageHashChain({ body: input.body });
-  const primary = input.candidates[0];
-  if (chain == null || primary == null) {
-    return { candidates: input.candidates, resolution: { hit: false, missReason: 'guard' }, snapshot: null };
-  }
-  // 前缀事实（冷启动闭环：无论命中与否都携带——结算写入的输入）
-  const baseSnapshot: QuoteCalibrationSnapshot = {
-    mappingId: primary.mappingId,
-    prefixHash: chain.chainAt(chain.messageHashes.length),
-    channelId: null,
-    inputTokens: null,
-    messagesLen: chain.messageHashes.length,
-    prefixBytes: prefixBytesOf(input.body),
-    cacheRatio: null,
-  };
-  let records;
-  try {
-    records = await calibration.lookup.findRecent({
-      userId: input.userId,
-      mappingId: primary.mappingId,
-      limit: calibration.config.recentLimit,
-    });
-  } catch {
+  const { chain, primary, baseSnapshot } = passed;
+  const records = await readCalibrationRecords(calibration, input, primary.mappingId);
+  if (records == null) {
     // 存储抖动：回落保守（安全方向）——不阻断请求（前缀事实保留：写入不受读失败影响）
     return {
       candidates: input.candidates,
@@ -218,27 +205,140 @@ async function resolveQuoteCalibration(
   if (!resolution.hit) {
     return { candidates: input.candidates, resolution, snapshot: baseSnapshot };
   }
+  return stampCalibrated({
+    candidates: input.candidates,
+    body: input.body,
+    baseSnapshot,
+    resolution,
+    cacheRatio: calibration.config.cacheRatio,
+  });
+}
+
+/** 命中盖章输入（stampCalibrated 参数对象） */
+interface StampInput {
+  candidates: QuoteCandidate[];
+  body: { messages?: unknown };
+  baseSnapshot: QuoteCalibrationSnapshot;
+  resolution: Extract<CalibrationResolution, { hit: true }>;
+  cacheRatio: number;
+}
+
+/** 命中盖章：主候选盖校准界（seen + 尾部字节界）；快照填命中值 */
+function stampCalibrated(input: StampInput): {
+  candidates: QuoteCandidate[];
+  resolution: CalibrationResolution;
+  snapshot: QuoteCalibrationSnapshot;
+} {
+  const [primary] = input.candidates;
+  if (primary == null) {
+    return { candidates: input.candidates, resolution: input.resolution, snapshot: input.baseSnapshot };
+  }
   // 尾部字节界：只对新增尾部消息算保守界（已见部分用实测 seen）
-  const tailTokens = tailUpperBound(input.body, resolution.messagesLen);
-  const calibratedBound = resolution.seen + tailTokens;
+  const tailTokens = tailUpperBound(input.body, input.resolution.messagesLen);
+  const calibratedBound = input.resolution.seen + tailTokens;
   const stamped = input.candidates.map((c) =>
-    c.mappingId === primary.mappingId ? { ...c, calibratedInputTokenUpperBound: calibratedBound } : c,
+    c.mappingId === primary.mappingId
+      ? { ...c, calibratedInputTokenUpperBound: calibratedBound }
+      : c,
   );
   return {
     candidates: stamped,
-    resolution,
+    resolution: input.resolution,
     snapshot: {
-      ...baseSnapshot,
-      channelId: resolution.channelId,
-      inputTokens: resolution.seen,
-      cacheRatio: calibration.config.cacheRatio,
+      ...input.baseSnapshot,
+      channelId: input.resolution.channelId,
+      inputTokens: input.resolution.seen,
+      cacheRatio: input.cacheRatio,
     },
   };
 }
 
+/** 输出上限段输入（outputCapsOf 参数对象） */
+interface OutputCapsInput {
+  endpoint: Endpoint;
+  body: Record<string, unknown>;
+  defaults: InferenceDefaults;
+  contextLength: number | null | undefined;
+}
+
+/** 输出上限/字节界/转发体三件套（prepareChatRequest 的上限段） */
+function outputCapsOf(input: OutputCapsInput): {
+  effectiveOutputCap: number;
+  inputUpperBound: number;
+  upstreamBody: Record<string, unknown>;
+} {
+  const { endpoint, body, defaults, contextLength } = input;
+  let kind: 'chat' | 'embeddings' | 'modality' = 'modality';
+  if (endpoint === 'chat') kind = 'chat';
+  else if (endpoint === 'embeddings') kind = 'embeddings';
+  const outputCap = maxOutputTokensFor(kind, body, {
+    defaultMax: defaults.output.defaultMaxOutputTokens,
+    exposureCap: defaults.output.exposureCap,
+  });
+  const inputUpperBound = conservativeInputTokenUpperBound(body);
+  const effectiveOutputCap = clampOutputCapByContext(outputCap, contextLength, inputUpperBound);
+  const upstreamBody = clampForwardedOutputLimit(body, effectiveOutputCap);
+  return { effectiveOutputCap, inputUpperBound, upstreamBody };
+}
+
+/** 守卫 + 链 + 前缀事实构造（early = 守卫未过的 miss 结果） */
+function calibrationGatePass(
+  calibration: { config: CalibrationLookupConfig },
+  input: { endpoint: Endpoint; body: Record<string, unknown>; candidates: QuoteCandidate[] },
+):
+  | { early: CalibrationResolution }
+  | {
+      early: null;
+      chain: NonNullable<ReturnType<typeof buildMessageHashChain>>;
+      primary: QuoteCandidate;
+      baseSnapshot: QuoteCalibrationSnapshot;
+    } {
+  // C6 守卫（§2.0'：读写双侧同款——非 chat 族/空 messages 不参与）
+  if (!calibrationGuard({ endpoint: input.endpoint, body: input.body })) {
+    return { early: { hit: false, missReason: 'guard' } };
+  }
+  if (!calibration.config.enabled) {
+    return { early: { hit: false, missReason: 'disabled' } };
+  }
+  const built = buildMessageHashChain({ body: input.body });
+  const [primary] = input.candidates;
+  if (built == null || primary == null) {
+    return { early: { hit: false, missReason: 'guard' } };
+  }
+  const chain = built;
+  // 前缀事实（冷启动闭环：无论命中与否都携带——结算写入的输入）
+  const baseSnapshot: QuoteCalibrationSnapshot = {
+    mappingId: primary.mappingId,
+    prefixHash: chain.chainAt(chain.messageHashes.length),
+    channelId: null,
+    inputTokens: null,
+    messagesLen: chain.messageHashes.length,
+    prefixBytes: prefixBytesOf(input.body),
+    cacheRatio: null,
+  };
+  return { early: null, chain, primary, baseSnapshot };
+}
+
+/** top-N 现读（存储抖动 → null = 调用方安全回落） */
+async function readCalibrationRecords(
+  calibration: { lookup: CalibrationLookup; config: CalibrationLookupConfig },
+  input: { userId: number },
+  mappingId: number,
+): Promise<readonly CalibrationRecord[] | null> {
+  try {
+    return await calibration.lookup.findRecent({
+      userId: input.userId,
+      mappingId,
+      limit: calibration.config.recentLimit,
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** 尾部消息（index ≥ from）的 JSON 字节保守上界 */
-function tailUpperBound(body: Record<string, unknown>, from: number): number {
-  const messages = body.messages;
+function tailUpperBound(body: { messages?: unknown }, from: number): number {
+  const { messages } = body;
   if (!Array.isArray(messages)) return 0;
   try {
     return Buffer.byteLength(JSON.stringify(messages.slice(from)), 'utf8');
@@ -248,9 +348,10 @@ function tailUpperBound(body: Record<string, unknown>, from: number): number {
 }
 
 /** 前缀规范化字节长（C7b 写入守卫基准——结算侧镜像判定用） */
-function prefixBytesOf(body: Record<string, unknown>): number {
+function prefixBytesOf(body: { messages?: unknown }): number {
+  const { messages } = body;
   try {
-    return Buffer.byteLength(JSON.stringify(body.messages ?? []), 'utf8');
+    return Buffer.byteLength(JSON.stringify(messages ?? []), 'utf8');
   } catch {
     return 0;
   }

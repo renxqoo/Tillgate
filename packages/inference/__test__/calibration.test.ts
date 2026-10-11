@@ -19,7 +19,9 @@ const RECORD: CalibrationRecord = {
 };
 
 function chainOf(body: Record<string, unknown>) {
-  return buildMessageHashChain({ body })!;
+  const chain = buildMessageHashChain({ body });
+  if (chain == null) throw new Error('chain fixture must have messages');
+  return chain;
 }
 
 /** 两轮「只追加」body：第二轮 = 第一轮 + 助手回复 + 新用户消息 */
@@ -225,7 +227,7 @@ describe('calibratedChannelAmount（分段公式）', () => {
     // cacheSeg = 45000 × 0.42/1M = 0.0189
     // rest = 6000 × 2.1/1M = 0.0126
     // output = 4096 × 8.4/1M = 0.0344064
-    expect(r!.amount).toBe('0.0659064');
+    expect(r?.amount ?? 'null-result').toBe('0.0659064');
   });
 
   it('写价 > 读价：cacheSeg 取写价（P3 覆盖）', () => {
@@ -237,7 +239,7 @@ describe('calibratedChannelAmount（分段公式）', () => {
       cacheRatio: 1.0,
       maxOutputTokens: 0,
     });
-    expect(r!.amount).toBe('0.21'); // 50000 × 4.2/1M
+    expect(r?.amount ?? 'null-result').toBe('0.21'); // 50000 × 4.2/1M
   });
 
   it('写价 > 输入价：残留段取写价（增量缓存尾部写）', () => {
@@ -250,7 +252,7 @@ describe('calibratedChannelAmount（分段公式）', () => {
       maxOutputTokens: 0,
     });
     // cacheSeg = 5000 × 4.2/1M = 0.021；rest = 15000 × 4.2/1M = 0.063
-    expect(r!.amount).toBe('0.084');
+    expect(r?.amount ?? 'null-result').toBe('0.084');
   });
 
   it('ratio 值域外（>1 / ≤0）→ null（防御读侧）', () => {
@@ -280,7 +282,7 @@ describe('calibratedChannelAmount（分段公式）', () => {
       cacheRatio: 0.9,
       maxOutputTokens: 100,
     });
-    expect(r!.amount).toBe('0');
+    expect(r?.amount ?? 'null-result').toBe('0');
   });
 
   it('十进制精度：无浮点误差（P95 高频值的字符串精确性）', () => {
@@ -292,6 +294,6 @@ describe('calibratedChannelAmount（分段公式）', () => {
       maxOutputTokens: 0,
     });
     // cacheSeg = 0（floor(0.9)=0）→ rest = 1 × 2.1/1M = 0.0000021
-    expect(r!.amount).toBe('0.0000021');
+    expect(r?.amount ?? 'null-result').toBe('0.0000021');
   });
 });

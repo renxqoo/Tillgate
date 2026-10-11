@@ -138,7 +138,9 @@ describe('指纹排除 calibration（v3-R3）', () => {
       prefixBytes: 180_000,
       cacheRatio: 0.9,
     });
-    drifted.candidates[0]!.inputPrice = '3'; // 价格变化 = 命令身份变化
+    const [first] = drifted.candidates;
+    if (first == null) throw new Error('candidate missing');
+    first.inputPrice = '3'; // 价格变化 = 命令身份变化
     await expect(
       api.authorize({
         requestId,

@@ -39,6 +39,7 @@ import {
 import type { PassthroughDelivered } from './application/dispatch';
 import { prepareChatRequest, type PreparedRequest } from './application/quote';
 import type { CalibrationLookup, CalibrationLookupConfig } from './ports/calibration';
+import type { CalibrationResolution } from './application/calibration';
 import { noopTrace, type TracePort } from './ports/trace';
 import type { RequestAuth } from './domain/model/types';
 
@@ -124,6 +125,15 @@ export interface Inference {
 }
 
 /** 预检阶段（inference.prepare span：目录候选链 + 报价上限） */
+/** 校准 span 属性（docs §3.4）：命中布尔 + seen/miss 原因 */
+function calibrationSpanAttrs(calibration: CalibrationResolution | null): Record<string, unknown> {
+  if (calibration == null) return {};
+  if (calibration.hit) {
+    return { 'calibration.hit': true, 'calibration.seen': calibration.seen };
+  }
+  return { 'calibration.hit': false, 'calibration.authz_miss_reason': calibration.missReason };
+}
+
 async function prepareWithSpan(
   deps: ExecutionDeps,
   args: { requestId: string; requestStartedAt: number; input: ChatInput },
@@ -151,14 +161,7 @@ async function prepareWithSpan(
       span.setAttributes({
         'quote.candidates': p.candidates.length,
         // 校准观测（docs §3.4）：命中/seen/授权时 miss 原因
-        ...(p.calibration != null
-          ? p.calibration.hit
-            ? { 'calibration.hit': true, 'calibration.seen': p.calibration.seen }
-            : {
-                'calibration.hit': false,
-                'calibration.authz_miss_reason': p.calibration.missReason,
-              }
-          : {}),
+        ...calibrationSpanAttrs(p.calibration),
       });
       return p;
     },

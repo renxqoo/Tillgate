@@ -70,8 +70,20 @@ function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   const entries = Object.entries(value as Record<string, unknown>)
     .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    .toSorted(([a], [b]) => compareKeys(a, b));
   return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+}
+
+/** 链索引收窄（越界钳到 [0, len]） */
+function clampIndex(k: number, len: number): number {
+  return Math.min(Math.max(k, 0), len);
+}
+
+/** 键序比较（canonical 字段名排序——避免嵌套三元） */
+function compareKeys(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
 }
 
 function sha256Hex(input: string): string {
@@ -115,7 +127,7 @@ export function buildMessageHashChain(input: {
   return {
     systemHash,
     messageHashes,
-    chainAt: (k: number) => chains[Math.min(Math.max(k, 0), messageHashes.length)]!,
+    chainAt: (k: number) => chains[clampIndex(k, messageHashes.length)] ?? chains[0] ?? systemHash,
   };
 }
 
@@ -198,15 +210,17 @@ export function calibratedChannelAmount(input: {
 
 // ---- 十进制字符串运算（无浮点；billing 金额纪律的 inference 侧镜像）----
 
+/** 小数部分定长 18 位（bigint 基） */
+function padFrac(f: string): bigint {
+  const padded = (f + '0'.repeat(18)).slice(0, 18);
+  return BigInt(padded);
+}
+
 function parseDecimalToUnits(s: string): bigint | null {
   if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
   const [whole = '0', frac = ''] = s.split('.') as [string, string];
   const units = BigInt(whole) * 10n ** 18n + (frac ? padFrac(frac) : 0n);
   return units < 0n ? null : units;
-  function padFrac(f: string): bigint {
-    const padded = (f + '0'.repeat(18)).slice(0, 18);
-    return BigInt(padded);
-  }
 }
 
 function unitsToDecimal(u: bigint): string {

@@ -74,9 +74,10 @@ const CONFIG: CalibrationLookupConfig = {
 const NOW = new Date('2026-10-12T00:00:00Z');
 
 function recordForTurn1(over: Partial<{ channelId: number; inputTokens: number; settledAt: Date }> = {}) {
-  const chain = buildMessageHashChain({ body: TURN1 as unknown as Record<string, unknown> })!;
+  const built = buildMessageHashChain({ body: TURN1 as unknown as Record<string, unknown> });
+  if (built == null) throw new Error('TURN1 must have messages');
   return {
-    prefixHash: chain.chainAt(2),
+    prefixHash: built.chainAt(2),
     channelId: 8,
     inputTokens: 40_000,
     messagesLen: 2,
@@ -96,14 +97,15 @@ describe('quote 校准集成（读侧）', () => {
       now: NOW,
       calibration: { lookup: lookupWith([recordForTurn1()]), config: CONFIG },
     });
-    const primary = p.candidates[0]!;
+    const [primary] = p.candidates;
+    if (primary == null) throw new Error('primary candidate missing');
     expect(primary.calibratedInputTokenUpperBound).toBeDefined();
     const tailBytes = Buffer.byteLength(
       JSON.stringify((TURN2.messages as unknown[]).slice(2)),
       'utf8',
     );
     // 校准界 = seen(40000) + 尾部字节界（尾部字节 > 字节数的 1/4 → 界 > 40000）
-    expect(primary.calibratedInputTokenUpperBound!).toBe(40_000 + tailBytes);
+    expect(primary.calibratedInputTokenUpperBound ?? -1).toBe(40_000 + tailBytes);
     // 字节界不动（保守底，B2 唯一口径）
     expect(p.inputUpperBound).toBe(
       Buffer.byteLength(JSON.stringify(TURN2), 'utf8'),
@@ -116,9 +118,9 @@ describe('quote 校准集成（读侧）', () => {
       cacheRatio: 0.9,
     });
     // 前缀事实 = 本请求全链（messagesLen=4——结算写入键；命中匹配在记录 messagesLen=2 处）
-    expect(p.calibrationSnapshot!.messagesLen).toBe(4);
-    expect(typeof p.calibrationSnapshot!.prefixHash).toBe('string');
-    expect(p.calibrationSnapshot!.prefixHash.length).toBe(64);
+    expect(p.calibrationSnapshot?.messagesLen).toBe(4);
+    expect(typeof (p.calibrationSnapshot?.prefixHash ?? '')).toBe('string');
+    expect((p.calibrationSnapshot?.prefixHash ?? '').length).toBe(64);
   });
 
   it('未装配 lookup：逐字段等于现状（回归锚——calibration/snapshot 均为 null）', async () => {
@@ -275,8 +277,10 @@ describe('quote 校准集成（读侧）', () => {
       calibration: { lookup: lookupWith([recordForTurn1()]), config: CONFIG },
     });
     expect(p.candidates.length).toBeGreaterThanOrEqual(2);
-    const primary = p.candidates[0]!;
-    const fallback = p.candidates[1]!;
+    const [primary] = p.candidates;
+    if (primary == null) throw new Error('primary candidate missing');
+    const [, fallback] = p.candidates;
+    if (fallback == null) throw new Error('fallback candidate missing');
     expect(primary.mappingId).toBe(13);
     expect(primary.calibratedInputTokenUpperBound).toBeDefined();
     expect(fallback.mappingId).toBe(99);

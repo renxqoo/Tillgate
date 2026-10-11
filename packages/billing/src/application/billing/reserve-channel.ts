@@ -54,7 +54,7 @@ export function createReserveChannelUseCase(env: {
       });
     }
     const now = clock();
-    // eslint-disable-next-line max-lines-per-function -- 渠道路由预算预扣编排:候选过滤→预扣→回执
+    // eslint-disable-next-line max-lines-per-function, complexity -- 渠道路由预算预扣编排:候选过滤→预扣(双列认领)→回执
     return store.transaction(async (tx) => {
       const br = await store.findByRequestId(tx, input.requestId);
       if (!br) {

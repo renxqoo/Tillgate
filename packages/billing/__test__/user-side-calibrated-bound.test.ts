@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { calculateRequired } from '../src/domain/rating/calculate.js';
 import type { BillingQuote } from '../src/domain/rating/types.js';
 
-function quote(bound: number | undefined): BillingQuote {
+function quote(bound?: number): BillingQuote {
   return {
     maxOutputTokens: 0,
     candidates: [
@@ -33,7 +33,7 @@ describe('calculateRequired 消费校准界（user_side）', () => {
   });
 
   it('回归锚：未携带 → 字节界 1M×2/1M = 2（现状）', () => {
-    expect(calculateRequired(quote(undefined), '1000').toString()).toBe('2');
+    expect(calculateRequired(quote(), '1000').toString()).toBe('2');
   });
 
   it('防御：校准界 > 字节界（形状异常）→ min 收敛到字节界', () => {

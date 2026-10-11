@@ -23,7 +23,7 @@ import type { BillingPort, BillingSignal, QuoteCandidate, UsageReceipt } from '@
 import type { ChannelCandidate } from '@tillgate/inference';
 
 /** 渠道成本五轴形状（ChannelCandidate.costPrices——避免重复内联） */
-type QuoteCandidateCostPrices = NonNullable<ChannelCandidate['costPrices']>;
+interface QuoteCandidateCostPrices extends NonNullable<ChannelCandidate['costPrices']> {}
 
 export interface GatewayBillingConfig {
   /** 单笔预估敞口上限解析（每次 authorize 现读——TTL 缓存的 system_configs KV） */
@@ -199,7 +199,7 @@ function channelExposureAmounts(input: {
   channelId: number;
   calibration?: Parameters<BillingPort['reserveChannel']>[0]['calibration'];
 }): { amount: string; conservativeChannelAmount: string | null } {
-  const { candidate: c, costPrices: cost, calibration } = input;
+  const { costPrices: cost } = input;
   if (cost == null) return { amount: '0', conservativeChannelAmount: null };
   const conservative = channelCostAmount(input);
   const calibrated = calibratedExposureOf(input, cost);
@@ -214,7 +214,7 @@ function calibratedExposureOf(
   input: Parameters<typeof channelExposureAmounts>[0],
   cost: NonNullable<QuoteCandidateCostPrices>,
 ): string | null {
-  const { calibration, candidate: c } = input;
+  const { calibration } = input;
   if (calibration == null) return null;
   if (
     calibration.channelId == null ||
@@ -224,7 +224,7 @@ function calibratedExposureOf(
     return null; // 前缀事实-only 快照（未命中）→ 保守
   }
   if (input.channelId !== calibration.channelId) return null; // 渠道不匹配 → 保守
-  const bound = c.calibratedInputTokenUpperBound;
+  const bound = input.candidate.calibratedInputTokenUpperBound;
   if (bound == null) return null; // 候选未盖章（未命中/非主候选）→ 保守
   const tailTokens = Math.max(bound - calibration.inputTokens, 0);
   const segmented = calibratedChannelAmount({
