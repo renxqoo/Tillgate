@@ -28,6 +28,17 @@ import { commitFunding } from './funding/commit.js';
 import { planFunding } from './funding/plan.js';
 import type { WalletApi } from '../wallet/wallet.js';
 
+/**
+ * 指纹载荷的 calibration 剔除（浅拷贝，不动原 quote）：值时变（收据实测），
+ * 不是命令身份的一部分——同命令重放必须同指纹（幂等语义）。quote 本体
+ * （含 calibration）照常落库，仅指纹计算排除。
+ */
+function withoutCalibration(quote: BillingQuote): Omit<BillingQuote, 'calibration'> {
+  if (quote.calibration === undefined) return quote;
+  const { calibration: _excluded, ...rest } = quote;
+  return rest;
+}
+
 export interface BillingEnv {
   store: BillingStore;
   resolver: FundingSourceResolver;
@@ -85,7 +96,9 @@ export function createAuthorizeUseCase(env: BillingEnv) {
       apiKeyId: input.apiKeyId ?? null,
       appId: input.appId ?? null,
       stream: input.stream,
-      quote: input.quote as unknown as Record<string, FingerprintValue>,
+      // 校准子对象排除（docs §3.2a/v3-R3）：inputTokens 是时变实测值，进指纹会使
+      // 同 requestId 重放的 fp 随并发结算漂移（replayOf 每轮必冲突）。
+      quote: withoutCalibration(input.quote) as unknown as Record<string, FingerprintValue>,
       estimatedAmount,
       reservationPolicy: reservationPolicy as Record<string, FingerprintValue>,
     });

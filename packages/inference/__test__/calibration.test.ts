@@ -11,8 +11,6 @@ import {
 /** C4/构造便利：固定时间基准 */
 const NOW = new Date('2026-10-12T00:00:00.000Z');
 const RECORD: CalibrationRecord = {
-  userId: 2,
-  mappingId: 13,
   prefixHash: '',
   channelId: 8,
   inputTokens: 50_000,
@@ -159,7 +157,7 @@ describe('resolveCalibration（C1-C6 匹配）', () => {
   });
 
   it('多条记录：跳过不匹配取首个匹配（top-N 内存过滤语义）', () => {
-    const other = recordOf({ prefixHash: 'deadbeef', mappingId: 99 });
+    const other = recordOf({ prefixHash: 'deadbeef' });
     const r = resolveCalibration({ config, records: [other, recordOf()], chain: chain2, now: NOW });
     expect(r.hit).toBe(true);
   });

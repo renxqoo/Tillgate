@@ -13,10 +13,11 @@
  */
 import { createHash } from 'node:crypto';
 
-/** 校准记录读侧形状（ports 注入的 store 返回；settle 写入侧见 billing） */
+/**
+ * 校准记录读侧形状（ports 注入的 store 返回；settle 写入侧见 billing）。
+ * userId/mappingId 由调用方上下文携带（查询键即过滤键——行内冗余不参与匹配）。
+ */
 export interface CalibrationRecord {
-  userId: number;
-  mappingId: number;
   prefixHash: string;
   channelId: number;
   /** 上一笔收据实测 inputTokens（C7b 保证 ≥ prefixBytes/4） */
