@@ -27,18 +27,6 @@ export interface CalibrationRecord {
 }
 
 /** 写入侧输入（结算路径组装；C7 守卫在 writeCalibrationRecord 判定） */
-export interface CalibrationWriteInput {
-  userId: number;
-  mappingId: number;
-  channelId: number;
-  inputTokens: number;
-  messagesLen: number;
-  /** 本请求前缀（system+tools+messages 全量）的规范化字节长度（C7b 下限基准） */
-  prefixBytes: number;
-  /** 收据是否携带钳制事实（acceptTrustedUsage 后 clamps 非空 → 拒写） */
-  clamped: boolean;
-}
-
 /** 校准读侧解析结果（quote 消费；fallback = 保守回落，携带原因进观测） */
 export type CalibrationResolution =
   | {
