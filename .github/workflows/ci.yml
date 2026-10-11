@@ -46,7 +46,7 @@ jobs:
       - name: Build + typecheck + lint (turbo)
         run: bunx turbo run typecheck lint build
 
-      - name: Test (boundaries + vitest, serialized)
+      - name: Test (vitest, serialized)
         run: bun run test
 
   coverage:
