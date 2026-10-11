@@ -14,13 +14,11 @@ import {
 } from 'lucide-react';
 
 import { LandingLocaleToggle } from '@/components/landing/locale-toggle';
-
 import { GithubMarkIcon } from '@/components/landing/github-mark-icon';
+import { APP_CONFIG } from '@/config/app-config';
+
 import { LandingFeatures } from './landing-features';
 import { LandingStack } from './landing-stack';
-
-/** 项目仓库外链（官方 mark 内联 SVG，lucide 无品牌图标） */
-const GITHUB_REPO_URL = 'https://github.com/renxqoo/Tillgate';
 
 /** 落地页独立于后台的标题/描述（覆盖根布局的 Studio Admin 模板） */
 export async function generateMetadata(): Promise<Metadata> {
@@ -157,7 +155,7 @@ export default async function Landing() {
           <span>{t('footerCopyright')}</span>
           <div className="flex items-center gap-4">
             <a
-              href={GITHUB_REPO_URL}
+              href={APP_CONFIG.repoUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"

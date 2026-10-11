@@ -9,4 +9,6 @@ export const APP_CONFIG = {
   name: 'Tillgate Console',
   version: packageJson.version,
   copyright: `© ${currentYear}, Tillgate.`,
+  /** 项目仓库外链（品牌事实：页脚 GitHub 入口统一取此） */
+  repoUrl: 'https://github.com/renxqoo/Tillgate',
 } as const;
