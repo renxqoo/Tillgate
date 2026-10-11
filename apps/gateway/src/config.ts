@@ -55,6 +55,8 @@ function createSchema(production: boolean) {
       BILLING_USAGE_DEFECT_BREAKER: z.coerce.number().int().min(1).default(5),
       /** 预扣策略（system_configs KV）缓存 TTL——admin 改动后的拾取延迟上界 */
       BILLING_RESERVATION_POLICY_TTL_MS: z.coerce.number().int().min(1_000).default(15_000),
+      // 校准配置 KV 的 TTL 缓存（admin 改动拾取延迟上界；缺省对齐 reservation policy）
+      BILLING_CALIBRATION_TTL_MS: z.coerce.number().int().min(1_000).default(15_000),
       BILLING_AUTHORIZATION_TTL_MS: z.coerce.number().int().min(1_000).default(300_000),
       /** 计费时区（全系统统一；schedule 分时段策略的墙钟口径）缓存 TTL */
       BILLING_TIMEZONE_TTL_MS: z.coerce.number().int().min(1_000).default(60_000),
@@ -141,6 +143,8 @@ export interface GatewayConfig {
   readonly usageDefectBreaker: number;
   /** 预扣策略 KV 读缓存 TTL（策略本体在 system_configs，admin 面动态调整） */
   readonly reservationPolicyTtlMs: number;
+  /** 校准配置 KV TTL 缓存（admin 改动拾取延迟上界） */
+  readonly calibrationTtlMs: number;
   readonly authorizationTtlMs: number;
   /** 计费时区缓存 TTL（system_configs 读取）与回落时区 */
   readonly billingTimezoneTtlMs: number;
@@ -291,6 +295,7 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     admissionMaxOldestMs: parsed.ADMISSION_MAX_OLDEST_MS,
     usageDefectBreaker: parsed.BILLING_USAGE_DEFECT_BREAKER,
     reservationPolicyTtlMs: parsed.BILLING_RESERVATION_POLICY_TTL_MS,
+    calibrationTtlMs: parsed.BILLING_CALIBRATION_TTL_MS,
     authorizationTtlMs: parsed.BILLING_AUTHORIZATION_TTL_MS,
     billingTimezoneTtlMs: parsed.BILLING_TIMEZONE_TTL_MS,
     billingTimezoneFallback: parsed.BILLING_TIMEZONE_DEFAULT,

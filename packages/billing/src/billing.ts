@@ -44,6 +44,7 @@ import type {
 } from './ports/funding-ports.js';
 import type { NotificationOutboxPort } from './ports/notification-outbox.js';
 import type { AccountContextStore } from './ports/account-context.js';
+import type { CalibrationStore } from './ports/calibration-store.js';
 import type { SettleFailurePolicyConfig } from './domain/billing/settle-failure.js';
 
 export interface CreateBillingConfig {
@@ -86,6 +87,8 @@ export interface BillingStores {
   quota: SubscriptionQuotaStore;
   channels?: ChannelExposureStore;
   accounts?: AccountContextStore;
+  /** 校准记录（docs/calibrated-exposure-estimate.md §3.1）：读面 gateway 桥接消费；写面结算路径 */
+  calibrations?: CalibrationStore;
 }
 
 /** 套餐目录管理组（admin-api 消费;审计后置归 app 装配层） */
@@ -134,6 +137,7 @@ export function createBilling(stores: BillingStores, config: CreateBillingConfig
     walletStore: stores.walletStore,
     fundingRegistry,
     channels: stores.channels,
+    calibrations: stores.calibrations,
     usageDefectBreaker: config.usageDefectBreaker,
     failurePolicy: config.failurePolicy,
     clock: config.clock,

@@ -5,7 +5,8 @@
  *     explicitlyFree = 候选链全免费）；reservationLimit/Policy 由 gateway config 持有；
  *   signal：蛇形词表 → billing 点分词表 + 收据字段结构对齐；
  *   reserveChannel：官方价口径（coefficient=1）estimateMaxCost 自算 amount（进货
- *     额度闸的预估敞口，与用户计价系数无关）。
+ *     额度闸的预估敞口，与用户计价系数无关）。校准命中且渠道匹配时用分段公式
+ *     收缩（docs §4.1），同时产出 conservativeChannelAmount（B4 二级上界）。
  * 零金额运算实现——公式全部在 billing 域（单一真相）。
  */
 import {
@@ -17,17 +18,20 @@ import {
   type FundingReservationPolicy,
 } from '@tillgate/billing';
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
+import { calibratedChannelAmount } from '@tillgate/inference';
 import type { BillingPort, BillingSignal, QuoteCandidate, UsageReceipt } from '@tillgate/inference';
 import type { ChannelCandidate } from '@tillgate/inference';
 
 /** 渠道成本五轴形状（ChannelCandidate.costPrices——避免重复内联） */
-type QuoteCandidateCostPrices = NonNullable<ChannelCandidate['costPrices']>;
+interface QuoteCandidateCostPrices extends NonNullable<ChannelCandidate['costPrices']> {}
 
 export interface GatewayBillingConfig {
   /** 单笔预估敞口上限解析（每次 authorize 现读——TTL 缓存的 system_configs KV） */
   resolveReservationLimit: () => Promise<string>;
   /** 预扣策略解析（每次 authorize 现读——TTL 缓存的 system_configs KV，admin 动态调整） */
   resolveReservationPolicy: () => Promise<FundingReservationPolicy>;
+  /** 校准上下文解析（可选——user_side 门控 billing quote 候选透传，§9 步骤 3） */
+  resolveCalibration?: () => Promise<{ config: { userSide: boolean } } | null>;
   /** 结算积压准入（bridge 级调用：authorize 前置闸；requestId 恒服务端生成，
    *  HTTP 面无客户端重放路径，桥级 admission 不破坏 billing 内部的重放免疫） */
   assertCapacity?: () => Promise<void>;
@@ -58,6 +62,8 @@ export interface GatewayBillingApi {
     requestId: string;
     channelId: number;
     amount: string;
+    /** B4 二级上界（docs §3.2c）：非空=校准预留落列；null=保守预留清列（换渠防残留） */
+    conservativeChannelAmount: string | null;
   }): Promise<{ allowed: boolean; remaining: string; switched: boolean }>;
 }
 
@@ -80,8 +86,16 @@ const allPricesZero = (c: QuoteCandidate): boolean =>
     }
   });
 
-/** inference 候选 → billing 报价候选（字段同源；inputUpperBound 逐候选盖章） */
-function toQuoteCandidate(c: QuoteCandidate, inputTokenUpperBound: number): BillingQuoteCandidate {
+/**
+ * inference 候选 → billing 报价候选（字段同源；inputUpperBound 逐候选盖章）。
+ * user_side 门（P2/§2.3 表）：false 时校准界不透传——billing 用户冻结额走
+ * 字节界（§9 步骤 2 渠道侧试点的独立开关）；渠道金额面不经此函数。
+ */
+function toQuoteCandidate(
+  c: QuoteCandidate,
+  inputTokenUpperBound: number,
+  userSide: boolean,
+): BillingQuoteCandidate {
   return {
     mappingId: c.mappingId,
     externalModel: c.externalModel,
@@ -93,6 +107,10 @@ function toQuoteCandidate(c: QuoteCandidate, inputTokenUpperBound: number): Bill
     ...(c.unitPrice != null ? { unitPrice: c.unitPrice } : {}),
     coefficient: c.coefficient,
     inputTokenUpperBound,
+    // 校准界透传（user_side=true 才进 billing quote——冻结额收缩开关；B2 不消费 I0）
+    ...(userSide && c.calibratedInputTokenUpperBound != null
+      ? { calibratedInputTokenUpperBound: c.calibratedInputTokenUpperBound }
+      : {}),
     pricingUnit: c.pricingUnit,
     unitUpperBound: c.unitUpperBound,
     billingPolicyFingerprint: c.billingPolicyFingerprint,
@@ -105,11 +123,16 @@ function toQuote(input: {
   maxOutputTokens: number;
   inputTokenUpperBound: number;
   candidates: readonly QuoteCandidate[];
+  calibration?: Parameters<BillingPort['authorize']>[0]['calibration'];
+  userSide: boolean;
 }): BillingQuote {
   return {
     maxOutputTokens: input.maxOutputTokens,
-    candidates: input.candidates.map((c) => toQuoteCandidate(c, input.inputTokenUpperBound)),
+    candidates: input.candidates.map((c) =>
+      toQuoteCandidate(c, input.inputTokenUpperBound, input.userSide),
+    ),
     ...(input.candidates.every(allPricesZero) ? { explicitlyFree: true } : {}),
+    ...(input.calibration != null ? { calibration: input.calibration } : {}),
   };
 }
 
@@ -173,6 +196,84 @@ function channelCostAmount(input: {
   }).toString();
 }
 
+/**
+ * 渠道敞口双金额（docs §4.1）：
+ *   amount = 校准命中且渠道匹配（reserve 时 channel == calibration.channelId）
+ *           且候选带校准界时按分段公式；否则保守口径（与现状一致）。
+ *   conservativeChannelAmount = 保守口径金额（B4 二级上界——reserve 时点
+ *           同价格快照字节界算出，价格漂移探测器基准）。
+ * 渠道不匹配（failover 到冷渠道）不进打折：tokenizer/缓存双保险（v3-R1/R2）。
+ */
+function channelExposureAmounts(input: {
+  candidate: QuoteCandidate;
+  costPrices?: QuoteCandidateCostPrices;
+  estimatedInputTokens: number;
+  maxOutputTokens: number;
+  channelId: number;
+  calibration?: Parameters<BillingPort['reserveChannel']>[0]['calibration'];
+}): { amount: string; conservativeChannelAmount: string | null } {
+  const { costPrices: cost } = input;
+  if (cost == null) return { amount: '0', conservativeChannelAmount: null };
+  const conservative = channelCostAmount(input);
+  const calibrated = calibratedExposureOf(input, cost);
+  // 路 B#1：列恒 = reserve 时点保守口径（非校准预留也落保守值，而非 null）——
+  // topup/covered 重入时 B4 ①③ 数值等价（无保守列 = 无上界的死信窗口消除），
+  // 换渠残留失明（原 P1）同样不存在（列恒随本次 reserve 刷新）。
+  return { amount: calibrated ?? conservative, conservativeChannelAmount: conservative };
+}
+
+/** 分段适用性前置（不适用 → null = 保守口径） */
+function segmentationApplicable(
+  input: Parameters<typeof channelExposureAmounts>[0],
+  cost: NonNullable<QuoteCandidateCostPrices>,
+): { channelId: number; seen: number; cacheRatio: number; bound: number } | null {
+  const { calibration } = input;
+  if (calibration == null) return null;
+  const { channelId, inputTokens: seen, cacheRatio } = calibration;
+  if (channelId == null || seen == null || cacheRatio == null) {
+    return null; // 前缀事实-only 快照（未命中）→ 保守
+  }
+  if (input.channelId !== channelId) return null; // 渠道不匹配 → 保守
+  const bound = input.candidate.calibratedInputTokenUpperBound;
+  if (bound == null) return null; // 候选未盖章（未命中/非主候选/user_side 关）→ 保守
+  // 路 C#4：校准界钳到字节界（与用户侧 min 防御对齐）——referenced-media 收据
+  // inputTokens 可远超请求体字节（§13 口径缺口），不钳会使校准预留 > 保守列
+  // （B4 容错区间倒置、预算闸反向恶化）。钳后 bound=字节界 → 分段≈保守。
+  if (bound > input.estimatedInputTokens) return null;
+  // P9 + 路 A#4：非纯 token 计价（pricingUnit 非 token 或 unitPrice>0）与
+  // 无缓存定价（读价 ≤0 且无写价）都不分段——分段公式只有 token 段，unit 轴
+  // 会整体丢失（amount='0' → 敞口闸失效）/cacheSeg 按 0 价塌陷；回保守口径。
+  if (input.candidate.pricingUnit !== 'token') return null;
+  const unitPrice = new Decimal(cost.unitPrice ?? '0');
+  if (unitPrice.gt(0)) return null;
+  const readPrice = new Decimal(cost.cacheInputPrice);
+  const writePrice = cost.cacheWritePrice != null ? new Decimal(cost.cacheWritePrice) : null;
+  if (readPrice.lte(0) && (writePrice == null || writePrice.lte(0))) return null;
+  return { channelId, seen, cacheRatio, bound };
+}
+
+/** 分段公式消费（前置齐备才启用；否则 null = 保守） */
+function calibratedExposureOf(
+  input: Parameters<typeof channelExposureAmounts>[0],
+  cost: NonNullable<QuoteCandidateCostPrices>,
+): string | null {
+  const applicable = segmentationApplicable(input, cost);
+  if (applicable == null) return null;
+  const { seen, cacheRatio, bound } = applicable;
+  const tailTokens = Math.max(bound - seen, 0);
+  const segmented = calibratedChannelAmount({
+    seen,
+    tailTokens,
+    cacheRatio,
+    inputPrice: cost.inputPrice,
+    cacheInputPrice: cost.cacheInputPrice,
+    cacheWritePrice: cost.cacheWritePrice,
+    outputPrice: cost.outputPrice,
+    maxOutputTokens: input.maxOutputTokens,
+  });
+  return segmented?.amount ?? null;
+}
+
 /** TPM actual 维度（与 admitRequest/tryModelAdmission/tryChannelAdmission 的维度串同源） */
 function tpmDimensionsOf(receipt: UsageReceipt): string[] {
   const dims: string[] = [];
@@ -212,16 +313,17 @@ async function finalizeTpmReservation(
   }
 }
 
-/** authorize 体检出：动态风控值（策略/上限）现读 + 形状收窄后透传 */
+/** authorize 体检出：动态风控值（策略/上限/校准 user_side）现读 + 形状收窄后透传 */
 async function authorizeWithDynamicRisk(
   api: GatewayBillingApi,
   config: GatewayBillingConfig,
   input: Parameters<BillingPort['authorize']>[0],
 ): Promise<void> {
   if (config.assertCapacity != null) await config.assertCapacity();
-  const [policy, reservationLimit] = await Promise.all([
+  const [policy, reservationLimit, calibration] = await Promise.all([
     config.resolveReservationPolicy(),
     config.resolveReservationLimit(),
+    config.resolveCalibration != null ? config.resolveCalibration() : Promise.resolve(null),
   ]);
   await api.authorize({
     requestId: input.requestId,
@@ -229,7 +331,7 @@ async function authorizeWithDynamicRisk(
     apiKeyId: input.apiKeyId,
     appId: input.appId,
     stream: input.stream,
-    quote: toQuote(input),
+    quote: toQuote({ ...input, userSide: calibration?.config.userSide ?? false }),
     reservationLimit,
     ...(policy.mode === 'fixed'
       ? { reservationPolicy: { mode: 'fixed', amount: policy.amount } }
@@ -258,11 +360,14 @@ export function createGatewayBilling(
     },
 
     async reserveChannel(input) {
-      const amount = channelCostAmount(input);
+      const { amount, conservativeChannelAmount } = channelExposureAmounts(input);
       const result = await api.reserveChannel({
         requestId: input.requestId,
         channelId: input.channelId,
         amount,
+        // 显式携带（含 null = 非校准预留——换渠路径清列，P1：残留会让 B4 ②
+        // 对价格漂移请求失明；undefined 仅测试桩用）
+        conservativeChannelAmount,
       });
       // switched/remaining 透传（routing gates 消费进 trace——换渠转移的可观测事实）
       if (!result.allowed) return { allowed: false } as const;

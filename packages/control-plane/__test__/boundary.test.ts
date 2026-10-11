@@ -148,6 +148,7 @@ describe('错误目录码表封闭（词表 == DESIGN §2.3）', () => {
       'control_plane.integration_unknown',
       'control_plane.invalid_admin_role',
       'control_plane.invalid_billing_timezone',
+      'control_plane.invalid_calibration_config',
       'control_plane.invalid_channel_input',
       'control_plane.invalid_coefficient',
       'control_plane.invalid_debit_floor',

@@ -24,6 +24,8 @@ import { isAttributedEstimate, type UsageReceipt } from '../../domain/rating/typ
 import { Decimal, normalizeAmount } from '../../domain/money.js';
 import type { BillingStore } from '../../ports/billing-store.js';
 import type { ChannelExposureStore } from '../../ports/funding-ports.js';
+import { calibrationWriteOf, writeCalibrationRecord } from './settle-calibration.js';
+import type { CalibrationStore } from '../../ports/calibration-store.js';
 import type { FundingRegistry } from '../billing/funding/registry.js';
 import type { SourceReservation } from '../billing/funding/source.js';
 import { usageLogProjection } from './usage-projection.js';
@@ -33,6 +35,8 @@ export interface SettleEnv {
   store: BillingStore;
   fundingRegistry: FundingRegistry;
   channels?: ChannelExposureStore;
+  /** 校准记录（docs/calibrated-exposure-estimate.md §4.2）：结算事务末尾 upsert；缺省不写 */
+  calibrations?: CalibrationStore;
   /** 用量证据缺陷熔断阈值（验收门钳制计数 ≥ 阈值 → 渠道熔断；装配必填——零写死） */
   usageDefectBreaker: number;
   /** 时钟（装配必填——零写死；DB 时钟权威路径不在此） */
@@ -47,6 +51,11 @@ export interface SettleEnv {
     receipt: Record<string, unknown>;
     amount: string;
     waived?: string;
+    /** 校准容错区间命中（B4 ②——docs §4.2）：观测计数由装配接 */
+    calibratedOverExposure?: boolean;
+    /** 容错区间成因标签（§3.4 v5 二值：channel_switch 精确；cache_ttl 与 gap
+     * 结算面不可分已收敛） */
+    calibrationReason?: 'channel_switch' | 'calibration_gap';
   }) => void;
   /** 验收门钳制观察钩子（提交后 best-effort——装配接日志/审计；异常不反杀结算） */
   onUsageDefect?: (data: {
@@ -95,6 +104,12 @@ async function settleOneInTx(
 ): Promise<{
   result: SettleClaimResult;
   settledUserId: number | null;
+  /** B4 ② 容错区间命中（观测面计数；false = 未触发/非校准） */
+  calibratedOverExposure: boolean;
+  /** 容错区间成因标签（§3.4——v5 二值） */
+  calibrationReason: 'channel_switch' | 'calibration_gap' | undefined;
+  /** 校准写入载荷（事务外执行——P10 毒化隔离） */
+  calibWrite: Parameters<CalibrationStore['upsert']>[1] | null;
   usageDefect: Parameters<NonNullable<SettleEnv['onUsageDefect']>>[0] | null;
 }> {
   const { store, clock } = env;
@@ -121,6 +136,9 @@ async function settleOneInTx(
           channelCircuitBroken: false,
         },
         settledUserId: null,
+        calibratedOverExposure: false,
+        calibrationReason: undefined,
+        calibWrite: null,
         usageDefect: null,
       };
     }
@@ -133,6 +151,9 @@ async function settleOneInTx(
         channelCircuitBroken: false,
       },
       settledUserId: null,
+      calibratedOverExposure: false,
+      calibrationReason: undefined,
+      calibWrite: null,
       usageDefect: null,
     };
   }
@@ -146,20 +167,42 @@ async function settleOneInTx(
   // 三本账（用户扣费/渠道扣减/平台收入）同源消费同一验收值；钳制事实走缺陷通道。
   const { receipt, clamps } = acceptTrustedUsage({ receipt: decoded, quote: billing.quote });
   const { calculatedAmount, upstreamCost } = computeAmounts(receipt);
+  /** 校准容错区间标记（B4 ②）——onSettled 观测面消费，不阻断结算 */
+  let calibratedOverExposure = false;
+  /** 容错区间成因标签（§3.4）：channel_switch 精确；cache_ttl 与 gap 结算面
+   * 不可分（记录 settled_at 不随 quote 落库）——统一 calibration_gap */
+  let calibrationReason: 'channel_switch' | 'calibration_gap' | undefined;
   // 估算 usage 只允许归属「用户取消 ∪ 完成缺 usage」
   if (receipt.usage.estimated && !isAttributedEstimate(receipt)) {
     throw invariant('settle_estimated_usage');
   }
-  // B4 经济闭合（钳后应为定理：预留 = 物理最坏 Case ≥ 钳定用量官方成本）——
-  // 违反即内部不一致（价格快照漂移/投影脱节），红灯死信不入账
+  const calibSnapshot = billing.quote.calibration as { channelId?: unknown } | undefined;
+  const calibChannelId =
+    typeof calibSnapshot?.channelId === 'number' ? calibSnapshot.channelId : null;
+  // B4 经济闭合（docs/calibrated-exposure-estimate.md §4.2 三分支）：
+  //   ① conservative_channel_amount 为 NULL（保守预留）→ 违反即内部不一致
+  //      （价格快照漂移/投影脱节），红灯死信不入账（原语义不动）；
+  //   ② 非空且 upstreamCost ≤ 保守金额 → 校准容错区间：放行到超额扣减
+  //      （deductBudgetAndMaybeBreak 按实际成本扣，预算可负穿）+ 指标；
+  //   ③ 非空但超保守金额 → 保守口径都罩不住 = 与 ① 同源的内部不一致，红灯。
+  // 探测器对价格漂移严格保留：reserve 时点的保守快照在，调价必被 ③ 抓住。
   if (
     billing.channelReservedAmount != null &&
     new Decimal(upstreamCost).gt(new Decimal(billing.channelReservedAmount))
   ) {
-    throw new DefectError(
-      `upstreamCost ${upstreamCost} > reserved ${billing.channelReservedAmount} (request ${claim.requestId})`,
-      'billing.usage_economic_bound',
-    );
+    const conservative = billing.conservativeChannelAmount ?? null;
+    if (conservative == null || new Decimal(upstreamCost).gt(new Decimal(conservative))) {
+      throw new DefectError(
+        `upstreamCost ${upstreamCost} > bound ${conservative ?? billing.channelReservedAmount} (request ${claim.requestId})`,
+        'billing.usage_economic_bound',
+      );
+    }
+    // ② 容错区间：标记进 onSettled 观测面（计数器由装配接）——不阻断结算
+    calibratedOverExposure = true;
+    calibrationReason =
+      receipt.channelId != null && calibChannelId != null && receipt.channelId !== calibChannelId
+        ? 'channel_switch'
+        : 'calibration_gap';
   }
   // 渠道维度单一事实：收据渠道与账单预留渠道不一致 = 网关回归 → 死信
   if (
@@ -273,7 +316,16 @@ async function settleOneInTx(
   // 结算成功事实不入通知 outbox：notifications 词表无
   // 「结算成功」成员——无告警消费场景；可观测走 usage_logs 投影与 onSettled
   // 钩子（best-effort）。可靠入箱只有死信路径（failure 用例，billing_dead）。
+  // 校准写入载荷（P10：事务外提交后执行——共享 tx 上语句级错误会毒化整事务
+  // （25P02 aborted），catch 救不了 COMMIT；记录可重建（I0），挪出资金事务）
+  const calibWrite =
+    env.calibrations != null && clamps.length === 0 && !receipt.usage.estimated
+      ? calibrationWriteOf(billing, receipt, now)
+      : null;
+
   return {
+    calibWrite,
+    calibrationReason,
     result: {
       outcome: 'settled',
       settled: true,
@@ -282,6 +334,7 @@ async function settleOneInTx(
       channelCircuitBroken,
     },
     settledUserId: billing.userId,
+    calibratedOverExposure,
     usageDefect:
       clamps.length > 0
         ? {
@@ -320,14 +373,26 @@ function fireOnUsageDefect(
 
 export function createSettleClaimUseCase(env: SettleEnv) {
   return async function settleClaim(claim: SettlementClaim): Promise<SettleClaimResult> {
-    const { result, settledUserId, usageDefect } = await env.store.transaction(async (tx) =>
-      settleOneInTx(env, tx, claim),
-    );
+    const {
+      result,
+      settledUserId,
+      calibratedOverExposure,
+      calibrationReason,
+      calibWrite,
+      usageDefect,
+    } = await env.store.transaction(async (tx) => settleOneInTx(env, tx, claim));
+    if (calibWrite != null) await writeCalibrationRecord(env, calibWrite);
     if (usageDefect != null) fireOnUsageDefect(env, usageDefect);
     if (result.outcome === 'settled' && settledUserId != null) {
       fireOnSettled(env, {
         requestId: claim.requestId,
         userId: settledUserId,
+        ...(calibratedOverExposure
+          ? {
+              calibratedOverExposure: true,
+              ...(calibrationReason != null ? { calibrationReason } : {}),
+            }
+          : {}),
         receipt: claim.receipt ?? {},
         amount: result.amount,
         waived: result.waived,
@@ -351,6 +416,9 @@ export function createSettleClaimsBatchUseCase(env: SettleEnv) {
       const out: {
         result: SettleClaimResult;
         settledUserId: number | null;
+        calibratedOverExposure: boolean;
+        calibrationReason: 'channel_switch' | 'calibration_gap' | undefined;
+        calibWrite: Parameters<CalibrationStore['upsert']>[1] | null;
         usageDefect: Parameters<NonNullable<SettleEnv['onUsageDefect']>>[0] | null;
         claim: SettlementClaim;
       }[] = [];
@@ -360,10 +428,20 @@ export function createSettleClaimsBatchUseCase(env: SettleEnv) {
       return out;
     });
     for (const row of settled) {
+      // P10：提交后独立写校准记录（批量主路径——worker settleBatchSize 缺省 20）
+      if (row.calibWrite != null) await writeCalibrationRecord(env, row.calibWrite);
       if (row.result.outcome === 'settled' && row.settledUserId != null) {
         fireOnSettled(env, {
           requestId: row.claim.requestId,
           userId: row.settledUserId,
+          ...(row.calibratedOverExposure
+            ? {
+                calibratedOverExposure: true,
+                ...(row.calibrationReason != null
+                  ? { calibrationReason: row.calibrationReason }
+                  : {}),
+              }
+            : {}),
           receipt: row.claim.receipt ?? {},
           amount: row.result.amount,
           waived: row.result.waived,

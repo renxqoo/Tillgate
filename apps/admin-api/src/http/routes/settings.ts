@@ -22,6 +22,7 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
     debitFloorDefault,
     billingReservation,
     billingReservationLimit,
+    billingCalibration,
     platformCurrency,
     integrations,
   } = deps.controlPlane.settings;
@@ -52,6 +53,27 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
   );
 
   app.get('/v1/settings/billing-reservation', async (c) => c.json(await billingReservation.read()));
+
+  app.get('/v1/settings/billing-calibration', async (c) => c.json(await billingCalibration.read()));
+
+  app.put(
+    '/v1/settings/billing-calibration',
+    jsonBody(settingsContracts.billingCalibrationUpdate),
+    async (c) => {
+      const body = c.req.valid('json');
+      return c.json(
+        await billingCalibration.update({
+          ctx: controlContextOf(c),
+          config: {
+            enabled: body.enabled,
+            windowMs: body.window_ms,
+            cacheRatio: body.cache_ratio,
+            userSide: body.user_side,
+          },
+        }),
+      );
+    },
+  );
 
   app.get('/v1/settings/platform-currency', async (c) => c.json(await platformCurrency.read()));
 

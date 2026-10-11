@@ -111,6 +111,10 @@ export async function gateChannel(input: {
         ...(channel.costPrices != null ? { costPrices: channel.costPrices } : {}),
         estimatedInputTokens: prepared.inputUpperBound,
         maxOutputTokens: prepared.outputCap,
+        // 校准快照透传（docs §4.1）：渠道匹配时 gateway 用分段公式收缩金额
+        ...(prepared.calibrationSnapshot != null
+          ? { calibration: prepared.calibrationSnapshot }
+          : {}),
       });
       // 换渠转移/剩余额度进观测面（billing 返回的事实不得在桥接层丢弃）
       if (r.allowed) {

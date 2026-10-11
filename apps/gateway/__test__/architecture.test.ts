@@ -35,6 +35,7 @@ describe('src 文件集合快照', () => {
     expect(files).toEqual([
       'adapters/billing-port.ts',
       'adapters/billing-timezone.ts',
+      'adapters/calibration-policy.ts',
       'adapters/catalog-port.ts',
       'adapters/reservation-policy.ts',
       'adapters/routing-policy.ts',

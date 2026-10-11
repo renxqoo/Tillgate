@@ -28,6 +28,24 @@ import { commitFunding } from './funding/commit.js';
 import { planFunding } from './funding/plan.js';
 import type { WalletApi } from '../wallet/wallet.js';
 
+/**
+ * 指纹载荷的时变字段剔除（浅+候选级，不动原 quote）：
+ *   quote.calibration（收据实测值）与 candidates[].calibratedInputToken
+ * UpperBound（= seen + tail，seen 的函数——同 requestId 重放时随并发结算漂移）
+ * 都不是命令身份的一部分（P4：v3-R3 的论证对候选字段逐字成立）。
+ * quote 本体（含全部字段）照常落库，仅指纹计算排除。
+ */
+function withoutCalibration(quote: BillingQuote): Omit<BillingQuote, 'calibration'> {
+  const candidates = quote.candidates.map((c) => {
+    if (c.calibratedInputTokenUpperBound === undefined) return c;
+    const { calibratedInputTokenUpperBound: _bound, ...rest } = c;
+    return rest;
+  });
+  if (quote.calibration === undefined) return { ...quote, candidates };
+  const { calibration: _excluded, ...rest } = quote;
+  return { ...rest, candidates };
+}
+
 export interface BillingEnv {
   store: BillingStore;
   resolver: FundingSourceResolver;
@@ -78,6 +96,11 @@ export function createAuthorizeUseCase(env: BillingEnv) {
   return async function authorize(input: AuthorizeBillingInput): Promise<BillingAuthorization> {
     // 金额推导（保守预估）：每日限额与资金规划的输入口径；落账投影以 plan 实筹为准
     const estimatedAmount = calculateRequired(input.quote, input.reservationLimit).toString();
+    // 指纹口径的预估：对排除校准后的 quote 重算（校准界不进指纹——衍生量同步排除）
+    const fingerprintEstimatedAmount = calculateRequired(
+      withoutCalibration(input.quote),
+      input.reservationLimit,
+    ).toString();
     const reservationPolicy = input.reservationPolicy ?? { mode: 'full' as const };
     const fp = commandFingerprint('billing.authorize', {
       requestId: input.requestId,
@@ -85,8 +108,12 @@ export function createAuthorizeUseCase(env: BillingEnv) {
       apiKeyId: input.apiKeyId ?? null,
       appId: input.appId ?? null,
       stream: input.stream,
-      quote: input.quote as unknown as Record<string, FingerprintValue>,
-      estimatedAmount,
+      // 校准排除（v3-R3 + 路 A 复审#2）：quote.calibration 与候选
+      // calibratedInputTokenUpperBound 是时变实测值（seen 的函数），且
+      // estimatedAmount 是其求导结果——三者必须同排除，否则衍生量击穿
+      // （同 requestId 重放随并发结算漂移 → replayOf 必冲突）。
+      quote: withoutCalibration(input.quote) as unknown as Record<string, FingerprintValue>,
+      estimatedAmount: fingerprintEstimatedAmount,
       reservationPolicy: reservationPolicy as Record<string, FingerprintValue>,
     });
     const now = clock();
@@ -141,13 +168,16 @@ export function createAuthorizeUseCase(env: BillingEnv) {
       if (replayOf(concurrentExisting)) return true;
 
       // ---- 每日限额（已结算 + 在途 + 本次；重放排除自身请求防双计）----
+      // 安全面口径（路 A#5/I0 表）：日限额属安全性消费面——喂字节界口径的
+      // fingerprintEstimatedAmount（对排除校准的 quote 求值），校准值永不
+      // 进限额判定（低限额用户校准命中后实际消费可超限不受阻）。
       await assertDailyLimit(store, tx, {
         requestId: input.requestId,
         userId: input.userId,
         apiKeyId: input.apiKeyId ?? null,
         userDailyLimit: source.userDailyLimit,
         keyDailyLimit: source.keyDailyLimit,
-        amount: estimatedAmount,
+        amount: fingerprintEstimatedAmount,
         now,
       });
 
@@ -181,7 +211,10 @@ export function createAuthorizeUseCase(env: BillingEnv) {
         requestId: input.requestId,
         userId: input.userId,
         apiKeyId: input.apiKeyId ?? null,
-        estimatedExposureAmount: estimatedAmount,
+        // 路 B#2/I0 安全面：exposure 落库用保守口径（订阅成员日限额/月配额经
+        // sumExposure 消费本列——校准收缩值会让成员限额 probe 失锚；user/key
+        // 限额已用 fingerprintEstimatedAmount，本列与之同源统一口径）
+        estimatedExposureAmount: fingerprintEstimatedAmount,
         reservedAmount: fundedAmount,
         planReservedAmount: plan.planReservedAmount,
         subscriptionId: source.subscriptionId,

@@ -153,6 +153,11 @@ export interface BillingQuoteCandidate {
   coefficient: string;
   /** 本候选请求输入 token 的可证明上界（文本字节或模型多模态硬上限） */
   inputTokenUpperBound: number;
+  /**
+   * 校准界（docs §2.3 双界，可选）：seen + 尾部字节界——仅命中候选携带。
+   * 预扣冻结额收缩用（经济性）；验收钳制/死信阈值永不消费（I0）。
+   */
+  calibratedInputTokenUpperBound?: number;
   /** 计量维度（token/request/image/second/char）——预扣上界与结算 units 的推导依据 */
   pricingUnit?: string;
   /** 单位计量上界（如 images 的 n / audio 的秒；token 模型为 0） */
@@ -175,4 +180,18 @@ export interface BillingQuote {
   candidates: BillingQuoteCandidate[];
   /** 只有显式免费策略才能产生 0 元授权 */
   explicitlyFree?: boolean;
+  /**
+   * 校准授权快照（docs/calibrated-exposure-estimate.md §3.2a，可选）：
+   * 命中时随 quote 落库——结算 B4 分支判定与渠道金额消费；不参与指纹
+   * （时变实测值非命令身份，authorize 侧剔除）。
+   */
+  calibration?: {
+    mappingId: number;
+    prefixHash: string;
+    channelId: number | null;
+    inputTokens: number | null;
+    messagesLen: number;
+    prefixBytes: number;
+    cacheRatio: number | null;
+  };
 }

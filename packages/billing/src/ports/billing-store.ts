@@ -30,6 +30,8 @@ export interface BillingRequestRow {
   appId?: number | null;
   channelId: number | null;
   channelReservedAmount: string | null;
+  /** B4 二级上界（docs/calibrated-exposure-estimate.md §3.2c）：非空 = 按校准口径预留 */
+  conservativeChannelAmount?: string | null;
   planReservedAmount: string | null;
   subscriptionId: number | null;
   estimatedExposureAmount: string | null;
@@ -174,6 +176,8 @@ export interface BillingStore {
       expectedReserved: string | null;
       channelId: number;
       channelReservedAmount: string;
+      /** B4 二级上界列（docs §3.2c）：与校准金额同语句维护；NULL = 保守预留 */
+      conservativeChannelAmount?: string | null;
       now: Date;
     },
   ): Promise<boolean>;

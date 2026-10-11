@@ -341,6 +341,10 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
         read: notWired,
         update: notWired,
       },
+      billingCalibration: {
+        read: notWired,
+        update: notWired,
+      },
       billingReservation: {
         read: notWired,
         update: notWired,

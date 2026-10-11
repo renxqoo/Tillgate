@@ -121,6 +121,8 @@ import { createFxSection } from './sections/fx-section';
 import { createSettingsSection } from './sections/settings-section';
 import { walletAccounts, channelRecharges, usageLogs } from '@tillgate/db';
 import { createCatalogSection } from './sections/catalog-section';
+import type { CalibrationConfig } from '@tillgate/billing';
+import type { UpdateBillingCalibrationInput } from './application/settings/update-billing-calibration';
 
 /** 装配环境（全部必填注入；可选覆盖件有包内缺省实现） */
 export interface ControlPlaneEnv {
@@ -306,6 +308,11 @@ export interface ControlPlane {
     billingReservationLimit: {
       read(): Promise<{ limit: string }>;
       update(input: UpdateBillingReservationLimitInput): Promise<{ limit: string }>;
+    };
+    /** 收据校准配置（system_configs['billing_calibration']；docs/calibrated-exposure-estimate.md §3.3） */
+    billingCalibration: {
+      read(): Promise<{ config: CalibrationConfig }>;
+      update(input: UpdateBillingCalibrationInput): Promise<{ config: CalibrationConfig }>;
     };
     /** 平台币种（写一次——处女系统才可改；各 app 启动读） */
     platformCurrency: {

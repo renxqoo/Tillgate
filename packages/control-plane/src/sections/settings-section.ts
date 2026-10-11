@@ -10,6 +10,8 @@ import { readDebitFloorDefault } from '../application/settings/read-debit-floor-
 import { updateDebitFloorDefault } from '../application/settings/update-debit-floor-default';
 import { readBillingReservation } from '../application/settings/read-billing-reservation';
 import { updateBillingReservation } from '../application/settings/update-billing-reservation';
+import { readBillingCalibration } from '../application/settings/read-billing-calibration';
+import { updateBillingCalibration } from '../application/settings/update-billing-calibration';
 import { readBillingReservationLimit } from '../application/settings/read-billing-reservation-limit';
 import { updateBillingReservationLimit } from '../application/settings/update-billing-reservation-limit';
 import { readPlatformCurrency } from '../application/settings/read-platform-currency';
@@ -41,6 +43,10 @@ export function createSettingsSection({
       billingReservationLimit: {
         read: () => readBillingReservationLimit(settingsDeps),
         update: (input) => updateBillingReservationLimit(settingsDeps, input),
+      },
+      billingCalibration: {
+        read: () => readBillingCalibration(settingsDeps),
+        update: (input) => updateBillingCalibration(settingsDeps, input),
       },
       platformCurrency: {
         read: () => readPlatformCurrency(settingsDeps),

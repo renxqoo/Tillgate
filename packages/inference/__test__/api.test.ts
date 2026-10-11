@@ -23,6 +23,8 @@ describe('api：facade 契约与出口面', () => {
       'USER_SIDE_CANCELS',
       'admissionTokenUpperBound',
       'buildCandidateChain',
+      'calibratedChannelAmount',
+      'calibrationGuard',
       'canonicalStreamToClaudeStream',
       'canonicalStreamToCompletionsStream',
       'canonicalStreamToGeminiStream',

@@ -38,6 +38,8 @@ import {
 } from './application/failover';
 import type { PassthroughDelivered } from './application/dispatch';
 import { prepareChatRequest, type PreparedRequest } from './application/quote';
+import type { CalibrationLookup, CalibrationLookupConfig } from './ports/calibration';
+import type { CalibrationResolution } from './application/calibration';
 import { noopTrace, type TracePort } from './ports/trace';
 import type { RequestAuth } from './domain/model/types';
 
@@ -70,6 +72,14 @@ export interface ChatInput {
 export interface InferenceEnv {
   /** 装配传入的 @tillgate/ai 实例（inference 是其唯一运行时消费方） */
   ai: Ai;
+  /**
+   * 校准读侧上下文（docs §7——gateway 装配 KV reader + billing findRecent 桥；
+   * 未装配 = 不解析，行为与现状一致）。
+   */
+  calibration?: () => Promise<{
+    lookup: CalibrationLookup;
+    config: CalibrationLookupConfig;
+  } | null>;
   catalog: CatalogPort;
   billing: BillingPort;
   /** 渠道健康跨请求状态存储（生产 redis 适配器；单副本/开发可用内存适配器） */
@@ -115,6 +125,15 @@ export interface Inference {
 }
 
 /** 预检阶段（inference.prepare span：目录候选链 + 报价上限） */
+/** 校准 span 属性（docs §3.4）：命中布尔 + seen/miss 原因 */
+function calibrationSpanAttrs(calibration: CalibrationResolution | null): Record<string, unknown> {
+  if (calibration == null) return {};
+  if (calibration.hit) {
+    return { 'calibration.hit': true, 'calibration.seen': calibration.seen };
+  }
+  return { 'calibration.hit': false, 'calibration.authz_miss_reason': calibration.missReason };
+}
+
 async function prepareWithSpan(
   deps: ExecutionDeps,
   args: { requestId: string; requestStartedAt: number; input: ChatInput },
@@ -127,6 +146,7 @@ async function prepareWithSpan(
       ...(typeof args.input.body.model === 'string' ? { 'ai.model': args.input.body.model } : {}),
     },
     async (span) => {
+      const calibration = deps.calibration != null ? await deps.calibration() : null;
       const p = await prepareChatRequest({
         catalog: deps.catalog,
         defaults: deps.defaults,
@@ -136,8 +156,13 @@ async function prepareWithSpan(
         // 分时段选价锚点 = 准入时刻（fallback 重查复用同一值，不随查询时刻抖动）
         now: new Date(args.requestStartedAt),
         ...(args.input.endpoint != null ? { endpoint: args.input.endpoint } : {}),
+        ...(calibration != null ? { calibration } : {}),
       });
-      span.setAttributes({ 'quote.candidates': p.candidates.length });
+      span.setAttributes({
+        'quote.candidates': p.candidates.length,
+        // 校准观测（docs §3.4）：命中/seen/授权时 miss 原因
+        ...calibrationSpanAttrs(p.calibration),
+      });
       return p;
     },
   );
@@ -166,6 +191,9 @@ async function authorizeWithSpan(
         inputTokenUpperBound: args.prepared.inputUpperBound,
         maxOutputTokens: args.prepared.outputCap,
         authorizationTtlMs: deps.defaults.authorization.ttlMs,
+        ...(args.prepared.calibrationSnapshot != null
+          ? { calibration: args.prepared.calibrationSnapshot }
+          : {}),
       }),
   );
 }
@@ -233,6 +261,7 @@ function buildExecutionDeps(
     health,
     memory,
     policy,
+    ...(env.calibration != null ? { calibration: env.calibration } : {}),
     ...(env.stickyStore != null ? { sticky: env.stickyStore } : {}),
     ...(env.admitChannel != null ? { admitChannel: env.admitChannel } : {}),
     ...(env.admitModel != null ? { admitModel: env.admitModel } : {}),

@@ -114,6 +114,11 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     message: 'Debit floor default must be a non-negative decimal amount',
     zh: '透支地板默认必须为非负十进制金额',
   },
+  invalid_calibration_config: {
+    category: 'invalid_input',
+    message: 'Invalid calibration config (ratio/window/dependency violated)',
+    zh: '校准配置非法（比值/窗口/依赖约束违反）',
+  },
   invalid_reservation_policy: {
     category: 'invalid_input',
     message: 'Reservation policy must be full or fixed with a positive amount',
