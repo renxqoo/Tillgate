@@ -21,11 +21,7 @@ import {
   identityTotp,
   roles as rolesTable,
 } from '@tillgate/db';
-import {
-  base32Decode,
-  matchingTotpStep,
-  totpAt,
-} from '../../packages/identity/src/domain/totp.js';
+import { base32Decode, matchingTotpStep, totpAt } from '../../packages/identity/src/domain/totp.js';
 import { jsonHeaders, setupE2EAdmin, teardownE2EAdmin, type E2EAdminWorld } from './kit';
 
 let world: E2EAdminWorld | null = null;
