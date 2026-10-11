@@ -236,6 +236,10 @@ function segmentationApplicable(
   if (input.channelId !== channelId) return null; // 渠道不匹配 → 保守
   const bound = input.candidate.calibratedInputTokenUpperBound;
   if (bound == null) return null; // 候选未盖章（未命中/非主候选/user_side 关）→ 保守
+  // 路 C#4：校准界钳到字节界（与用户侧 min 防御对齐）——referenced-media 收据
+  // inputTokens 可远超请求体字节（§13 口径缺口），不钳会使校准预留 > 保守列
+  // （B4 容错区间倒置、预算闸反向恶化）。钳后 bound=字节界 → 分段≈保守。
+  if (bound > input.estimatedInputTokens) return null;
   // P9 + 路 A#4：非纯 token 计价（pricingUnit 非 token 或 unitPrice>0）与
   // 无缓存定价（读价 ≤0 且无写价）都不分段——分段公式只有 token 段，unit 轴
   // 会整体丢失（amount='0' → 敞口闸失效）/cacheSeg 按 0 价塌陷；回保守口径。

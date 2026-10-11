@@ -303,6 +303,17 @@ describe('channelExposureAmounts 双金额（docs §4.1）', () => {
     expect(captured.conservativeChannelAmount).toBeNull();
   });
 
+  it('路C#4：校准界 > 字节界（referenced-media 收据）→ 回保守（区间不倒置）', async () => {
+    // seen=50000 → bound=50600 但字节界 estimatedInputTokens=10000（URL 媒体形态）
+    const mediaCandidate: QuoteCandidate = { ...CANDIDATE };
+    const captured = await captureReserveAmounts(
+      reserveInput({ candidate: mediaCandidate, estimatedInputTokens: 10_000 }),
+    );
+    // 保守口径（10000×2.1/M + 4096×8.4/M = 0.021 + 0.0344064），非分段
+    expect(captured.amount).toBe('0.0554064');
+    expect(captured.conservativeChannelAmount).toBeNull(); // 保守预留（B4 原路径）
+  });
+
   it('路A#4：unit 计价（pricingUnit=request）命中校准 → 回保守（unit 轴不丢）', async () => {
     const unitCandidate: QuoteCandidate = {
       ...CANDIDATE,

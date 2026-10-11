@@ -105,8 +105,8 @@ async function settleOneInTx(
   settledUserId: number | null;
   /** B4 ② 容错区间命中（观测面计数；false = 未触发/非校准） */
   calibratedOverExposure: boolean;
-  /** 容错区间成因标签（§3.4） */
-  calibrationReason: 'channel_switch' | 'cache_ttl' | 'calibration_gap' | undefined;
+  /** 容错区间成因标签（§3.4——v5 二值） */
+  calibrationReason: 'channel_switch' | 'calibration_gap' | undefined;
   /** 校准写入载荷（事务外执行——P10 毒化隔离） */
   calibWrite: Parameters<CalibrationStore['upsert']>[1] | null;
   usageDefect: Parameters<NonNullable<SettleEnv['onUsageDefect']>>[0] | null;
@@ -170,7 +170,7 @@ async function settleOneInTx(
   let calibratedOverExposure = false;
   /** 容错区间成因标签（§3.4）：channel_switch 精确；cache_ttl 与 gap 结算面
    * 不可分（记录 settled_at 不随 quote 落库）——统一 calibration_gap */
-  let calibrationReason: 'channel_switch' | 'cache_ttl' | 'calibration_gap' | undefined;
+  let calibrationReason: 'channel_switch' | 'calibration_gap' | undefined;
   // 估算 usage 只允许归属「用户取消 ∪ 完成缺 usage」
   if (receipt.usage.estimated && !isAttributedEstimate(receipt)) {
     throw invariant('settle_estimated_usage');
@@ -416,7 +416,7 @@ export function createSettleClaimsBatchUseCase(env: SettleEnv) {
         result: SettleClaimResult;
         settledUserId: number | null;
         calibratedOverExposure: boolean;
-        calibrationReason: 'channel_switch' | 'cache_ttl' | 'calibration_gap' | undefined;
+        calibrationReason: 'channel_switch' | 'calibration_gap' | undefined;
         calibWrite: Parameters<CalibrationStore['upsert']>[1] | null;
         usageDefect: Parameters<NonNullable<SettleEnv['onUsageDefect']>>[0] | null;
         claim: SettlementClaim;

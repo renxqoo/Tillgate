@@ -114,6 +114,11 @@ describe('fail-closed', () => {
     ).toThrow();
   });
 
+  it('校准 TTL 下限 1s（KV 读放大守卫——路 C#7）+ 缺省对齐预扣策略', () => {
+    expect(() => loadGatewayConfig({ ...BASE, BILLING_CALIBRATION_TTL_MS: '999' })).toThrow();
+    expect(loadGatewayConfig(BASE).calibrationTtlMs).toBe(15_000);
+  });
+
   it('路由策略 TTL：缺省 15s（管理台保存 → 生效的最大延迟）；下限 1s / 上限 5min', () => {
     expect(loadGatewayConfig(BASE).routingPolicyTtlMs).toBe(15_000);
     expect(loadGatewayConfig({ ...BASE, ROUTING_POLICY_TTL_MS: '1000' }).routingPolicyTtlMs).toBe(
