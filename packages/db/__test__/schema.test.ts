@@ -114,6 +114,34 @@ describe('词表收敛(B4:三套 → ACCOUNT_STATUS 一套)', () => {
 });
 
 describe('外键引用物化(契约:FK 目标必须在封闭表集合内)', () => {
+  it('identity 七表不得携带指向 users 的外键——user_id 是 user/admin 双 realm 共用的扁平主键,管理员 id(≥1e9 段)按设计不在 users 表(迁移 0113 撤销 0112 误加的 FK:误删管理员凭据 + 管理员身份写入全部 23503)', () => {
+    const IDENTITY_TABLES = new Set([
+      'identity_credentials',
+      'identity_passwords',
+      'identity_oauth_links',
+      'identity_challenges',
+      'identity_totp',
+      'identity_recovery_codes',
+      'identity_session_anchors',
+    ]);
+    for (const value of Object.values(schema)) {
+      if (!is(value, PgTable)) continue;
+      const config = getTableConfig(value);
+      if (!IDENTITY_TABLES.has(config.name)) continue;
+      for (const fk of config.foreignKeys) {
+        const ref = (
+          fk as unknown as {
+            reference(): { foreignTable: PgTable };
+          }
+        ).reference();
+        const targets = [...tableNames({ t: ref.foreignTable })];
+        expect(
+          targets,
+          `${config.name} 的外键不得指向 users(realm 扁平主键无单一属主表)`,
+        ).not.toContain('users');
+      }
+    }
+  });
   it('全部 FK 物化且目标表可解析——同时执行所有 .references(() => …) 惰性回调', () => {
     let fkCount = 0;
     for (const value of Object.values(schema)) {
