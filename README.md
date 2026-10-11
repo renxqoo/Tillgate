@@ -69,7 +69,7 @@ client / agent ──> gateway (OpenAI · Claude · Gemini protocols)
 
 **Engineering**
 
-- Executable architecture: package boundaries (dependency whitelist, explicit exports, no cycles) enforced in CI by `scripts/check-package-boundaries.ts`, plus per-package architecture tests and four root gates (`typecheck` / `lint` / `test` / `build`).
+- Executable architecture: package import boundaries enforced in CI by the local oxlint `boundaries` plugin (no deep imports — `@tillgate/*` must hit explicit package exports; no workspace-escape relative imports), plus per-package architecture tests and four root gates (`typecheck` / `lint` / `test` / `build`).
 
 ## Quick start
 
