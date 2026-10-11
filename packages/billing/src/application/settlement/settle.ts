@@ -53,8 +53,9 @@ export interface SettleEnv {
     waived?: string;
     /** 校准容错区间命中（B4 ②——docs §4.2）：观测计数由装配接 */
     calibratedOverExposure?: boolean;
-    /** 容错区间成因标签（§3.4：channel_switch 精确；cache_ttl 归 gap） */
-    calibrationReason?: 'channel_switch' | 'cache_ttl' | 'calibration_gap';
+    /** 容错区间成因标签（§3.4 v5 二值：channel_switch 精确；cache_ttl 与 gap
+     * 结算面不可分已收敛） */
+    calibrationReason?: 'channel_switch' | 'calibration_gap';
   }) => void;
   /** 验收门钳制观察钩子（提交后 best-effort——装配接日志/审计；异常不反杀结算） */
   onUsageDefect?: (data: {

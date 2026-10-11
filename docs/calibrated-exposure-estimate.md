@@ -226,11 +226,11 @@ z.object({
 ### 3.4 观测
 
 - span 属性（授权时）：`calibration.hit`、`calibration.seen`、
-  `calibration.authz_miss_reason`（guard|prefix|channel|window|no_record|
-  disabled|no_cache_price）。
+  `calibration.authz_miss_reason`（guard|prefix|window|no_record|disabled——
+  v5：no_cache_price 移除，该回落发生在 gateway 金额面不经 quote 数据流）。
 - 计数器（结算时）：`calibration_over_exposure{reason=
-  channel_switch|cache_ttl|calibration_gap}`（授权命中校准、结算时实际成本
-  超**校准预留**但 ≤ 保守金额的事件）。
+  channel_switch|calibration_gap}`（授权命中校准、结算时实际成本超**校准
+  预留**但 ≤ 保守金额的事件；v5：cache_ttl 与 gap 结算面不可分，收敛二值）。
 - 计数器（授权时）：`calibration_hit`。
 - 死信家族（超保守金额，无论校准与否）不打 calibration_*（口径隔离）。
 - **waived 监控（v4-P5/D15）**：waived_amount 为累计无界平台补贴——按
