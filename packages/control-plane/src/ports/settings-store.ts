@@ -7,6 +7,7 @@
  */
 import type { DbLike } from '@tillgate/db';
 import type { FundingReservationPolicy } from '@tillgate/billing';
+import type { CalibrationConfig } from '@tillgate/billing';
 
 export interface SettingsStore {
   /** 计费时区读（未配置/形状异常 = null，消费方回落装配缺省） */
@@ -42,11 +43,11 @@ export interface SettingsStore {
   ): Promise<void>;
 
   /** 校准配置读（未配置/值域异常 = null，消费方回落保守缺省关闭） */
-  readBillingCalibration(db: DbLike): Promise<import('@tillgate/billing').CalibrationConfig | null>;
+  readBillingCalibration(db: DbLike): Promise<CalibrationConfig | null>;
   /** 校准配置写（upsert system_configs['billing_calibration']） */
   updateBillingCalibration(
     db: DbLike,
-    input: { config: import('@tillgate/billing').CalibrationConfig; adminId: number | null },
+    input: { config: CalibrationConfig; adminId: number | null },
   ): Promise<void>;
 
   /** 平台币种读（未配置/值域异常 = null，消费方回落缺省 CNY） */
