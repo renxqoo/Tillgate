@@ -2,8 +2,12 @@ import Link from 'next/link';
 
 import { APP_CONFIG } from '@/config/app-config';
 
+import { GithubMarkIcon } from '@/features/auth/github-mark-icon';
 import { LogoMark } from './logo-mark';
 import type { LandingT } from './landing-shared';
+
+/** 项目仓库外链（与 OAuth mark 同源的官方 SVG，无品牌依赖） */
+const GITHUB_REPO_URL = 'https://github.com/renxqoo/Tillgate';
 
 export function LandingFooter({ t }: { t: LandingT }) {
   const quick = [
@@ -52,6 +56,17 @@ export function LandingFooter({ t }: { t: LandingT }) {
                 </Link>
               </li>
             ))}
+            <li>
+              <a
+                href={GITHUB_REPO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 transition-colors hover:text-slate-900"
+              >
+                <GithubMarkIcon />
+                <span>GitHub</span>
+              </a>
+            </li>
           </ul>
         </div>
       </div>

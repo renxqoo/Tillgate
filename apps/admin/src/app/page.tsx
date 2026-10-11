@@ -15,8 +15,12 @@ import {
 
 import { LandingLocaleToggle } from '@/components/landing/locale-toggle';
 
+import { GithubMarkIcon } from '@/components/landing/github-mark-icon';
 import { LandingFeatures } from './landing-features';
 import { LandingStack } from './landing-stack';
+
+/** 项目仓库外链（官方 mark 内联 SVG，lucide 无品牌图标） */
+const GITHUB_REPO_URL = 'https://github.com/renxqoo/Tillgate';
 
 /** 落地页独立于后台的标题/描述（覆盖根布局的 Studio Admin 模板） */
 export async function generateMetadata(): Promise<Metadata> {
@@ -151,7 +155,18 @@ export default async function Landing() {
       <footer className="border-t border-border/60 py-8">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-6 text-sm text-muted-foreground sm:flex-row">
           <span>{t('footerCopyright')}</span>
-          <span>{t('footerLicense')}</span>
+          <div className="flex items-center gap-4">
+            <a
+              href={GITHUB_REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+            >
+              <GithubMarkIcon className="size-3.5" />
+              <span>GitHub</span>
+            </a>
+            <span>{t('footerLicense')}</span>
+          </div>
         </div>
       </footer>
     </div>
