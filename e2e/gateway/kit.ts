@@ -39,6 +39,12 @@ export const E2E_REAL_MODEL = 'MiniMax-M3';
 export const E2E_INPUT_PRICE = '2.1';
 export const E2E_OUTPUT_PRICE = '8.4';
 export const E2E_CACHE_INPUT_PRICE = '0.42';
+/** 渠道成本轴（转售比约 1/20——成本价明显低于用户价，预算断言与用户账可判别）。
+ * 未配成本轴 = 零成本口径（成本不受控）是 7d97aba 后的语义；种子配置成本轴，
+ * 依赖「预算会被扣」的旅程才能保持判别力。 */
+export const E2E_COST_INPUT_PRICE = '0.1';
+export const E2E_COST_OUTPUT_PRICE = '0.4';
+export const E2E_COST_CACHE_INPUT_PRICE = '0.02';
 
 /** 世界渠道密钥加密钥（gateway/worker 装配共钥——worker 侧结算需解密同一批渠道行） */
 export const E2E_ENCRYPTION_KEY = 'e2e-channel-key-0123456789abcdef'; // ≥32 字符（secretSchema 口径）
@@ -158,8 +164,13 @@ async function seedWorld(
   const mapping = await one(sql`
     insert into model_mappings (external_name, real_model, input_price, output_price, cache_input_price)
     values (${E2E_MODEL}, ${E2E_REAL_MODEL}, ${E2E_INPUT_PRICE}, ${E2E_OUTPUT_PRICE}, ${E2E_CACHE_INPUT_PRICE}) returning id`);
+  // 成本轴在绑定级（model_channels，7d97aba 后未配 = 零成本不受控）：
+  // 种子配成本价（转售比约 1/20，明显低于用户价），依赖「预算会被扣」的旅程才有判别力。
   await db.execute(
-    sql`insert into model_channels (mapping_id, channel_id, upstream_model) values (${mapping.id}, ${channel.id}, ${E2E_REAL_MODEL})`,
+    sql`insert into model_channels (mapping_id, channel_id, upstream_model,
+      cost_input_price, cost_output_price, cost_cache_input_price)
+      values (${mapping.id}, ${channel.id}, ${E2E_REAL_MODEL},
+        ${E2E_COST_INPUT_PRICE}, ${E2E_COST_OUTPUT_PRICE}, ${E2E_COST_CACHE_INPUT_PRICE})`,
   );
   // 世界基线：智能路由开启（enabled 总开关——单渠道直连场景由测试自行覆写/删行）
   await db.execute(sql`

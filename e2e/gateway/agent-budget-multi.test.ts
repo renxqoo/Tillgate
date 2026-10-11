@@ -23,6 +23,9 @@ import { createCipher } from '@tillgate/runtime';
 import {
   E2EKeys,
   E2E_ENCRYPTION_KEY,
+  E2E_COST_CACHE_INPUT_PRICE,
+  E2E_COST_INPUT_PRICE,
+  E2E_COST_OUTPUT_PRICE,
   E2E_INPUT_PRICE,
   E2E_MODEL,
   E2E_OUTPUT_PRICE,
@@ -106,8 +109,10 @@ async function addChannel(input: {
     returning id`);
   const id = Number(defined(r[0] as { id: string | number } | undefined, 'channel insert').id);
   await world.db.execute(sql`
-    insert into model_channels (mapping_id, channel_id, upstream_model)
-    values (${input.mappingId ?? world.seed.mappingId}, ${id}, ${input.upstreamModel ?? E2E_REAL_MODEL})`);
+    insert into model_channels (mapping_id, channel_id, upstream_model,
+      cost_input_price, cost_output_price, cost_cache_input_price)
+    values (${input.mappingId ?? world.seed.mappingId}, ${id}, ${input.upstreamModel ?? E2E_REAL_MODEL},
+      ${E2E_COST_INPUT_PRICE}, ${E2E_COST_OUTPUT_PRICE}, ${E2E_COST_CACHE_INPUT_PRICE})`);
   return id;
 }
 
@@ -184,6 +189,11 @@ const USAGE_AMOUNT = new Decimal(E2E_INPUT_PRICE)
   .times(10)
   .plus(new Decimal(E2E_OUTPUT_PRICE).times(5))
   .div(1_000_000);
+/** 上游成本口径的同体用量（成本轴 0.1/0.4——预算扣减与 upstream_cost 落账用） */
+const UPSTREAM_COST = new Decimal(E2E_COST_INPUT_PRICE)
+  .times(10)
+  .plus(new Decimal(E2E_COST_OUTPUT_PRICE).times(5))
+  .div(1_000_000);
 
 beforeAll(async () => {
   world = await setupE2EWorld();
@@ -207,12 +217,13 @@ beforeAll(async () => {
   const probeRes = await chat(probeUser.raw);
   expect(probeRes.status).toBe(200);
   reserveUnit = new Decimal(await lastChannelReservedOf(probeUser.userId));
-  // 公式锁定（现状契约）：官方价口径 estimateMaxCost、coefficient=1——
-  // 输入贵价 = max(输入, 缓存, 缓存写|缺省回落输入) = 2.1，敞口 = (2.1×B + 8.4×64)/1e6
+  // 公式锁定（现状契约）：成本轴口径 estimateMaxCost、coefficient=1（7d97aba 后
+  // 进货预留走绑定成本轴，不再回落用户官方价；种子成本轴 0.1/0.4/0.02）——
+  // 输入贵价 = max(输入, 缓存, 缓存写|缺省回落输入) = 0.1，敞口 = (0.1×B + 0.4×64)/1e6
   const bytes = Buffer.byteLength(JSON.stringify(PROBE_BODY), 'utf8');
-  const expected = new Decimal(E2E_INPUT_PRICE)
+  const expected = new Decimal(E2E_COST_INPUT_PRICE)
     .times(bytes)
-    .plus(new Decimal(E2E_OUTPUT_PRICE).times(64))
+    .plus(new Decimal(E2E_COST_OUTPUT_PRICE).times(64))
     .div(1_000_000);
   expect(reserveUnit.eq(expected)).toBe(true);
   await keys.settleAll(probeUser.userId);
@@ -303,7 +314,7 @@ describe.skipIf(!hasEnv)('E2E 渠道预算硬闸 + fallback 链 + 多用户并�
     await keys.settleAll(user.userId);
     const settled = await fundsOf(aId);
     expectDec(settled.reserved, '0', 'reserved after settlement');
-    expectDec(settled.budget, reserveUnit.minus(USAGE_AMOUNT), 'budget after settlement');
+    expectDec(settled.budget, reserveUnit.minus(UPSTREAM_COST), 'budget after settlement'); // 预算按成本轴扣（非官方价）
     expect(settled.status).toBe(0); // 剩余 > 0（threshold NULL → 0）不熔断
 
     // 请求 2：A 剩余 = 预算 − upstreamCost < 单次预留额 → 预算门拒 → 换渠 B
@@ -319,8 +330,8 @@ describe.skipIf(!hasEnv)('E2E 渠道预算硬闸 + fallback 链 + 多用户并�
     expect(usage[0]?.channel_id).toBe(String(aId));
     expect(usage[1]?.channel_id).not.toBe(String(aId));
     for (const row of usage) {
-      expectDec(row.amount, USAGE_AMOUNT, 'usage amount');
-      expectDec(row.upstream_cost, USAGE_AMOUNT, 'usage upstream_cost');
+      expectDec(row.amount, USAGE_AMOUNT, 'usage amount'); // 用户账按官方价轴
+      expectDec(row.upstream_cost, UPSTREAM_COST, 'usage upstream_cost'); // 成本按成本轴（非用户价）
     }
     // 全程结算后两渠道预留均归零
     expectDec((await fundsOf(aId)).reserved, '0', 'a reserved after all settled');
@@ -494,7 +505,11 @@ describe.skipIf(!hasEnv)('E2E 渠道预算硬闸 + fallback 链 + 多用户并�
     expect(row.output_tokens).toBe('5');
     const yAmount = new Decimal('4.2').times(10).plus(new Decimal('16.8').times(5)).div(1_000_000);
     expectDec(row.amount, yAmount, 'fallback usage amount (Y prices)');
-    expectDec(row.upstream_cost, yAmount, 'fallback upstream_cost (Y prices, coeff 1)');
+    // upstream_cost 走绑定成本轴（addChannel 统一配的种子成本价），不走 Y 官方价
+    const yCost = new Decimal(E2E_COST_INPUT_PRICE).times(10)
+      .plus(new Decimal(E2E_COST_OUTPUT_PRICE).times(5))
+      .div(1_000_000);
+    expectDec(row.upstream_cost, yCost, 'fallback upstream_cost (binding cost axes)');
     await keys.assertReconciled(user.userId, '10');
   }, 30_000);
 

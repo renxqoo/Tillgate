@@ -33,6 +33,9 @@ import { createCipher } from '@tillgate/runtime';
 import {
   E2EKeys,
   E2E_ENCRYPTION_KEY,
+  E2E_COST_CACHE_INPUT_PRICE,
+  E2E_COST_INPUT_PRICE,
+  E2E_COST_OUTPUT_PRICE,
   E2E_MODEL,
   E2E_REAL_MODEL,
   defined,
@@ -66,10 +69,13 @@ async function addChannel(input: {
     values (${world.seed.providerId}, ${input.name}, ${cipher.encrypt(input.apiKeyPlain ?? E2E_UPSTREAM_KEY)},
             ${input.baseUrl}, ${input.priority}, 1, ${input.budget ?? '1000'})
     returning id`);
-  const id = Number((r[0] as { id: string | number }).id);
+  const id = Number(defined(r[0] as { id: string | number } | undefined, 'channel insert').id);
+  // 成本轴随绑定（7d97aba 后未配 = 零成本）：换渠预留转移断言依赖非零敞口
   await world.db.execute(sql`
-    insert into model_channels (mapping_id, channel_id, upstream_model)
-    values (${world.seed.mappingId}, ${id}, ${E2E_REAL_MODEL})`);
+    insert into model_channels (mapping_id, channel_id, upstream_model,
+      cost_input_price, cost_output_price, cost_cache_input_price)
+    values (${world.seed.mappingId}, ${id}, ${E2E_REAL_MODEL},
+      ${E2E_COST_INPUT_PRICE}, ${E2E_COST_OUTPUT_PRICE}, ${E2E_COST_CACHE_INPUT_PRICE})`);
   return id;
 }
 

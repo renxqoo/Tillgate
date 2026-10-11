@@ -91,6 +91,8 @@ describe.skipIf(!hasEnv)('E2E', () => {
           body,
         }).then(responseStatus);
       const msg = JSON.stringify([{ role: 'user', content: 'x' }]);
+      // d2d09a3 起内容量上限（messages 条数/embed 项数）从契约中移除：资源护栏交给
+      // 体大小上限与预算参数。超 1000 条/超 2048 项现在是放行而非 400。
       const statuses = await Promise.all([
         rawPost(`{"model":"${E2E_MODEL}","messages":${msg},"max_tokens":1000000000}`), // 超 1M 上界
         rawPost(`{"model":"${E2E_MODEL}","messages":${msg},"max_tokens":1e999}`), // JSON 解析为 Infinity
@@ -101,7 +103,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
         rawPost(`{"model":"${E2E_MODEL}","messages":[],"max_tokens":100}`), // 空 messages
         rawPost(
           `{"model":"${E2E_MODEL}","messages":${JSON.stringify(Array.from({ length: 1001 }, userMsg))},"max_tokens":10}`,
-        ), // 超 1000 条
+        ).then((s) => (s === 200 ? 200 : s)), // 超 1000 条：d2d09a3 后放行（200）——不再是 400
         fetch(`${fullGateway.baseUrl}/v1/embeddings`, {
           method: 'POST',
           headers: { authorization: `Bearer ${raw}`, 'content-type': 'application/json' },
@@ -109,11 +111,13 @@ describe.skipIf(!hasEnv)('E2E', () => {
             model: E2E_MODEL,
             input: Array.from({ length: 2049 }, xChar),
           }),
-        }).then(responseStatus), // embed 批超 2048
+        }).then((r) => (r.status === 200 ? 200 : r.status)), // embed 批超 2048：同上放行
       ]);
-      expect(statuses.every(is400)).toBe(true);
-      expect((await keys.billsOf(userId)).length).toBe(0); // 全家族零扣费
-      expect(new Decimal((await keys.walletOf(userId)).balance).eq('1')).toBe(true);
+      // 前七项（预算参数异常 + 空 messages）仍必须 400；后两项（量上限移除）合法放行 200
+      expect(statuses.slice(0, 7).every(is400)).toBe(true);
+      expect(statuses.slice(7).every((s) => s === 200)).toBe(true);
+      expect((await keys.billsOf(userId)).length).toBe(2); // 预算参数异常零扣费；放行两项各一笔（待结算）
+      expect(new Decimal((await keys.walletOf(userId)).balance).eq('1')).toBe(true); // 在途预扣不影响余额
     }, 60_000);
 
     it('边界内超大内容与透传参数：不 5xx、不崩账（9MiB prompt / 1e308 采样参数）', async () => {
