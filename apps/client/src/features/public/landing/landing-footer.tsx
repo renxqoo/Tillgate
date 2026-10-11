@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { GithubMarkIcon } from '@/features/auth/github-mark-icon';
 import { APP_CONFIG } from '@/config/app-config';
 
 import { LogoMark } from './logo-mark';
@@ -52,6 +53,17 @@ export function LandingFooter({ t }: { t: LandingT }) {
                 </Link>
               </li>
             ))}
+            <li>
+              <a
+                href={APP_CONFIG.repoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 transition-colors hover:text-slate-900"
+              >
+                <GithubMarkIcon />
+                <span>GitHub</span>
+              </a>
+            </li>
           </ul>
         </div>
       </div>

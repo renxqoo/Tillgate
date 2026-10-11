@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 
 import { LandingLocaleToggle } from '@/components/landing/locale-toggle';
+import { GithubMarkIcon } from '@/components/landing/github-mark-icon';
+import { APP_CONFIG } from '@/config/app-config';
 
 import { LandingFeatures } from './landing-features';
 import { LandingStack } from './landing-stack';
@@ -151,7 +153,18 @@ export default async function Landing() {
       <footer className="border-t border-border/60 py-8">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-6 text-sm text-muted-foreground sm:flex-row">
           <span>{t('footerCopyright')}</span>
-          <span>{t('footerLicense')}</span>
+          <div className="flex items-center gap-4">
+            <a
+              href={APP_CONFIG.repoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+            >
+              <GithubMarkIcon />
+              <span>GitHub</span>
+            </a>
+            <span>{t('footerLicense')}</span>
+          </div>
         </div>
       </footer>
     </div>
