@@ -80,3 +80,28 @@ describe('migration journal ↔ SQL files', () => {
     );
   });
 });
+
+describe('identity→users/admins 外键再犯守卫（事故载体是手写迁移 SQL，0112 实发）', () => {
+  // schema 守卫只看 drizzle 声明层;本事故的 FK 是手写 ADD CONSTRAINT 建的,
+  // 若迁移单独建 FK 而 schema 不同步,声明层守卫看不见。本测试扫迁移文件本体。
+  // 基线 0112:事故迁移本身(其 FK 已被 0113 撤销);0113:撤销迁移。此后新迁移
+  // 再出现 identity 表 → users/admins 的外键即红。
+  const GUARD_BASELINE_TAG = '0112_identity_user_fk';
+  const FK_PATTERN = /references\s+users\s*\(|references\s+admins\s*\(/i;
+  const IDENTITY_TABLE_PATTERN =
+    /identity_(credentials|passwords|oauth_links|challenges|totp|recovery_codes|session_anchors)/i;
+
+  it('0112 之后的迁移不得给 identity 表加指向 users/admins 的外键(手写 SQL 形态)', () => {
+    const baselineIndex = journalTags.indexOf(GUARD_BASELINE_TAG);
+    expect(baselineIndex).toBeGreaterThan(-1);
+    const offenders: string[] = [];
+    for (const tag of journalTags.slice(baselineIndex + 1)) {
+      const content = readFileSync(`${migrationsDir}/${tag}.sql`, 'utf8');
+      if (FK_PATTERN.test(content) && IDENTITY_TABLE_PATTERN.test(content)) {
+        offenders.push(tag);
+      }
+    }
+    // 0113 只做 DROP CONSTRAINT,不含 REFERENCES——不应命中;再犯即红
+    expect(offenders).toEqual([]);
+  });
+});
