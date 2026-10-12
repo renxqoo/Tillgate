@@ -49,8 +49,8 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
         cost_input_price = ${'2.1'}, cost_output_price = ${'8.4'},
         cost_cache_input_price = ${'0.42'}, cost_cache_write_price = '0'
       where mapping_id = ${world.seed.mappingId}`);
-    // 校准开启（渠道侧；窗口 5min；ratio 0.9；TTL 15s 内拾取）
-    const value = { enabled: true, window_ms: 300_000, cache_ratio: 0.9, user_side: true };
+    // 校准调参（D18 恒开——无开关字段；窗口 5min、ratio 0.9；TTL 15s 内拾取）
+    const value = { window_ms: 300_000, cache_ratio: 0.9 };
     await world.db
       .insert(systemConfigs)
       .values({ key: 'billing_calibration', value })
@@ -76,6 +76,41 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
       max_tokens: 1_000,
       stream: false,
     });
+
+  it('部署兼容：PR #67 旧四参 KV 行经新解析器宽容生效（多余键忽略）', async () => {
+    // 升级窗口语义（docs §3.3）：生产若存在旧四参行，window/ratio 照常生效
+    const legacy = { enabled: false, window_ms: 240_000, cache_ratio: 0.8, user_side: false };
+    await world.db
+      .insert(systemConfigs)
+      .values({ key: 'billing_calibration', value: legacy })
+      .onConflictDoUpdate({
+        target: systemConfigs.key,
+        set: { value: legacy, updatedAt: new Date() },
+      });
+    await sleep(16_000); // TTL 拾取
+    const issued = await keys.issue('100');
+    raw = issued.raw;
+    world.upstream.script = 'nonstream-calibration';
+    world.upstream.calibrationUsage = { promptTokens: 56_000, completionTokens: 185 };
+    // 校准照常工作（旧 enabled:false 不再关停——D18 恒开），窗口 240s 足够命中
+    const m1 = [{ role: 'user', content: 'q1'.repeat(110_000) }];
+    const r1 = await chat(m1);
+    expect(r1.status).toBe(200);
+    await keys.settleAll(issued.userId);
+    const rec = await world.db
+      .select()
+      .from(prefixCalibrations)
+      .where(eq(prefixCalibrations.userId, issued.userId));
+    expect(rec).toHaveLength(1); // 写入照常（恒开）
+    await keys.assertReconciled(issued.userId, '100');
+    // 还原规范二参调参供后续旅程
+    const canonical = { window_ms: 300_000, cache_ratio: 0.9 };
+    await world.db
+      .update(systemConfigs)
+      .set({ value: canonical })
+      .where(eq(systemConfigs.key, 'billing_calibration'));
+    await sleep(16_000);
+  }, 120_000);
 
   it('旅程一：命中闭式 + 回落锚', async () => {
     const issued = await keys.issue('100');

@@ -207,21 +207,25 @@ migration 0113 同批）**：reserve 时由 gateway 与校准金额**同调用�
 
 ```ts
 z.object({
-  enabled: z.boolean(),                                  // 缺省 false
-  window_ms: z.number().int().positive().max(3_600_000), // 缺省 300000
-  cache_ratio: z.number().gt(0).lte(1),                  // 缺省 0.9（P8：值域锁死）
-  user_side: z.boolean(),                                // 缺省 false
-}).superRefine(enabled=false 时拒 user_side=true)
+  window_ms: z.number().int().min(1_000).max(3_600_000), // 缺省 300000
+  cache_ratio: z.number().gt(0).lte(1),                  // 缺省 0.9
+})
 ```
 
-- PUT 整替换；admin settings API + 审计动作 `settings.billing_calibration`；
-  ACL：endpoint_permissions migration（0097/0099 模式）。
+- 校准**恒开**（D18）：无 enabled/user_side 功能开关——KV 只承载调参
+  （窗口对齐上游缓存 TTL、系数留安全边际），缺失/脏值回落缺省调参
+  300s/0.9（开启态；回落处 warn 日志）。
+- **部署兼容**：PR #67 时代的旧四参 KV 行（含 enabled/user_side）经新
+  解析器宽容解析——多余键被忽略，window_ms/cache_ratio 生效（旧
+  `enabled:false` 行升级即转为开启态——D18 语义）。e2e 与单测显式锁定
+  该兼容（防未来收紧形状时静默回落）。
+- PUT 整替换二参数（zod 默认 strip 多余键——旧四参客户端得到 200 且
+  开关字段被忽略；契约收紧的感知依赖 openapi 变更说明）；admin settings
+  API + 审计动作 `settings.billing_calibration`；ACL migration 0115。
 - gateway 读取：`adapters/reservation-policy.ts` 同款 TTL reader 语义
-  （DB 错 fail-loud / 值异常回落保守 + warn）；TTL = 新 config 键
-  `calibrationTtlMs`（config.ts + .env.example + 配置测试）。
-- admin 前端 settings 面校准卡。
-- **写侧不受 enabled 门控**（结算写记录无条件；enabled 只控读侧——避免
-  打开时冷启动零命中）。
+  （DB 错 fail-loud / 值异常回落缺省调参 + warn）；TTL = config 键
+  `calibrationTtlMs`。
+- admin 前端 settings 面校准卡（调参）。
 
 ### 3.4 观测
 
@@ -360,18 +364,16 @@ billing 零新增核心计价逻辑（B4 分支、store、conservative_channel_a
 过渡态：P1-P6 enabled=false 部署（现状逐字节等价）。收口单轨：enabled 只控
 校准参与，关闭即完全回落，无双轨字段。
 
-## 9. 上线顺序（用户裁决 D1：一次到位，配置分步切；始于 P6 部署后）
+## 9. 上线（v6 恒开形态——D18 取代 D1 分步切）
 
-1. 全量代码上线，enabled=false（现状等价）。
-2. 开渠道侧（enabled=true, user_side=false）：观察 calibration_hit、
-   calibration_over_exposure（reason 分布）一天。**中止条件**：
-   over_exposure 占比 > 20% 或 reason=calibration_gap 主导（C7 守卫不足，
-   回退调 cache_ratio 或关停）。
-3. 开用户侧（user_side=true）：观察 waived 日增量（**go/no-go：趋零/可解释**）、
-   负余额深度、#over 事件率。
-4. `billing_reservation_policy` 切 `full`，fixed 0.01 下线。
-5. 回滚阶梯（顺序不可颠倒）：改 KV（秒级）→ 排空在途（≤ lease 5 分钟）→
-   revert + migration down。直接 revert 会让旧 settle 消费已授权校准 quote。
+1. 部署即生效（无开关）；KV 可选写 window_ms/cache_ratio 调参（缺省 300s/0.9）。
+2. 观察面：calibration_hit 增长、calibration_over_exposure{reason} 占比、
+   waived 日增量、负余额深度。**异常处置**：cache_ratio 调低（KV 秒级）→
+   观察 → 仍异常 revert 代码。
+3. 回滚阶梯（顺序不可颠倒）：调 KV cache_ratio（秒级，收缩校准收益）
+   → 排空在途（≤ lease 5 分钟）→ revert + migration down。**注意：没有
+   「改 KV 关停」——功能开关已删除（D18）**；直接 revert 会让旧 settle
+   消费已授权校准 quote。
 
 ## 10. 裁决落档
 

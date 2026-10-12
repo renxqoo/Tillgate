@@ -87,14 +87,10 @@ const allPricesZero = (c: QuoteCandidate): boolean =>
 
 /**
  * inference 候选 → billing 报价候选（字段同源；inputUpperBound 逐候选盖章）。
- * 校准恒开（用户裁决 2026-10-12）：userSide 恒 true——校准界恒透传，
- * 用户冻结额与渠道金额消费同一校准界（I0 安全面不受影响：B2/死信仍只认字节界）。
+ * 校准恒开（D18）：候选带校准界即透传——用户冻结额与渠道金额同源消费
+ * （I0 不变：B2/死信仍只认字节界与 conservative 列）。
  */
-function toQuoteCandidate(
-  c: QuoteCandidate,
-  inputTokenUpperBound: number,
-  userSide: boolean,
-): BillingQuoteCandidate {
+function toQuoteCandidate(c: QuoteCandidate, inputTokenUpperBound: number): BillingQuoteCandidate {
   return {
     mappingId: c.mappingId,
     externalModel: c.externalModel,
@@ -106,8 +102,8 @@ function toQuoteCandidate(
     ...(c.unitPrice != null ? { unitPrice: c.unitPrice } : {}),
     coefficient: c.coefficient,
     inputTokenUpperBound,
-    // 校准界透传（user_side=true 才进 billing quote——冻结额收缩开关；B2 不消费 I0）
-    ...(userSide && c.calibratedInputTokenUpperBound != null
+    // 校准界透传（B2 不消费——I0）
+    ...(c.calibratedInputTokenUpperBound != null
       ? { calibratedInputTokenUpperBound: c.calibratedInputTokenUpperBound }
       : {}),
     pricingUnit: c.pricingUnit,
@@ -123,13 +119,10 @@ function toQuote(input: {
   inputTokenUpperBound: number;
   candidates: readonly QuoteCandidate[];
   calibration?: Parameters<BillingPort['authorize']>[0]['calibration'];
-  userSide: boolean;
 }): BillingQuote {
   return {
     maxOutputTokens: input.maxOutputTokens,
-    candidates: input.candidates.map((c) =>
-      toQuoteCandidate(c, input.inputTokenUpperBound, input.userSide),
-    ),
+    candidates: input.candidates.map((c) => toQuoteCandidate(c, input.inputTokenUpperBound)),
     ...(input.candidates.every(allPricesZero) ? { explicitlyFree: true } : {}),
     ...(input.calibration != null ? { calibration: input.calibration } : {}),
   };
@@ -234,7 +227,7 @@ function segmentationApplicable(
   }
   if (input.channelId !== channelId) return null; // 渠道不匹配 → 保守
   const bound = input.candidate.calibratedInputTokenUpperBound;
-  if (bound == null) return null; // 候选未盖章（未命中/非主候选/user_side 关）→ 保守
+  if (bound == null) return null; // 候选未盖章（未命中/非主候选）→ 保守
   // 路 C#4：校准界钳到字节界（与用户侧 min 防御对齐）——referenced-media 收据
   // inputTokens 可远超请求体字节（§13 口径缺口），不钳会使校准预留 > 保守列
   // （B4 容错区间倒置、预算闸反向恶化）。钳后 bound=字节界 → 分段≈保守。
@@ -323,15 +316,13 @@ async function authorizeWithDynamicRisk(
     config.resolveReservationPolicy(),
     config.resolveReservationLimit(),
   ]);
-  // 校准恒开（用户裁决 2026-10-12）：候选校准界恒透传（toQuote userSide 恒
-  // true）——无 resolveCalibration 门控面，quote 侧调参经 inference 上下文
   await api.authorize({
     requestId: input.requestId,
     userId: input.userId,
     apiKeyId: input.apiKeyId,
     appId: input.appId,
     stream: input.stream,
-    quote: toQuote({ ...input, userSide: true }),
+    quote: toQuote(input),
     reservationLimit,
     ...(policy.mode === 'fixed'
       ? { reservationPolicy: { mode: 'fixed', amount: policy.amount } }

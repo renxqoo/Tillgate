@@ -50,6 +50,26 @@ describe('parseCalibrationSetting（值域——billing 单一真相）', () => 
     expect(parseCalibrationSetting(raw)).toBeNull();
   });
 
+  it('部署兼容：PR #67 旧四参 KV（含 enabled/user_side）宽容解析——多余键忽略', () => {
+    // 生产升级窗口：旧形态行的 window/ratio 生效（旧 enabled:false 行升级即开启——D18）
+    expect(
+      parseCalibrationSetting({
+        enabled: false,
+        window_ms: 300_000,
+        cache_ratio: 0.9,
+        user_side: false,
+      }),
+    ).toEqual({ windowMs: 300_000, cacheRatio: 0.9 });
+    expect(
+      parseCalibrationSetting({
+        enabled: true,
+        window_ms: 600_000,
+        cache_ratio: 0.8,
+        user_side: true,
+      }),
+    ).toEqual({ windowMs: 600_000, cacheRatio: 0.8 });
+  });
+
   it('边界：ratio=1 / window=1h → 合法', () => {
     expect(parseCalibrationSetting({ window_ms: 3_600_000, cache_ratio: 1 })).toEqual({
       windowMs: 3_600_000,
@@ -248,7 +268,7 @@ describe('路 B#1：topup/covered 重入的列语义（校准首留 → 同渠�
   });
 });
 
-describe('user_side 透传门（docs §2.3 表/§9 步骤 3——P2 重设计）', () => {
+describe('校准界恒透传（D18——无 user_side 开关）', () => {
   it('校准恒开：authorize 的 billing quote 候选恒带校准界（无 user_side 开关）', async () => {
     const captured = await captureAuthorizeQuote();
     expect(captured.candidates[0]).toBeDefined();

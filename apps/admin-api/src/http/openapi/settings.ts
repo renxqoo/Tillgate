@@ -129,7 +129,7 @@ export const settingsEndpoints = [
     method: 'put',
     path: '/v1/settings/billing-calibration',
     tag: 'settings',
-    summary: '收据校准调参写（PUT 整替换窗口/系数;校准恒开——无功能开关）',
+    summary: '收据校准调参写（PUT 整替换窗口/系数;校准恒开无开关;旧四参字段被忽略）',
     body: settingsContracts.billingCalibrationUpdate,
     response: { schema: billingCalibrationSchema },
     errors: [400, 401, 403],

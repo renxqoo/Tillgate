@@ -152,7 +152,7 @@ export const postgresSettingsStore: SettingsStore = {
       .insert(systemConfigs)
       .values({
         key: BILLING_CALIBRATION_KEY,
-        // KV 值形态 = 蛇形四参数（与解析器单一真相对齐）
+        // KV 值形态 = 蛇形二调参（window_ms/cache_ratio——D18 恒开；与解析器单一真相对齐）
         value: {
           window_ms: input.config.windowMs,
           cache_ratio: input.config.cacheRatio,

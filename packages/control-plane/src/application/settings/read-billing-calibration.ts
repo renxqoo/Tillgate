@@ -1,6 +1,7 @@
 /**
- * 校准配置读（admin settings 面）：未配置/值域异常回落保守缺省
- * （enabled=false——fail-closed，绝不把垃圾值当开启放行收缩）。
+ * 校准调参读（admin settings 面）：未配置/值域异常回落缺省调参
+ * （300s/0.9——D18 恒开形态，回落为开启态缺省；垃圾值的降级面是调参
+ * 不是功能）。
  */
 import { DEFAULT_CALIBRATION_CONFIG, type CalibrationConfig } from '@tillgate/billing';
 import type { Db } from '@tillgate/db';
