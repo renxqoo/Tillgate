@@ -189,7 +189,7 @@ describe('issue #73：大 body 响应头预算自适应（复现测试）', () =
 });
 
 describe('timeout 归因矩阵（stage 四层各一处赋值）', () => {
-  it('response_header：预算 12s + 15s 慢响应头 → stage=response_header（非 connect）', async () => {
+  it('response_header：预算 13s（connectMs 8s + 1MB×5s/MB）+ 15s 慢响应头 → stage=response_header', async () => {
     const s = await mockUpstream({ headerDelayMs: 15_000 });
     try {
       const ai = createAi(

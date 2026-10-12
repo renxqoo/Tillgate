@@ -91,9 +91,9 @@ P3 四门 + pr-review-loop（按 skill 走）
 
 ## 6. 裁决
 
-- [默认裁决，可否决] responseHeader 自适应公式 max(connectMs, 20s+5s/MB)
-  封顶 90s（5s/MB = 0.2MB/s 的保守上传+预填速率假设——中文内容按 UTF-8
-  字节计，审查 A#5 后 30 万 CJK token（~1.3MB 字节）得 ~26.5s）。
+- [默认裁决，可否决] responseHeader 自适应公式 **v3 叠加式**：
+  connectMs + 5s/MB 封顶 90s（5s/MB = 0.2MB/s 保守上传+预填速率假设；
+  中文按 UTF-8 字节计——30 万 CJK token ≈ 0.9MB 字节 → ~14.3s）。
   数值上线后按 timeout_stage 分布调。
 - [用户裁决 2026-10-12] firstByte 自适应 + 异常场景矩阵（100 万 token/
   超慢首 token 服务器形态）随本票实施——原「不处理」裁决作废。
