@@ -6,7 +6,12 @@
  */
 import { and, desc, eq, gte, isNull, lte, sql, type SQL } from 'drizzle-orm';
 import { apiKeys, apps, modelMappings, usageLogs, type Db } from '@tillgate/db';
-import type { UsageByModelRow, UsageDayRow, UsageWireRow } from '../http/contracts/usage.js';
+import type {
+  UsageByModelRow,
+  UsageDayRow,
+  UsageTrendRow,
+  UsageWireRow,
+} from '../http/contracts/usage.js';
 
 export interface UsageReadInput {
   page: number;
@@ -20,11 +25,30 @@ export interface UsageRead {
   list(userId: number, q: UsageReadInput): Promise<{ rows: UsageWireRow[]; total: number }>;
   byModel(userId: number, r: { from?: Date; to?: Date }): Promise<UsageByModelRow[]>;
   summary(userId: number, r: { from?: Date; to?: Date }): Promise<{ list: UsageDayRow[] }>;
+  trend(
+    userId: number,
+    r: { granularity: 'day' | 'hour'; from?: Date },
+  ): Promise<{ granularity: 'day' | 'hour'; list: UsageTrendRow[] }>;
   rate(userId: number): Promise<{ rpm: number; tpm: number }>;
 }
 
 /** by-model 默认 30 天窗（避免全表聚合） */
 const BY_MODEL_WINDOW_MS = 30 * 24 * 3_600_000;
+
+/** trend day 模式缺省回溯窗（近 14 天；from 未给时凭后端，与前端窗口同口径） */
+const TREND_DAY_WINDOW_MS = 14 * 24 * 3_600_000;
+
+/**
+ * trend 桶键表达式：day = yyyy-MM-dd；hour = yyyy-MM-dd"T"HH:00:00。
+ * 格式串以字面量入 SQL——to_char 第二参不接受参数占位（且 GROUP BY 与
+ * SELECT 占位符不一致 PG 无法匹配；timezone 经 config 白名单校验，无注入面）。
+ */
+function trendBucketKey(granularity: 'day' | 'hour', timezone: string): SQL<string> {
+  const tz = sql.raw(`'${timezone}'`);
+  const dayKey = sql<string>`to_char(${usageLogs.createdAt} AT TIME ZONE ${tz}, 'YYYY-MM-DD')`;
+  if (granularity === 'day') return dayKey;
+  return sql<string>`${dayKey} || 'T' || to_char(${usageLogs.createdAt} AT TIME ZONE ${tz}, 'HH24:00:00')`;
+}
 
 /** 时间窗条件入参（options 形态,守住参数规模上限） */
 interface UsageWindowQuery {
@@ -182,6 +206,54 @@ export function createUsageRead(db: Db, timezone: string): UsageRead {
           ),
         );
       return { rpm: Number(rows[0]?.rpm ?? 0), tpm: Number(rows[0]?.tpm ?? 0) };
+    },
+
+    // trend 聚合：桶键（day=日界分组/hour=当地时点取整小时）× 模型维度；
+    // day 接受 from（缺省后端回溯 14 天）；hour 窗口固定为「今日当地 00:00 起」
+    // （不接受 from——「今日」边界由后端单一真相推导，见方案 §契约）
+    async trend(userId, r) {
+      const tzLiteral = sql.raw(`'${timezone}'`);
+      const isHour = r.granularity === 'hour';
+      const bucketKey = trendBucketKey(r.granularity, timezone);
+      const conditions: SQL[] = [eq(usageLogs.userId, userId)];
+      if (isHour) {
+        // 今日当地 00:00（两段式消偏同前端 zonedDayStart 口径；SQL 侧用 date_trunc 推导下界）
+        conditions.push(
+          gte(
+            usageLogs.createdAt,
+            sql`date_trunc('day', now() AT TIME ZONE ${tzLiteral}) AT TIME ZONE ${tzLiteral}`,
+          ),
+        );
+      } else {
+        const from = r.from ?? new Date(Date.now() - TREND_DAY_WINDOW_MS);
+        conditions.push(gte(usageLogs.createdAt, from));
+      }
+      const rows = await db
+        .select({
+          bucket: bucketKey,
+          model: usageLogs.externalModel,
+          requests: sql<string>`count(*)::bigint`,
+          inputTokens: sql<string>`coalesce(sum(${usageLogs.inputTokens}), 0)::bigint`,
+          outputTokens: sql<string>`coalesce(sum(${usageLogs.outputTokens}), 0)::bigint`,
+          cachedInputTokens: sql<string>`coalesce(sum(${usageLogs.cachedInputTokens}), 0)::bigint`,
+          cost: sql<string>`coalesce(sum(${usageLogs.amount}), 0)::text`,
+        })
+        .from(usageLogs)
+        .where(and(...conditions))
+        .groupBy(bucketKey, usageLogs.externalModel)
+        .orderBy(sql`1`, usageLogs.externalModel);
+      return {
+        granularity: r.granularity,
+        list: rows.map((agg) => ({
+          bucket: agg.bucket,
+          model: agg.model,
+          requests: Number(agg.requests),
+          inputTokens: Number(agg.inputTokens),
+          outputTokens: Number(agg.outputTokens),
+          cachedInputTokens: Number(agg.cachedInputTokens),
+          cost: agg.cost,
+        })),
+      };
     },
   };
 }

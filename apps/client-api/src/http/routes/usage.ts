@@ -5,8 +5,17 @@
 import { Hono } from 'hono';
 import { query as queryMiddleware } from '@tillgate/http';
 import type { MiddlewareHandler } from 'hono';
-import { usageListQuerySchema, usageRangeQuerySchema } from '../contracts/usage.js';
-import type { UsageWireRow, UsageByModelRow, UsageDayRow } from '../contracts/usage.js';
+import {
+  usageListQuerySchema,
+  usageRangeQuerySchema,
+  usageTrendQuerySchema,
+} from '../contracts/usage.js';
+import type {
+  UsageWireRow,
+  UsageByModelRow,
+  UsageDayRow,
+  UsageTrendRow,
+} from '../contracts/usage.js';
 import type { SessionEnv } from '../middleware/session.js';
 
 export interface UsageReads {
@@ -16,6 +25,10 @@ export interface UsageReads {
   ): Promise<{ rows: readonly UsageWireRow[]; total: number }>;
   byModel(userId: number, r: { from?: Date; to?: Date }): Promise<readonly UsageByModelRow[]>;
   summary(userId: number, r: { from?: Date; to?: Date }): Promise<{ list: readonly UsageDayRow[] }>;
+  trend(
+    userId: number,
+    r: { granularity: 'day' | 'hour'; from?: Date },
+  ): Promise<{ granularity: 'day' | 'hour'; list: readonly UsageTrendRow[] }>;
   rate(userId: number): Promise<{ rpm: number; tpm: number }>;
 }
 
@@ -53,6 +66,15 @@ export function usageRoutes(deps: UsageReads, session: MiddlewareHandler<Session
   });
 
   app.get('/v1/usage/rate', session, async (c) => c.json(await deps.rate(c.get('userId'))));
+
+  app.get('/v1/usage/trend', session, queryMiddleware(usageTrendQuerySchema), async (c) => {
+    const query = c.req.valid('query');
+    const result = await deps.trend(c.get('userId'), {
+      granularity: query.granularity,
+      from: query.from != null ? new Date(query.from) : undefined,
+    });
+    return c.json(result);
+  });
 
   return app;
 }

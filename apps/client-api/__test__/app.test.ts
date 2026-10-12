@@ -748,6 +748,21 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
             },
           ],
         }),
+      trend: (_userId, r) =>
+        Promise.resolve({
+          granularity: r.granularity,
+          list: [
+            {
+              bucket: r.granularity === 'hour' ? '2026-08-01T09:00:00' : '2026-08-01',
+              model: 'gpt-x',
+              requests: 1,
+              inputTokens: 10,
+              outputTokens: 5,
+              cachedInputTokens: 0,
+              cost: '0.001',
+            },
+          ],
+        }),
       rate: () => Promise.resolve({ rpm: 3, tpm: 120 }),
     },
     pricing: {
@@ -1732,6 +1747,43 @@ describe('覆盖补充：成功路径与分支变体', () => {
     expect(byModel.status).toBe(200);
     const bad = await app.request('/v1/usage?limit=999', { headers: auth });
     expect(bad.status).toBe(400);
+  });
+
+  it('usage trend：缺省 day 回显、hour 桶形态、非法 granularity 400', async () => {
+    const { app } = build();
+    // 缺省 granularity=day：回显 + 模型维度行
+    const day = (await (await app.request('/v1/usage/trend', { headers: auth })).json()) as {
+      granularity: string;
+      list: Array<{ bucket: string; model: string; cost: string }>;
+    };
+    expect(day.granularity).toBe('day');
+    expect(day.list[0]?.bucket).toBe('2026-08-01');
+    expect(day.list[0]?.model).toBe('gpt-x');
+    // 显式 day 等价缺省
+    const dayExplicit = (await (
+      await app.request('/v1/usage/trend?granularity=day&from=2026-07-20T00:00:00Z', {
+        headers: auth,
+      })
+    ).json()) as { granularity: string };
+    expect(dayExplicit.granularity).toBe('day');
+    // hour：桶为小时键形态
+    const hour = (await (
+      await app.request('/v1/usage/trend?granularity=hour', { headers: auth })
+    ).json()) as { granularity: string; list: Array<{ bucket: string }> };
+    expect(hour.granularity).toBe('hour');
+    expect(hour.list[0]?.bucket).toBe('2026-08-01T09:00:00');
+    // 非法粒度 400（zod enum 门）
+    const bad = await app.request('/v1/usage/trend?granularity=week', { headers: auth });
+    expect(bad.status).toBe(400);
+    // hour 粒度不接受 from（窗口由后端单一真相推导——静默忽略是契约歧义）
+    const hourWithFrom = await app.request(
+      '/v1/usage/trend?granularity=hour&from=2026-10-12T00:00:00Z',
+      { headers: auth },
+    );
+    expect(hourWithFrom.status).toBe(400);
+    // 未携带令牌 401（会话隔离同其他 usage 面）
+    const anon = await app.request('/v1/usage/trend?granularity=day');
+    expect(anon.status).toBe(401);
   });
 
   it('订阅变更带幂等键；续费缺省键（服务端生成）', async () => {
