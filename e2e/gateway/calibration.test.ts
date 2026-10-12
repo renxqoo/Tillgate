@@ -102,6 +102,20 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
       .from(prefixCalibrations)
       .where(eq(prefixCalibrations.userId, issued.userId));
     expect(rec).toHaveLength(1); // 写入照常（恒开）
+    // 宽容解析的真锁定：第二笔同前缀命中时快照携带旧行的调参值
+    // （cacheRatio=0.8 来自旧四参行——若解析回落缺省会看到 0.9）
+    const m2 = [...m1, { role: 'assistant', content: 'a' }, { role: 'user', content: 'q2' }];
+    const r2 = await chat(m2);
+    expect(r2.status).toBe(200);
+    await keys.settleAll(issued.userId); // 结算第二笔后再对账（inFlight 清零）
+    const hitRows = await world.db
+      .select({ quote: billingRequests.quote })
+      .from(billingRequests)
+      .where(eq(billingRequests.userId, issued.userId))
+      .orderBy(sql`created_at desc`)
+      .limit(1);
+    const hitQuote = (hitRows[0]?.quote as { calibration?: { cacheRatio?: number } }).calibration;
+    expect(hitQuote?.cacheRatio).toBe(0.8); // 旧行 window/ratio 生效而非缺省
     await keys.assertReconciled(issued.userId, '100');
     // 还原规范二参调参供后续旅程
     const canonical = { window_ms: 300_000, cache_ratio: 0.9 };

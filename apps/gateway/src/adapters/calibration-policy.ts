@@ -31,8 +31,9 @@ export function createBillingCalibrationReader(
   env: BillingCalibrationReaderEnv,
 ): () => Promise<CalibrationConfig> {
   // 回落可观测（docs §3.3）：调参是恒开形态下唯一降级手段——写坏（脏 KV）
-  // 静默回缺省会掩盖运营意图，回落处 warn（console——gateway 日志面统一由
-  // pino 捕获 stdout；不引 logger 依赖避免 adapters 层装配耦合）
+  // 静默回缺省会掩盖运营意图。进程级 warn 一次（stderr；部署环境需同时
+  // 收集两流——不引 logger 依赖避免 adapters 层装配耦合，同 routing-policy
+  // 的 console.error 先例）
   let warnedFallback = false;
   let cached: CalibrationConfig | null = null;
   let cachedAt = 0;

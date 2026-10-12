@@ -230,8 +230,9 @@ z.object({
 ### 3.4 观测
 
 - span 属性（授权时）：`calibration.hit`、`calibration.seen`、
-  `calibration.authz_miss_reason`（guard|prefix|window|no_record|disabled——
-  v5：no_cache_price 移除，该回落发生在 gateway 金额面不经 quote 数据流）。
+  `calibration.authz_miss_reason`（guard|prefix|window|no_record——v5 移除
+  no_cache_price（gateway 金额面回落不经 quote 数据流）；v6 移除 disabled
+  （D18 恒开）。）。
 - 计数器（结算时）：`calibration_over_exposure{reason=
   channel_switch|calibration_gap}`（授权命中校准、结算时实际成本超**校准
   预留**但 ≤ 保守金额的事件；v5：cache_ttl 与 gap 结算面不可分，收敛二值）。

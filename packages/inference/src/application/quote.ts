@@ -179,7 +179,7 @@ async function resolveQuoteCalibration(
   }
   const passed = calibrationGatePass(calibration, input);
   if (passed.early != null) {
-    // guard 类 miss 无前缀事实；disabled 携带前缀事实（P3：写侧不受读侧开关影响）
+    // guard 类 miss 无前缀事实（D18 后 early return 仅 guard 一种形态）
     const snapshot: QuoteCalibrationSnapshot | null = passed.baseSnapshot ?? null;
     return { candidates: input.candidates, resolution: passed.early, snapshot };
   }

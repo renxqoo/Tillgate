@@ -305,7 +305,7 @@ async function finalizeTpmReservation(
   }
 }
 
-/** authorize 体检出：动态风控值（策略/上限/校准 user_side）现读 + 形状收窄后透传 */
+/** authorize 体检出：动态风控值（策略/上限）现读 + 形状收窄后透传 */
 async function authorizeWithDynamicRisk(
   api: GatewayBillingApi,
   config: GatewayBillingConfig,
