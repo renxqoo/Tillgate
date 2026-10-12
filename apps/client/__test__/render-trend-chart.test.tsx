@@ -10,7 +10,7 @@
 import '@testing-library/jest-dom/vitest';
 
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 
@@ -74,14 +74,18 @@ function ySetPerCurve(container: HTMLElement): number[][] {
   });
 }
 
+/** ResizeObserver 桩（recharts 依赖；jsdom 无）——构造器 + 原型空方法（模块级，lint 口径） */
+function ResizeObserverStub(this: ResizeObserver): void {
+  /* 空实现 */
+}
+ResizeObserverStub.prototype.observe = (): void => {};
+ResizeObserverStub.prototype.unobserve = (): void => {};
+ResizeObserverStub.prototype.disconnect = (): void => {};
+
 beforeAll(() => {
   // recharts 依赖 ResizeObserver（jsdom 无）；Element.getBoundingClientRect 默认全 0
   // —— ResponsiveContainer 拿不到尺寸不渲染 series，给非零尺寸替身
-  globalThis.ResizeObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
+  globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(() => ({
     width: 640,
     height: 250,
@@ -220,6 +224,23 @@ describe('TrendChart（双粒度趋势图）', () => {
       // hour 数据到位 → 单模型单系列渲染
       expect(container.querySelectorAll('.recharts-area').length).toBe(1);
     });
+  });
+
+  it('hover 数据点弹出 tooltip 内容（回归：wrapper 透传缺失曾致 tooltip 永不显示）', async () => {
+    const { container } = renderChart();
+    const surface = container.querySelector('.recharts-surface');
+    expect(surface).not.toBeNull();
+    await act(async () => {
+      if (surface != null) fireEvent.mouseMove(surface, { clientX: 300, clientY: 100 });
+      await new Promise((r) => {
+        setTimeout(r, 60);
+      });
+    });
+    const tip = container.querySelector('.recharts-tooltip-wrapper');
+    // active 态 wrapper 有内容（透传链修复后）；旧实现 innerHTML 恒空
+    expect((tip?.innerHTML ?? '').length).toBeGreaterThan(0);
+    // 数值格式化进内容（¥ 前缀 cost 度量）
+    expect(tip?.textContent ?? '').toMatch(/¥/u);
   });
 
   it('day 空数据：空态文案 + Toggle 仍常驻', () => {

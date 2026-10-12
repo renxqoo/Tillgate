@@ -39,6 +39,7 @@ function trendRow(over: Partial<UsageTrendRow>): UsageTrendRow {
 }
 import {
   TREND_WINDOW_DAYS,
+  compactCount,
   dayKeyMinus,
   fillDailyTrendSeries,
   fillHourlyTrendSeries,
@@ -371,6 +372,20 @@ describe('趋势宽表序列（双粒度 + 模型堆叠）', () => {
     const keys = hourlyBuckets('Asia/Kathmandu', KTM);
     expect(keys[0]).toBe('2026-10-12T00:00:00');
     expect(keys[23]).toBe('2026-10-12T23:00:00');
+  });
+
+  it('compactCount：Y 轴紧凑单位（K/M/B）——长 token 数曾溢出轴宽被遮挡', () => {
+    expect(compactCount(0)).toBe('0');
+    expect(compactCount(999)).toBe('999');
+    expect(compactCount(1_000)).toBe('1K');
+    expect(compactCount(8_500_000)).toBe('8.5M');
+    expect(compactCount(17_000_000)).toBe('17M');
+    expect(compactCount(440_984_004)).toBe('441M');
+    expect(compactCount(1_200_000_000)).toBe('1.2B');
+    // 四舍五入一位小数、去尾零
+    expect(compactCount(1_250_000)).toBe('1.3M');
+    expect(compactCount(2_000_000)).toBe('2M');
+    expect(compactCount(-8_500_000)).toBe('-8.5M');
   });
 
   it('hourlyBuckets DST 切换日：墙钟序 24 键唯一（回归：毫秒步进曾重复/越界）', () => {

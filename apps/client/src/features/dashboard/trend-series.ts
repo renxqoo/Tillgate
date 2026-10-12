@@ -10,6 +10,22 @@ import { todayKey } from './kpi';
 /** 趋势窗口天数（含今日；概览图「近 14 天」口径） */
 export const TREND_WINDOW_DAYS = 14;
 
+/**
+ * 紧凑计数（Y 轴刻度用）：≥1B→`1.2B`；≥1M→`3.4M`；≥1K→`8.5K`；小值原样。
+ * 轴宽固定（56px），token 量级动辄亿级——全长分组数会溢出轴宽被遮挡。
+ */
+export function compactCount(v: number): string {
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000_000) return `${trimZero(v / 1_000_000_000)}B`;
+  if (abs >= 1_000_000) return `${trimZero(v / 1_000_000)}M`;
+  if (abs >= 1_000) return `${trimZero(v / 1_000)}K`;
+  return String(v);
+}
+
+function trimZero(n: number): string {
+  return (Math.round(n * 10) / 10).toString();
+}
+
 /** hour 粒度桶数（今日 00:00 起含当前小时的 24 桶；未来小时补零） */
 export const TREND_HOURS = 24;
 
