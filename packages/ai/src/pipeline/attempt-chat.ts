@@ -9,7 +9,12 @@ import type { AiDefaults, AiDeps } from '../config';
 import type { ProtocolAdapter } from '../adapters/protocol-adapter';
 import type { AiEvent } from '../events';
 import { UpstreamError as UE } from '../errors/kinds';
-import { fetchUpstream, readBody, readRawBody } from '../transport/http-client';
+import {
+  responseHeaderBudget,
+  fetchUpstream,
+  readBody,
+  readRawBody,
+} from '../transport/http-client';
 import { tryParseJson } from '../internal/json';
 import { mapUpstreamFailure } from './upstream-failure';
 import { emitAttemptStart } from './attempt-start';
@@ -127,7 +132,14 @@ export async function chatAttempt(
         // bodyStr undefined 仅当 finalBody 是 FormData（serializeBody 的 instanceof 判定）
         body: bodyStr !== undefined ? bodyStr : (finalBody as FormData),
       },
-      { connectMs: cfg.timeout.connectMs, signal: totalSignal, guard },
+      {
+        connectMs: cfg.timeout.connectMs,
+        ...(bodyStr !== undefined
+          ? { responseHeaderMs: responseHeaderBudget(bodyStr.length, cfg.timeout) }
+          : {}),
+        signal: totalSignal,
+        guard,
+      },
     );
     if (!res.ok) {
       return { ok: false as const, error: await mapUpstreamFailure(adapter, res, totalSignal) };

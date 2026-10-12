@@ -11,7 +11,7 @@ import type { AiEvent } from '../events';
 import { UpstreamError as UE } from '../errors/kinds';
 import { canceledError, emptyError } from '../errors/internal';
 import { asServerDrainAbort } from '../errors/server-drain';
-import { fetchUpstream, BodyTooLargeError } from '../transport/http-client';
+import { responseHeaderBudget, fetchUpstream, BodyTooLargeError } from '../transport/http-client';
 import {
   peekFirstChunk,
   firstChunkStreamError,
@@ -90,7 +90,11 @@ function classifyStreamAttemptFailure(
   // 预算耗尽（withRetry deadline）≠ 客户端取消：慢上游归类 timeout（可换渠+熔断），
   // canceled 会跳过同候选其余渠道并把等待中的客户端判成「调用方取消」
   if (asRetryDeadlineAbort(signal.reason)) {
-    return new UE({ kind: 'timeout', message: 'upstream attempt budget exhausted' });
+    return new UE({
+      kind: 'timeout',
+      message: 'upstream attempt budget exhausted',
+      stage: 'budget',
+    });
   }
   if (signal.aborted) {
     return canceledError();
@@ -102,6 +106,7 @@ function classifyStreamAttemptFailure(
     return new UE({
       kind: 'timeout',
       message: `no first byte from upstream within ${firstByteTimeoutMs}ms`,
+      stage: 'first_byte',
     });
   }
   if (error instanceof UE) {
@@ -134,7 +139,12 @@ export async function streamAttempt(
         headers: { 'content-type': 'application/json', ...outHeaders },
         body: bodyStr,
       },
-      { connectMs: cfg.timeout.connectMs, signal, guard },
+      {
+        connectMs: cfg.timeout.connectMs,
+        responseHeaderMs: responseHeaderBudget(bodyStr.length, cfg.timeout),
+        signal,
+        guard,
+      },
     );
     if (!res.ok) {
       return { ok: false as const, error: await mapUpstreamFailure(adapter, res, signal) };
@@ -148,9 +158,15 @@ export async function streamAttempt(
     const upstream = adapter.translateUpstreamStream
       ? adapter.translateUpstreamStream(res.body, ctx.model)
       : res.body;
-    // 首帧探测（peek）：空流/首帧错误在此识别——重试仅限首字节前
+    // 首帧探测（peek）：空流/首帧错误在此识别——重试仅限首字节前。
+    // firstByte 预算同样按 body 规模自适应（issue #73 扩展：响应头到达后上游仍需
+    // 预填全部上下文才吐首 token——100 万 token 的预填远超静态 60s 的合理范围；
+    // 与响应头共用同一预算函数，上限另设 firstByteMaxMs 防止两者耦合同一封顶）
     const peek = await peekFirstChunk(upstream, {
-      timeoutMs: cfg.stream.firstByteTimeoutMs,
+      timeoutMs: Math.max(
+        cfg.stream.firstByteTimeoutMs,
+        responseHeaderBudget(bodyStr.length, cfg.timeout),
+      ),
       signal,
     });
     if (peek.done || !peek.rest) return { ok: false as const, error: emptyError(), empty: true };

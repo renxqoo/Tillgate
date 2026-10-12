@@ -224,7 +224,13 @@ export async function assembleGateway(config: GatewayConfig): Promise<GatewayAss
   const cipher = createCipher(config.encryptionKey);
   const ai = createAi(
     {
-      timeout: { connectMs: config.upstreamConnectTimeoutMs, totalMs: config.upstreamDeadlineMs },
+      timeout: {
+        connectMs: config.upstreamConnectTimeoutMs,
+        totalMs: config.upstreamDeadlineMs,
+        responseHeaderBaseMs: config.upstreamResponseHeaderBaseMs,
+        responseHeaderPerMbMs: config.upstreamResponseHeaderPerMbMs,
+        responseHeaderMaxMs: config.upstreamResponseHeaderMaxMs,
+      },
     },
     // SSRF 双门：逃生门仅非生产可用——生产误配 env 也恒关。
     // 防线 = 机械基线（https-only + 私网/IPv6 解包拒绝 + DNS 逐地址判定）+

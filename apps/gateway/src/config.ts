@@ -78,6 +78,11 @@ function createSchema(production: boolean) {
       PREAUTH_IP_RPM: z.coerce.number().int().min(0).default(1_200),
       GATEWAY_UPSTREAM_DEADLINE_MS: z.coerce.number().int().min(1_000).default(120_000),
       GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(100).default(10_000),
+      // 响应头预算（issue #73）：base + 每MB 加成，封顶——大 body 上传+上游预填的
+      // 结构性时延（生产事故：30 万 token 前缀响应头 >10s 被静态 connectMs 三连误杀）
+      GATEWAY_UPSTREAM_RESPONSE_HEADER_BASE_MS: z.coerce.number().int().min(1_000).default(20_000),
+      GATEWAY_UPSTREAM_RESPONSE_HEADER_PER_MB_MS: z.coerce.number().int().min(0).default(5_000),
+      GATEWAY_UPSTREAM_RESPONSE_HEADER_MAX_MS: z.coerce.number().int().min(5_000).default(90_000),
       /** SSRF 逃生门：仅非生产可用——生产误配 env 也恒关（与 admin-api 同口径） */
       GATEWAY_AI_ALLOW_LOCAL_URL: strictBooleanSchema(false),
       ROUTING_POLICY_TTL_MS: z.coerce.number().int().min(1_000).max(300_000).default(15_000),
@@ -165,6 +170,10 @@ export interface GatewayConfig {
   readonly preauthIpRpm: number | null;
   readonly upstreamDeadlineMs: number;
   readonly upstreamConnectTimeoutMs: number;
+  /** 响应头预算三参（issue #73——透传 ai timeout.responseHeader*） */
+  readonly upstreamResponseHeaderBaseMs: number;
+  readonly upstreamResponseHeaderPerMbMs: number;
+  readonly upstreamResponseHeaderMaxMs: number;
   readonly aiAllowLocalUrl: boolean;
   /** 路由策略热拾取间隔（管理台保存 → 生效的最大延迟） */
   readonly routingPolicyTtlMs: number;
@@ -313,6 +322,9 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     preauthIpRpm: rpmOrNull(parsed.PREAUTH_IP_RPM),
     upstreamDeadlineMs: parsed.GATEWAY_UPSTREAM_DEADLINE_MS,
     upstreamConnectTimeoutMs: parsed.GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS,
+    upstreamResponseHeaderBaseMs: parsed.GATEWAY_UPSTREAM_RESPONSE_HEADER_BASE_MS,
+    upstreamResponseHeaderPerMbMs: parsed.GATEWAY_UPSTREAM_RESPONSE_HEADER_PER_MB_MS,
+    upstreamResponseHeaderMaxMs: parsed.GATEWAY_UPSTREAM_RESPONSE_HEADER_MAX_MS,
     aiAllowLocalUrl: parsed.GATEWAY_AI_ALLOW_LOCAL_URL,
     routingPolicyTtlMs: parsed.ROUTING_POLICY_TTL_MS,
     shutdownGraceMs: parsed.GATEWAY_SHUTDOWN_GRACE_MS,

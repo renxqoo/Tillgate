@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- 编排层：候选×渠道×等待轮全失败路径的唯一真相文件（issue #73 加 timeout 归因后 422 行） */
 import type { InferenceDefaults } from '../config';
 import { InferenceErrors } from '../domain/errors';
 import type { ChannelCandidate, QuoteCandidate } from '../domain/model/types';
@@ -86,14 +87,16 @@ export interface AttemptContext {
 }
 
 export type AttemptOutcome<T> =
-  | { kind: 'switch_channel'; code?: string }
-  | { kind: 'next_candidate'; code?: string }
+  | { kind: 'switch_channel'; code?: string; timeoutStage?: string }
+  | { kind: 'next_candidate'; code?: string; timeoutStage?: string }
   | { kind: 'respond'; value: T };
 
 /** 一轮完整候选×渠道尝试的产物（终局/全败事实——有界等待的输入） */
 interface PassOutcome<T> {
   value?: T;
   lastCode: string | undefined;
+  /** timeout 归因（issue #73）：最后一轮 timeout 的层级（终局 502 context 透出） */
+  timeoutStage: string | undefined;
   channels: ChannelCandidate[];
   /** 本轮「有健康证据的耗尽候选」（realModel）——死记忆由请求级收口记账，
    * 每候选每请求恰一次（等待重试轮不重复记：契约见 model-dead.ts） */
@@ -199,7 +202,12 @@ export async function runCandidateLoop<T>(
   }
   if (waited.value !== undefined) return waited.value;
   // 终局事实取等待轮的 lastCode（重试后失败原因可能已变——503/502 归因不失真）
-  return releaseAndFail(deps, { prepared, requestId, lastCode: waited.lastCode });
+  return releaseAndFail(deps, {
+    prepared,
+    requestId,
+    lastCode: waited.lastCode,
+    timeoutStage: waited.timeoutStage,
+  });
 }
 
 /** 候选死记忆批量记账（fire-and-forget——尽力记忆，失败不阻断响应路径） */
@@ -268,10 +276,12 @@ function reportAttemptTrace(
 }
 
 /** 一轮候选×渠道循环（全败返回事实供有界等待决策） */
-// eslint-disable-next-line max-lines-per-function, max-statements -- 候选×渠道双层编排平铺（准入/排序已拆 planCandidatePass），再拆需传递可变循环状态
+// eslint-disable-next-line max-lines-per-function, max-statements, complexity -- 候选×渠道双层编排平铺（准入/排序已拆 planCandidatePass），再拆需传递可变循环状态
 async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
   const { deps, prepared, requestId, requestStartedAt, signal, attempt, policy } = args;
   let lastCode: string | undefined;
+  /** timeout 归因（issue #73）：最后一次 timeout 尝试的层级（502 context 透出） */
+  let lastTimeoutStage: string | undefined;
   let leaseStarted = false;
   const estimatedTokens = prepared.inputUpperBound + prepared.outputCap;
   const { key: stickyKey, channelId: stickyChannelId } = await resolveStickyContext(
@@ -365,11 +375,18 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
       reportAttemptTrace(args.onAttempts, attemptTotal, channelTrace);
       if (outcome.kind !== 'respond') {
         lastCode = outcome.code;
+        if (outcome.timeoutStage != null) lastTimeoutStage = outcome.timeoutStage;
         healthEvidence = accumulateHealthEvidence(healthEvidence, outcome);
         if (outcome.kind === 'switch_channel') continue;
         break; // next_candidate：候选耗尽（含 canceled 等非 respond 终态的兜底臂）
       }
-      return { value: outcome.value, lastCode, channels: allChannels, failedRealModels };
+      return {
+        value: outcome.value,
+        lastCode,
+        timeoutStage: lastTimeoutStage,
+        channels: allChannels,
+        failedRealModels,
+      };
     }
     // 记账上移请求级（runCandidateLoop 差集收口）——等待重试轮重跑本函数时
     // 不再重复计数（契约「一次请求最多记一次」，model-dead.ts）。
@@ -379,7 +396,7 @@ async function runPass<T>(args: PassArgs<T>): Promise<PassOutcome<T>> {
   }
   // 全渠道被门拒绝（零上游尝试）也要带出轨迹——预算闸门竭尽场景的排障事实
   reportAttemptTrace(args.onAttempts, attemptTotal, channelTrace);
-  return { lastCode, channels: allChannels, failedRealModels };
+  return { lastCode, timeoutStage: lastTimeoutStage, channels: allChannels, failedRealModels };
 }
 
 /** 失败尝试的健康证据累积：invalid_config（能力门/配置缺字段）零上游调用、
@@ -485,9 +502,14 @@ async function maybeWaitAndRetry<T>(
 /** 全败收尾：request_failed 三路释放 + 渠道面竭尽/上游故障终结 */
 async function releaseAndFail(
   deps: ExecutionDeps,
-  args: { prepared: PreparedRequest; requestId: string; lastCode: string | undefined },
+  args: {
+    prepared: PreparedRequest;
+    requestId: string;
+    lastCode: string | undefined;
+    timeoutStage?: string;
+  },
 ): Promise<never> {
-  const { prepared, requestId, lastCode } = args;
+  const { prepared, requestId, lastCode, timeoutStage: lastTimeoutStage } = args;
   const exhausted = isChannelExhausted(lastCode);
   // 出站信封按竭尽/故障二分（503/502），但 request_failed 信号 reason 保留真实
   // 终因（如 quota_exhausted/rate_limited）——billing failure_code 是排障粒度，
@@ -496,6 +518,10 @@ async function releaseAndFail(
   const error = InferenceErrors.business(exhausted ? 'no_available_channel' : 'upstream_failed', {
     model: prepared.externalModel,
     ...(lastCode != null ? { upstream_code: lastCode } : {}),
+    // timeout 归因（issue #73）：最后一次尝试的超时层级——四层词表
+    ...(lastCode === 'timeout' && lastTimeoutStage != null
+      ? { timeout_stage: lastTimeoutStage }
+      : {}),
   });
   await deps.trace.withSpan(
     'billing.release_and_fail',

@@ -30,6 +30,13 @@ export type ErrorKind =
   | 'unsupported_protocol' // 协议未注册（配置错误）
   | 'task_ops_unavailable'; // 任务型操作面向未注册协议调用
 
+/** 超时归因层级（issue #73——封闭词表；kind=timeout 时各层各一处赋值） */
+export type TimeoutStage =
+  | 'connect' // TCP/TLS 握手层（fetchUpstream 快失败计时器）
+  | 'response_header' // body 上传 + 上游 TTFB（fetchUpstream 主预算）
+  | 'first_byte' // 响应头后 SSE 首帧（peekFirstChunk）
+  | 'budget'; // 重试编排总预算（RetryDeadlineAbort）
+
 /** 机制位：由 kind 派生，禁止逐例声明 */
 export interface ErrorMechanics {
   /** 是否值得同渠道重试（empty_completion 走独立预算，此处 false） */
@@ -82,6 +89,8 @@ export class UpstreamError extends Error {
   readonly retryable: boolean;
   readonly circuitTrip: boolean;
   readonly deadCredential: boolean;
+  /** 超时归因层级（issue #73；仅 kind=timeout 携带——四层各一处赋值） */
+  readonly stage?: TimeoutStage;
 
   constructor(input: {
     kind: ErrorKind;
@@ -91,6 +100,7 @@ export class UpstreamError extends Error {
     retryAfterMs?: number;
     suggestion?: string;
     rawBody?: string;
+    stage?: TimeoutStage;
   }) {
     super(input.message ?? input.kind);
     this.name = 'UpstreamError';
@@ -100,6 +110,7 @@ export class UpstreamError extends Error {
     this.retryAfterMs = input.retryAfterMs;
     this.suggestion = input.suggestion;
     this.rawBody = input.rawBody;
+    this.stage = input.stage;
     const m = KIND_MECHANICS[input.kind];
     this.retryable = m.retryable;
     this.circuitTrip = m.circuitTrip;
