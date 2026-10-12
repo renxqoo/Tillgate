@@ -32,3 +32,24 @@
 - 金额断言按 Decimal 归一比较——存储层 numeric 返回全精度串（`10.000…`，v1 同形）。
 - `google` 未配凭证时 authorize 返回 `client.oauth_unknown`（providers 目录即凭证派生，
   identity 的 `oauth_provider_unconfigured` 在本 app 不可达）。
+
+## 套件内隔离世界（usage-trend.e2e.ts）
+
+`usage-trend.e2e.ts` 不走共享 dev 库，自带隔离 schema 世界（复用 `e2e/gateway/kit.ts`
+的全迁移链回放范式）：
+
+- **隔离**：`e2e_trend_<ts>` schema + 全迁移链回放（public. 前缀重写；0055/0056/0057
+  前向引用 42P01 白名单容忍，同 gateway kit）→ 结束 drop cascade，不碰 public；
+- **驱动**：种子 usage_logs 三行（同小时两模型 + 前一小时聚合）→ 全真
+  `assembleClientApi`（scoped search_path 连接串）→ `identity.sessions.sign`
+  真实签发会话 JWT → HTTP 面断言 day/hour 两粒度桶键与聚合值、非法粒度 400；
+- **何时跑**：改动 `apps/client-api` usage 读面（trend/summary/by-model SQL）或
+  `packages/db` usage_logs schema 时必跑；本目录 `bun x vitest run`（PG 不可达
+  自动 skip）。
+
+### 改动面映射（本目录）
+
+| 改动面                                                   | 必跑                           | 证明什么                                       |
+| -------------------------------------------------------- | ------------------------------ | ---------------------------------------------- |
+| client-api usage 读面（usage-read.ts / routes/usage.ts） | `usage-trend.e2e.ts`           | 真实 PG 上桶键 SQL/时区日界/聚合精度与鉴权隔离 |
+| client-api 会话/注册/支付链路                            | `user-journey.e2e.ts` 等四套件 | 全链业务终态（对账/幂等/下线）                 |
