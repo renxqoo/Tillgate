@@ -179,7 +179,7 @@ async function resolveQuoteCalibration(
   }
   const passed = calibrationGatePass(calibration, input);
   if (passed.early != null) {
-    // guard 类 miss 无前缀事实；disabled 携带前缀事实（P3：写侧不受读侧开关影响）
+    // guard 类 miss 无前缀事实（D18 后 early return 仅 guard 一种形态）
     const snapshot: QuoteCalibrationSnapshot | null = passed.baseSnapshot ?? null;
     return { candidates: input.candidates, resolution: passed.early, snapshot };
   }
@@ -195,7 +195,6 @@ async function resolveQuoteCalibration(
   }
   const resolution = resolveCalibration({
     config: {
-      enabled: true,
       windowMs: calibration.config.windowMs,
       windowMarginMs: 30_000, // C4 结构常量（v3-R7：路由+有界等待上界）
     },
@@ -206,8 +205,7 @@ async function resolveQuoteCalibration(
   if (!resolution.hit) {
     return { candidates: input.candidates, resolution, snapshot: baseSnapshot };
   }
-  // 盖章恒随 enabled（渠道侧金额消费 calibratedInputTokenUpperBound——独立于
-  // user_side）；user_side 门在 gateway toQuoteCandidate 透传处（用户冻结面）
+  // 盖章（D18 恒开：渠道金额与用户冻结面同源消费校准界）
   return stampCalibrated({
     candidates: input.candidates,
     body: input.body,
@@ -310,9 +308,8 @@ function calibrationGatePass(
     return { early: { hit: false, missReason: 'guard' } };
   }
   const chain = built;
-  // 前缀事实（冷启动闭环：无论命中与否、enabled 开关如何都携带——结算写入
-  // 的输入；P3 修复：enabled 只门控「查询+盖章」，不门控事实构造，否则
-  // 灰度期零积累、打开时刻冷启动零命中——docs §3.3「写侧不受 enabled 门控」）
+  // 前缀事实（冷启动闭环：无论命中与否都携带——结算写入的输入；
+  // 历史：曾设计 enabled 门控读侧，D18 恒开后移除）
   const baseSnapshot: QuoteCalibrationSnapshot = {
     mappingId: primary.mappingId,
     prefixHash: chain.chainAt(chain.messageHashes.length),
@@ -322,10 +319,6 @@ function calibrationGatePass(
     prefixBytes: prefixBytesOf(input.body),
     cacheRatio: null,
   };
-  if (!calibration.config.enabled) {
-    // 读侧关闭：带前缀事实返回（miss reason 供观测）——chain/primary 不再需要
-    return { early: { hit: false, missReason: 'disabled' }, baseSnapshot };
-  }
   return { early: null, chain, primary, baseSnapshot };
 }
 

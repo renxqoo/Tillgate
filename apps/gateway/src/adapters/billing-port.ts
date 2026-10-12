@@ -30,8 +30,7 @@ export interface GatewayBillingConfig {
   resolveReservationLimit: () => Promise<string>;
   /** 预扣策略解析（每次 authorize 现读——TTL 缓存的 system_configs KV，admin 动态调整） */
   resolveReservationPolicy: () => Promise<FundingReservationPolicy>;
-  /** 校准上下文解析（可选——user_side 门控 billing quote 候选透传，§9 步骤 3） */
-  resolveCalibration?: () => Promise<{ config: { userSide: boolean } } | null>;
+
   /** 结算积压准入（bridge 级调用：authorize 前置闸；requestId 恒服务端生成，
    *  HTTP 面无客户端重放路径，桥级 admission 不破坏 billing 内部的重放免疫） */
   assertCapacity?: () => Promise<void>;
@@ -88,14 +87,10 @@ const allPricesZero = (c: QuoteCandidate): boolean =>
 
 /**
  * inference 候选 → billing 报价候选（字段同源；inputUpperBound 逐候选盖章）。
- * user_side 门（P2/§2.3 表）：false 时校准界不透传——billing 用户冻结额走
- * 字节界（§9 步骤 2 渠道侧试点的独立开关）；渠道金额面不经此函数。
+ * 校准恒开（D18）：候选带校准界即透传——用户冻结额与渠道金额同源消费
+ * （I0 不变：B2/死信仍只认字节界与 conservative 列）。
  */
-function toQuoteCandidate(
-  c: QuoteCandidate,
-  inputTokenUpperBound: number,
-  userSide: boolean,
-): BillingQuoteCandidate {
+function toQuoteCandidate(c: QuoteCandidate, inputTokenUpperBound: number): BillingQuoteCandidate {
   return {
     mappingId: c.mappingId,
     externalModel: c.externalModel,
@@ -107,8 +102,8 @@ function toQuoteCandidate(
     ...(c.unitPrice != null ? { unitPrice: c.unitPrice } : {}),
     coefficient: c.coefficient,
     inputTokenUpperBound,
-    // 校准界透传（user_side=true 才进 billing quote——冻结额收缩开关；B2 不消费 I0）
-    ...(userSide && c.calibratedInputTokenUpperBound != null
+    // 校准界透传（B2 不消费——I0）
+    ...(c.calibratedInputTokenUpperBound != null
       ? { calibratedInputTokenUpperBound: c.calibratedInputTokenUpperBound }
       : {}),
     pricingUnit: c.pricingUnit,
@@ -124,13 +119,10 @@ function toQuote(input: {
   inputTokenUpperBound: number;
   candidates: readonly QuoteCandidate[];
   calibration?: Parameters<BillingPort['authorize']>[0]['calibration'];
-  userSide: boolean;
 }): BillingQuote {
   return {
     maxOutputTokens: input.maxOutputTokens,
-    candidates: input.candidates.map((c) =>
-      toQuoteCandidate(c, input.inputTokenUpperBound, input.userSide),
-    ),
+    candidates: input.candidates.map((c) => toQuoteCandidate(c, input.inputTokenUpperBound)),
     ...(input.candidates.every(allPricesZero) ? { explicitlyFree: true } : {}),
     ...(input.calibration != null ? { calibration: input.calibration } : {}),
   };
@@ -235,7 +227,7 @@ function segmentationApplicable(
   }
   if (input.channelId !== channelId) return null; // 渠道不匹配 → 保守
   const bound = input.candidate.calibratedInputTokenUpperBound;
-  if (bound == null) return null; // 候选未盖章（未命中/非主候选/user_side 关）→ 保守
+  if (bound == null) return null; // 候选未盖章（未命中/非主候选）→ 保守
   // 路 C#4：校准界钳到字节界（与用户侧 min 防御对齐）——referenced-media 收据
   // inputTokens 可远超请求体字节（§13 口径缺口），不钳会使校准预留 > 保守列
   // （B4 容错区间倒置、预算闸反向恶化）。钳后 bound=字节界 → 分段≈保守。
@@ -313,17 +305,16 @@ async function finalizeTpmReservation(
   }
 }
 
-/** authorize 体检出：动态风控值（策略/上限/校准 user_side）现读 + 形状收窄后透传 */
+/** authorize 体检出：动态风控值（策略/上限）现读 + 形状收窄后透传 */
 async function authorizeWithDynamicRisk(
   api: GatewayBillingApi,
   config: GatewayBillingConfig,
   input: Parameters<BillingPort['authorize']>[0],
 ): Promise<void> {
   if (config.assertCapacity != null) await config.assertCapacity();
-  const [policy, reservationLimit, calibration] = await Promise.all([
+  const [policy, reservationLimit] = await Promise.all([
     config.resolveReservationPolicy(),
     config.resolveReservationLimit(),
-    config.resolveCalibration != null ? config.resolveCalibration() : Promise.resolve(null),
   ]);
   await api.authorize({
     requestId: input.requestId,
@@ -331,7 +322,7 @@ async function authorizeWithDynamicRisk(
     apiKeyId: input.apiKeyId,
     appId: input.appId,
     stream: input.stream,
-    quote: toQuote({ ...input, userSide: calibration?.config.userSide ?? false }),
+    quote: toQuote(input),
     reservationLimit,
     ...(policy.mode === 'fixed'
       ? { reservationPolicy: { mode: 'fixed', amount: policy.amount } }

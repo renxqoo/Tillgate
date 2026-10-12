@@ -31,89 +31,67 @@ function fakeDb(results: Array<Record<string, unknown> | null>) {
 }
 
 describe('parseCalibrationSetting（值域——billing 单一真相）', () => {
-  it('合法形状全参数通过', () => {
-    expect(
-      parseCalibrationSetting({
-        enabled: true,
-        window_ms: 300_000,
-        cache_ratio: 0.9,
-        user_side: false,
-      }),
-    ).toEqual({ enabled: true, windowMs: 300_000, cacheRatio: 0.9, userSide: false });
+  it('合法形状全参数通过（校准恒开——二调参）', () => {
+    expect(parseCalibrationSetting({ window_ms: 300_000, cache_ratio: 0.9 })).toEqual({
+      windowMs: 300_000,
+      cacheRatio: 0.9,
+    });
   });
 
   it.each([
     ['null', null],
     ['非对象', 'x'],
-    ['enabled 缺失', { window_ms: 1, cache_ratio: 0.9, user_side: false }],
-    ['cache_ratio 0', { enabled: true, window_ms: 1, cache_ratio: 0, user_side: false }],
-    ['cache_ratio > 1', { enabled: true, window_ms: 1, cache_ratio: 1.5, user_side: false }],
-    ['window_ms 0', { enabled: true, window_ms: 0, cache_ratio: 0.9, user_side: false }],
-    [
-      'window_ms 超 1h',
-      { enabled: true, window_ms: 3_600_001, cache_ratio: 0.9, user_side: false },
-    ],
-    ['window_ms 非整数', { enabled: true, window_ms: 1.5, cache_ratio: 0.9, user_side: false }],
-    ['矛盾：关用户侧开', { enabled: false, window_ms: 1, cache_ratio: 0.9, user_side: true }],
+    ['cache_ratio 0', { window_ms: 1, cache_ratio: 0 }],
+    ['cache_ratio > 1', { window_ms: 1, cache_ratio: 1.5 }],
+    ['window_ms 0', { window_ms: 0, cache_ratio: 0.9 }],
+    ['window_ms 超 1h', { window_ms: 3_600_001, cache_ratio: 0.9 }],
+    ['window_ms 非整数', { window_ms: 1.5, cache_ratio: 0.9 }],
   ])('拒绝 %s', (_name, raw) => {
     expect(parseCalibrationSetting(raw)).toBeNull();
   });
 
-  it('边界：ratio=1 / window=1h / 关且用户侧关 → 合法', () => {
-    expect(
-      parseCalibrationSetting({
-        enabled: true,
-        window_ms: 3_600_000,
-        cache_ratio: 1,
-        user_side: true,
-      }),
-    ).toEqual({
-      enabled: true,
-      windowMs: 3_600_000,
-      cacheRatio: 1,
-      userSide: true,
-    });
+  it('部署兼容：PR #67 旧四参 KV（含 enabled/user_side）宽容解析——多余键忽略', () => {
+    // 生产升级窗口：旧形态行的 window/ratio 生效（旧 enabled:false 行升级即开启——D18）
     expect(
       parseCalibrationSetting({
         enabled: false,
-        window_ms: 1_000,
-        cache_ratio: 0.5,
+        window_ms: 300_000,
+        cache_ratio: 0.9,
         user_side: false,
       }),
-    ).toEqual({
-      enabled: false,
-      windowMs: 1_000,
-      cacheRatio: 0.5,
-      userSide: false,
+    ).toEqual({ windowMs: 300_000, cacheRatio: 0.9 });
+    expect(
+      parseCalibrationSetting({
+        enabled: true,
+        window_ms: 600_000,
+        cache_ratio: 0.8,
+        user_side: true,
+      }),
+    ).toEqual({ windowMs: 600_000, cacheRatio: 0.8 });
+  });
+
+  it('边界：ratio=1 / window=1h → 合法', () => {
+    expect(parseCalibrationSetting({ window_ms: 3_600_000, cache_ratio: 1 })).toEqual({
+      windowMs: 3_600_000,
+      cacheRatio: 1,
     });
   });
 });
 
 describe('calibration reader（TTL 缓存 + 值域回落 + fail-loud）', () => {
-  it('KV 命中取值；TTL 内不重复查；缺失/垃圾回落保守缺省', async () => {
-    const db = fakeDb([
-      { value: { enabled: true, window_ms: 300_000, cache_ratio: 0.9, user_side: false } },
-    ]);
+  it('KV 命中取值；TTL 内不重复查；缺失/垃圾回落缺省调参', async () => {
+    const db = fakeDb([{ value: { window_ms: 300_000, cache_ratio: 0.9 } }]);
     const read = createBillingCalibrationReader({ db: db as never, ttlMs: 60_000 });
-    expect(await read()).toEqual({
-      enabled: true,
-      windowMs: 300_000,
-      cacheRatio: 0.9,
-      userSide: false,
-    });
+    expect(await read()).toEqual({ windowMs: 300_000, cacheRatio: 0.9 });
     expect(await read()).toEqual(await read());
     expect(db.reads()).toBe(1); // TTL 内缓存
 
-    for (const raw of [
-      null,
-      { value: { enabled: 'yes' } },
-      { value: { enabled: true, cache_ratio: 2 } },
-    ]) {
+    for (const raw of [null, { value: { window_ms: 'yes' } }, { value: { cache_ratio: 2 } }]) {
       const fallback = createBillingCalibrationReader({
         db: fakeDb([raw]) as never,
         ttlMs: 60_000,
       });
-      expect(await fallback()).toEqual(DEFAULT_CALIBRATION_CONFIG); // 保守缺省
+      expect(await fallback()).toEqual(DEFAULT_CALIBRATION_CONFIG); // 缺省调参（300s/0.9）
     }
   });
 
@@ -133,17 +111,15 @@ describe('calibration reader（TTL 缓存 + 值域回落 + fail-loud）', () => 
 
   it('TTL 过期后刷新（admin 改动拾取延迟上界）', async () => {
     const db = fakeDb([
-      { value: { enabled: false, window_ms: 300_000, cache_ratio: 0.9, user_side: false } },
-      { value: { enabled: true, window_ms: 600_000, cache_ratio: 0.8, user_side: false } },
+      { value: { window_ms: 300_000, cache_ratio: 0.9 } },
+      { value: { window_ms: 600_000, cache_ratio: 0.8 } },
     ]);
     const read = createBillingCalibrationReader({ db: db as never, ttlMs: 1 });
-    const first = await read();
-    expect(first != null && first.enabled).toBe(false);
+    expect((await read())?.windowMs).toBe(300_000);
     await new Promise((r) => {
       setTimeout(r, 3);
     });
-    const second = await read();
-    expect(second != null && second.enabled).toBe(true);
+    expect((await read())?.windowMs).toBe(600_000); // TTL 过期拾取新调参
     expect(db.reads()).toBe(2);
   });
 });
@@ -223,9 +199,9 @@ async function captureReserveAmounts(input: ReturnType<typeof reserveInput>): Pr
 }
 
 /** authorize 面的 billing quote 捕获器（Promise 化） */
-async function captureAuthorizeQuote(input: {
-  userSide: boolean;
-}): Promise<{ candidates: Array<{ calibratedInputTokenUpperBound?: number }> }> {
+async function captureAuthorizeQuote(): Promise<{
+  candidates: Array<{ calibratedInputTokenUpperBound?: number }>;
+}> {
   const { createGatewayBilling } = await import('../src/adapters/billing-port.js');
   return await new Promise((resolve, reject) => {
     const api = {
@@ -238,7 +214,6 @@ async function captureAuthorizeQuote(input: {
     const port = createGatewayBilling(api as never, {
       resolveReservationPolicy: async () => ({ mode: 'full' }),
       resolveReservationLimit: async () => '1000',
-      resolveCalibration: async () => ({ config: { userSide: input.userSide } }),
     });
     port
       .authorize({
@@ -293,17 +268,12 @@ describe('路 B#1：topup/covered 重入的列语义（校准首留 → 同渠�
   });
 });
 
-describe('user_side 透传门（docs §2.3 表/§9 步骤 3——P2 重设计）', () => {
-  it('user_side=false：authorize 的 billing quote 候选不带校准界（冻结走字节界）', async () => {
-    const captured = await captureAuthorizeQuote({ userSide: false });
+describe('校准界恒透传（D18——无 user_side 开关）', () => {
+  it('校准恒开：authorize 的 billing quote 候选恒带校准界（无 user_side 开关）', async () => {
+    const captured = await captureAuthorizeQuote();
     expect(captured.candidates[0]).toBeDefined();
-    expect(captured.candidates[0]?.calibratedInputTokenUpperBound).toBeUndefined();
-  });
-
-  it('user_side=true：billing quote 候选携带校准界（冻结额收缩）', async () => {
-    const captured = await captureAuthorizeQuote({ userSide: true });
-    if (captured.candidates[0] == null) throw new Error('no candidate captured');
-    expect(captured.candidates[0].calibratedInputTokenUpperBound).toBe(50_600);
+    // 恒透传（用户裁决 2026-10-12 删除开关）——config.userSide 不再有门控作用
+    expect(captured.candidates[0]?.calibratedInputTokenUpperBound).toBe(50_600);
   });
 });
 

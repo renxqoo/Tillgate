@@ -14,10 +14,8 @@ import {
 import { adminCtx, createMemoryAudit } from './memory';
 
 const VALID: CalibrationConfig = {
-  enabled: true,
   windowMs: 300_000,
   cacheRatio: 0.9,
-  userSide: false,
 };
 
 function makeDeps(stored: CalibrationConfig | null) {
@@ -40,9 +38,9 @@ function makeDeps(stored: CalibrationConfig | null) {
 }
 
 describe('readBillingCalibration', () => {
-  it('未配置 → 回落保守缺省（enabled=false fail-closed）', async () => {
+  it('未配置 → 回落缺省调参（300s/0.9——校准恒开无关闭语义）', async () => {
     await expect(readBillingCalibration(makeDeps(null).deps)).resolves.toEqual({
-      config: { enabled: false, windowMs: 300_000, cacheRatio: 0.9, userSide: false },
+      config: { windowMs: 300_000, cacheRatio: 0.9 },
     });
   });
 
@@ -69,7 +67,6 @@ describe('updateBillingCalibration', () => {
     ['ratio 0', { ...VALID, cacheRatio: 0 }],
     ['window 超上限', { ...VALID, windowMs: 3_600_001 }],
     ['window 非整数', { ...VALID, windowMs: 1.5 }],
-    ['矛盾态：关用户侧开', { ...VALID, enabled: false, userSide: true }],
   ])('值域二道防线拒绝 %s（不写库）', async (_name, config) => {
     const { deps, writes } = makeDeps(null);
     await expect(

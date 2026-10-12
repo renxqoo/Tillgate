@@ -42,13 +42,11 @@ export type CalibrationMissReason =
   | 'guard' // C6：非 chat 族 / 空 messages（读写双侧结构性排除）
   | 'no_record' // 无匹配记录
   | 'prefix' // C2：前缀不匹配（改写/收缩）
-  | 'window' // C4：超窗（含 margin）
-  | 'disabled'; // 读侧开关关闭（enabled=false 时 quote 跳过查询）
-// 注：无缓存折价/非 token 计价的回落发生在 gateway 金额面（不经 quote 数据
-// 流），本枚举不设 no_cache_price——docs §3.4 的该成员已在 v5 修订移除
+  | 'window'; // C4：超窗（含 margin）
+// 注：校准恒开（D18）——无 disabled 成员；无缓存折价/非 token 计价的回落
+// 发生在 gateway 金额面（不经 quote 数据流），不设 no_cache_price
 
 export interface CalibrationReadConfig {
-  enabled: boolean;
   windowMs: number;
   /** C4 窗口 margin（路由+有界等待上界，结构常量 30s——非运营参数） */
   windowMarginMs: number;

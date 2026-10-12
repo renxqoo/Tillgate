@@ -16,16 +16,13 @@ export interface CalibrationLookup {
   >;
 }
 
-/** 读侧配置快照（gateway KV TTL 缓存的解析结果；生效值随 quote 落快照） */
+/**
+ * 读侧配置快照（gateway KV TTL 缓存的解析结果；生效值随 quote 落快照）。
+ * 校准恒开（用户裁决 2026-10-12）——无 enabled/user_side 开关；只剩调参。
+ */
 export interface CalibrationLookupConfig {
-  enabled: boolean;
   windowMs: number;
   cacheRatio: number;
   /** 读请求的 top-N 上限（保留策略对齐，缺省 8） */
   recentLimit: number;
-  /**
-   * 用户侧开关（docs §2.3 表/§9 步骤 3）：false 时候选不盖 calibrated
-   * InputTokenUpperBound（冻结额走字节界）——分步放量门；渠道侧金额不受此开关影响。
-   */
-  userSide: boolean;
 }

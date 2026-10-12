@@ -119,7 +119,7 @@ describe('buildMessageHashChain（哈希链稳定性）', () => {
 describe('resolveCalibration（C1-C6 匹配）', () => {
   const chain1 = chainOf(TURN1);
   const chain2 = chainOf(TURN2);
-  const config = { enabled: true, windowMs: 300_000, windowMarginMs: 30_000 };
+  const config = { windowMs: 300_000, windowMarginMs: 30_000 };
 
   function recordOf(over: Partial<CalibrationRecord> = {}): CalibrationRecord {
     return {
@@ -170,16 +170,6 @@ describe('resolveCalibration（C1-C6 匹配）', () => {
   it('多条记录：跳过不匹配取首个匹配（top-N 内存过滤语义）', () => {
     const other = recordOf({ prefixHash: 'deadbeef' });
     const r = resolveCalibration({ config, records: [other, recordOf()], chain: chain2, now: NOW });
-    expect(r.hit).toBe(true);
-  });
-
-  it('disabled 配置由调用方跳过（resolve 本身不判 enabled——quote 层职责）', () => {
-    const r = resolveCalibration({
-      config: { ...config, enabled: false },
-      records: [recordOf()],
-      chain: chain2,
-      now: NOW,
-    });
     expect(r.hit).toBe(true);
   });
 });

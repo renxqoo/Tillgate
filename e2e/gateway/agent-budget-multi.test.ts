@@ -506,7 +506,8 @@ describe.skipIf(!hasEnv)('E2E 渠道预算硬闸 + fallback 链 + 多用户并�
     const yAmount = new Decimal('4.2').times(10).plus(new Decimal('16.8').times(5)).div(1_000_000);
     expectDec(row.amount, yAmount, 'fallback usage amount (Y prices)');
     // upstream_cost 走绑定成本轴（addChannel 统一配的种子成本价），不走 Y 官方价
-    const yCost = new Decimal(E2E_COST_INPUT_PRICE).times(10)
+    const yCost = new Decimal(E2E_COST_INPUT_PRICE)
+      .times(10)
       .plus(new Decimal(E2E_COST_OUTPUT_PRICE).times(5))
       .div(1_000_000);
     expectDec(row.upstream_cost, yCost, 'fallback upstream_cost (binding cost axes)');
