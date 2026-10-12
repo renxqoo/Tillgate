@@ -359,11 +359,13 @@ billing 零新增核心计价逻辑（B4 分支、store、conservative_channel_a
 | P5 | user_side 消费 + F1 #over 修复 + admin settings（contract/ACL/UI/审计） | 开关矩阵；superRefine；F1 并发回归（零死信） |
 | P6 | 观测 + waived 监控 + e2e 三旅程 | 指标断言；e2e 闭式断言 |
 
-**部署硬门**：P4 部署前 KV 缺失或 false（P3-P4 窗口误开 = 校准预留 +
-旧 B4 = 生产死信事故）；**§9 放量始于 P6 部署后**。
+**部署硬门（历史实施记录——enabled 开关随 D18 删除，本段描述的机制已失效，
+留档仅作 P1-P6 实施过程追溯）**：原「P4 部署前 KV 缺失或 false」的硬门
+适用于开关形态的开发期；恒开形态的部署门是 migration 0114/0115 随部署执行
+（AIO 入口幂等跑 drizzle 链）+ 观察面就绪。
 
-过渡态：P1-P6 enabled=false 部署（现状逐字节等价）。收口单轨：enabled 只控
-校准参与，关闭即完全回落，无双轨字段。
+过渡态（历史）：P1-P6 曾以 enabled=false 部署（现状逐字节等价）；D18 后
+无双轨——部署即恒开，回滚见 §9。
 
 ## 9. 上线（v6 恒开形态——D18 取代 D1 分步切）
 
