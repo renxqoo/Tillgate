@@ -9,7 +9,9 @@ import type { CarouselCard } from './hero-carousel-shared';
 
 export function CardFace({ card }: { card: CarouselCard }) {
   return (
-    <div className="relative mx-auto flex h-[400px] w-[min(880px,92vw)] flex-col overflow-hidden rounded-3xl md:h-[440px]">
+    // 宽度取容器百分比而非 vw：卡片宽度必须受轮播视窗宽度约束，
+    // 92vw 在窄屏下大于容器，反而把页面撑出横向滚动条
+    <div className="relative mx-auto flex h-[400px] w-full max-w-[880px] flex-col overflow-hidden rounded-3xl md:h-[440px]">
       <CardBackdrop theme={card.theme} />
       <div className="relative z-10 p-8 md:p-10">
         <p className="text-[13px] font-medium text-slate-500">{card.eyebrow}</p>

@@ -22,8 +22,10 @@ export function GuideSection({ t, base }: { t: LandingT; base: string }) {
 
   return (
     <section id="guide" className="scroll-mt-20 py-20">
+      {/* min-w-0：grid 子项默认 min-width:auto，代码块的 min-content 宽度会把
+          1fr 列顶到远超视口 → 整页横向滚动 */}
       <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 lg:grid-cols-2">
-        <div>
+        <div className="min-w-0">
           <span className="inline-block rounded-full bg-[#3957ff]/10 px-3 py-1 text-xs font-medium text-[#3957ff]">
             {t('navGuide')}
           </span>
@@ -47,7 +49,7 @@ export function GuideSection({ t, base }: { t: LandingT; base: string }) {
             </Link>
           </div>
         </div>
-        <div className="space-y-4 rounded-3xl bg-[#f5f7fb] p-8">
+        <div className="min-w-0 space-y-4 rounded-3xl bg-[#f5f7fb] p-8">
           {samples.map((sm) => (
             <div key={sm.lang} className="rounded-2xl border border-slate-100 bg-white p-5">
               <div className="mb-3 flex items-center gap-2">
