@@ -74,16 +74,17 @@ function ySetPerCurve(container: HTMLElement): number[][] {
   });
 }
 
+/** ResizeObserver 桩（recharts 依赖；jsdom 无）——构造器 + 原型空方法（模块级，lint 口径） */
+function ResizeObserverStub(this: ResizeObserver): void {
+  /* 空实现 */
+}
+ResizeObserverStub.prototype.observe = (): void => {};
+ResizeObserverStub.prototype.unobserve = (): void => {};
+ResizeObserverStub.prototype.disconnect = (): void => {};
+
 beforeAll(() => {
   // recharts 依赖 ResizeObserver（jsdom 无）；Element.getBoundingClientRect 默认全 0
   // —— ResponsiveContainer 拿不到尺寸不渲染 series，给非零尺寸替身
-  // 桩：recharts 依赖（jsdom 无）——函数构造器 + 原型空方法（无 class，lint 口径）
-  function ResizeObserverStub(this: ResizeObserver): void {
-    /* 空实现 */
-  }
-  ResizeObserverStub.prototype.observe = (): void => {};
-  ResizeObserverStub.prototype.unobserve = (): void => {};
-  ResizeObserverStub.prototype.disconnect = (): void => {};
   globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(() => ({
     width: 640,
