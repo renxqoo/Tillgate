@@ -6,10 +6,16 @@ import { APP_CONFIG } from '@/config/app-config';
 import { LogoMark } from './logo-mark';
 import type { LandingT } from './landing-shared';
 
-export function LandingFooter({ t }: { t: LandingT }) {
+/**
+ * 营销页页脚。anchorPrefix：页内锚点前缀（首页传空串，独立营销页传 '/'），
+ * 与 LandingHeader 同源。
+ */
+export function LandingFooter({ t, anchorPrefix = '' }: { t: LandingT; anchorPrefix?: string }) {
+  const anchor = (id: string) => `${anchorPrefix}#${id}`;
   const quick = [
-    { href: '#models', label: t('navModels') },
-    { href: '#guide', label: t('navGuide') },
+    { href: anchor('models'), label: t('navModels') },
+    { href: anchor('guide'), label: t('navGuide') },
+    { href: anchor('why'), label: t('navWhy') },
     { href: '/pricing', label: t('navPricing') },
     { href: '/dashboard', label: t('enterConsole') },
   ];

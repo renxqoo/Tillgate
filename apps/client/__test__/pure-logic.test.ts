@@ -13,6 +13,13 @@ import { safeNext } from '../src/server/next-url';
 import { stripAuthParams } from '../src/features/auth/auth-url';
 import { parseOAuthFragment } from '../src/features/auth/oauth-fragment';
 import { isNextRedirect } from '../src/features/auth/next-redirect';
+import {
+  fmtYuan,
+  formatContextLength,
+  parseYuan,
+  unitLabelKey,
+  unitSuffixKey,
+} from '../src/features/pricing/pricing-format';
 import { oauthOptionsFromProviders } from '../src/features/auth/oauth-options';
 import { buildSidebarItems } from '../src/features/shell/sidebar-items';
 import { getInitials } from '../src/features/shared/initials';
@@ -474,5 +481,42 @@ describe('isNextRedirect（NEXT_REDIRECT 判别）', () => {
     expect(isNextRedirect(new Error('fetch failed'))).toBe(false);
     expect(isNextRedirect('NEXT_REDIRECT')).toBe(false);
     expect(isNextRedirect(Object.assign(new Error('x'), { digest: 307 }))).toBe(false);
+  });
+});
+
+describe('定价页展示格式化（pricing-format）', () => {
+  it('parseYuan：十进制串解析；空串 / null / undefined / 非数字回落 null', () => {
+    expect(parseYuan('2.5')).toBe(2.5);
+    expect(parseYuan('0')).toBe(0);
+    expect(parseYuan('')).toBeNull();
+    expect(parseYuan(null)).toBeNull();
+    // undefined 分支经由「无参」调用覆盖
+    expect(parseYuan()).toBeNull();
+    expect(parseYuan('abc')).toBeNull();
+  });
+
+  it('fmtYuan：¥ 前缀 + 去尾零；0 与 null 渲染占位符（不显示 ¥0 假价）', () => {
+    expect(fmtYuan(2)).toBe('¥2');
+    expect(fmtYuan(2.1)).toBe('¥2.1');
+    expect(fmtYuan(0.025)).toBe('¥0.025');
+    expect(fmtYuan(0)).toBe('—');
+    expect(fmtYuan(null)).toBe('—');
+  });
+
+  it('formatContextLength：千分位取整；0 / null / 缺参渲染占位符', () => {
+    expect(formatContextLength(262_144)).toBe('262K');
+    expect(formatContextLength(1000)).toBe('1K');
+    expect(formatContextLength(0)).toBe('—');
+    expect(formatContextLength(null)).toBe('—');
+    expect(formatContextLength()).toBe('—');
+  });
+
+  it('词表键目录：已知 unit 命中；未知 unit 返回 null（调用方原样回显）', () => {
+    expect(unitLabelKey('token')).toBe('unitToken');
+    expect(unitLabelKey('char')).toBe('unitChar');
+    expect(unitLabelKey('audio')).toBeNull();
+    expect(unitSuffixKey('request')).toBe('perRequest');
+    expect(unitSuffixKey('token')).toBeNull();
+    expect(unitSuffixKey('audio')).toBeNull();
   });
 });
