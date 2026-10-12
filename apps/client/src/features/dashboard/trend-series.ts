@@ -3,7 +3,7 @@
  * hour 粒度为今日当地 00:00 起 24 桶；序列按桶补零（无消费桶不再从图上消失）。
  * 后端桶日界 = CLIENT_USAGE_TZ，与 DISPLAY_TZ 默认同源（config/display.ts）。
  */
-import type { UsageDayRow, UsageTrendRow } from '@tillgate/api-client';
+import type { UsageTrendRow } from '@tillgate/api-client';
 
 import { todayKey } from './kpi';
 
@@ -55,11 +55,6 @@ export function zonedDayStart(key: string, timeZone: string): Date {
 /** 趋势窗口查询起点：起始日（今日 -(days-1)）当地 00:00 */
 export function trendWindowFrom(days: number, timeZone: string, now: Date = new Date()): Date {
   return zonedDayStart(dayKeyMinus(todayKey(timeZone, now), days - 1), timeZone);
-}
-
-export interface DailyCostPoint {
-  date: string;
-  value: number;
 }
 
 /** 趋势宽表行：每桶一行，模型 × 度量展开为动态键（`${model}::${metric}`，供 recharts 堆叠） */
@@ -121,66 +116,22 @@ export function trendModels(rows: readonly UsageTrendRow[]): string[] {
   return models;
 }
 
-/** 指定时区的当前小时桶键（yyyy-MM-DDTHH:00:00；en-CA 前缀恰好为该日期格式） */
-export function currentHourBucket(timeZone: string, now: Date = new Date()): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-  }).formatToParts(now);
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
-  const hour = get('hour') === '24' ? '00' : get('hour');
-  return `${get('year')}-${get('month')}-${get('day')}T${hour}:00:00`;
-}
-
-/** 今日（timeZone 日界）00:00 起的 24 个小时桶键（升序；与后端 to_char 桶同格式） */
+/**
+ * 今日（timeZone 日界）当地墙钟 0..23 的小时桶键（与后端 to_char 桶同格式）。
+ * 按墙钟序生成而非绝对毫秒步进——DST 日不重不漏（春跳缺失小时为空桶、
+ * 秋回拨小时合并；后端 to_char 同按墙钟分桶，两侧自然咬合）。
+ */
 export function hourlyBuckets(timeZone: string, now: Date = new Date()): string[] {
-  const start = zonedDayStart(todayKey(timeZone, now), timeZone);
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-  });
-  const keys: string[] = [];
-  for (let i = 0; i < TREND_HOURS; i++) {
-    const parts = fmt.formatToParts(new Date(start.getTime() + i * 3_600_000));
-    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
-    const hour = get('hour') === '24' ? '00' : get('hour');
-    keys.push(`${get('year')}-${get('month')}-${get('day')}T${hour}:00:00`);
-  }
-  return keys;
-}
-
-/** 按日汇总行 → 窗口内连续补零序列（升序到今日；窗口外行与垃圾费用不计） */
-export function fillDailyCostSeries(opts: {
-  rows: readonly UsageDayRow[];
-  /** 窗口天数（含今日） */
-  days: number;
-  /** 日界时区（与后端按日桶同源） */
-  timeZone: string;
-  /** now 可注入（测试/服务端预渲染），缺省取当前时间 */
-  now?: Date;
-}): DailyCostPoint[] {
-  const { rows, days, timeZone, now = new Date() } = opts;
-  const today = todayKey(timeZone, now);
-  const costByKey = new Map(rows.map((row) => [row.date, Number(row.cost) || 0]));
-  const series: DailyCostPoint[] = [];
-  for (let i = days - 1; i >= 0; i -= 1) {
-    const date = dayKeyMinus(today, i);
-    series.push({ date, value: costByKey.get(date) ?? 0 });
-  }
-  return series;
+  const dateKey = todayKey(timeZone, now);
+  return Array.from(
+    { length: TREND_HOURS },
+    (_, i) => `${dateKey}T${String(i).padStart(2, '0')}:00:00`,
+  );
 }
 
 /**
  * 趋势行 → day 粒度宽表序列（窗口内补零；窗口外行丢弃）。
- * 桶键 = yyyy-MM-dd；窗口由 days/timeZone/now 推导（与 fillDailyCostSeries 同口径）。
+ * 桶键 = yyyy-MM-dd；窗口由 days/timeZone/now 推导（起始日当地 00:00，同 trendWindowFrom 口径）。
  */
 export function fillDailyTrendSeries(opts: {
   rows: readonly UsageTrendRow[];
