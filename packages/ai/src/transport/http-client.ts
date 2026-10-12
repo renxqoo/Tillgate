@@ -1,6 +1,7 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { UpstreamError } from '../errors/kinds';
+import type { TimeoutStage } from '../errors/kinds';
 import type { UrlGuard } from '../types';
 
 /**
@@ -196,9 +197,65 @@ export async function assertSafeUrl(url: string, opts: SafeUrlOptions = {}): Pro
   return u;
 }
 
-export interface FetchUpstreamOptions {
-  /** 首字节前超时（connect + TTFB），默认见 aiConfig.timeout.connectMs */
+/** 响应头预算参数（部分形态——缺 connectMs 的测试桩回落 base 兼容） */
+export type ResponseHeaderBudgetCfg = Partial<{
+  responseHeaderBaseMs: number;
+  responseHeaderPerMbMs: number;
+  responseHeaderMaxMs: number;
   connectMs: number;
+}>;
+
+/** 响应头预算（issue #73 v3 叠加式）：connectMs + 每MB 加成，封顶——小 body 精确等值 connectMs */
+/** 预算输入的字节计数（审查 A#5）：JSON.stringify 的 length 是 UTF-16 码元——
+ * CJK 载荷 bytes ≈ 3×length，按 length 计预算会低估至 1/3 */
+export function byteLengthOf(body: string): number {
+  return Buffer.byteLength(body, 'utf8');
+}
+
+export function responseHeaderBudget(bodyBytes: number, cfg: ResponseHeaderBudgetCfg): number {
+  const base = cfg.responseHeaderBaseMs ?? 20_000;
+  const perMb = cfg.responseHeaderPerMbMs ?? 5_000;
+  const max = cfg.responseHeaderMaxMs ?? 90_000;
+  const mb = bodyBytes / (1024 * 1024);
+  // 回归锚（审查 A#1 v3 定稿式）：connectMs + 每MB 加成，封顶。小 body 精确
+  // 等值 connectMs（main 快失败语义逐字节保留）；大 body 的上传+预填时延按
+  // perMb 叠加。base 不直接参与（连接+排队预算已含于 connectMs；裸调用——
+  // 无 connectMs 的测试桩——回落 base 为下限，保持旧桩行为兼容）。
+  const floor = cfg.connectMs ?? base;
+  return Math.min(floor + mb * perMb, max);
+}
+
+/** 首帧预算（issue #73 扩展）：静态 firstByte + 规模加成（perMb×mb），同封顶 */
+export function firstByteBudget(
+  bodyBytes: number,
+  cfg: {
+    stream: { firstByteTimeoutMs: number };
+    timeout: { responseHeaderPerMbMs: number; responseHeaderMaxMs: number };
+  },
+): number {
+  const mb = bodyBytes / (1024 * 1024);
+  // 封顶独立（审查 A#2）：静态基线 + 加成同向求和后封顶——不借用 responseHeader
+  // MaxMs 直接钳（否则运营调低 header 封顶会静默收紧小 body 的 60s 静态首帧预算）
+  return Math.min(
+    cfg.stream.firstByteTimeoutMs + mb * cfg.timeout.responseHeaderPerMbMs,
+    cfg.stream.firstByteTimeoutMs + cfg.timeout.responseHeaderMaxMs,
+  );
+}
+
+export interface FetchUpstreamOptions {
+  /**
+   * 快失败层：connect + 响应头未达的短预算（issue #73——命名承袭 connectMs，
+   * 语义是「这么短还连响应头都没有 = 连接层问题」的启发式；真·TTFB 预算
+   * 由 responseHeaderMs 承担，按 body 规模自适应）。
+   */
+  connectMs: number;
+  /**
+   * 响应头预算（connect + body 上传 + 上游 TTFB）——issue #73 主修复：
+   * 大 body（1.3MB/30 万 token）上传 + 预填排队使响应头 >10s 是结构性的，
+   * 静态 10s 会 abort→重试三连在同一层全灭（生产 30-31s 恒定 timeout）。
+   * undefined = 退回旧语义（connectMs 即全部预算——测试桩/非大 body 路径）。
+   */
+  responseHeaderMs?: number;
   /** 外部取消信号（withRetry deadline / 调用方中止） */
   signal?: AbortSignal;
   /** SSRF 策略注入点：注入则整体替换内置守卫；缺省执行机械基线 */
@@ -217,10 +274,52 @@ export async function fetchUpstream(
   init: RequestInit,
   opts: FetchUpstreamOptions,
 ): Promise<Response> {
-  // 已中止的信号不会再发 abort 事件（addEventListener 不回放）——派发前取消不得发出请求
+  return dispatchFetch({ url, init, opts, dispatch: classifyHeaderTimeout(opts) });
+}
+
+/** 响应头超时的 abort 归因形状（fetch 体的 catch 分类输入） */
+interface HeaderTimeoutDispatch {
+  headerBudgetMs: number;
+  armedResponseHeader: boolean;
+}
+
+function classifyHeaderTimeout(opts: FetchUpstreamOptions): HeaderTimeoutDispatch {
+  const headerBudgetMs = opts.responseHeaderMs ?? opts.connectMs;
+  return { headerBudgetMs, armedResponseHeader: headerBudgetMs > opts.connectMs };
+}
+
+/** 响应头超时错误（stage 归因：预算扩了 = response_header；否则旧 connect 语义） */
+function headerTimeoutError(dispatch: HeaderTimeoutDispatch): UpstreamError {
+  const stage: TimeoutStage = dispatch.armedResponseHeader ? 'response_header' : 'connect';
+  return new UpstreamError({
+    kind: 'timeout',
+    message: `${stage === 'connect' ? 'connect' : 'response header'} timeout (budget ${dispatch.headerBudgetMs}ms)`,
+    stage,
+  });
+}
+
+/** dispatchFetch 的装配输入（参数对象——4 参上限纪律） */
+interface DispatchInput {
+  url: string;
+  init: RequestInit;
+  opts: FetchUpstreamOptions;
+  dispatch: HeaderTimeoutDispatch;
+}
+
+/** 已中止的信号不会再发 abort 事件——派发前取消不得发出请求 */
+// eslint-disable-next-line max-statements, max-lines-per-function -- 传输原语平铺（校验/计时/守卫/分类四段）
+async function dispatchFetch(input: DispatchInput): Promise<Response> {
+  const { url, init, opts, dispatch } = input;
   if (opts.signal?.aborted) throw new Error('aborted before dispatch');
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error('connect timeout')), opts.connectMs);
+  // 响应头前唯一预算（issue #73 定稿修正：connect 与 TTFB 在响应头到达前不可观测
+  // 地分离——「快失败层」会把大 body 上传误判成连接问题。connectMs 语义完整
+  // 保留：responseHeaderMs 缺省时即 connectMs——小 body 行为与旧版逐字节一致）。
+  const { headerBudgetMs } = dispatch;
+  const timer = setTimeout(
+    () => controller.abort(new Error('response header timeout')),
+    headerBudgetMs,
+  );
   // abort 事件不回放：监听必须在任何 await 之前挂，否则中止发生在 DNS 解析期间会丢失
   const onExternalAbort = () => controller.abort();
   opts.signal?.addEventListener('abort', onExternalAbort, { once: true });
@@ -245,7 +344,7 @@ export async function fetchUpstream(
       throw new Error('aborted', { cause: error });
     }
     if (controller.signal.aborted) {
-      throw new UpstreamError({ kind: 'timeout', message: 'connect timeout / transport timeout' });
+      throw headerTimeoutError(dispatch);
     }
     throw new UpstreamError({ kind: 'network', message: 'upstream network error' });
   } finally {

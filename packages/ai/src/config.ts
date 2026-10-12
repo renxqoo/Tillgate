@@ -42,10 +42,17 @@ export const aiDefaultsSchema = z.object({
     .object({
       connectMs: z.number().int().min(1).default(10_000),
       totalMs: z.number().int().min(1).default(120_000),
+      /** 响应头预算（issue #73 主修复）：connect + body 上传 + 上游 TTFB */
+      responseHeaderBaseMs: z.number().int().min(1_000).default(20_000),
+      responseHeaderPerMbMs: z.number().int().min(0).default(5_000),
+      responseHeaderMaxMs: z.number().int().min(5_000).default(90_000),
     })
     .default({
       connectMs: 10_000,
       totalMs: 120_000,
+      responseHeaderBaseMs: 20_000,
+      responseHeaderPerMbMs: 5_000,
+      responseHeaderMaxMs: 90_000,
     }),
   /**
    * 响应侧 model 字段替换（默认关）：开启时出站 SSE 帧内仅替换

@@ -317,7 +317,7 @@ describe('chatStream 深支：首帧错误 / 首字节超时 / 早退脱敏', ()
         | { error?: { kind?: string; message?: string } }
         | undefined;
       expect(failed?.error?.kind).toBe('timeout');
-      expect(failed?.error?.message).toContain('no first byte from upstream within 120ms');
+      expect(failed?.error?.message).toMatch(/no first byte from upstream within 120(\.\d+)?ms/);
     } finally {
       await s.close();
     }

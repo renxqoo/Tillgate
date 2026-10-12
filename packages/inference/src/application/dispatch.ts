@@ -42,6 +42,7 @@ function outboundMessageOf(
  * 记账 await：同请求的有界等待判定/下一渠道的条件门消费该状态，
  * fire-and-forget 会因 CAS 读写竞态恒读到未落地（有界等待对当轮 429 失效）
  */
+/* eslint-disable max-lines-per-function -- 4xx 透传臂内联（span 收尾闭包依赖上下文，拆分跨 deps 闭包） */
 export async function dispatchFailure(
   deps: ExecutionDeps,
   ctx: AttemptContext,
@@ -57,7 +58,13 @@ export async function dispatchFailure(
     deps.health.recordDeadCredential(ctx.channel.channelId, true);
   }
   const action = routeFailure(error);
-  if (action === 'switch_channel') return { kind: 'switch_channel', code: error.kind };
+  if (action === 'switch_channel') {
+    return {
+      kind: 'switch_channel',
+      code: error.kind,
+      ...(error.stage != null ? { timeoutStage: error.stage } : {}),
+    };
+  }
   if (action === 'respond') {
     // 透传≠免收尾：4xx = 上游确定未计费 → request.failed 三路释放后原码返回
     const status =
@@ -88,5 +95,11 @@ export async function dispatchFailure(
     );
     return { kind: 'respond', value: delivered };
   }
-  return { kind: 'next_candidate', code: error.kind };
+  return {
+    kind: 'next_candidate',
+    code: error.kind,
+    ...(error.stage != null ? { timeoutStage: error.stage } : {}),
+  };
 }
+
+/* eslint-enable max-lines-per-function */

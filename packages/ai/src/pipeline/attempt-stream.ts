@@ -11,7 +11,13 @@ import type { AiEvent } from '../events';
 import { UpstreamError as UE } from '../errors/kinds';
 import { canceledError, emptyError } from '../errors/internal';
 import { asServerDrainAbort } from '../errors/server-drain';
-import { fetchUpstream, BodyTooLargeError } from '../transport/http-client';
+import {
+  byteLengthOf,
+  firstByteBudget,
+  responseHeaderBudget,
+  fetchUpstream,
+  BodyTooLargeError,
+} from '../transport/http-client';
 import {
   peekFirstChunk,
   firstChunkStreamError,
@@ -82,7 +88,7 @@ function firstFrameFailure(
 function classifyStreamAttemptFailure(
   error: unknown,
   signal: AbortSignal,
-  firstByteTimeoutMs: number,
+  firstByteBudgetMs: number,
 ): UpstreamError {
   if (asServerDrainAbort(signal.reason)) {
     return new UE({ kind: 'server_draining' });
@@ -90,7 +96,11 @@ function classifyStreamAttemptFailure(
   // 预算耗尽（withRetry deadline）≠ 客户端取消：慢上游归类 timeout（可换渠+熔断），
   // canceled 会跳过同候选其余渠道并把等待中的客户端判成「调用方取消」
   if (asRetryDeadlineAbort(signal.reason)) {
-    return new UE({ kind: 'timeout', message: 'upstream attempt budget exhausted' });
+    return new UE({
+      kind: 'timeout',
+      message: 'upstream attempt budget exhausted',
+      stage: 'budget',
+    });
   }
   if (signal.aborted) {
     return canceledError();
@@ -101,7 +111,8 @@ function classifyStreamAttemptFailure(
   if (error instanceof PeekTimeoutError) {
     return new UE({
       kind: 'timeout',
-      message: `no first byte from upstream within ${firstByteTimeoutMs}ms`,
+      message: `no first byte from upstream within ${firstByteBudgetMs}ms`,
+      stage: 'first_byte',
     });
   }
   if (error instanceof UE) {
@@ -123,6 +134,8 @@ export async function streamAttempt(
   emitAttemptStart(emit, { ctx, key, attempt });
   const bodyStr = JSON.stringify(finalBody);
   const outHeaders = await signStreamHeaders({ adapter, channel, url, bodyStr, headers });
+  // 首帧实际预算（try 外声明——catch 的归因报文消费实际生效值而非静态配置）
+  const firstByteActualBudgetMs = firstByteBudget(byteLengthOf(bodyStr), cfg);
   try {
     // 流式不用 totalMs（流可持续很久，由 heartbeat/inactivity 管理）；
     // connectMs 只覆盖建连，首字节预算由 peekFirstChunk 独立判定——不得用 connectMs
@@ -134,7 +147,15 @@ export async function streamAttempt(
         headers: { 'content-type': 'application/json', ...outHeaders },
         body: bodyStr,
       },
-      { connectMs: cfg.timeout.connectMs, signal, guard },
+      {
+        connectMs: cfg.timeout.connectMs,
+        responseHeaderMs: responseHeaderBudget(byteLengthOf(bodyStr), {
+          ...cfg.timeout,
+          connectMs: cfg.timeout.connectMs,
+        }),
+        signal,
+        guard,
+      },
     );
     if (!res.ok) {
       return { ok: false as const, error: await mapUpstreamFailure(adapter, res, signal) };
@@ -148,9 +169,13 @@ export async function streamAttempt(
     const upstream = adapter.translateUpstreamStream
       ? adapter.translateUpstreamStream(res.body, ctx.model)
       : res.body;
-    // 首帧探测（peek）：空流/首帧错误在此识别——重试仅限首字节前
+    // 首帧探测（peek）：空流/首帧错误在此识别——重试仅限首字节前。
+    // firstByte 预算按 body 规模自适应（issue #73 扩展：响应头到达后上游仍需
+    // 预填全部上下文才吐首 token——100 万 token 预填远超静态 60s）。只取规模
+    // 加成不吃 base：小 body 静态预算语义不变（既有测试锁），大 body 获得
+    // perMb×mb 预填余量，与响应头预算同封顶。
     const peek = await peekFirstChunk(upstream, {
-      timeoutMs: cfg.stream.firstByteTimeoutMs,
+      timeoutMs: firstByteActualBudgetMs,
       signal,
     });
     if (peek.done || !peek.rest) return { ok: false as const, error: emptyError(), empty: true };
@@ -158,7 +183,7 @@ export async function streamAttempt(
     if (failure !== null) return { ok: false as const, error: failure };
     return { ok: true as const, value: peek.rest };
   } catch (error) {
-    const err = classifyStreamAttemptFailure(error, signal, cfg.stream.firstByteTimeoutMs);
+    const err = classifyStreamAttemptFailure(error, signal, firstByteActualBudgetMs);
     return { ok: false as const, error: err };
   }
 }
