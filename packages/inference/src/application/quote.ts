@@ -322,10 +322,6 @@ function calibrationGatePass(
     prefixBytes: prefixBytesOf(input.body),
     cacheRatio: null,
   };
-  if (!calibration.config.enabled) {
-    // 读侧关闭：带前缀事实返回（miss reason 供观测）——chain/primary 不再需要
-    return { early: { hit: false, missReason: 'disabled' }, baseSnapshot };
-  }
   return { early: null, chain, primary, baseSnapshot };
 }
 

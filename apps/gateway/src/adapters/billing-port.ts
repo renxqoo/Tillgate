@@ -30,8 +30,7 @@ export interface GatewayBillingConfig {
   resolveReservationLimit: () => Promise<string>;
   /** 预扣策略解析（每次 authorize 现读——TTL 缓存的 system_configs KV，admin 动态调整） */
   resolveReservationPolicy: () => Promise<FundingReservationPolicy>;
-  /** 校准上下文解析（可选——user_side 门控 billing quote 候选透传，§9 步骤 3） */
-  resolveCalibration?: () => Promise<{ config: { userSide: boolean } } | null>;
+
   /** 结算积压准入（bridge 级调用：authorize 前置闸；requestId 恒服务端生成，
    *  HTTP 面无客户端重放路径，桥级 admission 不破坏 billing 内部的重放免疫） */
   assertCapacity?: () => Promise<void>;
@@ -88,8 +87,8 @@ const allPricesZero = (c: QuoteCandidate): boolean =>
 
 /**
  * inference 候选 → billing 报价候选（字段同源；inputUpperBound 逐候选盖章）。
- * user_side 门（P2/§2.3 表）：false 时校准界不透传——billing 用户冻结额走
- * 字节界（§9 步骤 2 渠道侧试点的独立开关）；渠道金额面不经此函数。
+ * 校准恒开（用户裁决 2026-10-12）：userSide 恒 true——校准界恒透传，
+ * 用户冻结额与渠道金额消费同一校准界（I0 安全面不受影响：B2/死信仍只认字节界）。
  */
 function toQuoteCandidate(
   c: QuoteCandidate,
@@ -320,18 +319,19 @@ async function authorizeWithDynamicRisk(
   input: Parameters<BillingPort['authorize']>[0],
 ): Promise<void> {
   if (config.assertCapacity != null) await config.assertCapacity();
-  const [policy, reservationLimit, calibration] = await Promise.all([
+  const [policy, reservationLimit] = await Promise.all([
     config.resolveReservationPolicy(),
     config.resolveReservationLimit(),
-    config.resolveCalibration != null ? config.resolveCalibration() : Promise.resolve(null),
   ]);
+  // 校准恒开（用户裁决 2026-10-12）：候选校准界恒透传（toQuote userSide 恒
+  // true）——无 resolveCalibration 门控面，quote 侧调参经 inference 上下文
   await api.authorize({
     requestId: input.requestId,
     userId: input.userId,
     apiKeyId: input.apiKeyId,
     appId: input.appId,
     stream: input.stream,
-    quote: toQuote({ ...input, userSide: calibration?.config.userSide ?? false }),
+    quote: toQuote({ ...input, userSide: true }),
     reservationLimit,
     ...(policy.mode === 'fixed'
       ? { reservationPolicy: { mode: 'fixed', amount: policy.amount } }

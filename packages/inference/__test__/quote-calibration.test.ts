@@ -81,11 +81,9 @@ function lookupWith(
 }
 
 const CONFIG: CalibrationLookupConfig = {
-  enabled: true,
   windowMs: 300_000,
   cacheRatio: 0.9,
   recentLimit: 8,
-  userSide: true,
 };
 
 const NOW = new Date('2026-10-12T00:00:00Z');
@@ -172,36 +170,6 @@ describe('quote 校准集成（读侧）', () => {
     expect(p.calibrationSnapshot).toBeNull();
   });
 
-  it('disabled：resolution=disabled，不查库（lookup 抛错也不影响——安全回落）', async () => {
-    const p = await prepareChatRequest({
-      catalog: catalogFixture(),
-      defaults: DEFAULTS,
-      requestId: 'r4',
-      auth: AUTH,
-      body: TURN2 as unknown as Record<string, unknown>,
-      now: NOW,
-      calibration: {
-        lookup: {
-          async findRecent() {
-            throw new Error('must not be called');
-          },
-        },
-        config: { ...CONFIG, enabled: false },
-      },
-    });
-    expect(p.calibration).toEqual({ hit: false, missReason: 'disabled' });
-    // P3：前缀事实仍携带（写侧不受读侧开关影响——冷启动积累）
-    expect(p.calibrationSnapshot).toMatchObject({
-      mappingId: 13,
-      channelId: null,
-      inputTokens: null,
-      cacheRatio: null,
-    });
-    for (const c of p.candidates) {
-      expect(c.calibratedInputTokenUpperBound).toBeUndefined();
-    }
-  });
-
   it('前缀不匹配（改写早期消息）→ no_record 回落，候选不盖章', async () => {
     const edited = {
       ...TURN2,
@@ -274,7 +242,7 @@ describe('quote 校准集成（读侧）', () => {
       now: NOW,
       calibration: {
         lookup: lookupWith([recordForTurn1()]),
-        config: { ...CONFIG, userSide: false },
+        config: CONFIG,
       },
     });
     expect(p.calibration).toMatchObject({ hit: true });

@@ -65,10 +65,8 @@ export function settingsRoutes(deps: SettingsRoutesDeps) {
         await billingCalibration.update({
           ctx: controlContextOf(c),
           config: {
-            enabled: body.enabled,
             windowMs: body.window_ms,
             cacheRatio: body.cache_ratio,
-            userSide: body.user_side,
           },
         }),
       );

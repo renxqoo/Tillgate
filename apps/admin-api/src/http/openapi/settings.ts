@@ -38,10 +38,8 @@ const keyPathParam: OpenApiParam = {
 
 const debitFloorDefaultSchema = z.object({ floor: z.string() });
 const billingCalibrationSchema = z.object({
-  enabled: z.boolean(),
   windowMs: z.number(),
   cacheRatio: z.number(),
-  userSide: z.boolean(),
 });
 const billingReservationSchema = z.object({
   mode: z.enum(['full', 'fixed']),
@@ -123,7 +121,7 @@ export const settingsEndpoints = [
     method: 'get',
     path: '/v1/settings/billing-calibration',
     tag: 'settings',
-    summary: '收据校准配置读（未配置 = 关闭;docs/calibrated-exposure-estimate.md §3.3）',
+    summary: '收据校准调参读（未配置 = 缺省 300s/0.9;校准恒开）',
     response: { schema: billingCalibrationSchema },
     errors: [401, 403],
   },
@@ -131,7 +129,7 @@ export const settingsEndpoints = [
     method: 'put',
     path: '/v1/settings/billing-calibration',
     tag: 'settings',
-    summary: '收据校准配置写（PUT 整替换;网关 TTL 拾取;user_side 需 enabled）',
+    summary: '收据校准调参写（PUT 整替换窗口/系数;校准恒开——无功能开关）',
     body: settingsContracts.billingCalibrationUpdate,
     response: { schema: billingCalibrationSchema },
     errors: [400, 401, 403],

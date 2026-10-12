@@ -238,7 +238,11 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
       15_000,
       'worker 结算',
     );
-    const usage = await world.db.execute<{ amount: string; upstream_cost: string; channel_id: number }>(
+    const usage = await world.db.execute<{
+      amount: string;
+      upstream_cost: string;
+      channel_id: number;
+    }>(
       sql`select amount::text, upstream_cost::text, channel_id from usage_logs where user_id = ${userId} order by created_at desc limit 1`,
     );
     const row = defined(usage[0], 'usage row');

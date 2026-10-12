@@ -41,20 +41,9 @@ export const settingsContracts = {
       }),
     }),
   ]),
-  /** 校准配置（PUT 整替换四参数；值域与矛盾态 zod 先拦，billing 解析二道防线） */
-  billingCalibrationUpdate: z
-    .object({
-      enabled: z.boolean(),
-      window_ms: z.number().int().min(1_000).max(3_600_000),
-      cache_ratio: z.number().gt(0).lte(1),
-      user_side: z.boolean(),
-    })
-    .superRefine((v, ctx) => {
-      if (!v.enabled && v.user_side) {
-        ctx.addIssue({
-          code: 'custom',
-          message: 'user_side requires enabled',
-        });
-      }
-    }),
+  /** 校准调参（PUT 整替换二参数——校准恒开，仅窗口/系数可调；值域 zod 先拦） */
+  billingCalibrationUpdate: z.object({
+    window_ms: z.number().int().min(1_000).max(3_600_000),
+    cache_ratio: z.number().gt(0).lte(1),
+  }),
 } as const;

@@ -32,10 +32,8 @@ export async function updateBillingCalibration(
 ): Promise<{ config: CalibrationConfig }> {
   if (
     parseCalibrationSetting({
-      enabled: input.config.enabled,
       window_ms: input.config.windowMs,
       cache_ratio: input.config.cacheRatio,
-      user_side: input.config.userSide,
     }) === null
   ) {
     throw controlPlaneErrors.business('invalid_calibration_config', {

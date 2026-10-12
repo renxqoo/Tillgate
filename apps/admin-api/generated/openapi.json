@@ -32519,33 +32519,25 @@
         "tags": [
           "settings"
         ],
-        "summary": "收据校准配置读（未配置 = 关闭;docs/calibrated-exposure-estimate.md §3.3）",
+        "summary": "收据校准调参读（未配置 = 缺省 300s/0.9;校准恒开）",
         "responses": {
           "200": {
-            "description": "收据校准配置读（未配置 = 关闭;docs/calibrated-exposure-estimate.md §3.3） 成功响应",
+            "description": "收据校准调参读（未配置 = 缺省 300s/0.9;校准恒开） 成功响应",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "enabled": {
-                      "type": "boolean"
-                    },
                     "windowMs": {
                       "type": "number"
                     },
                     "cacheRatio": {
                       "type": "number"
-                    },
-                    "userSide": {
-                      "type": "boolean"
                     }
                   },
                   "required": [
-                    "enabled",
                     "windowMs",
-                    "cacheRatio",
-                    "userSide"
+                    "cacheRatio"
                   ]
                 }
               }
@@ -32631,7 +32623,7 @@
         "tags": [
           "settings"
         ],
-        "summary": "收据校准配置写（PUT 整替换;网关 TTL 拾取;user_side 需 enabled）",
+        "summary": "收据校准调参写（PUT 整替换窗口/系数;校准恒开——无功能开关）",
         "requestBody": {
           "required": true,
           "content": {
@@ -32639,9 +32631,6 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "enabled": {
-                    "type": "boolean"
-                  },
                   "window_ms": {
                     "type": "integer",
                     "minimum": 1000,
@@ -32651,16 +32640,11 @@
                     "type": "number",
                     "exclusiveMinimum": 0,
                     "maximum": 1
-                  },
-                  "user_side": {
-                    "type": "boolean"
                   }
                 },
                 "required": [
-                  "enabled",
                   "window_ms",
-                  "cache_ratio",
-                  "user_side"
+                  "cache_ratio"
                 ]
               }
             }
@@ -32668,30 +32652,22 @@
         },
         "responses": {
           "200": {
-            "description": "收据校准配置写（PUT 整替换;网关 TTL 拾取;user_side 需 enabled） 成功响应",
+            "description": "收据校准调参写（PUT 整替换窗口/系数;校准恒开——无功能开关） 成功响应",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "enabled": {
-                      "type": "boolean"
-                    },
                     "windowMs": {
                       "type": "number"
                     },
                     "cacheRatio": {
                       "type": "number"
-                    },
-                    "userSide": {
-                      "type": "boolean"
                     }
                   },
                   "required": [
-                    "enabled",
                     "windowMs",
-                    "cacheRatio",
-                    "userSide"
+                    "cacheRatio"
                   ]
                 }
               }
