@@ -79,7 +79,6 @@ function createSchema(production: boolean) {
       GATEWAY_UPSTREAM_DEADLINE_MS: z.coerce.number().int().min(1_000).default(120_000),
       GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(100).default(10_000),
       // 响应头预算（issue #73 v3 叠加式）：connectMs + 每MB 加成，封顶
-      GATEWAY_UPSTREAM_RESPONSE_HEADER_BASE_MS: z.coerce.number().int().min(1_000).default(20_000),
       GATEWAY_UPSTREAM_RESPONSE_HEADER_PER_MB_MS: z.coerce.number().int().min(0).default(5_000),
       GATEWAY_UPSTREAM_RESPONSE_HEADER_MAX_MS: z.coerce.number().int().min(5_000).default(90_000),
       /** SSRF 逃生门：仅非生产可用——生产误配 env 也恒关（与 admin-api 同口径） */

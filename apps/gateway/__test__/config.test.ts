@@ -180,10 +180,7 @@ describe('fail-closed', () => {
     warn.mockRestore();
   });
 
-  it('上游响应头预算三键值域边界（#73：base≥1000 / max≥5000 拒绝非法）', () => {
-    expect(() =>
-      loadGatewayConfig({ ...BASE, GATEWAY_UPSTREAM_RESPONSE_HEADER_BASE_MS: '999' }),
-    ).toThrow();
+  it('上游响应头预算二键值域边界（#73 v3：max≥5000 / perMb≥0 拒绝非法）', () => {
     expect(() =>
       loadGatewayConfig({ ...BASE, GATEWAY_UPSTREAM_RESPONSE_HEADER_MAX_MS: '4999' }),
     ).toThrow();
