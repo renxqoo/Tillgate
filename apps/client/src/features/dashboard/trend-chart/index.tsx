@@ -11,6 +11,7 @@ import { loadHourlyTrendAction } from '@/server/actions/usage';
 import { formatMoney } from '@/features/shared/format';
 import {
   TREND_WINDOW_DAYS,
+  compactCount,
   fillDailyTrendSeries,
   fillHourlyTrendSeries,
 } from '@/features/dashboard/trend-series';
@@ -116,8 +117,13 @@ export function TrendChart({ dayRows, timeZone, now }: TrendChartProps) {
   const metricKeys = METRIC_KEYS[measure];
   const seriesKeys = useMemo(() => buildSeries(series.models, metricKeys), [series, metricKeys]);
 
+  // tooltip 用全值（分组数千位）；Y 轴刻度用紧凑单位（K/M/B——长数字会溢出轴宽遮挡）
   const formatValue = useCallback(
     (v: number) => (measure === 'cost' ? formatMoney(v, locale) : v.toLocaleString('en-US')),
+    [measure, locale],
+  );
+  const formatTick = useCallback(
+    (v: number) => (measure === 'cost' ? formatMoney(v, locale) : compactCount(v)),
     [measure, locale],
   );
 
@@ -209,7 +215,7 @@ export function TrendChart({ dayRows, timeZone, now }: TrendChartProps) {
             <YAxis
               tickLine={false}
               axisLine={false}
-              tickFormatter={(v: number) => formatValue(v)}
+              tickFormatter={(v: number) => formatTick(v)}
               width={56}
             />
             <ChartTooltip
