@@ -67,7 +67,7 @@ harness 双向复现（mock server + 生产配置形态）：
 ## 3. 契约
 
 - `aiConfig.timeout` 增 `responseHeaderBaseMs`(默认 20_000) /
-  `responseHeaderPerMbMs`(默认 5_000，即 2MB/s) / `responseHeaderMaxMs`
+  `responseHeaderPerMbMs`(默认 5_000 = 0.2MB/s 的保守上传+预填速率) / `responseHeaderMaxMs`
   (默认 90_000)；zod + .env.example（GATEWAY_UPSTREAM_RESPONSE_HEADER_*
   三键）+ 配置测试；
 - `UpstreamError.stage?: TimeoutStage`（可选字段——旧调用方零破坏）；

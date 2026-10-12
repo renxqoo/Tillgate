@@ -202,7 +202,7 @@ describe('timeout 归因矩阵（stage 四层各一处赋值）', () => {
             deadlineMs: 60_000,
             emptyCompletionRetries: 0,
           },
-          // v3 叠加式：预算 12s（connectMs 12s；armed = 12s+0 加成 > 0 判定见
+          // v3 叠加式：预算 13s（connectMs 8s + 1MB×5s/MB；armed 判定见
           // classifyHeaderTimeout——预算严格大于 connectMs 才 response_header，
           // 等值归 connect。此用例意图是「预算扩了」——用 perMb 加成制造差值：
           // connectMs 8s + 1MB body + 5s/MB = 13s 预算 > 8s → armed ✓
