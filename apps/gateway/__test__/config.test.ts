@@ -31,7 +31,6 @@ describe('缺省值与推导', () => {
     expect(c.preauthIpRpm).toBe(1_200);
     expect(c.upstreamDeadlineMs).toBe(120_000);
     expect(c.upstreamConnectTimeoutMs).toBe(10_000);
-    expect(c.upstreamResponseHeaderBaseMs).toBe(20_000);
     expect(c.upstreamResponseHeaderPerMbMs).toBe(5_000);
     expect(c.upstreamResponseHeaderMaxMs).toBe(90_000);
     expect(c.bodyLimitBytes).toBe(10 * 1024 * 1024);

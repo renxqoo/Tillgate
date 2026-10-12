@@ -75,9 +75,10 @@ harness 双向复现（mock server + 生产配置形态）：
 
 ## 4. 测试口径（先于实现）
 
-- 复现测试（#73 harness 测试化）：A 组（小 connectMs + 大 body 慢响应头 →
-  kind timeout + stage response_header，不发生 3×10s 重试风暴——预算
-  自适应后单次等待覆盖）+ B 组（自适应预算下大 body 75s hang 成功）；
+- 复现测试（#73 harness 测试化，v3 口径）：复现组（生产形态 connectMs 10s +
+  12MB body → 自适应预算 70s 覆盖 45s 慢响应头，单次成功零重连风暴——旧
+  实现同配置 10s 预算三连全灭）+ 出厂默认锚（zod 全缺省下小 body 精确
+  等值 connectMs）+ 4MB/20s 大 body 区分度用例；
 - 归因矩阵：connect/response_header/first_byte/budget 四 stage 各一用例
   （mock 分别在握手/响应头/首帧/总预算处 hang）；
 - 回归锚：小请求（<1MB）行为与现状一致（connectMs 10s 快失败不变）；

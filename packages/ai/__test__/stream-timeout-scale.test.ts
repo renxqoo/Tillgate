@@ -97,7 +97,7 @@ async function mockUpstream(opts: {
 }
 
 describe('issue #73：大 body 响应头预算自适应（复现测试）', () => {
-  it('复现组（修复后）：45s 慢响应头 + 大 body → 单次等待成功（旧实现 30.7s 三连重试全灭）', async () => {
+  it('复现组（修复后）：45s 慢响应头 + 真大 body → 自适应预算覆盖、单次成功（旧实现 10s 预算三连全灭 ≈30.7s）', async () => {
     const s = await mockUpstream({ headerDelayMs: 45_000 });
     try {
       const ai = createAi(
@@ -110,10 +110,11 @@ describe('issue #73：大 body 响应头预算自适应（复现测试）', () =
             deadlineMs: 120_000,
             emptyCompletionRetries: 2,
           },
-          // v3 叠加式：预算放大入口即 connectMs（50s 覆盖 45s 慢响应头）
+          // 生产形态：connectMs 10s（快失败基线）+ 12MB body × 5s/MB = 70s 自适应预算
+          // > 45s 慢响应头 → 单次等待成功；旧实现（预算=connectMs=10s）此形态三连全灭
           timeout: {
-            connectMs: 50_000,
-            totalMs: 120_000,
+            connectMs: 10_000,
+            totalMs: 180_000,
             responseHeaderPerMbMs: 5_000,
             responseHeaderMaxMs: 90_000,
           },
@@ -127,11 +128,16 @@ describe('issue #73：大 body 响应头预算自适应（复现测试）', () =
       );
       const r = await ai.chatStream(
         { baseUrl: `http://127.0.0.1:${s.port}`, apiKey: 'k', protocol: 'openai-compatible' },
-        { model: 'm', messages: [{ role: 'user', content: 'x' }], stream: true },
+        // 12MB body（生产事故形态量级）→ connectMs 10s + 12×5s = 70s 自适应预算
+        {
+          model: 'm',
+          messages: [{ role: 'user', content: 'x'.repeat(12 * 1024 * 1024) }],
+          stream: true,
+        },
       );
       const text = await new Response(r.stream).text();
       expect(text).toContain('hi');
-      // 修复核心断言：没有重连风暴（旧实现在 10s/20s 处重复发 body）
+      // 修复核心断言：没有重连风暴（旧实现在 10s/20s/30s 处重复发 body）
       expect(s.bodyArrivals.length).toBe(1);
     } finally {
       await s.close();

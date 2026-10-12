@@ -227,7 +227,6 @@ export async function assembleGateway(config: GatewayConfig): Promise<GatewayAss
       timeout: {
         connectMs: config.upstreamConnectTimeoutMs,
         totalMs: config.upstreamDeadlineMs,
-        responseHeaderBaseMs: config.upstreamResponseHeaderBaseMs,
         responseHeaderPerMbMs: config.upstreamResponseHeaderPerMbMs,
         responseHeaderMaxMs: config.upstreamResponseHeaderMaxMs,
       },

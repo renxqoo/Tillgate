@@ -197,7 +197,7 @@ export async function assertSafeUrl(url: string, opts: SafeUrlOptions = {}): Pro
   return u;
 }
 
-/** 响应头预算参数（部分形态——旧测试装置缺省回落 base） */
+/** 响应头预算参数（部分形态——缺 connectMs 的测试桩回落 base 兼容） */
 export type ResponseHeaderBudgetCfg = Partial<{
   responseHeaderBaseMs: number;
   responseHeaderPerMbMs: number;
@@ -205,7 +205,7 @@ export type ResponseHeaderBudgetCfg = Partial<{
   connectMs: number;
 }>;
 
-/** 响应头预算（issue #73）：base + 每MB 加成，封顶——大 body 上传+预填的结构性时延 */
+/** 响应头预算（issue #73 v3 叠加式）：connectMs + 每MB 加成，封顶——小 body 精确等值 connectMs */
 /** 预算输入的字节计数（审查 A#5）：JSON.stringify 的 length 是 UTF-16 码元——
  * CJK 载荷 bytes ≈ 3×length，按 length 计预算会低估至 1/3 */
 export function byteLengthOf(body: string): number {
