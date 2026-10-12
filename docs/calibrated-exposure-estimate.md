@@ -98,7 +98,7 @@ tokenizer 差异都可构造诚实流量反例。任何把校准界放进安全�
 | # | 条件 | 防的污染 |
 | --- | --- | --- |
 | C7a | 收据**零钳制事实**（acceptTrustedUsage 后 clamps 为空） | 被钳收据的计数器不可信，不得成链路锚点 |
-| C7b | `seen ≥ prefixBytes / 4`（前缀 JSON 字节下限；文本 bytes/token ≤ 4 恒成立，媒体段只增不减） | 低报计数器（prompt_tokens:0 / Anthropic 式口径排除 cached / 命中轮口径漂移）—— seen 低于物理下限即拒绝写入 |
+| C7b | `seen ≥ prefixBytes / 6`（前缀 JSON 字节下限；6B/token 覆盖中文负载 tokenizer 事实——汉字 UTF-8 3B、~1.5 字/token ≈ 4.5B/token，生产实测 MiniMax 4.23B/token 曾被 /4 误杀，2026-10-12 修订） | 低报计数器（清零/极小值/口径排除型）——真低报距此线三个数量级，拦截力不变 |
 | C7c | seen、messagesLen、各 id 为有限正整数 | 结构垃圾 |
 
 ### 2.3 双界与打折口径

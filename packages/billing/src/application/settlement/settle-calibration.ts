@@ -44,7 +44,7 @@ export function calibrationWriteOf(
   }
   // C7b/7c 守卫（inference 纯函数镜像判定——billing 不依赖 inference，语义单源注释互指）
   if (!Number.isSafeInteger(inputTokens) || inputTokens <= 0) return null;
-  if (inputTokens < Math.ceil(prefixBytes / 4)) return null;
+  if (inputTokens < Math.ceil(prefixBytes / 6)) return null; // C7b（中文负载下界——见头注释）
   return {
     userId: billing.userId,
     mappingId: actualMappingId,
