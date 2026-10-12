@@ -10,7 +10,9 @@ import type { ProtocolAdapter } from '../adapters/protocol-adapter';
 import type { AiEvent } from '../events';
 import { UpstreamError as UE } from '../errors/kinds';
 import {
+  byteLengthOf,
   responseHeaderBudget,
+  type ResponseHeaderBudgetCfg,
   fetchUpstream,
   readBody,
   readRawBody,
@@ -19,6 +21,7 @@ import { tryParseJson } from '../internal/json';
 import { mapUpstreamFailure } from './upstream-failure';
 import { emitAttemptStart } from './attempt-start';
 import type { CallCtx } from './context';
+import type { UrlGuard } from '../types';
 
 export interface ChatAttemptEnv {
   adapter: ProtocolAdapter;
@@ -103,11 +106,46 @@ function jsonAttemptValue(adapter: ProtocolAdapter, body: unknown): ChatAttemptV
 function classifyChatFailure(error: unknown, signal: AbortSignal): UpstreamError {
   if (error instanceof UE) return error;
   if (asRetryDeadlineAbort(signal.reason)) {
-    return new UE({ kind: 'timeout', message: 'upstream attempt budget exhausted' });
+    return new UE({
+      kind: 'timeout',
+      message: 'upstream attempt budget exhausted',
+      stage: 'budget',
+    });
   }
   return error instanceof Error && error.message === 'aborted'
     ? new UE({ kind: 'canceled' })
     : new UE({ kind: 'network', message: String(error) });
+}
+
+/** fetchOptsOf 的装配输入（参数对象——4 参上限纪律） */
+interface FetchOptsInput {
+  bodyStr: string | undefined;
+  cfg: { timeout: { connectMs: number } & ResponseHeaderBudgetCfg };
+  signal: AbortSignal;
+  guard?: UrlGuard;
+}
+
+/** chatAttempt 的 fetch 选项（预算注入——FormData 无 bodyStr 保持旧静态语义） */
+function fetchOptsOf(input: FetchOptsInput): {
+  connectMs: number;
+  responseHeaderMs?: number;
+  signal: AbortSignal;
+  guard?: UrlGuard;
+} {
+  const { bodyStr, cfg, signal, guard } = input;
+  return {
+    connectMs: cfg.timeout.connectMs,
+    ...(bodyStr !== undefined
+      ? {
+          responseHeaderMs: responseHeaderBudget(byteLengthOf(bodyStr), {
+            ...cfg.timeout,
+            connectMs: cfg.timeout.connectMs,
+          }),
+        }
+      : {}),
+    signal,
+    guard,
+  };
 }
 
 export async function chatAttempt(
@@ -132,14 +170,7 @@ export async function chatAttempt(
         // bodyStr undefined 仅当 finalBody 是 FormData（serializeBody 的 instanceof 判定）
         body: bodyStr !== undefined ? bodyStr : (finalBody as FormData),
       },
-      {
-        connectMs: cfg.timeout.connectMs,
-        ...(bodyStr !== undefined
-          ? { responseHeaderMs: responseHeaderBudget(bodyStr.length, cfg.timeout) }
-          : {}),
-        signal: totalSignal,
-        guard,
-      },
+      fetchOptsOf({ bodyStr, cfg, signal: totalSignal, guard }),
     );
     if (!res.ok) {
       return { ok: false as const, error: await mapUpstreamFailure(adapter, res, totalSignal) };

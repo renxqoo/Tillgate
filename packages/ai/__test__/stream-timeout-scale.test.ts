@@ -110,10 +110,10 @@ describe('issue #73：大 body 响应头预算自适应（复现测试）', () =
             deadlineMs: 120_000,
             emptyCompletionRetries: 2,
           },
+          // v3 叠加式：预算放大入口即 connectMs（50s 覆盖 45s 慢响应头）
           timeout: {
-            connectMs: 10_000,
+            connectMs: 50_000,
             totalMs: 120_000,
-            responseHeaderBaseMs: 50_000,
             responseHeaderPerMbMs: 5_000,
             responseHeaderMaxMs: 90_000,
           },
@@ -151,9 +151,9 @@ describe('issue #73：大 body 响应头预算自适应（复现测试）', () =
             deadlineMs: 60_000,
             emptyCompletionRetries: 0,
           },
-          // 未提供 responseHeader* 键时预算回落旧语义（zod default 只有整组注入才生效——
-          // 此处显式只给 connectMs 场景经裸 fetchUpstream 走；经 createAi 的 config 全量
-          // 默认会注入 20s base。用 maxAttempts=1 观察 stage 即可）
+          // 预算三键压到与 connectMs 等值（zod 每键独立 default——部分注入即补全，
+          // 此处显式等值注入模拟「预算未扩」形态；裸缺省回落场景由裸 fetchUpstream
+          // 用例覆盖）
           timeout: {
             connectMs: 6_000,
             totalMs: 60_000,
@@ -202,12 +202,15 @@ describe('timeout 归因矩阵（stage 四层各一处赋值）', () => {
             deadlineMs: 60_000,
             emptyCompletionRetries: 0,
           },
+          // v3 叠加式：预算 12s（connectMs 12s；armed = 12s+0 加成 > 0 判定见
+          // classifyHeaderTimeout——预算严格大于 connectMs 才 response_header，
+          // 等值归 connect。此用例意图是「预算扩了」——用 perMb 加成制造差值：
+          // connectMs 8s + 1MB body + 5s/MB = 13s 预算 > 8s → armed ✓
           timeout: {
-            connectMs: 10_000,
+            connectMs: 8_000,
             totalMs: 60_000,
-            responseHeaderBaseMs: 12_000,
-            responseHeaderPerMbMs: 0,
-            responseHeaderMaxMs: 12_000,
+            responseHeaderPerMbMs: 5_000,
+            responseHeaderMaxMs: 60_000,
           },
           stream: {
             heartbeatIdleMs: 30_000,
@@ -220,7 +223,11 @@ describe('timeout 归因矩阵（stage 四层各一处赋值）', () => {
       const events: Rec[] = [];
       const r = await ai.chatStream(
         { baseUrl: `http://127.0.0.1:${s.port}`, apiKey: 'k', protocol: 'openai-compatible' },
-        { model: 'm', messages: [{ role: 'user', content: 'x' }], stream: true },
+        {
+          model: 'm',
+          messages: [{ role: 'user', content: 'x'.repeat(1024 * 1024) }],
+          stream: true,
+        }, // 1MB → 预算 13s
       );
       r.events?.subscribe((e) => events.push(e as Rec));
       await new Response(r.stream).text();
@@ -327,6 +334,26 @@ describe('timeout 归因矩阵（stage 四层各一处赋值）', () => {
       await s.close();
     }
   }, 30_000);
+
+  it('出厂默认回归锚（审查 A#1）：小 body 预算精确等值 connectMs——zod 全缺省链', async () => {
+    const { responseHeaderBudget } = await import('../src/transport/http-client.js');
+    const { aiDefaultsSchema } = await import('../src/config.js');
+    // 出厂默认（gateway 不注入 responseHeader* 三键时的 ai 侧兜底形态）
+    const cfg = aiDefaultsSchema.parse({});
+    for (const bytes of [0, 100, 10_000, 100_000, 500_000]) {
+      // connectMs + perMb×mb（叠加式——审查 A#1 定稿）：小 body 精确 10s
+      const mb = bytes / (1024 * 1024);
+      expect(
+        responseHeaderBudget(bytes, { ...cfg.timeout, connectMs: cfg.timeout.connectMs }),
+      ).toBe(Math.min(10_000 + mb * 5_000, 90_000));
+    }
+    expect(responseHeaderBudget(0, { ...cfg.timeout, connectMs: cfg.timeout.connectMs })).toBe(
+      10_000,
+    ); // 精确等值
+    expect(
+      responseHeaderBudget(1024 * 1024, { ...cfg.timeout, connectMs: cfg.timeout.connectMs }),
+    ).toBe(15_000);
+  });
 
   it('预算公式：responseHeaderBudget 单调 + 封顶（表驱动）', async () => {
     const { responseHeaderBudget } = await import('../src/transport/http-client.js');
@@ -487,7 +514,7 @@ describe('异常场景矩阵（issue #73 用户裁决：多规模 × 慢形态�
     expect(responseHeaderBudget(50 * 1024 * 1024, cfg)).toBe(30_000);
   });
 
-  it('异常：上游连响应头都 hang（连接慢形态）→ response_header 归因（预算自适应后 connect 不再背锅）', async () => {
+  it('异常：响应头 hang 且预算未扩（base < connectMs）→ connect 归因（旧快失败语义——#73 F6：响应头前 connect/TTFB 不可分，此归因是「预算未扩」信号而非连接层诊断）', async () => {
     const s = await mockUpstream({ headerDelayMs: 30_000 }); // 大 body 自适应 40s 内 → 30s 头到达应成功？不——本用例断言失败路径
     try {
       const ai = createAi(

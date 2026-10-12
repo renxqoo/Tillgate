@@ -31,6 +31,9 @@ describe('缺省值与推导', () => {
     expect(c.preauthIpRpm).toBe(1_200);
     expect(c.upstreamDeadlineMs).toBe(120_000);
     expect(c.upstreamConnectTimeoutMs).toBe(10_000);
+    expect(c.upstreamResponseHeaderBaseMs).toBe(20_000);
+    expect(c.upstreamResponseHeaderPerMbMs).toBe(5_000);
+    expect(c.upstreamResponseHeaderMaxMs).toBe(90_000);
     expect(c.bodyLimitBytes).toBe(10 * 1024 * 1024);
     expect(c.uploadLimits.maxFileBytes).toBe(10 * 1024 * 1024); // 与 bodyLimit 取 min
     expect(c.keyPrefix).toBe('sk_');
@@ -176,5 +179,17 @@ describe('fail-closed', () => {
       1,
     );
     warn.mockRestore();
+  });
+
+  it('上游响应头预算三键值域边界（#73：base≥1000 / max≥5000 拒绝非法）', () => {
+    expect(() =>
+      loadGatewayConfig({ ...BASE, GATEWAY_UPSTREAM_RESPONSE_HEADER_BASE_MS: '999' }),
+    ).toThrow();
+    expect(() =>
+      loadGatewayConfig({ ...BASE, GATEWAY_UPSTREAM_RESPONSE_HEADER_MAX_MS: '4999' }),
+    ).toThrow();
+    expect(() =>
+      loadGatewayConfig({ ...BASE, GATEWAY_UPSTREAM_RESPONSE_HEADER_PER_MB_MS: '-1' }),
+    ).toThrow();
   });
 });

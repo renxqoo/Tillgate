@@ -1,9 +1,8 @@
+/* eslint-disable max-lines -- 装配根（7 个 API 动词 + 事件面）；attempt 族已拆 pipeline/，此处为拆分后剩余平铺（#73 stage 拷贝 +1 行触发） */
 /**
  * createAi 装配壳（平参数 API）：
  *   chat(channel, request, opts) / chatStream / use / subscribe / probe / tasks
- * 机制链：参数抹平 → 单次尝试体（withRetry 包裹）→ relay 透传 + 事件观察面。
  * 单渠道内重试；换渠道候选循环是 inference 的职责。
- * 尝试执行体（chat/stream）与任务操作组住在 pipeline/attempt-*.ts、pipeline/tasks.ts。
  */
 import type {
   Ai,
@@ -273,6 +272,7 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
       // 事件面（上方 emit）与日志携带原始错误，原始细节只进日志并关联 requestId
       const outbound = new UE({
         kind: error.kind,
+        ...(error.stage != null ? { stage: error.stage } : {}), // timeout 归因拷贝（#73 C#1）
         message: sanitizeUpstreamDetail(error.message, {
           maxLen: cfg.errorSanitize.maxLen,
           redactions: cfg.errorSanitize.redactions,

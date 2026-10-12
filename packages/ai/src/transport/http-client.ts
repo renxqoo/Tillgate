@@ -202,15 +202,27 @@ export type ResponseHeaderBudgetCfg = Partial<{
   responseHeaderBaseMs: number;
   responseHeaderPerMbMs: number;
   responseHeaderMaxMs: number;
-}> & { responseHeaderBaseMs?: number };
+  connectMs: number;
+}>;
 
 /** 响应头预算（issue #73）：base + 每MB 加成，封顶——大 body 上传+预填的结构性时延 */
+/** 预算输入的字节计数（审查 A#5）：JSON.stringify 的 length 是 UTF-16 码元——
+ * CJK 载荷 bytes ≈ 3×length，按 length 计预算会低估至 1/3 */
+export function byteLengthOf(body: string): number {
+  return Buffer.byteLength(body, 'utf8');
+}
+
 export function responseHeaderBudget(bodyBytes: number, cfg: ResponseHeaderBudgetCfg): number {
   const base = cfg.responseHeaderBaseMs ?? 20_000;
   const perMb = cfg.responseHeaderPerMbMs ?? 5_000;
   const max = cfg.responseHeaderMaxMs ?? 90_000;
   const mb = bodyBytes / (1024 * 1024);
-  return Math.min(base + mb * perMb, max);
+  // 回归锚（审查 A#1 v3 定稿式）：connectMs + 每MB 加成，封顶。小 body 精确
+  // 等值 connectMs（main 快失败语义逐字节保留）；大 body 的上传+预填时延按
+  // perMb 叠加。base 不直接参与（连接+排队预算已含于 connectMs；裸调用——
+  // 无 connectMs 的测试桩——回落 base 为下限，保持旧桩行为兼容）。
+  const floor = cfg.connectMs ?? base;
+  return Math.min(floor + mb * perMb, max);
 }
 
 /** 首帧预算（issue #73 扩展）：静态 firstByte + 规模加成（perMb×mb），同封顶 */
@@ -222,9 +234,11 @@ export function firstByteBudget(
   },
 ): number {
   const mb = bodyBytes / (1024 * 1024);
+  // 封顶独立（审查 A#2）：静态基线 + 加成同向求和后封顶——不借用 responseHeader
+  // MaxMs 直接钳（否则运营调低 header 封顶会静默收紧小 body 的 60s 静态首帧预算）
   return Math.min(
     cfg.stream.firstByteTimeoutMs + mb * cfg.timeout.responseHeaderPerMbMs,
-    cfg.timeout.responseHeaderMaxMs,
+    cfg.stream.firstByteTimeoutMs + cfg.timeout.responseHeaderMaxMs,
   );
 }
 

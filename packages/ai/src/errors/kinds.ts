@@ -32,7 +32,7 @@ export type ErrorKind =
 
 /** 超时归因层级（issue #73——封闭词表；kind=timeout 时各层各一处赋值） */
 export type TimeoutStage =
-  | 'connect' // TCP/TLS 握手层（fetchUpstream 快失败计时器）
+  | 'connect' // 预算未扩（headerBudget ≤ connectMs）的响应头整体超时（连接/上传/TTFB 合并——响应头前不可分，#73）
   | 'response_header' // body 上传 + 上游 TTFB（fetchUpstream 主预算）
   | 'first_byte' // 响应头后 SSE 首帧（peekFirstChunk）
   | 'budget'; // 重试编排总预算（RetryDeadlineAbort）

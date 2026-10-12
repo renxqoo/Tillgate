@@ -32,11 +32,12 @@ harness 双向复现（mock server + 生产配置形态）：
 
 - `connectMs`：真 connect（TCP/TLS 握手）——保留 10s 静态（握手与规模无关）；
 - `responseHeaderMs`（新增）：响应头预算（含大 body 上传 + 上游 TTFB）——
-  **按请求规模自适应**：`base(20s) + bodyBytes / 2MB/s`（1.3MB body →
-  ~20.7s；10MB → 25s；上限 90s 封顶）。实现：fetchUpstream 内两段计时器
-  （connect 完成时刻不可直接观测——undici 不暴露；用「响应头到达」作为
-  两者共同的终点，connectMs 短计时器保留作为快失败层：10s 内连响应头
-  都没有且 body 已发完的，大概率是连接层问题）。
+  **按请求规模自适应（v3 定稿式）**：`connectMs + 5s/MB，封顶 90s`
+  （小 body → 精确 10s 等值 main；1.3MB → 16.5s；4MB → 30s；10MB → 60s；
+  字节按 UTF-8 实际字节数）。审查 A#1 两轮修正：max/min 复合式无法同时
+  满足「小 body 等值 + 大 body 起步 20s」，定稿为叠加式（连接预算已含于
+  connectMs，base 不再直接参与——gateway 的 BASE_MS 键保留作裸调用下限）。
+  响应头前 connect/TTFB 不可观测分离，「快失败层」设计已废弃。
 
 非流式 `attempt-chat` 的 totalMs 不动（120s 覆盖全程，本次事故不涉及）。
 
@@ -49,10 +50,16 @@ harness 双向复现（mock server + 生产配置形态）：
   timeout kind 时）；
 - billing_requests 现有 failure_code 不动（超时归因走日志/context，不加列）。
 
-### 2.3 不处理（归属）
+### 2.3 扩展实施与残余缺口（v2——用户裁决「多方面考虑」+ 审查处置）
 
-- 流式 inactivity/firstByte 的规模自适应：firstByte=60s 在本次事故未触发
-  （B 组证明响应头到达后首帧由 peek 层 60s 覆盖充足）；若未来触发另行票；
+- **firstByte 规模自适应已实施**（用户裁决扩展）：`firstByteTimeoutMs +
+  perMb×mb`，封顶 `firstByteTimeoutMs + responseHeaderMaxMs`（独立封顶
+  ——不借 header 封顶钳静态基线，审查 A#2）。慢首 token 服务器（头秒回
+  但 100 万 token 预填超 60s）不再误杀；小 body 静态语义不变。
+- **multipart（FormData）路径不注入预算（残余缺口，登记）**：serializeBody
+  对 FormData 返回 undefined → 响应头预算仍静态 connectMs。上传（16MB 上限）
+  与 #73 同构的误杀风险存活——正确修法是 FormData 字节估算（form.forEach
+  累计），另行票处理；触发条件：大文件 + 慢响应头 > 10s。
 - nginx/Caddy 层：已核 360s 充足，不动；
 - 重试策略（sameChannelMaxRetries=3 对 timeout 的合理性）：超时归因透出后
   按生产分布另行裁决——本票只修预算与观测。
@@ -84,9 +91,11 @@ P3 四门 + pr-review-loop（按 skill 走）
 
 ## 6. 裁决
 
-- [默认裁决，可否决] responseHeader 自适应公式 20s+5s/MB 上限 90s——
-  生产观测 MiniMax 30 万 token 首帧 15-45s，公式给 1.3MB→20.7s 偏紧？
-  B 组证明响应头到达是主延迟源，20s base 覆盖上传 + 排队；上限 90s
-  防慢上游占满连接池。数值上线后按 timeout_stage 分布调。
+- [默认裁决，可否决] responseHeader 自适应公式 max(connectMs, 20s+5s/MB)
+  封顶 90s（5s/MB = 0.2MB/s 的保守上传+预填速率假设——中文内容按 UTF-8
+  字节计，审查 A#5 后 30 万 CJK token（~1.3MB 字节）得 ~26.5s）。
+  数值上线后按 timeout_stage 分布调。
+- [用户裁决 2026-10-12] firstByte 自适应 + 异常场景矩阵（100 万 token/
+  超慢首 token 服务器形态）随本票实施——原「不处理」裁决作废。
 - [默认裁决，可否决] failure_code 不加 timeout 归因列（观测走日志）。
 - [环境事实，来源：用户] 单渠道无 fallback——超时预算必须容住上游真实时延。

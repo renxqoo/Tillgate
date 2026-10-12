@@ -12,6 +12,7 @@ import { UpstreamError as UE } from '../errors/kinds';
 import { canceledError, emptyError } from '../errors/internal';
 import { asServerDrainAbort } from '../errors/server-drain';
 import {
+  byteLengthOf,
   firstByteBudget,
   responseHeaderBudget,
   fetchUpstream,
@@ -87,7 +88,7 @@ function firstFrameFailure(
 function classifyStreamAttemptFailure(
   error: unknown,
   signal: AbortSignal,
-  firstByteTimeoutMs: number,
+  firstByteBudgetMs: number,
 ): UpstreamError {
   if (asServerDrainAbort(signal.reason)) {
     return new UE({ kind: 'server_draining' });
@@ -110,7 +111,7 @@ function classifyStreamAttemptFailure(
   if (error instanceof PeekTimeoutError) {
     return new UE({
       kind: 'timeout',
-      message: `no first byte from upstream within ${firstByteTimeoutMs}ms`,
+      message: `no first byte from upstream within ${firstByteBudgetMs}ms`,
       stage: 'first_byte',
     });
   }
@@ -133,6 +134,8 @@ export async function streamAttempt(
   emitAttemptStart(emit, { ctx, key, attempt });
   const bodyStr = JSON.stringify(finalBody);
   const outHeaders = await signStreamHeaders({ adapter, channel, url, bodyStr, headers });
+  // 首帧实际预算（try 外声明——catch 的归因报文消费实际生效值而非静态配置）
+  const firstByteActualBudgetMs = firstByteBudget(byteLengthOf(bodyStr), cfg);
   try {
     // 流式不用 totalMs（流可持续很久，由 heartbeat/inactivity 管理）；
     // connectMs 只覆盖建连，首字节预算由 peekFirstChunk 独立判定——不得用 connectMs
@@ -146,7 +149,10 @@ export async function streamAttempt(
       },
       {
         connectMs: cfg.timeout.connectMs,
-        responseHeaderMs: responseHeaderBudget(bodyStr.length, cfg.timeout),
+        responseHeaderMs: responseHeaderBudget(byteLengthOf(bodyStr), {
+          ...cfg.timeout,
+          connectMs: cfg.timeout.connectMs,
+        }),
         signal,
         guard,
       },
@@ -169,7 +175,7 @@ export async function streamAttempt(
     // 加成不吃 base：小 body 静态预算语义不变（既有测试锁），大 body 获得
     // perMb×mb 预填余量，与响应头预算同封顶。
     const peek = await peekFirstChunk(upstream, {
-      timeoutMs: firstByteBudget(bodyStr.length, cfg),
+      timeoutMs: firstByteActualBudgetMs,
       signal,
     });
     if (peek.done || !peek.rest) return { ok: false as const, error: emptyError(), empty: true };
@@ -177,7 +183,7 @@ export async function streamAttempt(
     if (failure !== null) return { ok: false as const, error: failure };
     return { ok: true as const, value: peek.rest };
   } catch (error) {
-    const err = classifyStreamAttemptFailure(error, signal, cfg.stream.firstByteTimeoutMs);
+    const err = classifyStreamAttemptFailure(error, signal, firstByteActualBudgetMs);
     return { ok: false as const, error: err };
   }
 }
