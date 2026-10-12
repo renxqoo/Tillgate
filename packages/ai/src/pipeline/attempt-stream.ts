@@ -11,7 +11,12 @@ import type { AiEvent } from '../events';
 import { UpstreamError as UE } from '../errors/kinds';
 import { canceledError, emptyError } from '../errors/internal';
 import { asServerDrainAbort } from '../errors/server-drain';
-import { responseHeaderBudget, fetchUpstream, BodyTooLargeError } from '../transport/http-client';
+import {
+  firstByteBudget,
+  responseHeaderBudget,
+  fetchUpstream,
+  BodyTooLargeError,
+} from '../transport/http-client';
 import {
   peekFirstChunk,
   firstChunkStreamError,
@@ -159,14 +164,12 @@ export async function streamAttempt(
       ? adapter.translateUpstreamStream(res.body, ctx.model)
       : res.body;
     // 首帧探测（peek）：空流/首帧错误在此识别——重试仅限首字节前。
-    // firstByte 预算同样按 body 规模自适应（issue #73 扩展：响应头到达后上游仍需
-    // 预填全部上下文才吐首 token——100 万 token 的预填远超静态 60s 的合理范围；
-    // 与响应头共用同一预算函数，上限另设 firstByteMaxMs 防止两者耦合同一封顶）
+    // firstByte 预算按 body 规模自适应（issue #73 扩展：响应头到达后上游仍需
+    // 预填全部上下文才吐首 token——100 万 token 预填远超静态 60s）。只取规模
+    // 加成不吃 base：小 body 静态预算语义不变（既有测试锁），大 body 获得
+    // perMb×mb 预填余量，与响应头预算同封顶。
     const peek = await peekFirstChunk(upstream, {
-      timeoutMs: Math.max(
-        cfg.stream.firstByteTimeoutMs,
-        responseHeaderBudget(bodyStr.length, cfg.timeout),
-      ),
+      timeoutMs: firstByteBudget(bodyStr.length, cfg),
       signal,
     });
     if (peek.done || !peek.rest) return { ok: false as const, error: emptyError(), empty: true };

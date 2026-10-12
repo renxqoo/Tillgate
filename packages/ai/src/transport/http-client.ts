@@ -213,6 +213,21 @@ export function responseHeaderBudget(bodyBytes: number, cfg: ResponseHeaderBudge
   return Math.min(base + mb * perMb, max);
 }
 
+/** 首帧预算（issue #73 扩展）：静态 firstByte + 规模加成（perMb×mb），同封顶 */
+export function firstByteBudget(
+  bodyBytes: number,
+  cfg: {
+    stream: { firstByteTimeoutMs: number };
+    timeout: { responseHeaderPerMbMs: number; responseHeaderMaxMs: number };
+  },
+): number {
+  const mb = bodyBytes / (1024 * 1024);
+  return Math.min(
+    cfg.stream.firstByteTimeoutMs + mb * cfg.timeout.responseHeaderPerMbMs,
+    cfg.timeout.responseHeaderMaxMs,
+  );
+}
+
 export interface FetchUpstreamOptions {
   /**
    * 快失败层：connect + 响应头未达的短预算（issue #73——命名承袭 connectMs，
