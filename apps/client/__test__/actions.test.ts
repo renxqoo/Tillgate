@@ -320,6 +320,17 @@ describe('公开读取面', () => {
       emailCodeRequired: false,
     });
   });
+
+  // 回归：get<T> 是泛型断言、不校验运行时形状；200 + 缺 providers 时旧实现把
+  // undefined 透传给 oauthOptionsFromProviders，整页崩在 providers.includes
+  it('discovery：200 但响应体缺 providers（形状不符）按空数组回落，不抛', async () => {
+    responses.push({ status: 200, body: {} });
+    expect(await fetchOAuthProviders()).toEqual([]);
+    responses.push({ status: 200, body: { providers: 'github' } });
+    expect(await fetchOAuthProviders()).toEqual([]);
+    responses.push({ status: 200, body: { providers: ['github', 'google'] } });
+    expect(await fetchOAuthProviders()).toEqual(['github', 'google']);
+  });
 });
 
 describe('ApiError 形态（消费方契约）', () => {

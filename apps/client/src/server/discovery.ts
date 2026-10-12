@@ -18,13 +18,19 @@ function timeoutFetch(ms: number): typeof globalThis.fetch {
 
 const PROBE_TIMEOUT_MS = 1500;
 
-/** OAuth 登录方式发现（空数组=纯密码登录；不可达按空处理——按钮组隐藏） */
+/**
+ * OAuth 登录方式发现（空数组=纯密码登录；不可达或形状不符按空处理——按钮组隐藏）。
+ *
+ * get<T> 只是泛型断言、不做运行时校验：响应体缺 providers（后端未登录暴露新形状、
+ * 网关返回非预期信封）时 res.providers 是 undefined，直接透传会在
+ * oauthOptionsFromProviders 里炸掉整页，故此处显式收窄数组。
+ */
 export async function fetchOAuthProviders(): Promise<string[]> {
   try {
     const res = await createClientApi({
       fetch: timeoutFetch(PROBE_TIMEOUT_MS),
     }).get<OAuthProviders>('/v1/oauth/providers', { revalidate: false });
-    return res.providers;
+    return Array.isArray(res?.providers) ? res.providers : [];
   } catch {
     return [];
   }
