@@ -354,8 +354,8 @@
     "kpiRate": "RPM / TPM",
     "kpiTpm": "TPM {count}",
     "kpiRateHint": "Last 60s live rate · limits {rpm}/{tpm}",
-    "costTrendTitle": "Daily spend trend",
-    "costTrendDesc": "Request cost aggregated by day (¥)",
+    "costTrendTitle": "Usage trend",
+    "costTrendDesc": "Cost / token / request split by day or hour, stacked by model",
     "modelUsageTitle": "Usage by model",
     "modelUsageDesc": "Cost / token / request split by model over the last 30 days",
     "noUsageData": "No usage data yet",
@@ -363,7 +363,16 @@
     "metricCost": "Cost",
     "metricTokens": "Tokens",
     "metricRequests": "Requests",
-    "metricCacheRate": "Cache hit rate"
+    "metricCacheRate": "Cache hit rate",
+    "granularityDay": "Daily",
+    "granularityHour": "Hourly",
+    "metricInput": "Input",
+    "metricOutput": "Output",
+    "metricCached": "Cached",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "hourlyLoadFailed": "Failed to load hourly data",
+    "legendMoreModels": "{count} more models not shown in legend"
   },
   "keys": {
     "title": "API Keys",

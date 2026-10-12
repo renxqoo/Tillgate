@@ -349,8 +349,8 @@
     "kpiRate": "RPM / TPM",
     "kpiTpm": "TPM {count}",
     "kpiRateHint": "近 60 秒实际速率 · 限额 {rpm}/{tpm}",
-    "costTrendTitle": "每日费用趋势",
-    "costTrendDesc": "按日聚合的请求费用（元）",
+    "costTrendTitle": "用量趋势",
+    "costTrendDesc": "按日/小时聚合的费用、Token 与请求分布（按模型堆叠）",
     "modelUsageTitle": "不同模型用量",
     "modelUsageDesc": "近 30 天按模型的费用 / Token / 次数分布",
     "noUsageData": "暂无用量数据",
@@ -358,7 +358,16 @@
     "metricCost": "费用",
     "metricTokens": "Token",
     "metricRequests": "次数",
-    "metricCacheRate": "缓存率"
+    "metricCacheRate": "缓存率",
+    "granularityDay": "按日",
+    "granularityHour": "按小时",
+    "metricInput": "输入",
+    "metricOutput": "输出",
+    "metricCached": "缓存",
+    "loading": "加载中…",
+    "retry": "重试",
+    "hourlyLoadFailed": "今日小时数据加载失败",
+    "legendMoreModels": "另有 {count} 个模型未在图例展示"
   },
   "keys": {
     "title": "API Key 管理",

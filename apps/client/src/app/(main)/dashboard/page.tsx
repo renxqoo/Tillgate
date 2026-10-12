@@ -14,17 +14,14 @@ import {
 import type {
   UsageByModelItem,
   UsageByModelPage,
-  UsageDayRow,
   UsageRate,
   UsageSummaryPage,
+  UsageTrendPage,
+  UsageTrendRow,
 } from '@tillgate/api-client';
 
-import { CostChart } from '@/features/dashboard/cost-chart';
-import {
-  TREND_WINDOW_DAYS,
-  fillDailyCostSeries,
-  trendWindowFrom,
-} from '@/features/dashboard/cost-trend';
+import { TrendChart } from '@/features/dashboard/trend-chart';
+import { TREND_WINDOW_DAYS, trendWindowFrom } from '@/features/dashboard/trend-series';
 import { KpiCard } from '@/features/dashboard/kpi-card';
 import { todayCost } from '@/features/dashboard/kpi';
 import { ModelUsageChart } from '@/features/dashboard/model-usage-chart';
@@ -46,9 +43,19 @@ interface DashboardData {
   tpm: number;
   activeKeys: number;
   totalKeys: number;
-  dailyCost: Array<{ date: string; value: number }>;
+  /** day 粒度趋势行（服务端预取；序列补零在组件内纯函数完成） */
+  trendDayRows: ReadonlyArray<UsageTrendRow>;
   todayCost: number;
   byModel: ReadonlyArray<UsageByModelItem>;
+}
+
+/** 按日汇总（今日费用 KPI 用；与 trend 独立——summary 不带模型维度） */
+async function fetchUsageSummary(
+  api: ReturnType<typeof createClientApi>,
+  from: Date,
+): Promise<UsageSummaryPage['list']> {
+  const summary = await api.get<UsageSummaryPage>(`/v1/usage/summary?from=${from.toISOString()}`);
+  return summary.list ?? [];
 }
 
 export default async function DashboardPage() {
@@ -56,6 +63,7 @@ export default async function DashboardPage() {
   const me = await requireMe(api);
   const t = await getTranslations('dashboard');
   const locale = await getLocale();
+  const now = new Date();
 
   const data: DashboardData = {
     balance: me.accounts.find((account) => account.currency === 'CNY')?.balance ?? '0',
@@ -66,7 +74,7 @@ export default async function DashboardPage() {
     tpm: 0,
     activeKeys: 0,
     totalKeys: 0,
-    dailyCost: [],
+    trendDayRows: [],
     todayCost: 0,
     byModel: [],
   };
@@ -80,18 +88,17 @@ export default async function DashboardPage() {
     // ignore
   }
 
-  // 近 14 天按日费用（/v1/usage/summary 按日聚合，日界 = 后端 CLIENT_USAGE_TZ；
-  // 起点取起始日 00:00、序列按日补零——首日不再半桶、无消费日不再从图上消失）
+  // 近 14 天趋势（/v1/usage/trend 按日 × 模型聚合，日界 = 后端 CLIENT_USAGE_TZ；
+  // 序列按日补零在组件内完成——首日不再半桶、无消费日不再从图上消失）
   try {
-    const from = trendWindowFrom(TREND_WINDOW_DAYS, DISPLAY_TZ);
-    const summary = await api.get<UsageSummaryPage>(`/v1/usage/summary?from=${from.toISOString()}`);
-    const dayRows: UsageDayRow[] = summary.list ?? [];
-    data.dailyCost =
-      dayRows.length > 0
-        ? fillDailyCostSeries({ rows: dayRows, days: TREND_WINDOW_DAYS, timeZone: DISPLAY_TZ })
-        : [];
+    const from = trendWindowFrom(TREND_WINDOW_DAYS, DISPLAY_TZ, now);
+    const [trend, summaryRows] = await Promise.all([
+      api.get<UsageTrendPage>(`/v1/usage/trend?granularity=day&from=${from.toISOString()}`),
+      fetchUsageSummary(api, from),
+    ]);
+    data.trendDayRows = trend.list ?? [];
     // 今日费用：DISPLAY_TZ 日界推导（显式时区，不用 +8h 硬编码近似）
-    data.todayCost = todayCost(dayRows, DISPLAY_TZ);
+    data.todayCost = todayCost(summaryRows, DISPLAY_TZ, now);
   } catch {
     // 用量不可达时图表留空
   }
@@ -168,7 +175,8 @@ export default async function DashboardPage() {
           <CardDescription>{t('costTrendDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
-          <CostChart data={data.dailyCost} />
+          {/* now 服务端取一次传入：SSR/水合同一时钟，消除午夜/钟差边界的水合不一致 */}
+          <TrendChart dayRows={data.trendDayRows} timeZone={DISPLAY_TZ} now={now} />
         </CardContent>
       </Card>
 

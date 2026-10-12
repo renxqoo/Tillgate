@@ -160,6 +160,25 @@ export interface UsageByModelItem {
   cost: string;
 }
 
+// ── Usage Trend (GET /v1/usage/trend) ────────────────────────────────────────
+/** 趋势聚合行(模型 × 桶;day 桶日界 / hour 桶为 CLIENT_USAGE_TZ 当地时点) */
+export interface UsageTrendRow {
+  /** day: yyyy-MM-dd;hour: yyyy-MM-ddTHH:mm:ss(CLIENT_USAGE_TZ 当地) */
+  bucket: string;
+  model: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  /** 金额字符串(numeric 全精度;图表端按需 Number() 展示) */
+  cost: string;
+}
+/** GET /v1/usage/trend?granularity=day|hour(envelope 回显粒度) */
+export interface UsageTrendPage {
+  granularity: 'day' | 'hour';
+  list: UsageTrendRow[];
+}
+
 // ── 组织/成员 (GET /v1/orgs) ───────────────────────────────────────────────
 export interface OrgRow {
   orgId: number;

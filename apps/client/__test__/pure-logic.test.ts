@@ -22,13 +22,30 @@ import { parseDailySpend, parsePositiveInt } from '../src/features/keys/key-para
 import { isValidTopupAmount } from '../src/features/wallet/topup-schema';
 import { ORDER_STATUS_KEYS, ORDER_STATUS_TONES } from '../src/features/wallet/order-status';
 import { todayCost, todayKey } from '../src/features/dashboard/kpi';
+import type { UsageTrendRow } from '@tillgate/api-client';
+
+/** 趋势行测试夹具（模块级——不捕获 describe 变量，lint 口径） */
+function trendRow(over: Partial<UsageTrendRow>): UsageTrendRow {
+  return {
+    bucket: '2026-10-12',
+    model: 'gpt-x',
+    requests: 1,
+    inputTokens: 10,
+    outputTokens: 5,
+    cachedInputTokens: 2,
+    cost: '0.1',
+    ...over,
+  };
+}
 import {
   TREND_WINDOW_DAYS,
   dayKeyMinus,
-  fillDailyCostSeries,
+  fillDailyTrendSeries,
+  fillHourlyTrendSeries,
+  hourlyBuckets,
   trendWindowFrom,
   zonedDayStart,
-} from '../src/features/dashboard/cost-trend';
+} from '../src/features/dashboard/trend-series';
 import { getThemeBootCode } from '../src/features/shell/theme-boot';
 import { buildPages } from '../src/features/shared/pager-pages';
 import { APP_CONFIG } from '../src/config/app-config';
@@ -276,60 +293,98 @@ describe('费用趋势窗口推导（B21 回归：首日半桶 + 断天不补零
     );
   });
 
-  it('fillDailyCostSeries：窗口内连续 14 点升序补零；垃圾费用回落 0、窗口外行不计', () => {
-    const rows = [
-      {
-        date: '2026-08-23',
-        requests: 1,
-        inputTokens: 1,
-        outputTokens: 1,
-        cachedInputTokens: 0,
-        cost: '2.5',
-      },
-      {
-        date: '2026-08-21',
-        requests: 2,
-        inputTokens: 2,
-        outputTokens: 2,
-        cachedInputTokens: 0,
-        cost: '1.5',
-      },
-      {
-        date: '2026-08-22',
-        requests: 1,
-        inputTokens: 1,
-        outputTokens: 1,
-        cachedInputTokens: 0,
-        cost: 'x',
-      },
-      {
-        date: '2026-08-01',
-        requests: 9,
-        inputTokens: 9,
-        outputTokens: 9,
-        cachedInputTokens: 0,
-        cost: '99',
-      },
-    ];
-    const series = fillDailyCostSeries({
-      rows,
-      days: TREND_WINDOW_DAYS,
-      timeZone: 'Asia/Shanghai',
-      now: SH_TEN_AM,
-    });
-    expect(series).toHaveLength(14);
-    expect(series[0]).toEqual({ date: '2026-08-10', value: 0 });
-    expect(series[13]).toEqual({ date: '2026-08-23', value: 2.5 });
-    expect(series.find((p) => p.date === '2026-08-21')).toEqual({ date: '2026-08-21', value: 1.5 });
-    expect(series.find((p) => p.date === '2026-08-22')?.value).toBe(0);
-    expect(series.some((p) => p.date === '2026-08-01')).toBe(false);
-    const dates = series.map((p) => p.date);
-    expect(dates.toSorted()).toEqual(dates);
-  });
-
   it('dayKeyMinus 纯日历运算（跨月/非闰年 2 月）', () => {
     expect(dayKeyMinus('2026-08-01', 1)).toBe('2026-07-31');
     expect(dayKeyMinus('2026-03-01', 1)).toBe('2026-02-28');
+  });
+});
+
+describe('趋势宽表序列（双粒度 + 模型堆叠）', () => {
+  const NOW = new Date('2026-10-12T06:30:00Z'); // 上海 10-12 14:30
+
+  it('fillDailyTrendSeries：窗口内补零 14 桶、模型×度量展开、窗口外/垃圾桶键丢弃、同桶同模型合并', () => {
+    const { points, models } = fillDailyTrendSeries({
+      rows: [
+        trendRow({}),
+        trendRow({ model: 'claude-y', cost: '0.2', requests: 2 }),
+        // 同桶同模型重复行 → 合并（cost 数值相加）
+        trendRow({ requests: 3, cost: '0.05' }),
+        trendRow({ bucket: '2026-10-11', model: 'claude-y', cost: '1' }),
+        // 窗口外
+        trendRow({ bucket: '2026-09-01' }),
+        // 垃圾桶键（hour 形态混入 day 序列）
+        trendRow({ bucket: '2026-10-12T05:00:00' }),
+        // 垃圾费用 → 0
+        trendRow({ model: 'bad', cost: 'x' }),
+      ],
+      days: TREND_WINDOW_DAYS,
+      timeZone: 'Asia/Shanghai',
+      now: NOW,
+    });
+    expect(points).toHaveLength(14);
+    expect(points[13]?.bucket).toBe('2026-10-12');
+    expect(points[0]?.bucket).toBe('2026-09-29');
+    // 模型全集保序（首现顺序：gpt-x、claude-y、bad）
+    expect(models).toEqual(['gpt-x', 'claude-y', 'bad']);
+    const [last] = points.slice(-1);
+    expect(last?.values['gpt-x::cost']).toBeCloseTo(0.15); // 0.1+0.05 合并
+    expect(last?.values['gpt-x::requests']).toBe(4); // 1+3 合并
+    expect(last?.values['claude-y::cost']).toBeCloseTo(0.2);
+    expect(last?.values['bad::cost']).toBe(0); // 垃圾费用归零
+    // 前一天桶只有 claude-y
+    const [prev] = points.slice(-2, -1);
+    expect(prev?.bucket).toBe('2026-10-11');
+    expect(prev?.values['claude-y::cost']).toBe(1);
+    expect(prev?.values['gpt-x::cost']).toBe(0); // 补零
+  });
+
+  it('fillHourlyTrendSeries：今日 24 桶含未来小时补零、非小时键丢弃', () => {
+    const { points, models } = fillHourlyTrendSeries({
+      rows: [
+        trendRow({ bucket: '2026-10-12T05:00:00', inputTokens: 100 }),
+        trendRow({ bucket: '2026-10-12T05:00:00', model: 'claude-y', inputTokens: 50 }),
+        trendRow({ bucket: '2026-10-12' }), // 日键混入 → 丢弃
+      ],
+      timeZone: 'Asia/Shanghai',
+      now: NOW,
+    });
+    expect(points).toHaveLength(24);
+    expect(models).toEqual(['gpt-x', 'claude-y']);
+    expect(points[0]?.bucket).toBe('2026-10-12T00:00:00');
+    expect(points[5]?.bucket).toBe('2026-10-12T05:00:00');
+    expect(points[5]?.values['gpt-x::input']).toBe(100);
+    expect(points[5]?.values['claude-y::input']).toBe(50);
+    // 尾桶 = 今日 23:00（当日完整 24 小时；与后端 hour 窗口同界）
+    expect(points[23]?.bucket).toBe('2026-10-12T23:00:00');
+    expect(points[23]?.values['gpt-x::input']).toBe(0);
+  });
+
+  it('hourlyBuckets 今日当地 00:00 起 24 桶（尾桶 = 今日 23:00）', () => {
+    const keys = hourlyBuckets('Asia/Shanghai', NOW);
+    expect(keys).toHaveLength(24);
+    expect(keys[0]).toBe('2026-10-12T00:00:00');
+    expect(keys[23]).toBe('2026-10-12T23:00:00');
+  });
+
+  it('hourlyBuckets 非整点偏移时区（Asia/Kathmandu UTC+05:45）', () => {
+    const KTM = new Date('2026-10-12T08:15:00Z'); // 加德满都 10-12 14:00
+    const keys = hourlyBuckets('Asia/Kathmandu', KTM);
+    expect(keys[0]).toBe('2026-10-12T00:00:00');
+    expect(keys[23]).toBe('2026-10-12T23:00:00');
+  });
+
+  it('hourlyBuckets DST 切换日：墙钟序 24 键唯一（回归：毫秒步进曾重复/越界）', () => {
+    // 美东春跳日（2026-03-08 02:00 不存在）与秋回拨日（2026-11-01 01:00 两次）
+    const SPRING = new Date('2026-03-08T15:00:00Z'); // 纽约 03-08 10:00
+    const FALL = new Date('2026-11-01T15:00:00Z'); // 纽约 11-01 10:00
+    for (const at of [SPRING, FALL]) {
+      const keys = hourlyBuckets('America/New_York', at);
+      expect(keys).toHaveLength(24);
+      expect(new Set(keys).size).toBe(24); // 无重复（秋回拨日 01:00 不出现两次）
+      expect(keys.every((k) => k.startsWith('2026-'))).toBe(true);
+      expect(keys[0]).toMatch(/T00:00:00$/);
+      expect(keys[23]).toMatch(/T23:00:00$/); // 尾桶恒为当日 23:00（春跳日不越到次日）
+    }
   });
 });
 
