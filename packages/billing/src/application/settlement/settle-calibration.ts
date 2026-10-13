@@ -93,15 +93,15 @@ export function observeDensity(
   if (seen.prefixBytes <= 0) return;
   const bpt = seen.prefixBytes / seen.inputTokens;
   const bucket = densityBucket(bpt);
-  const key = `${seen.channelId}:${bucket}`;
+  // 告警面只含 lt1（见函数头——非直方图）；非 lt1 提前返回不占 Set
+  if (bucket !== 'lt1') return;
+  const key = `${seen.channelId}:lt1`;
   if (warned.has(key)) return;
   warned.add(key);
-  if (bucket === 'lt1') {
-    log.warn(
-      { channelId: seen.channelId, bucket, bytesPerToken: bpt },
-      'calibration density anomaly',
-    );
-  }
+  log.warn(
+    { channelId: seen.channelId, bucket, bytesPerToken: bpt },
+    'calibration density anomaly',
+  );
 }
 
 /**
