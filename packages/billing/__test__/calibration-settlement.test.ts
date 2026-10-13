@@ -372,19 +372,6 @@ describe('结算事务末尾校准写入（docs §3.1/§4.2）', () => {
     expect(h.world.fixtures.calibrations.size).toBe(0); // 钳制 → 拒写
   });
 
-  it('C7b：低报计数器（inputTokens < prefixBytes/6）→ 不写记录', async () => {
-    const h = harness();
-    await toPendingClaimed(h, {
-      requestId: nextRequestId(),
-      userId: nextUser(),
-      reserved: '4',
-      receiptTokens: 100_000, // bytes/6 = 500k > 100k → 低报
-      quoteCalibration: calibration,
-    });
-    await settle(h, defined([...h.world.fixtures.requests.keys()].at(-1)));
-    expect(h.world.fixtures.calibrations.size).toBe(0);
-  });
-
   it('C7b 回归（生产事故 2026-10-12）：中文负载 4.23B/token 的诚实收据必须写入', async () => {
     // MiniMax 长会话实测：prefixBytes 1367314 / inputTokens 323081 = 4.23 B/token
     // ÷4 下限 341829 误杀（323081 < 341829）——÷6 下限 227886 放行
@@ -410,6 +397,58 @@ describe('结算事务末尾校准写入（docs §3.1/§4.2）', () => {
     expect(zhRecord).toBeDefined(); // ÷6 下不再误杀
     if (zhRecord == null) throw new Error('record missing');
     expect(zhRecord.inputTokens).toBe(323_081);
+  });
+
+  it('C7b 已删：44 B/tok 的低报值也写入——防线在结算侧三件套（密度轴随行落库）', async () => {
+    const h = harness();
+    const userId = nextUser();
+    const requestId = nextRequestId();
+    await toPendingClaimed(h, {
+      requestId,
+      userId,
+      reserved: '4',
+      receiptTokens: 100_000, // 密度 4.4M/100k = 44 B/tok——旧 ÷6 拒写；现写入
+      quoteCalibration: {
+        mappingId: 13,
+        prefixHash: 'lowreport',
+        channelId: h.channelId,
+        inputTokens: null,
+        messagesLen: 2,
+        prefixBytes: 4_400_000,
+      },
+    });
+    expect(await settle(h, requestId)).toBe('settled');
+    const record = h.world.fixtures.calibrations.get(`${userId}\0${13}\0${'lowreport'}`);
+    expect(record).toBeDefined();
+    if (record == null) throw new Error('record missing');
+    expect(record.inputTokens).toBe(100_000); // 写入（B4②/预算熔断/debit_floor 兜底）
+    expect(record.prefixBytes).toBe(4_400_000); // 密度观测轴随行
+  });
+
+  it('C7b 回归（生产事故 2026-10-12/13 两轮）：6.63 B/tok 的诚实收据必须写入', async () => {
+    // 事故一（÷4 杀中文 4.23）、事故二（÷6 杀代码混合 6.63）——删除后必须都写入
+    const h = harness();
+    const userId = nextUser();
+    const requestId = nextRequestId();
+    await toPendingClaimed(h, {
+      requestId,
+      userId,
+      reserved: '3.15',
+      receiptTokens: 299_085, // 生产实测（08:43:52 那笔）
+      quoteCalibration: {
+        mappingId: 13,
+        prefixHash: 'prod-mix',
+        channelId: h.channelId,
+        inputTokens: null,
+        messagesLen: 1201,
+        prefixBytes: 1_982_847, // 6.63 B/tok
+      },
+    });
+    expect(await settle(h, requestId)).toBe('settled');
+    const record = h.world.fixtures.calibrations.get(`${userId}\0${13}\0${'prod-mix'}`);
+    expect(record).toBeDefined();
+    if (record == null) throw new Error('record missing');
+    expect(record.inputTokens).toBe(299_085);
   });
 
   it('估算收据（estimated）→ 不写记录', async () => {
@@ -450,6 +489,7 @@ describe('校准 store 契约（in-memory = postgres 同款语义）', () => {
         channelId: h.channelId,
         inputTokens: 1000,
         messagesLen: i + 1,
+        prefixBytes: 4000,
         requestId: `r${i}`,
         now: new Date(Date.UTC(2026, 9, 1, 0, i)),
       });
@@ -473,6 +513,7 @@ describe('校准 store 契约（in-memory = postgres 同款语义）', () => {
       channelId: h.channelId,
       inputTokens: 111,
       messagesLen: 2,
+      prefixBytes: 500,
       requestId: 'r-old',
       now: new Date(Date.UTC(2026, 9, 1)),
     });
@@ -483,6 +524,7 @@ describe('校准 store 契约（in-memory = postgres 同款语义）', () => {
       channelId: h.channelId,
       inputTokens: 222,
       messagesLen: 3,
+      prefixBytes: 900,
       requestId: 'r-new',
       now: new Date(Date.UTC(2026, 9, 2)),
     });
@@ -498,6 +540,7 @@ describe('校准 store 契约（in-memory = postgres 同款语义）', () => {
         channelId: h.channelId,
         inputTokens: 1000,
         messagesLen: i + 1,
+        prefixBytes: 4000,
         requestId: `r${i}`,
         now: new Date(Date.UTC(2026, 9, 1, 0, i)),
       });

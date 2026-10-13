@@ -882,6 +882,7 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
         channelId: input.channelId,
         inputTokens: input.inputTokens,
         messagesLen: input.messagesLen,
+        prefixBytes: input.prefixBytes,
         settledAt: input.now,
       });
       return Promise.resolve();

@@ -92,6 +92,7 @@ export function createCalibrationStore(db: Db): CalibrationStore {
           channelId: prefixCalibrations.channelId,
           inputTokens: prefixCalibrations.inputTokens,
           messagesLen: prefixCalibrations.messagesLen,
+          prefixBytes: prefixCalibrations.prefixBytes,
           settledAt: prefixCalibrations.settledAt,
         })
         .from(prefixCalibrations)
@@ -115,6 +116,7 @@ export function createCalibrationStore(db: Db): CalibrationStore {
           channelId: input.channelId,
           inputTokens: input.inputTokens,
           messagesLen: input.messagesLen,
+          prefixBytes: input.prefixBytes,
           requestId: input.requestId,
           settledAt: input.now,
         })
@@ -128,6 +130,7 @@ export function createCalibrationStore(db: Db): CalibrationStore {
             channelId: input.channelId,
             inputTokens: input.inputTokens,
             messagesLen: input.messagesLen,
+            prefixBytes: input.prefixBytes,
             requestId: input.requestId,
             settledAt: input.now,
           },
