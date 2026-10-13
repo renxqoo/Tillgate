@@ -132,8 +132,8 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
     world.upstream.script = 'nonstream-calibration';
     world.upstream.calibrationUsage = { promptTokens: 56_000, completionTokens: 185 };
 
-    // 第一笔：写校准行（seen=50593, messagesLen=1；前缀 4k 字节 bytes/4=1k ≤ 50593 ✓）
-    const m1 = [{ role: 'user', content: 'q1'.repeat(110_000) }]; // ~220KB：界 55k ≥ usage 50593（不钳、C7b ✓）
+    // 第一笔：写校准行（seen=50593, messagesLen=1；C7b 已删——仅 C7a/C7c 门）
+    const m1 = [{ role: 'user', content: 'q1'.repeat(110_000) }]; // ~220KB：界 55k ≥ usage 50593（不钳）
     const r1 = await chat(m1);
     expect(r1.status).toBe(200);
     await keys.settleAll(issued.userId);
