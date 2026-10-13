@@ -36,7 +36,7 @@ harness 双向复现（mock server + 生产配置形态）：
   （小 body → 精确 10s 等值 main；1.3MB → 16.5s；4MB → 30s；10MB → 60s；
   字节按 UTF-8 实际字节数）。审查 A#1 两轮修正：max/min 复合式无法同时
   满足「小 body 等值 + 大 body 起步 20s」，定稿为叠加式（连接预算已含于
-  connectMs，base 不再直接参与——gateway 的 BASE_MS 键保留作裸调用下限）。
+  connectMs；gateway 的 BASE_MS 键已随 v3 移除——裸调用下限由 ai 侧 zod default 兜底）。
   响应头前 connect/TTFB 不可观测分离，「快失败层」设计已废弃。
 
 非流式 `attempt-chat` 的 totalMs 不动（120s 覆盖全程，本次事故不涉及）。
@@ -68,8 +68,8 @@ harness 双向复现（mock server + 生产配置形态）：
 
 - `aiConfig.timeout` 增 `responseHeaderBaseMs`(默认 20_000) /
   `responseHeaderPerMbMs`(默认 5_000 = 0.2MB/s 的保守上传+预填速率) / `responseHeaderMaxMs`
-  (默认 90_000)；zod + .env.example（GATEWAY_UPSTREAM_RESPONSE_HEADER_*
-  三键）+ 配置测试；
+  (默认 90_000)；zod + .env.example（PER_MB/MAX 二键）+ 配置测试
+  （BASE_MS 键已废弃移除——设置无效）；
 - `UpstreamError.stage?: TimeoutStage`（可选字段——旧调用方零破坏）；
 - inference 502 context: `upstream_code: timeout` 时附加 `timeout_stage`。
 

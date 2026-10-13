@@ -98,7 +98,7 @@ tokenizer 差异都可构造诚实流量反例。任何把校准界放进安全�
 | # | 条件 | 防的污染 |
 | --- | --- | --- |
 | C7a | 收据**零钳制事实**（acceptTrustedUsage 后 clamps 为空） | 被钳收据的计数器不可信，不得成链路锚点 |
-| C7b | `seen ≥ prefixBytes / 6`（前缀 JSON 字节下限；6B/token 覆盖中文负载 tokenizer 事实——汉字 UTF-8 3B、~1.5 字/token ≈ 4.5B/token，生产实测 MiniMax 4.23B/token 曾被 /4 误杀，2026-10-12 修订） | 低报计数器（清零/极小值/口径排除型）——真低报距此线三个数量级，拦截力不变 |
+| C7b | **已删除**（2026-10-13 裁决 D19：内容字节密度无上界——÷4 杀中文 4.23、÷6 杀代码混合 6.63，两轮生产事故；低报值防线在结算侧三件套） | 原防的低报收据由 B4② 单笔界 + 预算熔断总量界 + debit_floor 账号界兜住，且一笔同键 upsert 自愈 |
 | C7c | seen、messagesLen、各 id 为有限正整数 | 结构垃圾 |
 
 ### 2.3 双界与打折口径
@@ -373,7 +373,11 @@ billing 零新增核心计价逻辑（B4 分支、store、conservative_channel_a
 2. 观察面：calibration_hit 增长、calibration_over_exposure{reason} 占比、
    waived 日增量、负余额深度。**异常处置**：cache_ratio 调低（KV 秒级）→
    观察 → 仍异常 revert 代码。
-3. 回滚阶梯（顺序不可颠倒）：调 KV cache_ratio（秒级，收缩校准收益）
+3. **校准应急闸（免部署）**：KV `billing_calibration.window_ms` 调至下限 1000
+   → 窗口判定恒超 → 读侧全 miss → 校准瞬时关闭（可瞬时恢复）；垃圾行按
+   (user,mapping) 保留 8 条自然驱逐，最长 1h 自清。**注意：revert 代码会把
+   C7b 带回来 = 回到误杀状态（已知坏态）——应急优先用 KV 关窗。**
+4. 回滚阶梯（顺序不可颠倒）：调 KV cache_ratio（秒级，收缩校准收益）
    → 排空在途（≤ lease 5 分钟）→ revert + migration down。**注意：没有
    「改 KV 关停」——功能开关已删除（D18）**；直接 revert 会让旧 settle
    消费已授权校准 quote。
@@ -400,6 +404,7 @@ billing 零新增核心计价逻辑（B4 分支、store、conservative_channel_a
 | D16 | I0 安全/经济分离：B2 与死信阈值永不消费校准界（结构性，非配置） | 方案裁决 v4（P1/P1a 处置；本方案最重要的一条） |
 | D17 | F1（#over 并发败者死信）随本方案修复 | 方案裁决 v4（P4 处置：over 是本方案设计的常态路径，前置依赖） |
 | D18 | 校准恒开：删除 enabled/user_side 开关（用户裁决 2026-10-12——直接使用最新行为）；KV 仅承载 window_ms/cache_ratio 调参 | 用户裁决（2026-10-12），取代 D1 的分步放量 |
+| D19 | C7b 密度下限删除（三路对抗审查裁决）：论证=故障半径不对称（守卫防一笔有界自愈事件 vs 守卫自身失败=全局断粮）；prefixBytes 保留为密度观测轴（非门禁）+ lt1 桶告警；防线表述=B4② 单笔 + 预算熔断总量 + debit_floor 账号三件套 | 方案裁决 v7（2026-10-13，三路审查） |
 
 ## 11. 测试口径（先于实现定稿）
 
@@ -474,5 +479,7 @@ billing 零新增核心计价逻辑（B4 分支、store、conservative_channel_a
 - URL 引用媒体的字节界低估（output-cap.ts 对 referenced media 按字节计，
   厂商按尺寸计）：存量缺陷，保守口径下即可触发现行 B4；另行工单。
 - waived 累计无界：D15 监控接受；如需硬限额属新状态机（不在本方案）。
-- 计数器口径轮间不一致的厂商（C7b 拦截大部分）：残余表现为
-  calibration_gap 指标，§9 步骤 2 中止条件覆盖。
+- 计数器口径轮间不一致的厂商（C7b 已删——D19；低报值直接写入，防线在
+  结算侧三件套）：表现为 calibration_over_exposure{calibration_gap} 与
+  prefix_bytes/input_tokens 密度轴离线判别，§9 应急闸（window_ms 关窗）
+  可即时隔离坏渠道影响。

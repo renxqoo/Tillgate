@@ -290,9 +290,17 @@ export async function assembleWorker(
       // 校准容错区间命中（docs §4.2 ②）：观测计数 + 批后保留策略清理（幂等）
       if (data.calibratedOverExposure) {
         // reason 标签随日志（v5 二值——§9 步骤 2 中止条件观察数据源，
-        // metrics 管道装配可换计数器，日志保底）
+        // metrics 管道装配可换计数器，日志保底）。userId/channelId/mappingId
+        // 是坏中转定位三件（C7b 删除后首个坏中转事件的 MTTR 依赖此行——
+        // reason 指标无法区分低报中转与缓存 miss，密度轴需手工 join 三键）
         logger.warn(
-          { requestId: data.requestId, reason: data.calibrationReason ?? 'unknown' },
+          {
+            requestId: data.requestId,
+            userId: data.userId,
+            channelId: (data.receipt as { channelId?: number } | undefined)?.channelId,
+            mappingId: (data.receipt as { mappingId?: number } | undefined)?.mappingId,
+            reason: data.calibrationReason ?? 'unknown',
+          },
           'calibration over exposure settled',
         );
       }

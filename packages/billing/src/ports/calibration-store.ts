@@ -1,7 +1,8 @@
 /**
  * 校准记录 port（docs/calibrated-exposure-estimate.md §3.1）：
  * 读侧 = inference 经 gateway 装配消费（quote 准备 top-N 现读）；
- * 写侧 = 结算事务末尾 upsert（C7 守卫后的可信事实）；
+ * 写侧 = 结算提交后 upsert（C7a 零钳制 + C7c 类型检查守卫；C7b 密度下限
+ * 已删——防线在结算侧三件套）；
  * 清理 = worker 批后 best-effort（不占资金事务锁）。
  *
  * 记录是可重建的派生事实（结算重新积累）：读写任何一侧失败都安全回落
@@ -17,6 +18,8 @@ export interface CalibrationRow {
   channelId: number;
   inputTokens: number;
   messagesLen: number;
+  /** 密度观测轴（读侧回显——与 upsert 同源） */
+  prefixBytes: number;
   settledAt: Date;
 }
 
@@ -28,6 +31,8 @@ export interface CalibrationUpsertInput {
   channelId: number;
   inputTokens: number;
   messagesLen: number;
+  /** 密度观测轴（非门禁——C7b 已删；lt1 桶告警消费） */
+  prefixBytes: number;
   requestId: string;
   now: Date;
 }

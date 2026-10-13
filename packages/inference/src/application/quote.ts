@@ -66,7 +66,7 @@ export interface QuoteCalibrationSnapshot {
   /** 命中才有：上一笔实测 inputTokens（seen） */
   inputTokens: number | null;
   messagesLen: number;
-  /** C7b 写入守卫基准（前缀规范化字节长） */
+  /** 前缀规范化字节长（密度观测轴——非门禁，见 prefixBytesOf 注释） */
   prefixBytes: number;
   /** 命中才有：生效值快照（v3-R5：授权/预留/结算同值） */
   cacheRatio: number | null;
@@ -350,11 +350,11 @@ function tailUpperBound(body: { messages?: unknown }, from: number): number {
   }
 }
 
-/** 前缀规范化字节长（C7b 写入守卫基准——结算侧镜像判定用） */
 /**
- * 前缀规范化字节长（C7b 守卫基准——P8：与哈希链 h_sys 覆盖面对齐，
- * 计入 {system, tools, messages} 全量；只算 messages 会让大 system +
- * 极小 messages 的低报收据绕过 bytes/4 物理下限）。
+ * 前缀规范化字节长（密度观测轴——C7b 删除后唯一保留的坏中转判别证据：
+ * prefix_bytes/input_tokens 时间序列可离线区分「低报中转」与「缓存 miss」。
+ * 不得用于任何写入门禁（bytes/N 静态阈值两轮误杀真实收据的教训）。
+ * 覆盖面与哈希链 h_sys 对齐（system+tools+messages 全量）。
  */
 function prefixBytesOf(body: { system?: unknown; tools?: unknown; messages?: unknown }): number {
   try {

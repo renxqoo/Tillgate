@@ -20,7 +20,10 @@ import { createHash } from 'node:crypto';
 export interface CalibrationRecord {
   prefixHash: string;
   channelId: number;
-  /** 上一笔收据实测 inputTokens（C7b 保证 ≥ prefixBytes/4） */
+  /**
+   * 上一笔收据实测 inputTokens（C7b 已删——密度下限因内容字节密度无上界
+   * 两轮误杀真实收据；低报值防线在结算侧三件套，见 settle-calibration.ts）
+   */
   inputTokens: number;
   messagesLen: number;
   settledAt: Date;
