@@ -479,5 +479,7 @@ billing 零新增核心计价逻辑（B4 分支、store、conservative_channel_a
 - URL 引用媒体的字节界低估（output-cap.ts 对 referenced media 按字节计，
   厂商按尺寸计）：存量缺陷，保守口径下即可触发现行 B4；另行工单。
 - waived 累计无界：D15 监控接受；如需硬限额属新状态机（不在本方案）。
-- 计数器口径轮间不一致的厂商（C7b 拦截大部分）：残余表现为
-  calibration_gap 指标，§9 步骤 2 中止条件覆盖。
+- 计数器口径轮间不一致的厂商（C7b 已删——D19；低报值直接写入，防线在
+  结算侧三件套）：表现为 calibration_over_exposure{calibration_gap} 与
+  prefix_bytes/input_tokens 密度轴离线判别，§9 应急闸（window_ms 关窗）
+  可即时隔离坏渠道影响。

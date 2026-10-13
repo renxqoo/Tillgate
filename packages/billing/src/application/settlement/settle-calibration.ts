@@ -68,7 +68,7 @@ export function calibrationWriteOf(
 }
 
 /** 密度桶（观测粒度——非行为阈值；<1 B/tok 即低报中转的强信号） */
-function densityBucket(bytesPerToken: number): string {
+export function densityBucket(bytesPerToken: number): string {
   if (bytesPerToken < 1) return 'lt1';
   if (bytesPerToken < 4) return '1-4';
   if (bytesPerToken < 8) return '4-8';
@@ -77,13 +77,15 @@ function densityBucket(bytesPerToken: number): string {
 }
 
 /**
- * 校准写入密度观测（C7b 删除的替代感知面——纯遥测非门禁）：
- * 坏中转（恒报低值）在写入侧表现为 bytesPerToken 超大（前缀 2MB 只报 1k
- * token → 2000 B/tok）。每渠道每桶只记一次（进程级 Set 去重），日志面
- * 供聚合管道消费；lt1 桶额外 warn——它对诚实内容不可达（B2 钳制保证
- * inputTokens ≤ 字节界 ⇒ 密度 ≥ 1），出现即收据异常。
+ * 写入侧 lt1 异常告警（C7b 删除后的感知面之一——非门禁，非直方图：
+ * 分布观测走 prefix_bytes 落库列）。密度 = prefixBytes/inputTokens；
+ * lt1（<1 B/tok）是强异常信号但**非定理**——B2 钳制界盖全 body 字节而
+ * prefixBytes 只数 {system,tools,messages} 子集，body 质量集中在前缀外
+ * 大字段（如 metadata）时诚实收据也可触 lt1（误报方向：排查时先核
+ * body 形态再怀疑中转）。高密度端（坏中转低报的特征）不在告警面——
+ * 诚实内容高密度可达（两轮事故教训），告警即重造误杀火警。
  */
-function observeDensity(
+export function observeDensity(
   seen: { channelId: number; inputTokens: number; prefixBytes: number },
   warned: Set<string>,
   log: { warn: (obj: Record<string, unknown>, msg: string) => void },
@@ -103,15 +105,18 @@ function observeDensity(
 }
 
 /**
- * 密度遥测的去重与日志（模块级——进程生命周期）。console.warn 写 stderr：
- * 部署环境需同时采集 stdout/stderr 两流（pino 不拦截 console），同
- * gateway/adapters/calibration-policy.ts 前例——不引 logger 依赖避免
- * settlement 层装配耦合。
+ * lt1 异常告警的去重（模块级 Set——每渠道每桶每进程一次；多 worker 副本各自
+ * 独立，语义是告警去重不是观测聚合）。console.warn 写 stderr：部署环境需
+ * 同时采集两流（pino 不拦截 console），同 calibration-policy.ts 前例——
+ * billing 能力包不注入 logger（SettleEnv 无日志口），字段尽量对齐 pino
+ * 形态（level 数值 + time）降低聚合管道解析成本。
+ * 注：本告警非直方图——密度分布的完整观测面是 prefix_bytes 落库列
+ * （离线分析），此处只做「强异常信号」的单点告警。
  */
-const densityObserved = new Set<string>();
+const densityWarned = new Set<string>();
 const densityLog = {
   warn(obj: Record<string, unknown>, msg: string) {
-    console.warn(JSON.stringify({ level: 'warn', msg, ...obj }));
+    console.warn(JSON.stringify({ level: 40, time: Date.now(), msg, ...obj }));
   },
 };
 
@@ -132,7 +137,7 @@ export async function writeCalibrationRecord(
         inputTokens: input.inputTokens,
         prefixBytes: input.prefixBytes,
       },
-      densityObserved,
+      densityWarned,
       densityLog,
     );
     await env.calibrations.upsert(undefined as never, input);

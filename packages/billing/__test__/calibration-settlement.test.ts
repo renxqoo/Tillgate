@@ -1,7 +1,7 @@
 /**
  * 收据校准结算路径契约测试（docs/calibrated-exposure-estimate.md §4.2/§3.1）：
  * B4 三分支（NULL 死信 / 容错区间超额扣减 / 超保守死信）+ 结算事务末尾校准
- * 写入（C7a/C7b 守卫）+ 回归锚（非校准请求行为与现状一致）。
+ * 写入（C7a 零钳制 + C7c 类型检查守卫——C7b 已删）+ 回归锚（非校准请求行为与现状一致）。
  * 内存 stand-in；结算夹具直驱 store（authorize 全链在 billing-authorize.test）。
  */
 import { describe, expect, it } from 'vitest';
@@ -475,6 +475,38 @@ describe('结算事务末尾校准写入（docs §3.1/§4.2）', () => {
     });
     await settle(h, defined([...h.world.fixtures.requests.keys()].at(-1)));
     expect(h.world.fixtures.calibrations.size).toBe(0);
+  });
+});
+
+describe('写入侧密度告警（observeDensity——C7b 删除后的感知面）', () => {
+  it('densityBucket 边界表：五桶全覆盖', async () => {
+    const { densityBucket } = await import('../src/application/settlement/settle-calibration.js');
+    expect(densityBucket(0.5)).toBe('lt1');
+    expect(densityBucket(0.999)).toBe('lt1');
+    expect(densityBucket(1)).toBe('1-4');
+    expect(densityBucket(4.23)).toBe('4-8');
+    expect(densityBucket(6.63)).toBe('4-8');
+    expect(densityBucket(8)).toBe('8-32');
+    expect(densityBucket(32)).toBe('gte32');
+    expect(densityBucket(2000)).toBe('gte32');
+  });
+
+  it('observeDensity：lt1 告警一次+同渠道去重；非 lt1 静默；prefixBytes=0 早退', async () => {
+    const { observeDensity } = await import('../src/application/settlement/settle-calibration.js');
+    const warns: Array<Record<string, unknown>> = [];
+    const log = { warn: (obj: Record<string, unknown>) => warns.push(obj) };
+    const warned = new Set<string>();
+    const lt1 = { channelId: 8, inputTokens: 100_000, prefixBytes: 50_000 }; // 0.5 B/tok
+    observeDensity(lt1, warned, log);
+    observeDensity(lt1, warned, log); // 同渠道去重
+    expect(warns).toHaveLength(1);
+    expect(warns[0]).toMatchObject({ channelId: 8, bucket: 'lt1' });
+    observeDensity({ channelId: 8, inputTokens: 50_000, prefixBytes: 200_000 }, warned, log); // 4 B/tok 静默
+    expect(warns).toHaveLength(1);
+    observeDensity({ channelId: 9, inputTokens: 100_000, prefixBytes: 0 }, warned, log); // 除零守卫
+    expect(warns).toHaveLength(1);
+    observeDensity({ channelId: 9, inputTokens: 100, prefixBytes: 50 }, warned, log); // 渠道 9 的 lt1
+    expect(warns).toHaveLength(2);
   });
 });
 

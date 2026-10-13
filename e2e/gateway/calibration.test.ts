@@ -3,7 +3,7 @@
  *   旅程一：同前缀两笔 → 第二笔校准命中（prefix_calibrations 行 + quote.calibration
  *           字段 + channel_reserved_amount = 分段闭式 + conservative 非空）；
  *           改前缀第三笔 → 逐字段保守（回归锚）。
- *   旅程二：C7b 守卫（低报拒写）+ 超校准预留 ≤ 保守金额 → 超额扣减不死信。
+ *   旅程二：C7b 删除锚（低密度也写入）+ 超校准预留 ≤ 保守金额 → 超额扣减不死信。
  *   旅程三：B2 钳制边界绿灯（发票超字节界 → 钳定结算照常完成）。
  *
  * 闭式断言（非不等式——假绿对抗抽查点）；金额按 kit 价格快照
@@ -227,10 +227,11 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
     await keys.assertReconciled(issued.userId, '100');
   });
 
-  it('旅程二：C7b 拒写 + 超校准预留 ≤ 保守 → 超额扣减不死信', async () => {
+  it('旅程二：C7b 删除锚（低密度也写入）+ 超校准预留 ≤ 保守 → 超额扣减不死信', async () => {
     const issued = await keys.issue('100');
     raw = issued.raw;
-    // 大前缀（400KB → bytes/4=100k > seen 60k → C7b 拒写——守卫的 e2e 验证）
+    // C7b 已删（D19）：大前缀低密度（400KB / seen 60k ≈ 6.7 B/tok——两轮事故
+    // 的误杀形态）现在直接写入（防线在结算侧三件套）
     world.upstream.script = 'nonstream-calibration';
     const big = [{ role: 'user', content: 'x'.repeat(400_000) }];
     world.upstream.calibrationUsage = { promptTokens: 60_000, completionTokens: 100 };
@@ -238,7 +239,7 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
     expect(r1.status).toBe(200);
     await keys.settleAll(issued.userId);
 
-    // 满足 C7b 的小前缀：200KB → bytes/4=50k ≤ seen 60k ✓ → 写记录
+    // 第二前缀也写入（多行共存——密度观测轴随行落库）
     const small = [{ role: 'user', content: 's'.repeat(200_000) }];
     const r1b = await chat(small);
     expect(r1b.status).toBe(200);
@@ -247,7 +248,7 @@ describe.skipIf(!hasEnv)('E2E 收据校准三旅程', () => {
       .select()
       .from(prefixCalibrations)
       .where(eq(prefixCalibrations.userId, issued.userId));
-    expect(rows1).toHaveLength(1); // 只有 small 的记录（big 被 C7b 拒写）
+    expect(rows1).toHaveLength(2); // 两个前缀都写入（C7b 删除的 e2e 锚）
 
     // 第二笔：命中（seen=60000）但实际 usage 90k——超分段 ≈0.05、≤ 保守 ≈0.297
     const small2 = [...small, { role: 'user', content: 't' }];
