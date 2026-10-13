@@ -102,7 +102,12 @@ function observeDensity(
   }
 }
 
-/** 校准写入（结算事务提交后独立执行——P10 毒化隔离；失败丢弃可重建） */
+/**
+ * 密度遥测的去重与日志（模块级——进程生命周期）。console.warn 写 stderr：
+ * 部署环境需同时采集 stdout/stderr 两流（pino 不拦截 console），同
+ * gateway/adapters/calibration-policy.ts 前例——不引 logger 依赖避免
+ * settlement 层装配耦合。
+ */
 const densityObserved = new Set<string>();
 const densityLog = {
   warn(obj: Record<string, unknown>, msg: string) {
@@ -110,21 +115,26 @@ const densityLog = {
   },
 };
 
+/** 校准写入（结算事务提交后独立执行——P10 毒化隔离；失败丢弃可重建） */
+
 export async function writeCalibrationRecord(
   env: SettleEnv,
   input: Parameters<CalibrationStore['upsert']>[1],
 ): Promise<void> {
   if (env.calibrations == null) return;
-  observeDensity(
-    {
-      channelId: input.channelId,
-      inputTokens: input.inputTokens,
-      prefixBytes: input.prefixBytes,
-    },
-    densityObserved,
-    densityLog,
-  );
   try {
+    // 遥测同圈保护（审查 B-F1）：writeCalibrationRecord 的契约是提交后
+    // best-effort 永不反杀结算——batch 路径中抛错会中断同批后续 onSettled/
+    // onUsageDefect（审计落账）。观测不得置于结算管线上。
+    observeDensity(
+      {
+        channelId: input.channelId,
+        inputTokens: input.inputTokens,
+        prefixBytes: input.prefixBytes,
+      },
+      densityObserved,
+      densityLog,
+    );
     await env.calibrations.upsert(undefined as never, input);
   } catch {
     // 派生事实：丢弃（下一笔回落保守，非资损）
