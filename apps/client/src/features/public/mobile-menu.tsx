@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Menu, X } from 'lucide-react';
+import { MenuIcon, XIcon } from 'lucide-react';
 
 export interface MobileLink {
   href: string;
@@ -30,10 +30,12 @@ export function MobileMenu({ links, loggedIn, loginLabel, enterLabel, startLabel
         className="flex size-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
         onClick={() => setOpen((v) => !v)}
       >
-        {open ? <X className="size-5" /> : <Menu className="size-5" />}
+        {open ? <XIcon className="size-5" /> : <MenuIcon className="size-5" />}
       </button>
       {open ? (
-        <div className="absolute inset-x-0 top-full border-t border-slate-100 bg-white px-6 py-4 shadow-lg">
+        // 面板相对视口定位（fixed）而非按钮组（absolute）：父级是 flex item，
+        // 宽度会被兄弟元素挤压到远小于视口，inset-x-0 跟着塌 → 文字被迫竖排
+        <div className="fixed inset-x-0 top-16 z-50 border-b border-slate-100 bg-white px-6 py-4 shadow-lg">
           <nav className="space-y-1">
             {links.map((l) => (
               <Link

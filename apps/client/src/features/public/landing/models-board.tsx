@@ -43,8 +43,10 @@ export function ModelsBoard({
           </p>
         ) : (
           <div className="grid gap-8 lg:grid-cols-12">
+            {/* min-w-0：grid 子项默认 min-width:auto，内部文本的 min-content 会把
+                1fr 列顶宽到超出容器 → 窄屏整页横向滚动 */}
             {/* 精选卡片 */}
-            <div className="relative overflow-hidden rounded-3xl bg-[#f5f7fb] p-8 lg:col-span-5">
+            <div className="relative min-w-0 overflow-hidden rounded-3xl bg-[#f5f7fb] p-8 lg:col-span-5">
               <div
                 className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-[#3957ff]/10 blur-3xl"
                 aria-hidden
@@ -95,7 +97,7 @@ export function ModelsBoard({
             </div>
 
             {/* 榜单列表 */}
-            <div className="rounded-3xl border border-slate-100 bg-white p-6 lg:col-span-7">
+            <div className="min-w-0 rounded-3xl border border-slate-100 bg-white p-6 lg:col-span-7">
               <div className="mb-4 flex flex-wrap items-end justify-between gap-2 px-2">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">{t('boardRankTitle')}</p>

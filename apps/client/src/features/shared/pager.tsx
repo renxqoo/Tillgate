@@ -25,11 +25,14 @@ export function Pager({
   totalPages,
   searchParams = {},
   pageKey = 'page',
+  align = 'end',
 }: {
   page: number;
   totalPages: number;
   searchParams?: SearchParamsInput;
   pageKey?: string;
+  /** 对齐方式：控制台列表页右对齐（默认）；营销页传 'center' 居中 */
+  align?: 'end' | 'center';
 }) {
   const t = useTranslations('ui');
   if (totalPages <= 1) return null;
@@ -39,7 +42,7 @@ export function Pager({
     target >= 1 && target <= totalPages && target !== page;
 
   return (
-    <Pagination className="justify-end">
+    <Pagination className={align === 'center' ? 'justify-center' : 'justify-end'}>
       <PaginationContent>
         <PaginationItem>
           <PaginationPrevious

@@ -1,92 +1,28 @@
-import { SearchIcon, TagIcon } from 'lucide-react';
-import Link from 'next/link';
 import type { ReactNode } from 'react';
+
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
-import { Input } from '@tillgate/ui';
-import type { PricingModel } from '@tillgate/api-client';
+import { Alert, AlertDescription, Badge, Button, Input } from '@tillgate/ui';
 
+import { PricingTable } from '@/features/pricing/pricing-table';
+import { LandingFooter } from '@/features/public/landing/landing-footer';
+import { LandingHeader } from '@/features/public/landing/landing-header';
 import { Pager } from '@/features/shared/pager';
+import { listHref } from '@/server/list-query';
 import { fetchPublicPricing } from '@/server/public-pricing';
+import { optionalMe } from '@/server/session';
 
 export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 50;
 
-/** 计价方式目录键（pricing 命名空间）；未知 unit 原样回显 */
-const PRICING_UNIT_KEYS: Record<string, string> = {
-  token: 'unitToken',
-  request: 'unitRequest',
-  image: 'unitImage',
-  second: 'unitSecond',
-  char: 'unitChar',
-};
-
-/** next-intl t 的最小调用面（传参收窄，避免整份 Translator 类型穿透） */
-type Translate = (key: string, values?: Record<string, string | number>) => string;
-
-function fmtYuanPerMillion(price: string): string {
-  const n = Number(price);
-  if (!Number.isFinite(n) || n === 0) return '—';
-  // 元/百万token 展示为 ¥/1M
-  return `¥${n}`;
-}
-
-function fmtUnitPrice(unit: string, price: string, t: Translate): string {
-  const n = Number(price);
-  if (!Number.isFinite(n) || n === 0) return '—';
-  let suffix = '';
-  if (unit === 'request') suffix = t('perRequest');
-  else if (unit === 'image') suffix = t('perImage');
-  else if (unit === 'second') suffix = t('perSecond');
-  else if (unit === 'char') suffix = t('perChar');
-  return `¥${n}${suffix}`;
-}
-
-// —— 模块级渲染函数：t.rich 富文本回调 / 行内 JSX 提取，避免渲染期定义组件
-// （react/no-unstable-nested-components）并压平页面函数行数 ——
-
-/** t.rich 的 register 富文本渲染：指向注册页 */
+/** t.rich 的 register 富文本渲染：指向注册页（模块级——避免渲染期定义组件） */
 function renderRegisterLink(chunks: ReactNode) {
   return (
-    <Link href="/register" className="underline">
+    <Link href="/register" className="font-medium text-slate-900 underline underline-offset-2">
       {chunks}
     </Link>
-  );
-}
-
-/** 分时段窗口副行（token 制展示输入/输出价，其余制展示单位价） */
-function renderScheduleRow(m: PricingModel, t: Translate) {
-  return (
-    <tr className="border-t bg-muted/20">
-      <td colSpan={7} className="px-4 py-2">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{t('scheduleBadge')}</span>
-          <span>{t('scheduleBase')}</span>
-          {m.pricingUnit === 'token' ? (
-            <span className="font-mono">
-              {t('scheduleInOut', {
-                input: fmtYuanPerMillion(m.inputPrice),
-                output: fmtYuanPerMillion(m.outputPrice),
-              })}
-            </span>
-          ) : (
-            <span className="font-mono">{fmtUnitPrice(m.pricingUnit, m.unitPrice, t)}</span>
-          )}
-          {m.schedule?.map((w, i) => (
-            <span key={i} className="rounded bg-primary/5 px-2 py-0.5 font-mono text-primary">
-              {`${w.label ? `${w.label} ` : ''}${w.start}–${w.end}`}
-              {m.pricingUnit === 'token'
-                ? `：${t('scheduleInOut', {
-                    input: fmtYuanPerMillion(w.inputPrice ?? m.inputPrice),
-                    output: fmtYuanPerMillion(w.outputPrice ?? m.outputPrice),
-                  })}`
-                : `：${fmtUnitPrice(m.pricingUnit, w.unitPrice ?? m.unitPrice, t)}`}
-            </span>
-          ))}
-        </div>
-      </td>
-    </tr>
   );
 }
 
@@ -96,6 +32,8 @@ export default async function PricingPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const t = await getTranslations('pricing');
+  const tLanding = await getTranslations('landing');
+  const tUi = await getTranslations('ui');
 
   const sp = await searchParams;
   const q = ((Array.isArray(sp.q) ? sp.q[0] : sp.q) ?? '').trim();
@@ -103,110 +41,91 @@ export default async function PricingPage({
     1,
     Number.parseInt((Array.isArray(sp.page) ? sp.page[0] : sp.page) ?? '1', 10) || 1,
   );
-  const data = await fetchPublicPricing({ q, page, pageSize: PAGE_SIZE });
+
+  // 登录态只影响导航按钮形态（进控制台 / 登录），取数失败按未登录处理
+  const [data, me] = await Promise.all([
+    fetchPublicPricing({ q, page, pageSize: PAGE_SIZE }),
+    optionalMe(),
+  ]);
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-12">
-      <header className="mb-8 flex items-center gap-3">
-        <TagIcon className="size-7 text-primary" />
-        <div>
-          <h1 className="text-2xl font-semibold">{t('title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
-        {/* 原生 GET 搜索：提交即回第 1 页 */}
-        <form method="GET" className="relative ml-auto">
-          <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            name="q"
-            defaultValue={q}
-            placeholder={t('searchPlaceholder')}
-            className="w-52 pl-9"
-          />
-        </form>
-      </header>
-      {data === null ? (
-        <p className="text-sm text-muted-foreground">{t('unavailable')}</p>
-      ) : (
-        <>
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left">
-                <tr>
-                  <th className="px-4 py-2 font-medium">{t('colModel')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colBilling')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('colInput')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('colOutput')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('colCacheHit')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('colUnitPrice')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('colContext')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.models.map((m) => (
-                  <tr key={m.id} className="border-t">
-                    <td className="px-4 py-2 font-mono text-xs">
-                      {m.externalName}
-                      {m.isFree ? (
-                        <span className="ml-2 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600">
-                          {t('freeBadge')}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground">
-                      {(() => {
-                        const unitKey = PRICING_UNIT_KEYS[m.pricingUnit];
-                        return unitKey ? t(unitKey) : m.pricingUnit;
-                      })()}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono text-xs">
-                      {m.pricingUnit === 'token' ? fmtYuanPerMillion(m.inputPrice) : '—'}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono text-xs">
-                      {m.pricingUnit === 'token' ? fmtYuanPerMillion(m.outputPrice) : '—'}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono text-xs">
-                      {m.pricingUnit === 'token' ? fmtYuanPerMillion(m.cacheInputPrice) : '—'}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono text-xs">
-                      {m.pricingUnit === 'token'
-                        ? '—'
-                        : fmtUnitPrice(m.pricingUnit, m.unitPrice, t)}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono text-xs text-muted-foreground">
-                      {m.contextLength ? `${Math.round(m.contextLength / 1000)}K` : '—'}
-                    </td>
-                    {m.schedule && m.schedule.length > 0 ? renderScheduleRow(m, t) : null}
-                  </tr>
-                ))}
-                {data.models.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                      {t('noMatch', { q })}
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+    <div className="min-h-screen bg-white text-slate-900 antialiased">
+      <LandingHeader t={tLanding} me={!!me} anchorPrefix="/" />
+      <main className="mx-auto max-w-6xl px-6 py-14">
+        <header className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-xl">
+            <Badge variant="outline" className="border-slate-200 text-slate-500 hover:bg-slate-50">
+              {t('eyebrow')}
+            </Badge>
+            <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">{t('title')}</h1>
+            <p className="mt-3 text-sm leading-relaxed text-slate-500">{t('subtitle')}</p>
           </div>
-          <div className="mt-3">
-            <Pager
-              page={page}
-              totalPages={Math.max(1, Math.ceil(data.total / PAGE_SIZE))}
-              searchParams={q ? { q } : {}}
-            />
+          <div className="w-full shrink-0 lg:max-w-md">
+            {/* 原生 GET 搜索：提交即回第 1 页（page 不带进表单） */}
+            <form method="GET" className="flex items-center gap-2">
+              <Input
+                name="q"
+                defaultValue={q}
+                placeholder={t('searchPlaceholder')}
+                aria-label={t('searchPlaceholder')}
+                className="h-10 w-full rounded-xl bg-slate-50 pl-9"
+              />
+              <Button type="submit" className="h-10 shrink-0 rounded-xl px-4">
+                {tUi('search')}
+              </Button>
+              {q ? (
+                <Button
+                  variant="ghost"
+                  className="h-10 shrink-0 rounded-xl px-3 text-slate-500"
+                  render={<a href={listHref({}, { q: undefined, page: undefined })} />}
+                  aria-label={tUi('clearSearch')}
+                >
+                  {tUi('clearSearch')}
+                </Button>
+              ) : null}
+            </form>
+            {data ? (
+              <p className="mt-3 text-xs text-slate-400">
+                {t('resultCount', { count: data.total })}
+              </p>
+            ) : null}
           </div>
-          {data.billingTimezone ? (
-            <p className="mt-2 text-xs text-muted-foreground">
-              {t('scheduleTimezoneNote', { timezone: data.billingTimezone })}
-            </p>
-          ) : null}
-        </>
-      )}
-      <p className="mt-6 text-sm text-muted-foreground">
-        {t.rich('footer', {
-          register: (chunks) => renderRegisterLink(chunks),
-        })}
-      </p>
-    </main>
+        </header>
+
+        {data === null ? (
+          <Alert variant="destructive" className="mt-10 rounded-xl">
+            <AlertDescription>{t('unavailable')}</AlertDescription>
+          </Alert>
+        ) : data.models.length === 0 ? (
+          <div className="mt-10 rounded-xl border border-slate-100 bg-slate-50/60 py-16 text-center">
+            <p className="text-sm text-slate-500">{t('noMatch', { q })}</p>
+          </div>
+        ) : (
+          <>
+            <div className="mt-10 overflow-hidden rounded-2xl border border-slate-100">
+              <PricingTable models={data.models} t={t} />
+            </div>
+            <div className="mt-6 flex flex-col items-center gap-3">
+              <Pager
+                page={page}
+                totalPages={Math.max(1, Math.ceil(data.total / PAGE_SIZE))}
+                searchParams={q ? { q } : {}}
+                align="center"
+              />
+              {data.billingTimezone ? (
+                <p className="text-xs text-slate-400">
+                  {t('scheduleTimezoneNote', { timezone: data.billingTimezone })}
+                </p>
+              ) : null}
+            </div>
+          </>
+        )}
+
+        <p className="mt-12 text-sm text-slate-500">
+          {t.rich('footer', { register: (chunks) => renderRegisterLink(chunks) })}
+        </p>
+      </main>
+      <LandingFooter t={tLanding} anchorPrefix="/" />
+    </div>
   );
 }
