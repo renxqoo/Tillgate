@@ -64,7 +64,10 @@ docker ps
 ### 3. 首次业务配置（管理后台，一次性）
 
 1. **渠道**：填上游供应商 base URL 与 API Key（落库自动加密），勾选要暴露的模型
-2. **集成**（按需，`/dashboard/settings`）：SMTP（邮箱验证码 / 2FA）、Turnstile（注册人机验证）、易支付 / Stripe（充值）
+2. **集成**（按需，`/dashboard/settings`）：SMTP（邮箱验证码 / 2FA / 管理员
+   邀请）、Turnstile（注册人机验证）、易支付 / Stripe（充值）。
+   注意：SMTP 面板配置完成只解决发信通道；管理员邀请邮件还需容器环境变量
+   `ADMIN_FRONTEND_URL`（邀请链接拼装），缺任一即「邀请邮件暂不可用」
 3. 保存即生效，模型即刻可被 `/v1` 调用
 
 GitHub / Google OAuth 登录需要域名形态（见「6. 使用域名」）；IP 形态回调白名单不匹配。
@@ -107,11 +110,16 @@ docker run -d --name tillgate --restart always \
   --log-opt max-size=10m --log-opt max-file=3 \
   -p 443:443 -p 8443:8443 -p 80:80 \
   -e TILLGATE_PUBLIC_URL=https://app.example.com \
+  -e ADMIN_FRONTEND_URL=https://app.example.com \
   -v "$PWD/data:/data" \
   renxqoo/tillgate:latest
 ```
 
 - `TILLGATE_PUBLIC_URL` 用于构建 OAuth 回调白名单与自签证书 SAN
+- `ADMIN_FRONTEND_URL` 管理后台前端基地址（管理员邀请邮件「设置初始密码」链接
+  的拼装）。未配置时创建管理员 inviteSent=false、重发邀请 503 fail-closed
+  （「邀请邮件暂不可用」——SMTP 已配也会被此缺项拦截）。AIO 单容器形态
+  管理台与网关同域，直接填对外根地址即可
 - 正式证书：推荐 Cloudflare 等在前置终止 TLS；或将 origin 证书放入 `/data/certs/`，重启后自动替换自签证书
 
 ### 7. 外接数据库（可选）
@@ -123,6 +131,7 @@ docker run -d --name tillgate --restart always \
   -e DATABASE_URL=postgres://user:pass@db-host:5432/tillgate \
   -e REDIS_URL=redis://:pass@redis-host:6379 \
   -e TILLGATE_PUBLIC_URL=https://app.example.com \
+  -e ADMIN_FRONTEND_URL=https://app.example.com \
   -v "$PWD/data:/data" \
   renxqoo/tillgate:latest
 ```
@@ -263,6 +272,7 @@ docker compose exec -T postgres psql -U postgres -d tillgate < full.dump
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `TILLGATE_PUBLIC_URL` | `https://localhost` | 对外根地址；展开为 OAuth 回调白名单（`OAUTH_API_BASE` / `OAUTH_FRONTEND_URL`）与自签证书 SAN。使用域名时必设 |
+| `ADMIN_FRONTEND_URL` | （未配置） | 管理后台前端基地址——管理员邀请邮件的「设置初始密码」链接拼装。未配置时邀请重发 503 fail-closed（SMTP 已配也拦截）；AIO 形态填对外根地址 |
 | `DATABASE_URL` | 内置 PostgreSQL | 传入则使用外部数据库，容器不再启动内置 PG |
 | `REDIS_URL` | 内置 Redis | 传入则使用外部 Redis |
 | `BOOTSTRAP_ADMIN_EMAIL` | `admin@tillgate.local` | 首次启动（管理员表为空）自动创建的管理员邮箱 |
