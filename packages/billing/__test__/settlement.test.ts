@@ -52,7 +52,12 @@ function harness() {
     clock: () => new Date(),
   });
   const errors: string[] = [];
+  /** 验收门/熔断观察钩子快照（分级载荷断言用） */
+  const defectEvents: Array<Record<string, unknown>> = [];
   const settlement = createSettlementApi({
+    onUsageDefect: (data) => {
+      defectEvents.push({ ...data, clamps: [...data.clamps] });
+    },
     onDead: (data) => {
       errors.push(`dead ${data.requestId}: ${data.lastError}`);
     },
@@ -67,7 +72,7 @@ function harness() {
       errors.push(`${context}: ${String(error).slice(0, 300)}`);
     },
   });
-  return { wallet, walletMemory, world, billing, settlement, errors };
+  return { wallet, walletMemory, world, billing, settlement, errors, defectEvents };
 }
 
 function receiptFor(
@@ -878,6 +883,98 @@ describe('用量验收门（症状回归：上游伪造巨量发票曾打穿渠�
     // usage 仍被钳到证据字节（计费保护不降级）
     const usage = defined(h.world.fixtures.usageLogs.get(defined(claim).requestId));
     expect(usage.outputTokens).toBe(80);
+  });
+
+  it('载荷分级（路 A finding #1/#2）：软钳制 hard=false 不带熔断；硬违例 hard=true；预算耗尽零钳制也告警且 reason 区分', async () => {
+    // ① 软钳制（仅 evidence）：hard=false、broken=false——装配侧据此降级观测
+    {
+      const h = harness();
+      const channelId = seedChannel(h.world, { upstreamBudget: '1000' });
+      await hiddenTokenCase(h, channelId);
+      const [claim] = await h.settlement.claim({
+        ownerId: 'w1',
+        batchSize: 10,
+        claimLeaseMs: 5_000,
+      });
+      expect(await h.settlement.processClaim(defined(claim))).toBe('settled');
+      expect(h.defectEvents).toHaveLength(1);
+      expect(h.defectEvents[0]).toMatchObject({ hard: false, broken: false, breakReason: null });
+    }
+    // ② 硬违例（伪造发票）：hard=true
+    {
+      const h = harness();
+      const channelId = seedChannel(h.world, { upstreamBudget: '1000' });
+      await forgedInvoiceCase(h, channelId);
+      const [claim] = await h.settlement.claim({
+        ownerId: 'w1',
+        batchSize: 10,
+        claimLeaseMs: 5_000,
+      });
+      expect(await h.settlement.processClaim(defined(claim))).toBe('settled');
+      expect(h.defectEvents[0]).toMatchObject({ hard: true, broken: false, breakReason: null });
+    }
+    // ③ 预算耗尽（零钳制、发票全界内）：钩子仍触发，broken=true + reason=budget_exhausted
+    {
+      const h = harness();
+      // threshold 设 5：预算 10 − 成本 6 = 4 ≤ 5 → 扣减即熔断
+      const channelId = seedChannel(h.world, { upstreamBudget: '10', upstreamThreshold: '5' });
+      // 两笔界内小额（成本 2/笔，发票零钳制）：第二笔扣减后 10-4=6>5 未断，
+      // 第三笔后 4≤5 → 熔断。注意 reserve 必须在 signal 之前（succeeded 会把
+      // status 推到 settlement_pending，之后 reserveChannel 即被拒）。
+      for (let i = 0; i < 3; i++) {
+        const userId = nextUser();
+        await h.wallet.credit({ userId, amount: '10', refType: 'topup', refId: `be-${userId}` });
+        const requestId = nextRequestId();
+        await h.billing.authorize({
+          requestId,
+          userId,
+          stream: false,
+          quote: {
+            maxOutputTokens: 0,
+            candidates: [
+              {
+                mappingId: 1,
+                externalModel: 'm',
+                realModel: 'm',
+                inputPrice: '2',
+                outputPrice: '0',
+                cacheInputPrice: '0',
+                coefficient: '1',
+                inputTokenUpperBound: 1_000_000,
+                billingPolicyFingerprint: null,
+              },
+            ],
+          },
+          reservationLimit: '10',
+          authorizationTtlMs: 60_000,
+        });
+        expect(
+          (await h.billing.reserveChannel({ requestId, channelId, amount: '2' })).allowed,
+        ).toBe(true);
+        await h.billing.signal({
+          type: 'request.succeeded',
+          requestId,
+          receipt: receiptFor(requestId, userId, {
+            usage: {
+              inputTokens: 1_000_000,
+              cachedInputTokens: 0,
+              outputTokens: 0,
+              estimated: false,
+            },
+          }),
+        });
+        const [claim] = await h.settlement.claim({
+          ownerId: 'w1',
+          batchSize: 10,
+          claimLeaseMs: 5_000,
+        });
+        expect(await h.settlement.processClaim(defined(claim))).toBe('settled');
+      }
+      // 发票界内零钳制，但熔断事实必须进钩子（告警零盲区——路 A finding #1）
+      const broken = h.defectEvents.find((e) => e.broken === true);
+      expect(broken).toMatchObject({ channelId, breakReason: 'budget_exhausted', clamps: [] });
+      expect(defined(h.world.fixtures.channelsMap.get(channelId)).status).toBe(3);
+    }
   });
 
   it('仅证据界钳制连续 5 次：永不熔断（旧实现第 5 次熔断）', async () => {

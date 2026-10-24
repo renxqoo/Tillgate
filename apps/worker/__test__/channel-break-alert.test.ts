@@ -31,11 +31,12 @@ describe('channelBreakAlert', () => {
       channelId: 7,
       defects: 5,
       requestId: 'req-a',
+      breakReason: 'usage_defects',
     });
     expect(h.enqueued).toEqual([
       {
         event: 'channel_disabled',
-        payload: { channelId: 7, defects: 5, reason: 'usage_evidence_defects' },
+        payload: { channelId: 7, defects: 5, reason: 'usage_defects' },
         dedupeKey: 'channel-broken:7:req-a',
       },
     ]);
@@ -48,6 +49,7 @@ describe('channelBreakAlert', () => {
       channelId: 7,
       defects: 5,
       requestId: 'req-a', // 第一次熔断
+      breakReason: 'usage_defects',
     });
     // 复核启用（计数清零）→ 同日再累计到 5 再熔断：defects 相同但事件不同
     await channelBreakAlert(h.notifications, {
@@ -55,6 +57,7 @@ describe('channelBreakAlert', () => {
       channelId: 7,
       defects: 5,
       requestId: 'req-b', // 再熔断的触发结算
+      breakReason: 'usage_defects',
     });
     expect(h.enqueued).toHaveLength(2);
     expect(new Set(h.enqueued.map((e) => e.dedupeKey)).size).toBe(2); // 键不同 → 入箱侧均落库
@@ -67,12 +70,14 @@ describe('channelBreakAlert', () => {
       channelId: 7,
       defects: 1,
       requestId: 'r',
+      breakReason: null,
     });
     await channelBreakAlert(h.notifications, {
       broken: true,
       channelId: null,
       defects: 5,
       requestId: 'r',
+      breakReason: 'budget_exhausted',
     });
     expect(h.enqueued).toHaveLength(0);
   });

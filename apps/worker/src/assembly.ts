@@ -311,12 +311,17 @@ export async function assembleWorker(
       ).catch(() => {});
     },
     onUsageDefect: (data) => {
-      logger.error({ ...data }, 'usage evidence violation — invoice clamped');
+      // 分级观测（路 A finding #2）：硬违例 = 谎报证据，error + violation 审计 +
+      // 告警；软钳制（evidence 界，隐藏 token 口径的诚实渠道常规）降级 warn +
+      // clamped 审计，不灌 violation 词表不喊狼来了
+      const { hard } = data;
+      const action = hard ? 'billing.usage_evidence_violation' : 'billing.usage_evidence_clamped';
+      (hard ? logger.error : logger.warn).call(logger, { ...data }, 'usage evidence clamped');
       // 与网关同款 best-effort 审计（两结算进程都要留痕——谁结算谁落账）
       writeAudit(db, {
         actor: 'system',
         adminId: null,
-        action: 'billing.usage_evidence_violation',
+        action,
         targetType: 'channel',
         targetId: String(data.channelId ?? ''),
         detail: {
@@ -324,16 +329,19 @@ export async function assembleWorker(
           clamps: data.clamps as unknown as Record<string, unknown>,
           defects: data.defects,
           broken: data.broken,
+          breakReason: data.breakReason,
         },
       }).catch(() => {});
-      // 熔断即告警（issue #80：此前只能在列表里发现）：幂等键 = 渠道×触发
-      // 请求（重试吸收、再熔断必告），fire-and-forget——告警不反噬结算
+      // 熔断即告警（issue #80：此前只能在列表里发现；缺陷过阈与预算耗尽双路径，
+      // 路 A finding #1）：幂等键 = 渠道×触发请求（重试吸收、再熔断必告），
+      // fire-and-forget——告警不反噬结算
       if (data.broken) {
         void channelBreakAlert(notifications, {
           broken: data.broken,
           channelId: data.channelId,
           defects: data.defects,
           requestId: data.requestId,
+          breakReason: data.breakReason,
         }).catch(() => {});
       }
     },

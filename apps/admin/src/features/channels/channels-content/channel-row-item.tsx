@@ -32,7 +32,8 @@ const STATUS_META = defineStatusMeta(
   { label: 'statusUnknown', tone: 'neutral' },
 );
 
-/** 行动作工厂：动态 import + pending 态 + toast 收口（test/delete/undelete 三步同构） */
+/** 行动作工厂：动态 import + pending 态 + toast 收口（test/delete/undelete 三步同构）。
+ *  finally 保证 pending 复位——invoke 抛异常时按钮不卡 spinner */
 function rowAction(args: {
   setPending: (v: boolean) => void;
   invoke: (id: number) => Promise<{ error?: unknown; durationMs?: number }>;
@@ -40,10 +41,13 @@ function rowAction(args: {
 }): (id: number) => Promise<void> {
   return async (id: number) => {
     args.setPending(true);
-    const res = await args.invoke(id);
-    args.setPending(false);
-    if (res.error) toast.error(String(res.error));
-    else args.onSuccess(res);
+    try {
+      const res = await args.invoke(id);
+      if (res.error) toast.error(String(res.error));
+      else args.onSuccess(res);
+    } finally {
+      args.setPending(false);
+    }
   };
 }
 

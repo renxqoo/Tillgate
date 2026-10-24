@@ -61,13 +61,21 @@ export interface SettleEnv {
      * 结算面不可分已收敛） */
     calibrationReason?: 'channel_switch' | 'calibration_gap';
   }) => void;
-  /** 验收门钳制观察钩子（提交后 best-effort——装配接日志/审计；异常不反杀结算） */
+  /** 验收门钳制/渠道熔断观察钩子（提交后 best-effort——装配接日志/审计/告警；异常不反杀结算）。
+   * hard=false 为软钳制（evidence 界，诚实渠道常规口径）——装配降级观测面，
+   * 不记 violation 审计不告警；broken=true = 本次结算触发了渠道熔断
+   * （缺陷过阈或预算耗尽，reason 区分）——装配接告警 */
   onUsageDefect?: (data: {
     requestId: string;
     channelId: number | null;
     clamps: readonly UsageClamp[];
     defects: number | null;
+    /** 存在硬违例（五类请求事实推导界）——与缺陷计数同口径 */
+    hard: boolean;
+    /** 本次结算是否触发渠道熔断（缺陷过阈或预算耗尽终值） */
     broken: boolean;
+    /** 熔断成因（broken=true 时有效）：usage_defects=缺陷过阈；budget_exhausted=预算耗尽 */
+    breakReason: 'usage_defects' | 'budget_exhausted' | null;
   }) => void;
 }
 
@@ -309,6 +317,8 @@ async function settleOneInTx(
     throw invariant('settle_state_changed_during_settlement');
   }
   let channelCircuitBroken = usageDefect?.broken === true;
+  let breakReason: 'usage_defects' | 'budget_exhausted' | null =
+    usageDefect?.broken === true ? 'usage_defects' : null;
   const deductChannel = receipt.channelId ?? billing.channelId;
   if (env.channels && deductChannel != null) {
     const budgetBroken = await env.channels.deductBudgetAndMaybeBreak(tx, {
@@ -316,7 +326,11 @@ async function settleOneInTx(
       upstreamCost,
       now,
     });
-    channelCircuitBroken = channelCircuitBroken || budgetBroken;
+    if (budgetBroken) {
+      channelCircuitBroken = true;
+      // 双路径同结算都断时归因缺陷过阈（先发生、更严重）——告警只需一个成因标签
+      if (breakReason == null) breakReason = 'budget_exhausted';
+    }
   }
 
   // 结算成功事实不入通知 outbox：notifications 词表无
@@ -342,13 +356,16 @@ async function settleOneInTx(
     settledUserId: billing.userId,
     calibratedOverExposure,
     usageDefect:
-      clamps.length > 0
+      clamps.length > 0 || channelCircuitBroken
         ? {
             requestId: claim.requestId,
             channelId: receipt.channelId ?? billing.channelId,
+            // 零钳制的熔断（预算耗尽可独立于谎报发生）：clamps 空数组仍需告警钩子
             clamps,
             defects: usageDefect?.defects ?? null,
-            broken: usageDefect?.broken === true,
+            hard: clamps.some(isHardViolation),
+            broken: channelCircuitBroken,
+            breakReason,
           }
         : null,
   };

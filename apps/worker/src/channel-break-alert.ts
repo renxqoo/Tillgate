@@ -1,5 +1,5 @@
 /**
- * 熔断即告警（issue #80）：结算验收门缺陷过阈熔断（broken=true）时入箱
+ * 熔断即告警（issue #80）：渠道熔断（缺陷过阈或预算耗尽）时入箱
  * channel_disabled 事件——此前熔断只在管理台列表可见，运营数日才发现。
  *
  * 契约：fire-and-forget（调用方持有 catch，告警不反噬结算）；幂等键 = 渠道×触发请求
@@ -14,6 +14,8 @@ export interface ChannelBreakAlertInput {
   readonly defects: number | null;
   /** 触发本次熔断的结算请求（幂等键成分——重试同键吸收，新熔断新键必告） */
   readonly requestId: string;
+  /** 熔断成因：usage_defects=缺陷过阈；budget_exhausted=预算耗尽 */
+  readonly breakReason: 'usage_defects' | 'budget_exhausted' | null;
 }
 
 export interface NotifyEnqueue {
@@ -35,7 +37,7 @@ export async function channelBreakAlert(
     payload: {
       channelId: input.channelId,
       defects: input.defects,
-      reason: 'usage_evidence_defects',
+      reason: input.breakReason ?? 'usage_defects',
     },
     dedupeKey: `channel-broken:${input.channelId}:${input.requestId}`,
   });
