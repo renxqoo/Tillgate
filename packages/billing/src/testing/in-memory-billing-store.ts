@@ -998,6 +998,7 @@ export function seedChannel(
     upstreamReserved: overrides.upstreamReserved ?? '0',
     upstreamThreshold: overrides.upstreamThreshold ?? null,
     status: overrides.status ?? 0,
+    usageEvidenceDefects: overrides.usageEvidenceDefects ?? 0,
   });
   return id;
 }

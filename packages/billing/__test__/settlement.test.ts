@@ -819,6 +819,82 @@ describe('用量验收门（症状回归：上游伪造巨量发票曾打穿渠�
     expect(channel.status).toBe(3);
   });
 
+  /** 隐藏 token 口径场景：output_tokens 含响应体之外的 token（如 reasoning），
+   * 硬界全过、仅证据界钳制——缺陷计数不得增长（旧实现计缺陷 → 误杀熔断） */
+  async function hiddenTokenCase(h: ReturnType<typeof harness>, channelId: number) {
+    const userId = nextUser();
+    await h.wallet.credit({ userId, amount: '20010', refType: 'topup', refId: `ht-${userId}` });
+    const requestId = nextRequestId();
+    await h.billing.authorize({
+      requestId,
+      userId,
+      stream: false,
+      quote: {
+        maxOutputTokens: 1_000,
+        candidates: [
+          {
+            mappingId: 1,
+            externalModel: 'm',
+            realModel: 'm',
+            inputPrice: '0',
+            outputPrice: '2000',
+            cacheInputPrice: '0',
+            coefficient: '1',
+            inputTokenUpperBound: 1_000,
+            billingPolicyFingerprint: null,
+          },
+        ],
+      },
+      reservationLimit: '1000',
+      authorizationTtlMs: 60_000,
+    });
+    await h.billing.reserveChannel({ requestId, channelId, amount: '0.4' });
+    await h.billing.signal({
+      type: 'request.succeeded',
+      requestId,
+      receipt: receiptFor(requestId, userId, {
+        channelId,
+        inputPrice: '0',
+        outputPrice: '2000',
+        // 硬界全过（output 200 ≤ cap 1000，input 100 ≤ upper 1000）；
+        // 证据字节 80 < output 200 → 仅 evidence_bound 钳制
+        usage: { inputTokens: 100, cachedInputTokens: 0, outputTokens: 200, estimated: false },
+        outputEvidenceBytes: 80,
+      }),
+    });
+    return { userId, requestId };
+  }
+
+  it('仅证据界钳制（硬界全过）：usage 钳到 80 但缺陷计数不增长（隐藏 token 口径不误杀）', async () => {
+    const h = harness();
+    const channelId = seedChannel(h.world, { upstreamBudget: '1000' });
+    await hiddenTokenCase(h, channelId);
+    const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    expect(await h.settlement.processClaim(defined(claim))).toBe('settled');
+
+    const channel = defined(h.world.fixtures.channelsMap.get(channelId));
+    expect(channel.usageEvidenceDefects).toBe(0); // 旧实现为 1（evidence 钳制也计数）
+    expect(channel.status).toBe(0);
+    // usage 仍被钳到证据字节（计费保护不降级）
+    const usage = defined(h.world.fixtures.usageLogs.get(defined(claim).requestId));
+    expect(usage.outputTokens).toBe(80);
+  });
+
+  it('仅证据界钳制连续 5 次：永不熔断（旧实现第 5 次熔断）', async () => {
+    const h = harness();
+    const channelId = seedChannel(h.world, { upstreamBudget: '1000' });
+    for (let i = 0; i < 5; i++) {
+      await hiddenTokenCase(h, channelId);
+    }
+    const claims = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    for (const claim of claims) {
+      expect(await h.settlement.processClaim(defined(claim))).toBe('settled');
+    }
+    const channel = defined(h.world.fixtures.channelsMap.get(channelId));
+    expect(channel.usageEvidenceDefects).toBe(0);
+    expect(channel.status).toBe(0); // 旧实现为 3
+  });
+
   it('B4 经济闭合（界内发票但渠道预留低于应收官方成本）→ DefectError 死信', async () => {
     const h = harness();
     const channelId = seedChannel(h.world, { upstreamBudget: '10' });

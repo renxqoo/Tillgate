@@ -18,7 +18,7 @@ import { DefectError } from '@tillgate/errors';
 import { BillingErrors } from '../../domain/errors.js';
 import { allocateSettlement } from '../../domain/billing/settle-allocation.js';
 import { computeAmounts } from '../../domain/rating/amounts.js';
-import { acceptTrustedUsage, type UsageClamp } from '../../domain/rating/usage-acceptance.js';
+import { acceptTrustedUsage, isHardViolation, type UsageClamp } from '../../domain/rating/usage-acceptance.js';
 import { decodeReceipt } from '../../domain/rating/decode.js';
 import { isAttributedEstimate, type UsageReceipt } from '../../domain/rating/types.js';
 import { Decimal, normalizeAmount } from '../../domain/money.js';
@@ -286,9 +286,11 @@ async function settleOneInTx(
     }
   }
 
-  // 验收门缺陷：同事务原子计数，过阈熔断（钳制结算照常完成——缺陷另路处置）
+  // 验收门缺陷：同事务原子计数，过阈熔断（钳制结算照常完成——缺陷另路处置）。
+  // 只记硬违例：证据界（evidence_bound）对隐藏 token 口径的供应商非定理，
+  // 计入会把诚实渠道误杀进熔断循环（issue #80）
   let usageDefect: { defects: number | null; broken: boolean } | null = null;
-  if (clamps.length > 0) {
+  if (clamps.some(isHardViolation)) {
     const defectChannel = receipt.channelId ?? billing.channelId;
     if (env.channels && defectChannel != null) {
       usageDefect = await env.channels.recordUsageDefect(tx, {
