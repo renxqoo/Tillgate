@@ -68,6 +68,7 @@ import { createReconcileJob } from './jobs/reconcile';
 import { createReferralJob } from './jobs/referral';
 import { createRecoveryJob } from './jobs/recovery';
 import { createSettlementDispatch } from './queue/settlement-dispatch';
+import { channelBreakAlert } from './channel-break-alert';
 import { calibrationRetention } from './calibration-retention';
 import type { createSettlementQueue } from './queue/settlement-queue';
 import { createSettleWakeListener } from './wakeup/postgres-notify';
@@ -325,6 +326,16 @@ export async function assembleWorker(
           broken: data.broken,
         },
       }).catch(() => {});
+      // 熔断即告警（issue #80：此前只能在列表里发现）：同渠道×日幂等，
+      // fire-and-forget——告警不反噬结算
+      if (data.broken) {
+        void channelBreakAlert(notifications, {
+          broken: data.broken,
+          channelId: data.channelId,
+          defects: data.defects,
+          now: clock(),
+        }).catch(() => {});
+      }
     },
   });
 
