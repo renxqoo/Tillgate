@@ -267,8 +267,10 @@ export const postgresChannelStore: ChannelStore = {
       .update(channels)
       .set({
         upstreamBudget: sql`${channels.upstreamBudget} + ${input.amount}::numeric`,
-        // 熔断(3)自动复活为启用(0)
+        // 熔断(3)自动复活为启用(0)；复活即运维复核通过——缺陷计数同笔清零
+        // （不清零则下次任意硬违例直接再熔断，渠道反复弹回冷却——issue #80）
         status: sql`case when ${channels.status} = 3 then 0 else ${channels.status} end`,
+        usageEvidenceDefects: sql`case when ${channels.status} = 3 then 0 else ${channels.usageEvidenceDefects} end`,
         updatedAt: input.now,
       })
       .where(eq(channels.id, input.channelId))

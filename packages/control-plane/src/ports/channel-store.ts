@@ -156,6 +156,8 @@ export interface ChannelStore {
         failCount?: number;
         cooldownUntil?: Date | null;
         upstreamThreshold?: string | null;
+        /** 用量证据缺陷计数复位（application 复位语义拼装；不暴露到 admin 契约面） */
+        usageEvidenceDefects?: number;
       };
     },
   ): Promise<{ id: number; name: string; status: number; failCount: number } | null>;

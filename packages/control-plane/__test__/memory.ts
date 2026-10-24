@@ -197,6 +197,8 @@ export interface MemoryChannelRow {
   upstreamBudget: string;
   upstreamReserved: string;
   upstreamThreshold: string | null;
+  /** 用量证据缺陷计数（结算验收门硬违例计数；复位入口见 recharge/update） */
+  usageEvidenceDefects?: number;
   /** 记录面逻辑删除时刻（回收站）；null = 在册 */
   deletedAt: Date | null;
 }
@@ -267,7 +269,7 @@ export function createMemoryChannelStore(
     async updateChannel(_db, input) {
       const row = rows.get(input.channelId);
       if (!row || row.deletedAt != null) return null;
-      const { apiKeyEnc, status, failCount, cooldownUntil, upstreamThreshold, ...rest } =
+      const { apiKeyEnc, status, failCount, cooldownUntil, upstreamThreshold, usageEvidenceDefects, ...rest } =
         input.patch;
       Object.assign(row, rest);
       if (apiKeyEnc !== undefined) row.apiKeyEnc = apiKeyEnc;
@@ -275,6 +277,7 @@ export function createMemoryChannelStore(
       if (failCount !== undefined) row.failCount = failCount;
       if (cooldownUntil !== undefined) row.cooldownUntil = cooldownUntil;
       if (upstreamThreshold !== undefined) row.upstreamThreshold = upstreamThreshold;
+      if (usageEvidenceDefects !== undefined) row.usageEvidenceDefects = usageEvidenceDefects;
       return { id: row.id, name: row.name, status: row.status, failCount: row.failCount };
     },
     async retireChannel(_db, input) {
@@ -368,7 +371,11 @@ export function createMemoryChannelStore(
       const row = rows.get(input.channelId);
       if (!row) throw new Error('channel.recharge_missed');
       row.upstreamBudget = String(Number(row.upstreamBudget) + Number(input.amount));
-      if (row.status === 3) row.status = 0;
+      if (row.status === 3) {
+        row.status = 0;
+        // 复活即运维复核通过：缺陷计数同笔清零（防反复弹回——issue #80）
+        row.usageEvidenceDefects = 0;
+      }
       return row.upstreamBudget;
     },
     async tryAdjustBudget(_db, input) {

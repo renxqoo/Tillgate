@@ -136,16 +136,20 @@ describe('进货（幂等 operations 用例）', () => {
     ).rejects.toMatchObject({ code: 'control_plane.invalid_operation_id' });
   });
 
-  it('进货自动复活熔断渠道（status 3 → 0）；渠道不存在 → channel_not_found', async () => {
+  it('进货自动复活熔断渠道（status 3 → 0）且缺陷计数同笔清零；渠道不存在 → channel_not_found', async () => {
     const { base, channels } = setup();
-    defined(channels.rows.get(7)).status = 3;
+    const row = defined(channels.rows.get(7));
+    row.status = 3;
+    row.usageEvidenceDefects = 5;
     await rechargeChannel(base, {
       ctx: adminCtx(),
       channelId: 7,
       amount: '5',
       operationId: 'op-revive',
     });
-    expect(defined(channels.rows.get(7)).status).toBe(0);
+    const after = defined(channels.rows.get(7));
+    expect(after.status).toBe(0);
+    expect(after.usageEvidenceDefects).toBe(0); // 旧实现保持 5（issue #80 反复弹回）
     await expect(
       rechargeChannel(base, {
         ctx: adminCtx(),
