@@ -112,8 +112,8 @@ export function ChannelRowItem({
           </div>
         ) : (
           <StatusPill dot tone={meta.tone} label={t(meta.label)}>
-            {channel.cooldownUntil ? (
-              <span className="text-muted-foreground" title={channel.cooldownUntil}>
+            {channel.status === 3 ? (
+              <span className="text-muted-foreground" title={t('cooling')}>
                 {t('cooling')}
               </span>
             ) : null}
@@ -123,7 +123,7 @@ export function ChannelRowItem({
       <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
         {/* 双计数同格：缺陷计数（用量谎报熔断证据）与失败次数（熔断计数）语义相邻 */}
         <div className="flex flex-col">
-          <span title={t('defectCount')}>{channel.usageEvidenceDefects}</span>
+          <span title={t('defectCount')}>{channel.usageEvidenceDefects ?? 0}</span>
           <span title={t('failCount')}>{channel.failCount}</span>
         </div>
       </TableCell>

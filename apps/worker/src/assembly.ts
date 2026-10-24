@@ -326,14 +326,14 @@ export async function assembleWorker(
           broken: data.broken,
         },
       }).catch(() => {});
-      // 熔断即告警（issue #80：此前只能在列表里发现）：同渠道×日幂等，
-      // fire-and-forget——告警不反噬结算
+      // 熔断即告警（issue #80：此前只能在列表里发现）：幂等键 = 渠道×触发
+      // 请求（重试吸收、再熔断必告），fire-and-forget——告警不反噬结算
       if (data.broken) {
         void channelBreakAlert(notifications, {
           broken: data.broken,
           channelId: data.channelId,
           defects: data.defects,
-          now: clock(),
+          requestId: data.requestId,
         }).catch(() => {});
       }
     },

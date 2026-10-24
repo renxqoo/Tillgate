@@ -347,7 +347,7 @@
     "statusDegraded": "降级",
     "statusDisabled": "禁用",
     "statusCooldown": "熔断",
-    "cooling": "（已熔断，需人工复核后启用）",
+    "cooling": "已熔断，需人工复核后启用",
     "noChannels": "暂无渠道",
     "provider": "供应商",
     "models": "模型",
