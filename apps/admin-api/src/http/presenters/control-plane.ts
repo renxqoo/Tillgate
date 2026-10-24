@@ -41,6 +41,7 @@ export function toChannelWireRow(row: ChannelItemSource) {
     priority: row.priority,
     status: row.status,
     failCount: row.failCount,
+    usageEvidenceDefects: row.usageEvidenceDefects,
     deletedAt: iso(row.deletedAt),
     cooldownUntil: null,
     rpmLimit: row.rpmLimit,

@@ -269,8 +269,15 @@ export function createMemoryChannelStore(
     async updateChannel(_db, input) {
       const row = rows.get(input.channelId);
       if (!row || row.deletedAt != null) return null;
-      const { apiKeyEnc, status, failCount, cooldownUntil, upstreamThreshold, usageEvidenceDefects, ...rest } =
-        input.patch;
+      const {
+        apiKeyEnc,
+        status,
+        failCount,
+        cooldownUntil,
+        upstreamThreshold,
+        usageEvidenceDefects,
+        ...rest
+      } = input.patch;
       Object.assign(row, rest);
       if (apiKeyEnc !== undefined) row.apiKeyEnc = apiKeyEnc;
       if (status !== undefined) row.status = status;
@@ -341,6 +348,7 @@ export function createMemoryChannelStore(
           priority: row.priority,
           status: row.status,
           failCount: row.failCount,
+          usageEvidenceDefects: row.usageEvidenceDefects ?? 0,
           rpmLimit: row.rpmLimit,
           tpmLimit: row.tpmLimit,
           upstreamBudget: row.upstreamBudget,

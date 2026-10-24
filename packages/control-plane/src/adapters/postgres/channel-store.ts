@@ -214,6 +214,7 @@ export const postgresChannelStore: ChannelStore = {
           priority: channels.priority,
           status: channels.status,
           failCount: channels.failCount,
+          usageEvidenceDefects: channels.usageEvidenceDefects,
           rpmLimit: channels.rpmLimit,
           tpmLimit: channels.tpmLimit,
           upstreamBudget: channels.upstreamBudget,

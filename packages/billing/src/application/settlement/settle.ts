@@ -18,7 +18,11 @@ import { DefectError } from '@tillgate/errors';
 import { BillingErrors } from '../../domain/errors.js';
 import { allocateSettlement } from '../../domain/billing/settle-allocation.js';
 import { computeAmounts } from '../../domain/rating/amounts.js';
-import { acceptTrustedUsage, isHardViolation, type UsageClamp } from '../../domain/rating/usage-acceptance.js';
+import {
+  acceptTrustedUsage,
+  isHardViolation,
+  type UsageClamp,
+} from '../../domain/rating/usage-acceptance.js';
 import { decodeReceipt } from '../../domain/rating/decode.js';
 import { isAttributedEstimate, type UsageReceipt } from '../../domain/rating/types.js';
 import { Decimal, normalizeAmount } from '../../domain/money.js';

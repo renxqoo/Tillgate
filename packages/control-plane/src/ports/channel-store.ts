@@ -21,6 +21,8 @@ export interface ChannelListRow {
   readonly priority: number;
   readonly status: number;
   readonly failCount: number;
+  /** 用量证据缺陷计数（结算硬违例累计；复位随启用/换 Key/进货复活） */
+  readonly usageEvidenceDefects: number;
   readonly rpmLimit: number | null;
   readonly tpmLimit: number | null;
   readonly upstreamBudget: string;
