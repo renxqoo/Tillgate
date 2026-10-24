@@ -48,7 +48,8 @@ export async function updateChannel(
       ...(keyChanged
         ? {
             apiKeyEnc: deps.cipher.encrypt(apiKey),
-            // 换 Key 即复位运行态（服务层一并用词——store 端不感知运维语义）
+            // 换 Key 即复位运行态（服务层一并用词——store 端不感知运维语义）；
+            // 计数无条件清零：换 Key = 复核通过，与当前状态无关（单 UPDATE 原子）
             status: 0,
             failCount: 0,
             cooldownUntil: null,
@@ -56,17 +57,12 @@ export async function updateChannel(
           }
         : {}),
     };
-    // 启用即复核：patch 把 status 改回 0 且当前非 0（熔断/禁用/死凭据）→ 缺陷计数清零。
-    // 事务内先读现态再拼 patch（竞态窗口内状态被并发改写时以 store 落库为准）
-    const enabling = validated.status === 0;
-    const work = async () => {
-      if (enabling) {
-        const funds = await deps.stores.channel.findChannelFunds(tx, input.channelId);
-        if (funds != null && funds.status !== 0) patch.usageEvidenceDefects = 0;
-      }
-      return deps.stores.channel.updateChannel(tx, { channelId: input.channelId, patch });
-    };
-    return work();
+    // 启用即复核：patch 把 status 改回 0 时缺陷计数按「当前非 0」守卫清零。
+    // 守卫判定下沉 store 的 SQL 单语句（case when status <> 0）——应用层不得
+    // SELECT 现态拼值：READ COMMITTED 下并发熔断的 EPQ 重放会让读-判-写产生
+    // 「status 复位、计数未清」的半应用态（issue #80 路 B finding #1）
+    if (validated.status === 0) patch.resetUsageDefects = true;
+    return deps.stores.channel.updateChannel(tx, { channelId: input.channelId, patch });
   });
   if (!row) {
     throw controlPlaneErrors.business('channel_not_found', { channelId: input.channelId });

@@ -158,7 +158,13 @@ export interface ChannelStore {
         failCount?: number;
         cooldownUntil?: Date | null;
         upstreamThreshold?: string | null;
-        /** 用量证据缺陷计数复位（application 复位语义拼装；不暴露到 admin 契约面） */
+        /**
+         * 启用复位守卫（SQL 单语句：status <> 0 时清零缺陷计数——与 rechargeBudget
+         * 同构）。application 传入前不得依赖 SELECT 现态判定（TOCTOU：并发熔断在
+         * READ COMMITTED 下会以 EPQ 重放穿透读-判-写三段式——issue #80 路 B finding #1）
+         */
+        resetUsageDefects?: boolean;
+        /** 缺陷计数无条件清零（换 Key = 复核通过，无论当前状态；单 UPDATE 原子） */
         usageEvidenceDefects?: number;
       };
     },

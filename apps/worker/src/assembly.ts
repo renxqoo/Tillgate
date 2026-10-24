@@ -336,13 +336,20 @@ export async function assembleWorker(
       // 路 A finding #1）：幂等键 = 渠道×触发请求（重试吸收、再熔断必告），
       // fire-and-forget——告警不反噬结算
       if (data.broken) {
+        // 告警失败必须留痕（路 B finding #2）：熔断纪元内 broken 只此一次，
+        // 静默吞掉 = 当日通知永久丢失——对齐 settle-wake 的失败日志先例
         void channelBreakAlert(notifications, {
           broken: data.broken,
           channelId: data.channelId,
           defects: data.defects,
           requestId: data.requestId,
           breakReason: data.breakReason,
-        }).catch(() => {});
+        }).catch((error) => {
+          logger.warn(
+            { err: String(error), channelId: data.channelId, requestId: data.requestId },
+            'channel break alert enqueue failed',
+          );
+        });
       }
     },
   });

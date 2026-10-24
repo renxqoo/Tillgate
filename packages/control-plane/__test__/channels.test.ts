@@ -133,6 +133,26 @@ describe('渠道更新与退役', () => {
     expect(defined(channels.rows.get(created.id)).usageEvidenceDefects).toBe(0); // 旧实现保持 5
   });
 
+  it('启用复位守卫（路 B finding #1）：已是启用态的编辑保存不清计数；启用清零走 SQL 守卫非读判写', async () => {
+    const { deps, channels } = setup();
+    const created = await createChannel(deps, {
+      ctx: adminCtx(),
+      providerId: 1,
+      name: 'ch-guard',
+      apiKey: 'k',
+    });
+    const row = defined(channels.rows.get(created.id));
+    row.usageEvidenceDefects = 2;
+    // 管理员编辑弹窗恒发 status=0（值来自打开时快照）——启用态渠道的普通编辑
+    // 不得清计数（守卫 status <> 0 不满足）
+    await updateChannel(deps, {
+      ctx: adminCtx(),
+      channelId: created.id,
+      patch: { status: 0 },
+    });
+    expect(defined(channels.rows.get(created.id)).usageEvidenceDefects).toBe(2);
+  });
+
   it('启用即复核：patch status→0 且当前非 0 → 缺陷计数清零；已是 0 不动', async () => {
     const { deps, channels } = setup();
     const created = await createChannel(deps, {

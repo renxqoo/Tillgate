@@ -275,15 +275,20 @@ export function createMemoryChannelStore(
         failCount,
         cooldownUntil,
         upstreamThreshold,
+        resetUsageDefects,
         usageEvidenceDefects,
         ...rest
       } = input.patch;
       Object.assign(row, rest);
       if (apiKeyEnc !== undefined) row.apiKeyEnc = apiKeyEnc;
-      if (status !== undefined) row.status = status;
       if (failCount !== undefined) row.failCount = failCount;
       if (cooldownUntil !== undefined) row.cooldownUntil = cooldownUntil;
       if (upstreamThreshold !== undefined) row.upstreamThreshold = upstreamThreshold;
+      // 守卫清零与 postgres 同构：case when status <> 0 判的是语句前像——
+      // 替身必须先取前像再应用 status 写入（顺序颠倒 = 语义漂移）
+      const statusBefore = row.status;
+      if (status !== undefined) row.status = status;
+      if (resetUsageDefects === true && statusBefore !== 0) row.usageEvidenceDefects = 0;
       if (usageEvidenceDefects !== undefined) row.usageEvidenceDefects = usageEvidenceDefects;
       return { id: row.id, name: row.name, status: row.status, failCount: row.failCount };
     },

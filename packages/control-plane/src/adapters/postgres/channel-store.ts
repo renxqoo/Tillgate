@@ -110,9 +110,21 @@ export const postgresChannelStore: ChannelStore = {
   },
 
   async updateChannel(db, input) {
+    // 启用复位守卫下沉 SQL 单语句：status <> 0 时清零缺陷计数（与 rechargeBudget
+    // 同构）——application 不得以 SELECT 现态拼值（并发熔断 EPQ 重放会半应用）
+    const { resetUsageDefects, usageEvidenceDefects, ...patch } = input.patch;
     const rows = await db
       .update(channels)
-      .set({ ...input.patch, updatedAt: new Date() })
+      .set({
+        ...patch,
+        ...(resetUsageDefects === true && usageEvidenceDefects === undefined
+          ? {
+              usageEvidenceDefects: sql`case when ${channels.status} <> 0 then 0 else ${channels.usageEvidenceDefects} end`,
+            }
+          : {}),
+        ...(usageEvidenceDefects !== undefined ? { usageEvidenceDefects } : {}),
+        updatedAt: new Date(),
+      })
       // 已删除记录不可编辑（回收站行只读——恢复走 restoreChannel）
       .where(and(eq(channels.id, input.channelId), isNull(channels.deletedAt)))
       .returning({
