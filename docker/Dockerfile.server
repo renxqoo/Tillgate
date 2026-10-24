@@ -1,7 +1,7 @@
 # 服务端统一镜像（gateway / worker / admin-api / client-api / trace-receiver），compose 通过 build arg APP 指定
 # 构建段：全 bun；全量 bundle → dist 自包含
 # 运行段：仅 dist（零 node_modules/packages——符号链接布局坑整体退场，镜像 ~40MB）
-FROM oven/bun:1.4.4-alpine AS builder
+FROM oven/bun:1.4.3-alpine AS builder
 WORKDIR /repo
 COPY package.json bun.lock tsconfig.base.json ./
 # bun patch 依赖(patchedDependencies)——漏拷则 --frozen-lockfile 直接报找不到 patch 文件
@@ -41,7 +41,7 @@ ARG APP
 # 各 app 自身的 build script 带 --packages=external（产物需 node_modules 解析），此处不可复用。
 RUN bun build "apps/${APP}/src/index.ts" --target=bun --format=esm --sourcemap --outdir=/out/dist
 
-FROM oven/bun:1.4.4-alpine AS runtime
+FROM oven/bun:1.4.3-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=builder /out/dist ./dist

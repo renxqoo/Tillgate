@@ -822,6 +822,10 @@ describe('用量验收门（症状回归：上游伪造巨量发票曾打穿渠�
     const channel = defined(h.world.fixtures.channelsMap.get(channelId));
     expect(channel.usageEvidenceDefects).toBe(5);
     expect(channel.status).toBe(3);
+    // 纯缺陷过阈熔断（预算 1000 未触界）：归因 usage_defects
+    const broken = h.defectEvents.filter((e) => e.broken === true);
+    expect(broken).toHaveLength(1);
+    expect(broken[0]).toMatchObject({ channelId, breakReason: 'usage_defects' });
   });
 
   /** 隐藏 token 口径场景：output_tokens 含响应体之外的 token（如 reasoning），
@@ -974,6 +978,25 @@ describe('用量验收门（症状回归：上游伪造巨量发票曾打穿渠�
       const broken = h.defectEvents.find((e) => e.broken === true);
       expect(broken).toMatchObject({ channelId, breakReason: 'budget_exhausted', clamps: [] });
       expect(defined(h.world.fixtures.channelsMap.get(channelId)).status).toBe(3);
+    }
+    // ④ 双路径同结算都断：硬违例过阈 + 预算触界 → 归因 usage_defects（先发生更严重）
+    {
+      const h = harness();
+      // 预算 4 / 阈值 4：伪造发票（input 2000 万 → 钳到 1000 × 2/1M = 2 成本）×2 单，
+      // 第 2 单 defects=2 未过阈；用 5 次凑阈值的既有装置太重——直接把预算压到
+      // 第 5 单同时触界：预算 10，5 × 2 = 10 − 10 = 0 ≤ threshold 0，第 5 单双断
+      const channelId = seedChannel(h.world, { upstreamBudget: '10', upstreamThreshold: '0' });
+      for (let i = 0; i < 5; i++) {
+        await forgedInvoiceCase(h, channelId);
+      }
+      const claims = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+      for (const claim of claims) {
+        expect(await h.settlement.processClaim(defined(claim))).toBe('settled');
+      }
+      const brokenAll = h.defectEvents.filter((e) => e.broken === true);
+      // 双断发生在同一张结算（defects 5 ≥ 5 且 10−10=0 ≤ 0）：归因缺陷过阈
+      expect(brokenAll).toHaveLength(1);
+      expect(brokenAll[0]).toMatchObject({ channelId, breakReason: 'usage_defects', hard: true });
     }
   });
 

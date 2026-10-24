@@ -2,7 +2,7 @@
 # v2 迁移收敛为单入口：packages/db 的 drizzle-kit migrate（SQL 全量在 packages/db/migrations，
 # 含 identity/billing 等业务表——v1 的 identity-core/ledger-core/wallet 多段 provision 已并入）
 # 构建段：全 bun；运行段：bun 直跑 drizzle-kit CLI
-FROM oven/bun:1.4.4-alpine AS builder
+FROM oven/bun:1.4.3-alpine AS builder
 WORKDIR /repo
 COPY package.json bun.lock tsconfig.base.json ./
 # bun patch 依赖(patchedDependencies)——漏拷则 --frozen-lockfile 直接报找不到 patch 文件
@@ -36,7 +36,7 @@ RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lock
 COPY packages ./packages
 COPY apps ./apps
 
-FROM oven/bun:1.4.4-alpine AS runtime
+FROM oven/bun:1.4.3-alpine AS runtime
 WORKDIR /repo
 # node_modules 必拷：drizzle-kit 运行时解析 drizzle-orm 等（isolated linker 下 .bun store 与
 # packages/*/node_modules 软链互相引用，node_modules + packages 必须整体拷贝；

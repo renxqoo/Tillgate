@@ -6,7 +6,7 @@
 #   1. 5 个后端服务的自包含 bundle（与 Dockerfile.server 同款，运行零 node_modules）
 #   2. 两个控制台的 Next standalone 产物（与 apps/client|admin/Dockerfile 同款）
 #   3. 迁移/引导载荷整体保留（与 Dockerfile.migrate 同款：node_modules + packages + apps）
-FROM oven/bun:1.4.4-alpine AS builder
+FROM oven/bun:1.4.3-alpine AS builder
 ARG GATEWAY_BASE=http://127.0.0.1:8080
 ARG NEXT_PUBLIC_DISPLAY_TZ=Asia/Shanghai
 ENV GATEWAY_BASE=${GATEWAY_BASE} NEXT_PUBLIC_DISPLAY_TZ=${NEXT_PUBLIC_DISPLAY_TZ}
@@ -69,7 +69,7 @@ RUN mkdir -p /payload/apps \
      done \
   && cd /payload && find . -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1 > /payload/.payload-hash
 
-FROM oven/bun:1.4.4-alpine AS runtime
+FROM oven/bun:1.4.3-alpine AS runtime
 ENV NODE_ENV=production
 # 基础设施：postgresql16（server+client，scram 认证）、redis、nginx、su-exec（子进程
 # 降权——postgres 拒绝 root 运行）、openssl（首启自签证书）。
