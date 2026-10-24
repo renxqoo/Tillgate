@@ -347,7 +347,7 @@
     "statusDegraded": "Degraded",
     "statusDisabled": "Disabled",
     "statusCooldown": "Tripped",
-    "cooling": "Tripped; re-enable after review",
+    "cooling": "re-enable after review",
     "noChannels": "No channels",
     "provider": "Provider",
     "models": "Models",
