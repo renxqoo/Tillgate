@@ -58,7 +58,9 @@ function clampKindKey(kind: string): string {
     case 'output_cap': {
       return 'clampKindOutputCap';
     }
-    case 'evidence_bound': {
+    case 'evidence_bound':
+    // 同一物理界（钳到证据字节），仅审计分级不同——文案复用（issue #83）
+    case 'evidence_bound_hard': {
       return 'clampKindEvidenceBound';
     }
     default: {

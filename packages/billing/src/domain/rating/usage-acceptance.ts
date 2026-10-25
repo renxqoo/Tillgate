@@ -13,9 +13,9 @@
  *   这一前提。供应商把隐藏 token（如 reasoning）计入 output_tokens 而响应体不含其
  *   字节时，该界不是定理（系统性误判 → 诚实渠道被误杀熔断），故只钳计费不记缺陷。
  *   真谎报输出侧发票仍被硬界 B1 捕获——保护不降级。
- *   ⚠ 已知盲区（issue #83）：quote.maxOutputTokens 缺失或为 0（embeddings/modality
- *   端点、存量缺界数据）时 B1 解析为 null 跳过，输出侧唯一剩余界是本软界——
- *   此类渠道的输出侧谎报不计缺陷不熔断，只被钳到证据字节（大响应体下界宽）。
+ *   B1 缺失且输出计费时（embeddings/modality 端点、存量缺界数据），证据钳制
+ *   升级为审计级硬标记（kind=evidence_bound_hard，单独成类可检索）——仍不进
+ *   缺陷计数（issue #83 终态语义：口径非定理性与 B1 无关，熔断会复活 #80 误杀）。
  * 结算照常按钳后值完成（两级钳制都生效于计费）。
  *
  * 估算收据（estimated）不经本门：数值派生自我方特征/字节，有界性由构造保证。
@@ -31,7 +31,8 @@ export interface UsageClamp {
     | 'cached_bound'
     | 'cache_write_bound'
     | 'unit_bound'
-    | 'evidence_bound';
+    | 'evidence_bound'
+    | 'evidence_bound_hard';
   readonly field:
     | 'outputTokens'
     | 'inputTokens'
@@ -49,6 +50,14 @@ export interface UsageClamp {
  * 是定理，超出即谎报证据 → 记缺陷；软钳制 = 界依赖供应商口径假设（隐藏 token
  * 口径下非定理）→ 只钳计费不记缺陷。新 kind 必须显式归级（穷举封闭，
  * 漏归级编译期即拒——防止未来新增界被默认当成硬违例误杀渠道）。
+ *
+ * evidence_bound_hard（issue #83）：B1（maxOutputTokens）缺失且输出侧计费时，
+ * 证据字节是仅剩的物理事实界——升级为「审计级硬」：kind 单独成类进审计
+ * 载荷（运营可见），但不进缺陷计数（isHardViolation=false）。不熔断的原因：
+ * 证据界的非定理性是模型口径属性（隐藏 reasoning token 计入 output_tokens
+ * 而响应体不含其字节），与 B1 是否存在无关——若计入缺陷，存量缺界 quote ×
+ * reasoning 模型 × 诚实上游会复活 #80 的误杀熔断循环（pr #85 路 C finding #1）。
+ * 该形态的谎报保护依赖计费侧钳制（钳到证据字节）+ 审计留痕。
  */
 export function isHardViolation(clamp: UsageClamp): boolean {
   switch (clamp.kind) {
@@ -58,6 +67,7 @@ export function isHardViolation(clamp: UsageClamp): boolean {
     case 'cache_write_bound':
     case 'unit_bound':
       return true;
+    case 'evidence_bound_hard':
     case 'evidence_bound':
       return false;
   }
@@ -82,20 +92,54 @@ type QuoteLike = { maxOutputTokens?: unknown; candidates?: unknown } | null | un
 const numeric = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
 
-/** 从持久化 quote 解出命中候选的三界 */
-function boundsOf(quote: QuoteLike, mappingId: number): Bound {
-  if (quote == null || !Array.isArray(quote.candidates)) {
-    return { outputCap: null, inputUpper: null, unitUpper: null };
-  }
+/**
+ * 输出侧计费判定（issue #83）：候选 outputPrice 为正有限数 = 有资金敞口。
+ * 候选缺位/畸形（超旧 jsonb 行）→ false 静默放行——与「旧数据缺省放行该界」
+ * 的既有哲学一致：畸形候选的旧行不升级硬，保护依赖计费钳制
+ */
+const outputPricedOf = (candidate: unknown): boolean => {
+  const c = candidate as { outputPrice?: unknown } | undefined;
+  return (
+    numeric(
+      typeof c?.outputPrice === 'string' ? Number(c.outputPrice) : (c?.outputPrice as number),
+    ) != null
+  );
+};
+
+/** 从持久化 quote 取命中候选（缺位/形状异常 = 旧数据，返回 undefined） */
+function candidateOf(
+  quote: QuoteLike,
+  mappingId: number,
+):
+  | {
+      inputTokenUpperBound?: unknown;
+      unitUpperBound?: unknown;
+      outputPrice?: unknown;
+    }
+  | undefined {
+  if (quote == null || !Array.isArray(quote.candidates)) return undefined;
   const candidate = quote.candidates.find(
     (c) =>
       typeof c === 'object' && c !== null && (c as { mappingId?: unknown }).mappingId === mappingId,
   );
-  const c = candidate as { inputTokenUpperBound?: unknown; unitUpperBound?: unknown } | undefined;
+  return candidate as
+    | { inputTokenUpperBound?: unknown; unitUpperBound?: unknown; outputPrice?: unknown }
+    | undefined;
+}
+
+/**
+ * 从持久化 quote 解出命中候选的三界。candidates 非数组 = 整行旧/畸形数据
+ * → 三界全跳过（含 outputCap——pr #85 路 B #2：重构曾丢失此守卫，使
+ * maxOutputTokens 为正而 candidates 畸形的存量行从静默直通变为 output_cap 硬违例）
+ */
+function boundsOf(quote: QuoteLike, candidate: ReturnType<typeof candidateOf>): Bound {
+  if (!Array.isArray(quote?.candidates)) {
+    return { outputCap: null, inputUpper: null, unitUpper: null };
+  }
   return {
-    outputCap: numeric(quote.maxOutputTokens),
-    inputUpper: numeric(c?.inputTokenUpperBound),
-    unitUpper: numeric(c?.unitUpperBound),
+    outputCap: numeric(quote?.maxOutputTokens),
+    inputUpper: numeric(candidate?.inputTokenUpperBound),
+    unitUpper: numeric(candidate?.unitUpperBound),
   };
 }
 
@@ -104,14 +148,16 @@ function clampTo(value: number, bound: number | null): { value: number; clamped:
   return { value: bound, clamped: true };
 }
 
-/** 输出侧钳制：先准入 cap，再证据字节（更紧者生效——两级各记一条钳制事实） */
+/** 输出侧钳制：先准入 cap，再证据字节（更紧者生效——两级各记一条钳制事实）。
+ * B1 缺失且输出计费时证据界升级硬（issue #83——唯一剩余物理界）*/
 function clampOutput(args: {
   outputTokens: number;
   bounds: Bound;
   evidence: number | null;
+  outputPriced: boolean;
   clamps: UsageClamp[];
 }): number {
-  const { outputTokens, bounds, evidence, clamps } = args;
+  const { outputTokens, bounds, evidence, outputPriced, clamps } = args;
   const cap = clampTo(outputTokens, bounds.outputCap);
   if (cap.clamped) {
     clamps.push({
@@ -125,7 +171,7 @@ function clampOutput(args: {
   const byEvidence = clampTo(cap.value, evidence);
   if (byEvidence.clamped) {
     clamps.push({
-      kind: 'evidence_bound',
+      kind: bounds.outputCap == null && outputPriced ? 'evidence_bound_hard' : 'evidence_bound',
       field: 'outputTokens',
       original: cap.value,
       clamped: byEvidence.value,
@@ -201,11 +247,18 @@ export function acceptTrustedUsage(input: {
   const { receipt } = input;
   if (receipt.usage.estimated) return { receipt, clamps: [] };
 
-  const bounds = boundsOf(input.quote, receipt.mappingId);
+  const candidate = candidateOf(input.quote, receipt.mappingId);
+  const bounds = boundsOf(input.quote, candidate);
   const evidence = numeric(receipt.outputEvidenceBytes);
   const clamps: UsageClamp[] = [];
   const usage = { ...receipt.usage };
-  usage.outputTokens = clampOutput({ outputTokens: usage.outputTokens, bounds, evidence, clamps });
+  usage.outputTokens = clampOutput({
+    outputTokens: usage.outputTokens,
+    bounds,
+    evidence,
+    outputPriced: outputPricedOf(candidate),
+    clamps,
+  });
   clampInputSide(usage, bounds, clamps);
 
   if (clamps.length === 0) return { receipt, clamps: [] };

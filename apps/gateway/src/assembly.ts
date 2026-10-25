@@ -55,6 +55,16 @@ import {
 } from './http/middleware/rate-limit';
 import { ACCOUNTS_POLICY, billingGuardsOf, type GatewayConfig } from './config';
 
+/** 审计 action 三级：violation（硬谎报）/ hard_mark（B1 缺失审计级标记，#83）/
+ * clamped（普通软钳）——独立 action 才可独立检索与告警 */
+function auditActionOf(data: { hard: boolean; clamps: readonly { kind: string }[] }): string {
+  if (data.hard) return 'billing.usage_evidence_violation';
+  if (data.clamps.some((c) => c.kind === 'evidence_bound_hard')) {
+    return 'billing.usage_evidence_hard_mark';
+  }
+  return 'billing.usage_evidence_clamped';
+}
+
 /** 渠道健康 Redis 键前缀（前缀纪律：breaker/credential 分键） */
 const HEALTH_PREFIX = 'inference:health:';
 
@@ -183,10 +193,11 @@ export async function assembleGateway(config: GatewayConfig): Promise<GatewayAss
       onUsageDefect: (data) => {
         const { hard } = data;
         (hard ? logger.error : logger.warn).call(logger, { ...data }, 'usage evidence clamped');
+        const action = auditActionOf(data);
         writeAudit(db, {
           actor: 'system',
           adminId: null,
-          action: hard ? 'billing.usage_evidence_violation' : 'billing.usage_evidence_clamped',
+          action,
           targetType: 'channel',
           targetId: String(data.channelId ?? ''),
           detail: {

@@ -989,7 +989,11 @@ describe('用量验收门（症状回归：上游伪造巨量发票曾打穿渠�
       for (let i = 0; i < 5; i++) {
         await forgedInvoiceCase(h, channelId);
       }
-      const claims = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+      const claims = await h.settlement.claim({
+        ownerId: 'w1',
+        batchSize: 10,
+        claimLeaseMs: 5_000,
+      });
       for (const claim of claims) {
         expect(await h.settlement.processClaim(defined(claim))).toBe('settled');
       }

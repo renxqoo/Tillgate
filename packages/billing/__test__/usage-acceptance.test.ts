@@ -135,6 +135,17 @@ describe('acceptTrustedUsage', () => {
     expect(out.clamps.map((c) => c.kind).toSorted()).toEqual(['cache_write_bound', 'unit_bound']);
   });
 
+  it('candidates 非数组（畸形旧行）：outputCap 跳过不产生硬违例（pr #85 路 B #2 回归）', () => {
+    const out = acceptTrustedUsage({
+      receipt: { ...receiptOf({ outputTokens: 5000 }), outputEvidenceBytes: 400 },
+      // maxOutputTokens 为正但 candidates 畸形：整行旧数据，cap 界跳过——
+      // 不得出现 output_cap 硬违例（曾回归：钳到 800 + 计缺陷）；evidence 软钳照常
+      quote: { maxOutputTokens: 800, candidates: null } as never,
+    });
+    expect(out.clamps.map((c) => c.kind)).toEqual(['evidence_bound']); // 仅软钳，无 output_cap
+    expect(out.receipt.usage.outputTokens).toBe(400);
+  });
+
   it('旧数据缺界：quote null / 候选缺位 / 界非正数 → 对应界跳过', () => {
     const r = receiptOf({ inputTokens: 20_000_000, outputTokens: 10_000_000 });
     for (const quote of [
@@ -169,6 +180,33 @@ describe('钳制分级（缺陷计数只看硬违例——issue #80）', () => {
     expect(out.clamps[0] != null && isHardViolation(out.clamps[0])).toBe(false);
   });
 
+  it('B1 缺失时（issue #83）：输出计费候选的证据界升级硬违例；输出免费仍软', () => {
+    // quote 无 maxOutputTokens（存量缺界 / embeddings / modality 口径 0）
+    const [base] = quoteOf({}).candidates;
+    const quoteWithoutCap = (outputPrice: string): BillingQuote =>
+      ({
+        candidates: [base != null ? { ...base, outputPrice } : { mappingId: 7, outputPrice }],
+      }) as unknown as BillingQuote;
+    // 输出计费（outputPrice > 0）：超证据字节 → 升级为审计级硬（kind 区分），
+    // 但不进缺陷计数（isHardViolation=false——口径非定理性与 B1 无关，pr #85 路 C #1）
+    const priced = acceptTrustedUsage({
+      receipt: { ...receiptOf({ outputTokens: 5000 }), outputEvidenceBytes: 400 },
+      quote: quoteWithoutCap('2'),
+    });
+    expect(priced.clamps).toHaveLength(1);
+    expect(priced.clamps[0]?.kind).toBe('evidence_bound_hard');
+    expect(priced.clamps[0] != null && isHardViolation(priced.clamps[0])).toBe(false);
+
+    // 输出免费（outputPrice = 0）：无资金敞口 → 维持软钳（无谓熔断无意义）
+    const free = acceptTrustedUsage({
+      receipt: { ...receiptOf({ outputTokens: 5000 }), outputEvidenceBytes: 400 },
+      quote: quoteWithoutCap('0'),
+    });
+    expect(free.clamps).toHaveLength(1);
+    expect(free.clamps[0]?.kind).toBe('evidence_bound');
+    expect(free.clamps[0] != null && isHardViolation(free.clamps[0])).toBe(false);
+  });
+
   it('五类硬界钳制均记缺陷（谎报判定保留）', () => {
     const cases: Array<Parameters<typeof acceptTrustedUsage>[0]> = [
       // output_cap：发票超准入 cap
@@ -199,7 +237,7 @@ describe('钳制分级（缺陷计数只看硬违例——issue #80）', () => {
     );
   });
 
-  it('分级词表封闭：硬违例 = 五类硬界，evidence 唯一软类', () => {
+  it('分级词表封闭：熔断级硬 = 五类请求事实界；evidence 双 kind 均软（#83 审计级差异在 kind）', () => {
     const all = [
       'output_cap',
       'input_bound',
@@ -207,6 +245,7 @@ describe('钳制分级（缺陷计数只看硬违例——issue #80）', () => {
       'cache_write_bound',
       'unit_bound',
       'evidence_bound',
+      'evidence_bound_hard',
     ] as const;
     const hard = all.filter((k) =>
       isHardViolation({ kind: k, field: 'outputTokens', original: 2, clamped: 1, bound: 1 }),
@@ -217,6 +256,6 @@ describe('钳制分级（缺陷计数只看硬违例——issue #80）', () => {
       'cached_bound',
       'cache_write_bound',
       'unit_bound',
-    ]);
+    ]); // evidence_bound / evidence_bound_hard 均为熔断级软（审计级差异在 kind 本身）
   });
 });

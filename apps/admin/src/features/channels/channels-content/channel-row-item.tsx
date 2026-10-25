@@ -21,9 +21,10 @@ import { EditChannelDialog } from './edit-channel-dialog';
 // 状态 tone 映射留模块级；label 是 channels 命名空间的 i18n key，渲染处用 t 解析
 const STATUS_META = defineStatusMeta(
   {
+    // 值→语义与 DB 词表对齐（issue #82）：1=禁用（软退役同值）、2=维护（人工态）
     0: { label: 'statusEnabled', tone: 'success' },
-    1: { label: 'statusDegraded', tone: 'warning' },
-    2: { label: 'statusDisabled', tone: 'neutral' },
+    1: { label: 'statusDisabled', tone: 'neutral' },
+    2: { label: 'statusMaintenance', tone: 'warning' },
     3: { label: 'statusCooldown', tone: 'warning' },
     // 4 = 凭据无效（worker 连续 401/403 标记；换 Key 保存时复位为 0）
     4: { label: 'statusDead', tone: 'danger' },
