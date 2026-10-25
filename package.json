@@ -38,7 +38,7 @@
     "nanoid": "3.3.18"
   },
   "engines": {
-    "bun": ">=1.4.0"
+    "bun": ">=1.4.3"
   },
   "packageManager": "bun@1.4.3",
   "patchedDependencies": {

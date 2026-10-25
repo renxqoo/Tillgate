@@ -200,6 +200,8 @@ export interface AdminChannelRow {
   priority: number;
   status: number;
   failCount: number;
+  /** 用量证据缺陷计数(结算硬违例累计;启用/换Key/进货复活时清零) */
+  usageEvidenceDefects: number;
   /** 记录面逻辑删除时刻(回收站);null = 在册 */
   deletedAt: string | null;
   /** 冷却截止(无列来源,恒 null) */

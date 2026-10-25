@@ -21,6 +21,8 @@ export interface ChannelListRow {
   readonly priority: number;
   readonly status: number;
   readonly failCount: number;
+  /** 用量证据缺陷计数（结算硬违例累计；复位随启用/换 Key/进货复活） */
+  readonly usageEvidenceDefects: number;
   readonly rpmLimit: number | null;
   readonly tpmLimit: number | null;
   readonly upstreamBudget: string;
@@ -156,6 +158,14 @@ export interface ChannelStore {
         failCount?: number;
         cooldownUntil?: Date | null;
         upstreamThreshold?: string | null;
+        /**
+         * 启用复位守卫（SQL 单语句：status <> 0 时清零缺陷计数——与 rechargeBudget
+         * 同构）。application 传入前不得依赖 SELECT 现态判定（TOCTOU：并发熔断在
+         * READ COMMITTED 下会以 EPQ 重放穿透读-判-写三段式——issue #80 路 B finding #1）
+         */
+        resetUsageDefects?: boolean;
+        /** 缺陷计数无条件清零（换 Key = 复核通过，无论当前状态；单 UPDATE 原子） */
+        usageEvidenceDefects?: number;
       };
     },
   ): Promise<{ id: number; name: string; status: number; failCount: number } | null>;

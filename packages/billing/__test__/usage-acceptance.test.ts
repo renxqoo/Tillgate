@@ -3,7 +3,7 @@
  * 三界钳制矩阵 / 估算直通 / 旧数据缺界跳过 / 恰好等于界不钳 / 违规事实完整记录。
  */
 import { describe, expect, it } from 'vitest';
-import { acceptTrustedUsage } from '../src/domain/rating/usage-acceptance';
+import { acceptTrustedUsage, isHardViolation } from '../src/domain/rating/usage-acceptance';
 import type { BillingQuote, UsageReceipt } from '../src/domain/rating/types';
 
 function receiptOf(usage: Partial<UsageReceipt['usage']>): UsageReceipt {
@@ -155,5 +155,68 @@ describe('acceptTrustedUsage', () => {
     });
     expect(out.receipt).toBeInstanceOf(Object);
     expect(out.clamps).toEqual([]);
+  });
+});
+
+describe('钳制分级（缺陷计数只看硬违例——issue #80）', () => {
+  it('evidence_bound 是软钳制（隐藏 token 口径非定理，不记缺陷）', () => {
+    const out = acceptTrustedUsage({
+      receipt: { ...receiptOf({ outputTokens: 5000 }), outputEvidenceBytes: 400 },
+      quote: quoteOf({ maxOutputTokens: 8000 }),
+    });
+    expect(out.clamps).toHaveLength(1);
+    expect(out.clamps[0]?.kind).toBe('evidence_bound');
+    expect(out.clamps[0] != null && isHardViolation(out.clamps[0])).toBe(false);
+  });
+
+  it('五类硬界钳制均记缺陷（谎报判定保留）', () => {
+    const cases: Array<Parameters<typeof acceptTrustedUsage>[0]> = [
+      // output_cap：发票超准入 cap
+      {
+        receipt: receiptOf({ outputTokens: 5000 }),
+        quote: quoteOf({ maxOutputTokens: 300 }),
+      },
+      // input_bound + cached_bound
+      {
+        receipt: receiptOf({ inputTokens: 9999, cachedInputTokens: 8888 }),
+        quote: quoteOf({ inputUpper: 100 }),
+      },
+      // cache_write_bound + unit_bound
+      {
+        receipt: receiptOf({ cacheWriteTokens: 7777, units: 99 } as never),
+        quote: quoteOf({ inputUpper: 500, unitUpper: 4 }),
+      },
+    ];
+    const kinds = new Set<string>();
+    for (const c of cases) {
+      for (const clamp of acceptTrustedUsage(c).clamps) {
+        kinds.add(clamp.kind);
+        expect(isHardViolation(clamp)).toBe(true);
+      }
+    }
+    expect(kinds).toEqual(
+      new Set(['output_cap', 'input_bound', 'cached_bound', 'cache_write_bound', 'unit_bound']),
+    );
+  });
+
+  it('分级词表封闭：硬违例 = 五类硬界，evidence 唯一软类', () => {
+    const all = [
+      'output_cap',
+      'input_bound',
+      'cached_bound',
+      'cache_write_bound',
+      'unit_bound',
+      'evidence_bound',
+    ] as const;
+    const hard = all.filter((k) =>
+      isHardViolation({ kind: k, field: 'outputTokens', original: 2, clamped: 1, bound: 1 }),
+    );
+    expect(hard).toEqual([
+      'output_cap',
+      'input_bound',
+      'cached_bound',
+      'cache_write_bound',
+      'unit_bound',
+    ]);
   });
 });

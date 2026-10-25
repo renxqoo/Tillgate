@@ -346,8 +346,8 @@
     "statusEnabled": "启用",
     "statusDegraded": "降级",
     "statusDisabled": "禁用",
-    "statusCooldown": "冷却",
-    "cooling": "（冷却中）",
+    "statusCooldown": "熔断",
+    "cooling": "需人工复核后启用",
     "noChannels": "暂无渠道",
     "provider": "供应商",
     "models": "模型",
@@ -401,7 +401,8 @@
     "importEmpty": "请输入至少一条渠道",
     "testFailed": "测试失败",
     "statusDead": "凭据无效",
-    "statusUnknown": "未知"
+    "statusUnknown": "未知",
+    "defectCount": "缺陷计数"
   },
   "models": {
     "title": "模型映射",

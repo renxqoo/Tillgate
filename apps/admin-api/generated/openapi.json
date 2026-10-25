@@ -937,6 +937,10 @@
           "failCount": {
             "type": "number"
           },
+          "usageEvidenceDefects": {
+            "type": "number",
+            "description": "用量证据缺陷计数(结算硬违例累计;启用/换Key/进货复活时清零)"
+          },
           "deletedAt": {
             "anyOf": [
               {
@@ -1046,6 +1050,7 @@
           "priority",
           "status",
           "failCount",
+          "usageEvidenceDefects",
           "deletedAt",
           "cooldownUntil",
           "rpmLimit",

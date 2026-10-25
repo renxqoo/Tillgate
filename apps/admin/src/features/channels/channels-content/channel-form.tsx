@@ -202,6 +202,7 @@ export function ChannelForm({
                       { value: '0', label: tc('enabled') },
                       { value: '1', label: t('statusDegraded') },
                       { value: '2', label: tc('disabled') },
+                      { value: '3', label: t('statusCooldown') },
                       { value: '4', label: t('statusDead') },
                     ]}
                   >
@@ -212,6 +213,7 @@ export function ChannelForm({
                       <SelectItem value="0">{tc('enabled')}</SelectItem>
                       <SelectItem value="1">{t('statusDegraded')}</SelectItem>
                       <SelectItem value="2">{tc('disabled')}</SelectItem>
+                      <SelectItem value="3">{t('statusCooldown')}</SelectItem>
                       <SelectItem value="4">{t('statusDead')}</SelectItem>
                     </SelectContent>
                   </Select>

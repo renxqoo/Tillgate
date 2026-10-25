@@ -29,6 +29,7 @@ const channelRow = {
   priority: 0,
   status: 0,
   failCount: 0,
+  usageEvidenceDefects: 3,
   rpmLimit: null,
   tpmLimit: null,
   upstreamBudget: '100',
@@ -162,6 +163,7 @@ describe('channels + channel-funds', () => {
       cooldownUntil: null,
       providerBaseUrl: null,
       updatedAt: null,
+      usageEvidenceDefects: 3,
     });
 
     const created = await app.request('/v1/channels', {

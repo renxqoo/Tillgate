@@ -4,10 +4,19 @@
  *      转发上限——上游物理上产不出更多输出 token）；
  *   B2 输入侧上界：inputTokens / cachedInputTokens / cacheWriteTokens ≤ 命中候选的
  *      inputTokenUpperBound（字节 ≥ token 的保守上界，授权时已算）；units ≤ unitUpperBound；
- *   B3 证据上界：outputTokens ≤ receipt.outputEvidenceBytes（中继/响应体 UTF-8 字节；
- *      每 token 至少 1 字节为定理，帧/JSON 结构开销只放大上界——安全方向）。
- * 三界对诚实上游全部是定理而非启发式：零误伤可证明。任一钳制发生 = 渠道谎报发票
- * → 调用方记渠道缺陷（计数 + 审计 + 过阈熔断），结算照常按钳后值完成。
+ *   B3 证据上界：outputTokens ≤ receipt.outputEvidenceBytes（中继/响应体 UTF-8 字节）。
+ * 分级（缺陷计数只看硬违例）：
+ *   硬违例（B1/B2 + B3 的输出側 cap 后超证据且超 cap 场景外的五类 kind）——界值全部
+ *   由我方请求事实推导，对诚实上游是定理，超出 = 渠道谎报发票 → 记缺陷（计数 + 审计
+ *   + 过阈熔断）；
+ *   软钳制（B3 证据界 evidence_bound）——依赖「我方字节统计与供应商 token 口径一致」
+ *   这一前提。供应商把隐藏 token（如 reasoning）计入 output_tokens 而响应体不含其
+ *   字节时，该界不是定理（系统性误判 → 诚实渠道被误杀熔断），故只钳计费不记缺陷。
+ *   真谎报输出侧发票仍被硬界 B1 捕获——保护不降级。
+ *   ⚠ 已知盲区（issue #83）：quote.maxOutputTokens 缺失或为 0（embeddings/modality
+ *   端点、存量缺界数据）时 B1 解析为 null 跳过，输出侧唯一剩余界是本软界——
+ *   此类渠道的输出侧谎报不计缺陷不熔断，只被钳到证据字节（大响应体下界宽）。
+ * 结算照常按钳后值完成（两级钳制都生效于计费）。
  *
  * 估算收据（estimated）不经本门：数值派生自我方特征/字节，有界性由构造保证。
  * 旧收据/旧 quote 缺某界 → 该界跳过（无版本双轨，缺省即放行该界）。
@@ -33,6 +42,25 @@ export interface UsageClamp {
   readonly clamped: number;
   /** 该次钳制依据的界值（审计定位用） */
   readonly bound: number;
+}
+
+/**
+ * 钳制分级（缺陷计数单一真相）：硬违例 = 界值由我方请求事实推导、对诚实上游
+ * 是定理，超出即谎报证据 → 记缺陷；软钳制 = 界依赖供应商口径假设（隐藏 token
+ * 口径下非定理）→ 只钳计费不记缺陷。新 kind 必须显式归级（穷举封闭，
+ * 漏归级编译期即拒——防止未来新增界被默认当成硬违例误杀渠道）。
+ */
+export function isHardViolation(clamp: UsageClamp): boolean {
+  switch (clamp.kind) {
+    case 'output_cap':
+    case 'input_bound':
+    case 'cached_bound':
+    case 'cache_write_bound':
+    case 'unit_bound':
+      return true;
+    case 'evidence_bound':
+      return false;
+  }
 }
 
 export interface UsageAcceptanceResult {

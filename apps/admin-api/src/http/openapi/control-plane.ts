@@ -28,6 +28,9 @@ export const adminChannelRowSchema = z
     priority: z.number(),
     status: z.number(),
     failCount: z.number(),
+    usageEvidenceDefects: z
+      .number()
+      .describe('用量证据缺陷计数(结算硬违例累计;启用/换Key/进货复活时清零)'),
     deletedAt: z.string().nullable().describe('记录面逻辑删除时刻(回收站);null = 在册'),
     cooldownUntil: z.string().nullable().describe('冷却截止(无列来源,恒 null)'),
     rpmLimit: z.number().nullable(),

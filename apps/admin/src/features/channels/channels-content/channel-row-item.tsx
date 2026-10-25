@@ -32,6 +32,25 @@ const STATUS_META = defineStatusMeta(
   { label: 'statusUnknown', tone: 'neutral' },
 );
 
+/** 行动作工厂：动态 import + pending 态 + toast 收口（test/delete/undelete 三步同构）。
+ *  finally 保证 pending 复位——invoke 抛异常时按钮不卡 spinner */
+function rowAction(args: {
+  setPending: (v: boolean) => void;
+  invoke: (id: number) => Promise<{ error?: unknown; durationMs?: number }>;
+  onSuccess: (res: { error?: unknown; durationMs?: number }) => void;
+}): (id: number) => Promise<void> {
+  return async (id: number) => {
+    args.setPending(true);
+    try {
+      const res = await args.invoke(id);
+      if (res.error) toast.error(String(res.error));
+      else args.onSuccess(res);
+    } finally {
+      args.setPending(false);
+    }
+  };
+}
+
 export function ChannelRowItem({
   channel,
   providers,
@@ -51,32 +70,21 @@ export function ChannelRowItem({
   // 回收站行（deletedAt 非空）：只读——仅「恢复记录」，其余动作不可达
   const deleted = channel.deletedAt != null;
 
-  async function runTest() {
-    setTesting(true);
-    const { testChannelAction } = await import('@/server/channels-actions');
-    const res = await testChannelAction(channel.id);
-    setTesting(false);
-    if (res.error) toast.error(String(res.error));
-    else toast.success(t('connected', { ms: res.durationMs ?? 0 }));
-  }
-
-  async function runDelete() {
-    setDeleting(true);
-    const { deleteChannelAction } = await import('@/server/channels-actions');
-    const res = await deleteChannelAction(channel.id);
-    setDeleting(false);
-    if (res.error) toast.error(String(res.error));
-    else toast.success(tc('deleted'));
-  }
-
-  async function runUndelete() {
-    setRestoring(true);
-    const { undeleteChannelAction } = await import('@/server/channels-actions');
-    const res = await undeleteChannelAction(channel.id);
-    setRestoring(false);
-    if (res.error) toast.error(String(res.error));
-    else toast.success(t('undeleteSuccess'));
-  }
+  const runTest = rowAction({
+    setPending: setTesting,
+    invoke: (id) => import('@/server/channels-actions').then((m) => m.testChannelAction(id)),
+    onSuccess: (res) => toast.success(t('connected', { ms: res.durationMs ?? 0 })),
+  });
+  const runDelete = rowAction({
+    setPending: setDeleting,
+    invoke: (id) => import('@/server/channels-actions').then((m) => m.deleteChannelAction(id)),
+    onSuccess: () => toast.success(tc('deleted')),
+  });
+  const runUndelete = rowAction({
+    setPending: setRestoring,
+    invoke: (id) => import('@/server/channels-actions').then((m) => m.undeleteChannelAction(id)),
+    onSuccess: () => toast.success(t('undeleteSuccess')),
+  });
 
   return (
     <TableRow className={deleted ? 'opacity-60' : undefined}>
@@ -108,8 +116,8 @@ export function ChannelRowItem({
           </div>
         ) : (
           <StatusPill dot tone={meta.tone} label={t(meta.label)}>
-            {channel.cooldownUntil ? (
-              <span className="text-muted-foreground" title={channel.cooldownUntil}>
+            {channel.status === 3 ? (
+              <span className="text-muted-foreground" title={t('cooling')}>
                 {t('cooling')}
               </span>
             ) : null}
@@ -117,13 +125,17 @@ export function ChannelRowItem({
         )}
       </TableCell>
       <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
-        {channel.failCount}
+        {/* 双计数同格：缺陷计数（用量谎报熔断证据）与失败次数（熔断计数）语义相邻 */}
+        <div className="flex flex-col">
+          <span title={t('defectCount')}>{channel.usageEvidenceDefects ?? 0}</span>
+          <span title={t('failCount')}>{channel.failCount}</span>
+        </div>
       </TableCell>
       <TableCell className="w-16 text-center">
         {/* 行操作走全站统一的 RowActions 菜单项范式（勿在菜单面板里放独立 Button 竖排） */}
         {deleted ? (
           <RowActions label={tc('actions')}>
-            <DropdownMenuItem disabled={restoring} onClick={runUndelete}>
+            <DropdownMenuItem disabled={restoring} onClick={() => void runUndelete(channel.id)}>
               {restoring ? (
                 <Loader2Icon className="size-4 animate-spin" />
               ) : (
@@ -135,7 +147,7 @@ export function ChannelRowItem({
         ) : (
           <>
             <RowActions label={tc('actions')}>
-              <DropdownMenuItem disabled={testing} onClick={runTest}>
+              <DropdownMenuItem disabled={testing} onClick={() => void runTest(channel.id)}>
                 {testing ? (
                   <Loader2Icon className="size-4 animate-spin" />
                 ) : (
@@ -148,7 +160,11 @@ export function ChannelRowItem({
                 {tc('edit')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={() => setConfirmOpen(true)}>
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={deleting}
+                onClick={() => setConfirmOpen(true)}
+              >
                 {deleting ? (
                   <Loader2Icon className="size-4 animate-spin" />
                 ) : (
@@ -171,7 +187,7 @@ export function ChannelRowItem({
               confirmLabel={tc('delete')}
               cancelLabel={tUi('cancel')}
               tone="destructive"
-              onConfirm={runDelete}
+              onConfirm={() => runDelete(channel.id)}
               onError={(e) => toast.error(e instanceof Error ? e.message : String(e))}
             />
           </>

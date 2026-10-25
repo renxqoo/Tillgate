@@ -1,6 +1,8 @@
 /**
- * 更新渠道。换 Key 语义：重加密 + 复位运行态（status=0 / failCount=0 / cooldownUntil=null——
- * 「换 Key = 修死凭据」：死凭据 status=4 / 熔断 status=3 一并清除）。
+ * 更新渠道。换 Key 语义：重加密 + 复位运行态（status=0 / failCount=0 / cooldownUntil=null /
+ * usageEvidenceDefects=0——「换 Key = 修死凭据 + 运维复核通过」：死凭据 status=4 / 熔断
+ * status=3 一并清除，缺陷计数同步清零防反复弹回（issue #80））。
+ * 启用语义：patch status→0 且当前非 0 = 运维复核通过，缺陷计数一并清零。
  */
 import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
@@ -46,13 +48,20 @@ export async function updateChannel(
       ...(keyChanged
         ? {
             apiKeyEnc: deps.cipher.encrypt(apiKey),
-            // 换 Key 即复位运行态（服务层一并用词——store 端不感知运维语义）
+            // 换 Key 即复位运行态（服务层一并用词——store 端不感知运维语义）；
+            // 计数无条件清零：换 Key = 复核通过，与当前状态无关（单 UPDATE 原子）
             status: 0,
             failCount: 0,
             cooldownUntil: null,
+            usageEvidenceDefects: 0,
           }
         : {}),
     };
+    // 启用即复核：patch 把 status 改回 0 时缺陷计数按「当前非 0」守卫清零。
+    // 守卫判定下沉 store 的 SQL 单语句（case when status <> 0）——应用层不得
+    // SELECT 现态拼值：READ COMMITTED 下并发熔断的 EPQ 重放会让读-判-写产生
+    // 「status 复位、计数未清」的半应用态（issue #80 路 B finding #1）
+    if (validated.status === 0) patch.resetUsageDefects = true;
     return deps.stores.channel.updateChannel(tx, { channelId: input.channelId, patch });
   });
   if (!row) {

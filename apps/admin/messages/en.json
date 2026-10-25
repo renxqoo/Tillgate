@@ -346,8 +346,8 @@
     "statusEnabled": "Enabled",
     "statusDegraded": "Degraded",
     "statusDisabled": "Disabled",
-    "statusCooldown": "Cooldown",
-    "cooling": "(cooling down)",
+    "statusCooldown": "Tripped",
+    "cooling": "re-enable after review",
     "noChannels": "No channels",
     "provider": "Provider",
     "models": "Models",
@@ -401,7 +401,8 @@
     "importEmpty": "Enter at least one channel",
     "testFailed": "Test failed",
     "statusDead": "Invalid credentials",
-    "statusUnknown": "Unknown"
+    "statusUnknown": "Unknown",
+    "defectCount": "Defects"
   },
   "models": {
     "title": "Model mappings",

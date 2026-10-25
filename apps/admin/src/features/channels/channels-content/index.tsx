@@ -30,7 +30,9 @@ export function ChannelsTable({
           <TableHead className="text-right">{t('weightPriority')}</TableHead>
           <TableHead className="text-right">{t('budget')}</TableHead>
           <TableHead>{tc('status')}</TableHead>
-          <TableHead className="text-right">{t('failCount')}</TableHead>
+          <TableHead className="text-right">
+            {t('defectCount')} / {t('failCount')}
+          </TableHead>
           <TableHead className="w-16 text-center">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>

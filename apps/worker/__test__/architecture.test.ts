@@ -41,6 +41,7 @@ describe('① src 文件集合快照（目标树机器锁死）', () => {
       'assembly.ts',
       'bridge-mappers.ts',
       'calibration-retention.ts',
+      'channel-break-alert.ts',
       'config.ts',
       'health.ts',
       'index.ts',

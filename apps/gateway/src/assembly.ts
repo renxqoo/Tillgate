@@ -177,13 +177,16 @@ export async function assembleGateway(config: GatewayConfig): Promise<GatewayAss
       clock: () => new Date(),
       onError: (error, context) =>
         logger.error({ err: String(error), context }, 'billing settlement error'),
-      // 验收门钳制：日志 + best-effort 审计（计数/熔断已在结算事务内完成）
+      // 验收门钳制：日志 + best-effort 审计（计数/熔断已在结算事务内完成）。
+      // 分级观测（路 A finding #2）：硬违例 = 谎报证据（error + violation）；
+      // 软钳制降级 warn + clamped，不灌 violation 词表
       onUsageDefect: (data) => {
-        logger.error({ ...data }, 'usage evidence violation — invoice clamped');
+        const { hard } = data;
+        (hard ? logger.error : logger.warn).call(logger, { ...data }, 'usage evidence clamped');
         writeAudit(db, {
           actor: 'system',
           adminId: null,
-          action: 'billing.usage_evidence_violation',
+          action: hard ? 'billing.usage_evidence_violation' : 'billing.usage_evidence_clamped',
           targetType: 'channel',
           targetId: String(data.channelId ?? ''),
           detail: {
@@ -191,6 +194,7 @@ export async function assembleGateway(config: GatewayConfig): Promise<GatewayAss
             clamps: data.clamps as unknown as Record<string, unknown>,
             defects: data.defects,
             broken: data.broken,
+            breakReason: data.breakReason,
           },
         }).catch(() => {});
       },
