@@ -135,6 +135,17 @@ describe('acceptTrustedUsage', () => {
     expect(out.clamps.map((c) => c.kind).toSorted()).toEqual(['cache_write_bound', 'unit_bound']);
   });
 
+  it('candidates 非数组（畸形旧行）：outputCap 跳过不产生硬违例（pr #85 路 B #2 回归）', () => {
+    const out = acceptTrustedUsage({
+      receipt: { ...receiptOf({ outputTokens: 5000 }), outputEvidenceBytes: 400 },
+      // maxOutputTokens 为正但 candidates 畸形：整行旧数据，cap 界跳过——
+      // 不得出现 output_cap 硬违例（曾回归：钳到 800 + 计缺陷）；evidence 软钳照常
+      quote: { maxOutputTokens: 800, candidates: null } as never,
+    });
+    expect(out.clamps.map((c) => c.kind)).toEqual(['evidence_bound']); // 仅软钳，无 output_cap
+    expect(out.receipt.usage.outputTokens).toBe(400);
+  });
+
   it('旧数据缺界：quote null / 候选缺位 / 界非正数 → 对应界跳过', () => {
     const r = receiptOf({ inputTokens: 20_000_000, outputTokens: 10_000_000 });
     for (const quote of [
@@ -226,7 +237,7 @@ describe('钳制分级（缺陷计数只看硬违例——issue #80）', () => {
     );
   });
 
-  it('分级词表封闭：硬违例 = 五类硬界，evidence 唯一软类', () => {
+  it('分级词表封闭：熔断级硬 = 五类请求事实界；evidence 双 kind 均软（#83 审计级差异在 kind）', () => {
     const all = [
       'output_cap',
       'input_bound',
@@ -234,6 +245,7 @@ describe('钳制分级（缺陷计数只看硬违例——issue #80）', () => {
       'cache_write_bound',
       'unit_bound',
       'evidence_bound',
+      'evidence_bound_hard',
     ] as const;
     const hard = all.filter((k) =>
       isHardViolation({ kind: k, field: 'outputTokens', original: 2, clamped: 1, bound: 1 }),

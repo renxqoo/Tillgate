@@ -13,9 +13,9 @@
  *   这一前提。供应商把隐藏 token（如 reasoning）计入 output_tokens 而响应体不含其
  *   字节时，该界不是定理（系统性误判 → 诚实渠道被误杀熔断），故只钳计费不记缺陷。
  *   真谎报输出侧发票仍被硬界 B1 捕获——保护不降级。
- *   ⚠ 已知盲区（issue #83）：quote.maxOutputTokens 缺失或为 0（embeddings/modality
- *   端点、存量缺界数据）时 B1 解析为 null 跳过，输出侧唯一剩余界是本软界——
- *   此类渠道的输出侧谎报不计缺陷不熔断，只被钳到证据字节（大响应体下界宽）。
+ *   B1 缺失且输出计费时（embeddings/modality 端点、存量缺界数据），证据钳制
+ *   升级为审计级硬标记（kind=evidence_bound_hard，单独成类可检索）——仍不进
+ *   缺陷计数（issue #83 终态语义：口径非定理性与 B1 无关，熔断会复活 #80 误杀）。
  * 结算照常按钳后值完成（两级钳制都生效于计费）。
  *
  * 估算收据（estimated）不经本门：数值派生自我方特征/字节，有界性由构造保证。
@@ -127,8 +127,15 @@ function candidateOf(
     | undefined;
 }
 
-/** 从持久化 quote 解出命中候选的三界 */
+/**
+ * 从持久化 quote 解出命中候选的三界。candidates 非数组 = 整行旧/畸形数据
+ * → 三界全跳过（含 outputCap——pr #85 路 B #2：重构曾丢失此守卫，使
+ * maxOutputTokens 为正而 candidates 畸形的存量行从静默直通变为 output_cap 硬违例）
+ */
 function boundsOf(quote: QuoteLike, candidate: ReturnType<typeof candidateOf>): Bound {
+  if (!Array.isArray(quote?.candidates)) {
+    return { outputCap: null, inputUpper: null, unitUpper: null };
+  }
   return {
     outputCap: numeric(quote?.maxOutputTokens),
     inputUpper: numeric(candidate?.inputTokenUpperBound),
