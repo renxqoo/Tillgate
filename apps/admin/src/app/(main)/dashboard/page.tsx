@@ -20,17 +20,19 @@ import { EmptyChart } from './empty-chart';
 
 export const dynamic = 'force-dynamic';
 
-/** 渠道健康聚合：healthy / degraded / down 计数（缺数据全 0） */
+/** 渠道健康聚合：healthy / disabled / down 计数（缺数据全 0）。
+ * 1 = 禁用（词表口径，pr #85 路 A #1——旧命名与渠道页错位）；
+ * down = 维护(2)/熔断(3)/死凭据(4) 合计（非健康态归并，语义不变） */
 function countChannelHealth(stats: StatsOverview | null): {
   healthy: number;
-  degraded: number;
+  disabled: number;
   down: number;
 } {
   const healthy = stats?.channelHealth?.find((c) => c.status === 0)?.count ?? 0;
-  const degraded = stats?.channelHealth?.find((c) => c.status === 1)?.count ?? 0;
+  const disabled = stats?.channelHealth?.find((c) => c.status === 1)?.count ?? 0;
   const down =
     stats?.channelHealth?.filter((c) => c.status >= 2).reduce((sum, c) => sum + c.count, 0) ?? 0;
-  return { healthy, degraded, down };
+  return { healthy, disabled, down };
 }
 
 export default async function AdminDashboardPage() {
@@ -55,7 +57,7 @@ export default async function AdminDashboardPage() {
 
   const {
     healthy: healthyCount,
-    degraded: degradedCount,
+    disabled: disabledCount,
     down: downCount,
   } = countChannelHealth(stats);
 
@@ -80,7 +82,7 @@ export default async function AdminDashboardPage() {
         stats={stats}
         t={t}
         healthy={healthyCount}
-        degraded={degradedCount}
+        disabled={disabledCount}
         down={downCount}
       />
 

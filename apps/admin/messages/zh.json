@@ -163,7 +163,7 @@
     "todayOutputTokens": "输出 {count}",
     "billedByTokens": "按令牌计费",
     "channelHealth": "渠道健康",
-    "degraded": "降级 {count}",
+    "disabled": "禁用 {count}",
     "down": "异常 {count}",
     "realtimeProbe": "实时探测",
     "requestsTrend": "请求量趋势",

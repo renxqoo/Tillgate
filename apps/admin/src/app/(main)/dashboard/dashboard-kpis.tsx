@@ -10,16 +10,16 @@ export function DashboardKpis({
   stats,
   t,
   healthy,
-  degraded,
+  disabled,
   down,
 }: {
   stats: StatsOverview | null;
   t: Awaited<ReturnType<typeof getTranslations<'dashboard'>>>;
   healthy: number;
-  degraded: number;
+  disabled: number;
   down: number;
 }) {
-  const totalChannels = healthy + degraded + down;
+  const totalChannels = healthy + disabled + down;
   return (
     <div className="grid grid-cols-2 gap-4 @lg/main:grid-cols-4">
       <KpiCard
@@ -56,9 +56,9 @@ export function DashboardKpis({
         value={`${fmtInt(healthy)} / ${fmtInt(totalChannels)}`}
         sub={
           <span className="inline-flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
-              <span className="size-1.5 rounded-full bg-amber-500" />
-              {t('degraded', { count: fmtInt(degraded) })}
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <span className="size-1.5 rounded-full bg-muted-foreground" />
+              {t('disabled', { count: fmtInt(disabled) })}
             </span>
             <span className="inline-flex items-center gap-1 text-destructive">
               <span className="size-1.5 rounded-full bg-destructive" />

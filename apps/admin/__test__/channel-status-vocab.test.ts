@@ -11,6 +11,8 @@ import { describe, expect, it } from 'vitest';
  */
 const FORM = join(__dirname, '../src/features/channels/channels-content/channel-form.tsx');
 const ROW = join(__dirname, '../src/features/channels/channels-content/channel-row-item.tsx');
+const DASHBOARD_PAGE = join(__dirname, '../src/app/(main)/dashboard/page.tsx');
+const DASHBOARD_KPIS = join(__dirname, '../src/app/(main)/dashboard/dashboard-kpis.tsx');
 
 /**
  * 词表权威映射（值 → i18n key）；维护词表时同步更新此处与 schema 注释。
@@ -98,6 +100,23 @@ describe('渠道状态词表守护（#82）', () => {
       }
       expect(common.enabled, `${locale}:common.enabled`).toBeTruthy();
       expect(channels.statusUnknown, `${locale}:statusUnknown`).toBeTruthy();
+    }
+  });
+
+  it('仪表盘消费面（pr #85 路 A #1）：status=1 一律「禁用」口径，无 degraded 残留', () => {
+    for (const file of [DASHBOARD_PAGE, DASHBOARD_KPIS]) {
+      const src = readFileSync(file, 'utf-8');
+      expect(src.includes('degraded'), file).toBe(false);
+      expect(src.includes('disabled'), file).toBe(true);
+    }
+    for (const locale of ['zh', 'en'] as const) {
+      const dash = (
+        JSON.parse(readFileSync(join(__dirname, `../messages/${locale}.json`), 'utf-8')) as {
+          dashboard: Record<string, string>;
+        }
+      ).dashboard;
+      expect(dash.disabled, `${locale}:dashboard.disabled`).toBeTruthy();
+      expect(dash.degraded, `${locale}:dashboard.degraded（应已删）`).toBeUndefined();
     }
   });
 
