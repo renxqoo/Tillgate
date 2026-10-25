@@ -31,7 +31,8 @@ export interface UsageClamp {
     | 'cached_bound'
     | 'cache_write_bound'
     | 'unit_bound'
-    | 'evidence_bound';
+    | 'evidence_bound'
+    | 'evidence_bound_hard';
   readonly field:
     | 'outputTokens'
     | 'inputTokens'
@@ -49,6 +50,10 @@ export interface UsageClamp {
  * 是定理，超出即谎报证据 → 记缺陷；软钳制 = 界依赖供应商口径假设（隐藏 token
  * 口径下非定理）→ 只钳计费不记缺陷。新 kind 必须显式归级（穷举封闭，
  * 漏归级编译期即拒——防止未来新增界被默认当成硬违例误杀渠道）。
+ *
+ * evidence_bound_hard（issue #83）：B1（maxOutputTokens）缺失且输出侧计费时，
+ * 证据字节是仅剩的物理事实界——超界即谎报证据成立，升级为硬违例
+ *（B1 存在或输出免费时维持软钳——issue #80 语义不变）。
  */
 export function isHardViolation(clamp: UsageClamp): boolean {
   switch (clamp.kind) {
@@ -57,6 +62,7 @@ export function isHardViolation(clamp: UsageClamp): boolean {
     case 'cached_bound':
     case 'cache_write_bound':
     case 'unit_bound':
+    case 'evidence_bound_hard':
       return true;
     case 'evidence_bound':
       return false;
@@ -82,18 +88,42 @@ type QuoteLike = { maxOutputTokens?: unknown; candidates?: unknown } | null | un
 const numeric = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
 
-/** 从持久化 quote 解出命中候选的三界 */
-function boundsOf(quote: QuoteLike, mappingId: number): Bound {
-  if (quote == null || !Array.isArray(quote.candidates)) {
-    return { outputCap: null, inputUpper: null, unitUpper: null };
-  }
+/** 输出侧计费判定（issue #83）：候选 outputPrice 为正有限数 = 有资金敞口 */
+const outputPricedOf = (candidate: unknown): boolean => {
+  const c = candidate as { outputPrice?: unknown } | undefined;
+  return (
+    numeric(
+      typeof c?.outputPrice === 'string' ? Number(c.outputPrice) : (c?.outputPrice as number),
+    ) != null
+  );
+};
+
+/** 从持久化 quote 取命中候选（缺位/形状异常 = 旧数据，返回 undefined） */
+function candidateOf(
+  quote: QuoteLike,
+  mappingId: number,
+):
+  | {
+      inputTokenUpperBound?: unknown;
+      unitUpperBound?: unknown;
+      outputPrice?: unknown;
+    }
+  | undefined {
+  if (quote == null || !Array.isArray(quote.candidates)) return undefined;
   const candidate = quote.candidates.find(
     (c) =>
       typeof c === 'object' && c !== null && (c as { mappingId?: unknown }).mappingId === mappingId,
   );
-  const c = candidate as { inputTokenUpperBound?: unknown; unitUpperBound?: unknown } | undefined;
+  return candidate as
+    | { inputTokenUpperBound?: unknown; unitUpperBound?: unknown; outputPrice?: unknown }
+    | undefined;
+}
+
+/** 从持久化 quote 解出命中候选的三界 */
+function boundsOf(quote: QuoteLike, mappingId: number): Bound {
+  const c = candidateOf(quote, mappingId);
   return {
-    outputCap: numeric(quote.maxOutputTokens),
+    outputCap: numeric(quote?.maxOutputTokens),
     inputUpper: numeric(c?.inputTokenUpperBound),
     unitUpper: numeric(c?.unitUpperBound),
   };
@@ -104,14 +134,16 @@ function clampTo(value: number, bound: number | null): { value: number; clamped:
   return { value: bound, clamped: true };
 }
 
-/** 输出侧钳制：先准入 cap，再证据字节（更紧者生效——两级各记一条钳制事实） */
+/** 输出侧钳制：先准入 cap，再证据字节（更紧者生效——两级各记一条钳制事实）。
+ * B1 缺失且输出计费时证据界升级硬（issue #83——唯一剩余物理界）*/
 function clampOutput(args: {
   outputTokens: number;
   bounds: Bound;
   evidence: number | null;
+  outputPriced: boolean;
   clamps: UsageClamp[];
 }): number {
-  const { outputTokens, bounds, evidence, clamps } = args;
+  const { outputTokens, bounds, evidence, outputPriced, clamps } = args;
   const cap = clampTo(outputTokens, bounds.outputCap);
   if (cap.clamped) {
     clamps.push({
@@ -125,7 +157,7 @@ function clampOutput(args: {
   const byEvidence = clampTo(cap.value, evidence);
   if (byEvidence.clamped) {
     clamps.push({
-      kind: 'evidence_bound',
+      kind: bounds.outputCap == null && outputPriced ? 'evidence_bound_hard' : 'evidence_bound',
       field: 'outputTokens',
       original: cap.value,
       clamped: byEvidence.value,
@@ -202,10 +234,17 @@ export function acceptTrustedUsage(input: {
   if (receipt.usage.estimated) return { receipt, clamps: [] };
 
   const bounds = boundsOf(input.quote, receipt.mappingId);
+  const candidate = candidateOf(input.quote, receipt.mappingId);
   const evidence = numeric(receipt.outputEvidenceBytes);
   const clamps: UsageClamp[] = [];
   const usage = { ...receipt.usage };
-  usage.outputTokens = clampOutput({ outputTokens: usage.outputTokens, bounds, evidence, clamps });
+  usage.outputTokens = clampOutput({
+    outputTokens: usage.outputTokens,
+    bounds,
+    evidence,
+    outputPriced: outputPricedOf(candidate),
+    clamps,
+  });
   clampInputSide(usage, bounds, clamps);
 
   if (clamps.length === 0) return { receipt, clamps: [] };

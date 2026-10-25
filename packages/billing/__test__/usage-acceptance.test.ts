@@ -169,6 +169,32 @@ describe('钳制分级（缺陷计数只看硬违例——issue #80）', () => {
     expect(out.clamps[0] != null && isHardViolation(out.clamps[0])).toBe(false);
   });
 
+  it('B1 缺失时（issue #83）：输出计费候选的证据界升级硬违例；输出免费仍软', () => {
+    // quote 无 maxOutputTokens（存量缺界 / embeddings / modality 口径 0）
+    const [base] = quoteOf({}).candidates;
+    const quoteWithoutCap = (outputPrice: string): BillingQuote =>
+      ({
+        candidates: [base != null ? { ...base, outputPrice } : { mappingId: 7, outputPrice }],
+      }) as unknown as BillingQuote;
+    // 输出计费（outputPrice > 0）：超证据字节 = 谎报证据（唯一剩余物理界）→ 硬违例
+    const priced = acceptTrustedUsage({
+      receipt: { ...receiptOf({ outputTokens: 5000 }), outputEvidenceBytes: 400 },
+      quote: quoteWithoutCap('2'),
+    });
+    expect(priced.clamps).toHaveLength(1);
+    expect(priced.clamps[0]?.kind).toBe('evidence_bound_hard');
+    expect(priced.clamps[0] != null && isHardViolation(priced.clamps[0])).toBe(true);
+
+    // 输出免费（outputPrice = 0）：无资金敞口 → 维持软钳（无谓熔断无意义）
+    const free = acceptTrustedUsage({
+      receipt: { ...receiptOf({ outputTokens: 5000 }), outputEvidenceBytes: 400 },
+      quote: quoteWithoutCap('0'),
+    });
+    expect(free.clamps).toHaveLength(1);
+    expect(free.clamps[0]?.kind).toBe('evidence_bound');
+    expect(free.clamps[0] != null && isHardViolation(free.clamps[0])).toBe(false);
+  });
+
   it('五类硬界钳制均记缺陷（谎报判定保留）', () => {
     const cases: Array<Parameters<typeof acceptTrustedUsage>[0]> = [
       // output_cap：发票超准入 cap
