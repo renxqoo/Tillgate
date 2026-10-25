@@ -176,14 +176,15 @@ describe('钳制分级（缺陷计数只看硬违例——issue #80）', () => {
       ({
         candidates: [base != null ? { ...base, outputPrice } : { mappingId: 7, outputPrice }],
       }) as unknown as BillingQuote;
-    // 输出计费（outputPrice > 0）：超证据字节 = 谎报证据（唯一剩余物理界）→ 硬违例
+    // 输出计费（outputPrice > 0）：超证据字节 → 升级为审计级硬（kind 区分），
+    // 但不进缺陷计数（isHardViolation=false——口径非定理性与 B1 无关，pr #85 路 C #1）
     const priced = acceptTrustedUsage({
       receipt: { ...receiptOf({ outputTokens: 5000 }), outputEvidenceBytes: 400 },
       quote: quoteWithoutCap('2'),
     });
     expect(priced.clamps).toHaveLength(1);
     expect(priced.clamps[0]?.kind).toBe('evidence_bound_hard');
-    expect(priced.clamps[0] != null && isHardViolation(priced.clamps[0])).toBe(true);
+    expect(priced.clamps[0] != null && isHardViolation(priced.clamps[0])).toBe(false);
 
     // 输出免费（outputPrice = 0）：无资金敞口 → 维持软钳（无谓熔断无意义）
     const free = acceptTrustedUsage({
@@ -243,6 +244,6 @@ describe('钳制分级（缺陷计数只看硬违例——issue #80）', () => {
       'cached_bound',
       'cache_write_bound',
       'unit_bound',
-    ]);
+    ]); // evidence_bound / evidence_bound_hard 均为熔断级软（审计级差异在 kind 本身）
   });
 });

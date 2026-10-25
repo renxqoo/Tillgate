@@ -52,8 +52,12 @@ export interface UsageClamp {
  * 漏归级编译期即拒——防止未来新增界被默认当成硬违例误杀渠道）。
  *
  * evidence_bound_hard（issue #83）：B1（maxOutputTokens）缺失且输出侧计费时，
- * 证据字节是仅剩的物理事实界——超界即谎报证据成立，升级为硬违例
- *（B1 存在或输出免费时维持软钳——issue #80 语义不变）。
+ * 证据字节是仅剩的物理事实界——升级为「审计级硬」：kind 单独成类进审计
+ * 载荷（运营可见），但不进缺陷计数（isHardViolation=false）。不熔断的原因：
+ * 证据界的非定理性是模型口径属性（隐藏 reasoning token 计入 output_tokens
+ * 而响应体不含其字节），与 B1 是否存在无关——若计入缺陷，存量缺界 quote ×
+ * reasoning 模型 × 诚实上游会复活 #80 的误杀熔断循环（pr #85 路 C finding #1）。
+ * 该形态的谎报保护依赖计费侧钳制（钳到证据字节）+ 审计留痕。
  */
 export function isHardViolation(clamp: UsageClamp): boolean {
   switch (clamp.kind) {
@@ -62,8 +66,8 @@ export function isHardViolation(clamp: UsageClamp): boolean {
     case 'cached_bound':
     case 'cache_write_bound':
     case 'unit_bound':
-    case 'evidence_bound_hard':
       return true;
+    case 'evidence_bound_hard':
     case 'evidence_bound':
       return false;
   }
@@ -88,7 +92,11 @@ type QuoteLike = { maxOutputTokens?: unknown; candidates?: unknown } | null | un
 const numeric = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
 
-/** 输出侧计费判定（issue #83）：候选 outputPrice 为正有限数 = 有资金敞口 */
+/**
+ * 输出侧计费判定（issue #83）：候选 outputPrice 为正有限数 = 有资金敞口。
+ * 候选缺位/畸形（超旧 jsonb 行）→ false 静默放行——与「旧数据缺省放行该界」
+ * 的既有哲学一致：畸形候选的旧行不升级硬，保护依赖计费钳制
+ */
 const outputPricedOf = (candidate: unknown): boolean => {
   const c = candidate as { outputPrice?: unknown } | undefined;
   return (
@@ -120,12 +128,11 @@ function candidateOf(
 }
 
 /** 从持久化 quote 解出命中候选的三界 */
-function boundsOf(quote: QuoteLike, mappingId: number): Bound {
-  const c = candidateOf(quote, mappingId);
+function boundsOf(quote: QuoteLike, candidate: ReturnType<typeof candidateOf>): Bound {
   return {
     outputCap: numeric(quote?.maxOutputTokens),
-    inputUpper: numeric(c?.inputTokenUpperBound),
-    unitUpper: numeric(c?.unitUpperBound),
+    inputUpper: numeric(candidate?.inputTokenUpperBound),
+    unitUpper: numeric(candidate?.unitUpperBound),
   };
 }
 
@@ -233,8 +240,8 @@ export function acceptTrustedUsage(input: {
   const { receipt } = input;
   if (receipt.usage.estimated) return { receipt, clamps: [] };
 
-  const bounds = boundsOf(input.quote, receipt.mappingId);
   const candidate = candidateOf(input.quote, receipt.mappingId);
+  const bounds = boundsOf(input.quote, candidate);
   const evidence = numeric(receipt.outputEvidenceBytes);
   const clamps: UsageClamp[] = [];
   const usage = { ...receipt.usage };

@@ -41,6 +41,18 @@ function formMappings(): Map<number, string> {
   return out;
 }
 
+/** SelectItem children 形态（Base UI 实际渲染的下拉选项来源）——与 items 清单独立维护，须同步 */
+function formSelectItemMappings(): Map<number, string> {
+  const src = readFileSync(FORM, 'utf-8');
+  const out = new Map<number, string>();
+  for (const m of src.matchAll(
+    /<SelectItem value="(\d)">\{t[c]?\('([a-zA-Z]\w+)'\)\}<\/SelectItem>/g,
+  )) {
+    out.set(Number(m[1]), m[2] ?? '');
+  }
+  return out;
+}
+
 function rowMetaLabels(): Map<number, string> {
   const src = readFileSync(ROW, 'utf-8');
   const out = new Map<number, string>();
@@ -63,6 +75,12 @@ describe('渠道状态词表守护（#82）', () => {
     expect(Object.fromEntries(formMappings())).toEqual(CANONICAL_FORM);
   });
 
+  it('SelectItem children 清单与 items 清单同步（改一处漏一处时此处必红——pr #85 路 C #4）', () => {
+    expect(Object.fromEntries(formSelectItemMappings())).toEqual(
+      Object.fromEntries(formMappings()),
+    );
+  });
+
   it('列表 STATUS_META 的 值→label 映射 = 词表权威', () => {
     expect(Object.fromEntries(rowMetaLabels())).toEqual(CANONICAL_ROW);
   });
@@ -70,12 +88,12 @@ describe('渠道状态词表守护（#82）', () => {
   it('两个映射的 key 在 zh/en 词表都存在（缺 key = NEXT_INTL 运行时崩溃）', () => {
     for (const locale of ['zh', 'en'] as const) {
       const channels = messagesOf(locale);
-      const common = (
-        JSON.parse(readFileSync(join(__dirname, `../messages/${locale}.json`), 'utf-8')) as {
-          common: Record<string, string>;
-        }
-      ).common;
+      const parsed = JSON.parse(
+        readFileSync(join(__dirname, `../messages/${locale}.json`), 'utf-8'),
+      ) as { common: Record<string, string> };
+      const { common } = parsed;
       for (const [value, key] of Object.entries(CANONICAL_ROW)) {
+        void value;
         expect(channels[key], `${locale}:${key}`).toBeTruthy();
       }
       expect(common.enabled, `${locale}:common.enabled`).toBeTruthy();
