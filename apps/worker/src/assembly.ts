@@ -75,6 +75,16 @@ import { createSettleWakeListener } from './wakeup/postgres-notify';
 import type { SettleWakeListener } from './wakeup/postgres-notify';
 import type { WorkerHealthState } from './health';
 
+/** 审计 action 三级：violation（硬谎报）/ hard_mark（B1 缺失审计级标记，#83）/
+ * clamped（普通软钳）——独立 action 才可独立检索与告警 */
+function auditActionOf(data: { hard: boolean; clamps: readonly { kind: string }[] }): string {
+  if (data.hard) return 'billing.usage_evidence_violation';
+  if (data.clamps.some((c) => c.kind === 'evidence_bound_hard')) {
+    return 'billing.usage_evidence_hard_mark';
+  }
+  return 'billing.usage_evidence_clamped';
+}
+
 /** 事务重试策略（与 billing 组装件同值） */
 const TX_RETRY = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 } as const;
 /** 对账会话锁键（重叠部署互斥，与分区锁同口径） */
@@ -311,11 +321,12 @@ export async function assembleWorker(
       ).catch(() => {});
     },
     onUsageDefect: (data) => {
-      // 分级观测（路 A finding #2）：硬违例 = 谎报证据，error + violation 审计 +
-      // 告警；软钳制（evidence 界，隐藏 token 口径的诚实渠道常规）降级 warn +
-      // clamped 审计，不灌 violation 词表不喊狼来了
+      // 分级观测：硬违例（五类请求事实界）= 谎报证据，error + violation 审计 + 告警；
+      // evidence 界（隐藏 token 口径的诚实渠道常规）降级 warn；其中 B1 缺失且输出
+      // 计费的形态用独立 hard_mark action（issue #83 审计级标记，可独立检索/告警），
+      // 其余软钳制落 clamped——不灌 violation 词表不喊狼来了
       const { hard } = data;
-      const action = hard ? 'billing.usage_evidence_violation' : 'billing.usage_evidence_clamped';
+      const action = auditActionOf(data);
       (hard ? logger.error : logger.warn).call(logger, { ...data }, 'usage evidence clamped');
       // 与网关同款 best-effort 审计（两结算进程都要留痕——谁结算谁落账）
       writeAudit(db, {
